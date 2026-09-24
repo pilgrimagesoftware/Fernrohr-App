@@ -104,12 +104,19 @@ impl LogsView {
 /// Spawns `produce` on the tokio runtime and applies its [`LogEvent`]s to
 /// `view` as they arrive, on `view`'s own line-by-line channel - never
 /// through the coalescing drain, so every line lands.
+///
+/// Returns the foreground [`gpui_kit::Task`] driving the drain; drop it (or
+/// let a caller-held handle drop) to stop applying further lines, e.g. when
+/// switching containers or closing the panel. Production callers that want
+/// fire-and-forget behavior can `.detach()` the result themselves.
+#[must_use]
 pub fn start_stream<F, Fut>(
     view: gpui_kit::Entity<LogsView>,
     cx: &mut gpui_kit::App,
     capacity: usize,
     produce: F,
-) where
+) -> gpui_kit::Task<()>
+where
     F: FnOnce(tokio::sync::mpsc::Sender<LogEvent>) -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
@@ -123,7 +130,6 @@ pub fn start_stream<F, Fut>(
         })
         .await;
     })
-    .detach();
 }
 
 #[cfg(test)]
@@ -211,15 +217,14 @@ mod tests {
             cx.new(|_| LogsView::new(vec!["app".into()]))
         });
 
-        cx.update(|cx| {
-            let view = view.clone();
-            start_stream(view, cx, 8, |tx| async move {
+        let task = cx.update(|cx| {
+            start_stream(view.clone(), cx, 8, |tx| async move {
                 for line in ["line one", "line two", "line three"] {
                     tx.send(LogEvent::Line(line.into())).await.unwrap();
                 }
-            });
+            })
         });
-        cx.run_until_parked();
+        task.await;
 
         let lines = view.read_with(cx, |view, _| view.lines().to_vec());
         assert_eq!(lines, vec!["line one", "line two", "line three"]);
