@@ -1,7 +1,9 @@
+use crate::command::{Command, CommandRegistry};
 use crate::config::{
     self,
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
+use crate::keymap;
 use crate::panel::PlaceholderPanel;
 use crate::paths;
 use gpui_kit::component::Root;
@@ -11,15 +13,38 @@ use std::path::{Path, PathBuf};
 
 actions!(shell, [NewWindow]);
 
+pub const NEW_WINDOW_COMMAND_ID: &str = "shell.new_window";
+pub const NEW_WINDOW_DEFAULT_BINDING: &str = "cmd-n";
+
 pub fn default_workspace_path() -> PathBuf {
     paths::state_dir().join("workspace.toml")
 }
 
-/// Binds the "New Window" action and arranges for the workspace to be
-/// persisted at `workspace_path` when the app is about to quit (see
-/// [`save`]).
-pub fn init(cx: &mut App, workspace_path: PathBuf) {
-    cx.bind_keys([KeyBinding::new("cmd-n", NewWindow, None)]);
+/// The commands this module contributes to the app-wide [`CommandRegistry`]
+/// - currently just "New Window". Built here (next to the `NewWindow`
+/// action) rather than centrally, so a command's metadata lives beside the
+/// action it wraps.
+pub fn register_commands(registry: &mut CommandRegistry) {
+    registry.register(Command {
+        id: NEW_WINDOW_COMMAND_ID,
+        title: "New Window",
+        default_binding: NEW_WINDOW_DEFAULT_BINDING,
+        context: None,
+        action: Box::new(NewWindow),
+    });
+}
+
+/// Binds the "New Window" action - to `keymap_path`'s override if it has
+/// one for this command, otherwise its default - and arranges for the
+/// workspace to be persisted at `workspace_path` when the app is about to
+/// quit (see [`save`]).
+pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
+    let mut registry = CommandRegistry::new();
+    register_commands(&mut registry);
+    let keymap = keymap::load(keymap_path, &registry);
+    let binding = keymap::resolve(NEW_WINDOW_COMMAND_ID, NEW_WINDOW_DEFAULT_BINDING, &keymap);
+
+    cx.bind_keys([KeyBinding::new(&binding, NewWindow, None)]);
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });
@@ -184,9 +209,10 @@ mod tests {
     #[gpui_kit::test]
     async fn quitting_persists_open_window_geometry(cx: &mut TestAppContext) {
         let path = temp_workspace_path();
+        let keymap_path = temp_workspace_path();
         cx.update(|cx| {
             gpui_kit::init(cx);
-            init(cx, path.clone());
+            init(cx, path.clone(), &keymap_path);
             open_window(
                 cx,
                 WindowLayout {
@@ -208,6 +234,7 @@ mod tests {
         assert_eq!(saved.windows[0].height, 700.0);
 
         let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&keymap_path);
     }
 
     #[gpui_kit::test]

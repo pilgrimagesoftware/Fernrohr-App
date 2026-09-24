@@ -1,7 +1,9 @@
 use gpui_kit::*;
 
 mod cluster;
+mod command;
 mod config;
+mod keymap;
 mod logs;
 mod panel;
 mod paths;
@@ -17,7 +19,8 @@ fn main() {
             gpui_kit::init(cx);
             runtime::init(cx);
             let workspace_path = shell::default_workspace_path();
-            shell::init(cx, workspace_path.clone());
+            let keymap_path = paths::preference_dir().join("keymap.toml");
+            shell::init(cx, workspace_path.clone(), &keymap_path);
             shell::open_saved_or_default(cx, &workspace_path);
         });
 }
