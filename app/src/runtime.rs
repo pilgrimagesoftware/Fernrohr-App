@@ -148,7 +148,11 @@ mod tests {
 
         assert_eq!(
             *applied.borrow(),
-            vec![Delta::Update(1, "b"), Delta::Delete(2), Delta::Update(1, "c")]
+            vec![
+                Delta::Update(1, "b"),
+                Delta::Delete(2),
+                Delta::Update(1, "c")
+            ]
         );
     }
 }

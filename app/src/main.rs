@@ -1,5 +1,5 @@
-use gpui_kit::component::dock::{DockArea, DockLayout, Panel, PanelEvent, panel_handle};
 use gpui_kit::component::Root;
+use gpui_kit::component::dock::{DockArea, DockLayout, Panel, PanelEvent, panel_handle};
 use gpui_kit::*;
 
 mod config;

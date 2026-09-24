@@ -6,7 +6,8 @@ const APP_DIR_NAME: &str = "com.pilgrimagesoftware.fernrohr";
 const APP_DIR_NAME: &str = "fernrohr";
 
 fn resolve(base: Option<PathBuf>) -> PathBuf {
-    base.unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR_NAME)
+    base.unwrap_or_else(|| PathBuf::from("."))
+        .join(APP_DIR_NAME)
 }
 
 /// Window state, workspace layout: `dirs::data_dir()/<app_dir>/`.
