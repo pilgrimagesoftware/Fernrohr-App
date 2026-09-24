@@ -29,6 +29,10 @@ pub struct CommandRegistry {
     commands: Vec<Command>,
 }
 
+/// Stored as a GPUI global so any view (e.g. the palette trigger) can read
+/// it without threading a reference through every layer.
+impl gpui_kit::Global for CommandRegistry {}
+
 impl CommandRegistry {
     pub fn new() -> Self {
         Self::default()
