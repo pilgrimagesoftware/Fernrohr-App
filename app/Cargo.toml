@@ -1,0 +1,15 @@
+[package]
+name = "fernrohr"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-kit = "=0.6.6"
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync"] }
+kube = { version = "=4.2.0", features = ["client", "config", "runtime"] }
+kube-runtime = "=4.2.0"
+k8s-openapi = { version = "=0.28.0", features = ["v1_36"] }
+dirs = "=7.0.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=1.1.6"
+rust-i18n = "=4.2.2"
