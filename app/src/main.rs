@@ -2,6 +2,7 @@ use gpui_kit::*;
 
 mod cluster;
 mod config;
+mod logs;
 mod panel;
 mod paths;
 mod pods;
