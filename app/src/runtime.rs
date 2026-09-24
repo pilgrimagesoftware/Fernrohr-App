@@ -73,6 +73,10 @@ mod tests {
 
     #[gpui_kit::test]
     async fn foreground_drain_receives_items_in_order(cx: &mut TestAppContext) {
+        // The drain genuinely blocks on a cross-thread wakeup from the tokio
+        // runtime's background thread; GPUI's deterministic test scheduler
+        // forbids that by default.
+        cx.executor().allow_parking();
         cx.update(init);
 
         let rx = cx.update(|cx| {
@@ -110,6 +114,7 @@ mod tests {
 
     #[gpui_kit::test]
     async fn coalescing_drain_folds_consecutive_same_key_updates(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
         cx.update(init);
 
         // Interleaved burst: two consecutive updates to key 1 collapse into
