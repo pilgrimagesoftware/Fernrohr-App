@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 gpui-kit = "=0.6.6"
-tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util"] }
 kube = { version = "=4.2.0", features = ["client", "config", "runtime"] }
 kube-runtime = "=4.2.0"
 k8s-openapi = { version = "=0.28.0", features = ["v1_36"] }
