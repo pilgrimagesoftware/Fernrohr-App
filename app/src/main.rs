@@ -2,6 +2,9 @@ use gpui_kit::component::dock::{DockArea, DockLayout, Panel, PanelEvent, panel_h
 use gpui_kit::component::Root;
 use gpui_kit::*;
 
+mod config;
+mod paths;
+
 struct WelcomePanel {
     focus_handle: FocusHandle,
 }
