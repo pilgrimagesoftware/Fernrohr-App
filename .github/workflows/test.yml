@@ -1,0 +1,34 @@
+name: Test
+
+on:
+  push:
+    branches: [master, develop]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/test.yml'
+  pull_request:
+    branches: [master, develop]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run tests
+        run: cargo test --verbose
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+      - name: Check formatting
+        run: cargo fmt -- --check
