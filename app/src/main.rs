@@ -4,6 +4,8 @@ use gpui_kit::*;
 
 mod config;
 mod paths;
+mod resource_index;
+mod runtime;
 
 struct WelcomePanel {
     focus_handle: FocusHandle,

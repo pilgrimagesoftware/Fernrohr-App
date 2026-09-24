@@ -13,3 +13,6 @@ dirs = "=7.0.0"
 serde = { version = "=1.0.229", features = ["derive"] }
 toml = "=1.1.6"
 rust-i18n = "=4.2.2"
+
+[dev-dependencies]
+gpui-kit = { version = "=0.6.6", features = ["test-support"] }
