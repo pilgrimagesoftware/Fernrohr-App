@@ -4,6 +4,7 @@ mod cluster;
 mod config;
 mod panel;
 mod paths;
+mod pods;
 mod resource_index;
 mod runtime;
 mod shell;
