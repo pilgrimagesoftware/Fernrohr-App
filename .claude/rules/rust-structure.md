@@ -1,0 +1,1 @@
+/Users/paulyhedral/Projects/Code/Fernrohr/.claude/rules/rust-structure.md
