@@ -1863,6 +1863,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
+ "log",
  "rust-i18n",
  "serde",
  "tokio",
