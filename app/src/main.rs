@@ -3,6 +3,7 @@ use gpui_kit::*;
 mod cluster;
 mod command;
 mod config;
+mod consts;
 mod forward_registry;
 mod forward_supervisor;
 mod keychain;

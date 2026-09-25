@@ -7,10 +7,11 @@
 //! Readiness-by-probe and distinct auth/bind failure reasons are section 3.2; jump-host
 //! chain coverage is section 3.3; process-group cleanup is section 3.4.
 
+use crate::consts::{SSH_READINESS_POLL_INTERVAL, SSH_READINESS_PROBE_TIMEOUT};
 use crate::ssh_path::require_ssh_on_path;
 use std::path::PathBuf;
-use std::process::Stdio;
-use std::time::Duration;
+use std::process::{ExitStatus, Stdio};
+use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 
 /// Everything needed to hold open one `ssh -L` forward. `identity_file` and
@@ -121,35 +122,61 @@ impl SshTransport {
 }
 
 impl crate::forward_supervisor::ForwardTransport for SshTransport {
+    /// Declares the forward ready only once the local port actually accepts a
+    /// connection, polling at [`SSH_READINESS_POLL_INTERVAL`] up to
+    /// [`SSH_READINESS_PROBE_TIMEOUT`]. If `ssh` exits before that (auth rejected,
+    /// remote bind refused, ...) the failure reason is classified from its stderr so
+    /// callers can tell an auth failure from a bind failure - see
+    /// `classify_exit_failure`.
     async fn connect(&mut self) -> Result<(), String> {
         let ssh_path = require_ssh_on_path()?;
 
-        let child = Command::new(ssh_path)
+        let mut child = Command::new(ssh_path)
             .args(self.config.args())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|err| format!("failed to spawn ssh: {err}"))?;
-        self.child = Some(child);
+        let mut stderr = child.stderr.take().expect("stderr was piped above");
+        let local_port = self.config.local_port;
 
-        // Give ExitOnForwardFailure a moment to fail fast (auth rejected, remote bind
-        // refused) before declaring the forward up; a real readiness probe against the
-        // local port lands in section 3.2.
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        let deadline = tokio::time::Instant::now() + SSH_READINESS_PROBE_TIMEOUT;
+        let exit_status = loop {
+            if tokio::net::TcpStream::connect(("127.0.0.1", local_port))
+                .await
+                .is_ok()
+            {
+                break None;
+            }
 
-        match self.child.as_mut().expect("just spawned").try_wait() {
-            Ok(None) => Ok(()),
-            Ok(Some(status)) => {
-                self.child = None;
-                Err(format!("ssh exited before the forward came up: {status}"))
+            match child.try_wait() {
+                Ok(None) => {}
+                Ok(Some(status)) => break Some(status),
+                Err(err) => {
+                    let _ = child.start_kill();
+                    return Err(format!("failed to check ssh child status: {err}"));
+                }
             }
-            Err(err) => {
-                self.child = None;
-                Err(format!("failed to check ssh child status: {err}"))
+
+            if tokio::time::Instant::now() >= deadline {
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                return Err("timed out waiting for the local forward to become ready".to_string());
             }
-        }
+
+            tokio::time::sleep(SSH_READINESS_POLL_INTERVAL).await;
+        };
+
+        let Some(status) = exit_status else {
+            self.child = Some(child);
+            return Ok(());
+        };
+
+        let mut stderr_output = String::new();
+        let _ = stderr.read_to_string(&mut stderr_output).await;
+        Err(classify_exit_failure(status, &stderr_output))
     }
 
     async fn health_check(&mut self) -> Result<(), String> {
@@ -168,9 +195,73 @@ impl crate::forward_supervisor::ForwardTransport for SshTransport {
     }
 }
 
+/// `ssh`'s own wording for each failure mode is stable enough to match on: publickey/
+/// password rejection always says "Permission denied", and both `ExitOnForwardFailure`
+/// bind failures ("cannot listen to port", "Address already in use") and remote refusal
+/// ("forwarding request failed") name forwarding explicitly.
+// UNWIRED(#3): only `SshTransport::connect` calls this today, and that impl is itself
+// unwired until section 6.2's connect-path integration; dead_code analysis can't see
+// through the unused `SshTransport` to know this is reachable.
+#[allow(dead_code)]
+fn classify_exit_failure(status: ExitStatus, stderr_output: &str) -> String {
+    let lower = stderr_output.to_lowercase();
+
+    if lower.contains("permission denied") || lower.contains("authentication failed") {
+        return format!("ssh authentication failed: {}", stderr_output.trim());
+    }
+
+    if lower.contains("cannot listen")
+        || lower.contains("address already in use")
+        || lower.contains("forwarding request failed")
+        || lower.contains("bind:")
+    {
+        return format!("ssh forward failed to bind: {}", stderr_output.trim());
+    }
+
+    if stderr_output.trim().is_empty() {
+        format!("ssh exited before the forward came up: {status}")
+    } else {
+        format!(
+            "ssh exited before the forward came up: {status}: {}",
+            stderr_output.trim()
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+
+    #[cfg(unix)]
+    fn fake_exit_status(code: i32) -> ExitStatus {
+        ExitStatus::from_raw(code << 8)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn auth_failure_and_bind_failure_produce_distinct_reasons() {
+        let auth_reason = classify_exit_failure(
+            fake_exit_status(255),
+            "alice@bastion: Permission denied (publickey).",
+        );
+        let bind_reason = classify_exit_failure(
+            fake_exit_status(255),
+            "channel_setup_fwd_listener_tcpip: cannot listen to port: 40000",
+        );
+
+        assert!(auth_reason.contains("authentication failed"));
+        assert!(bind_reason.contains("failed to bind"));
+        assert_ne!(auth_reason, bind_reason);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unrecognized_stderr_falls_back_to_exit_status() {
+        let reason = classify_exit_failure(fake_exit_status(1), "");
+        assert!(reason.contains("exited before the forward came up"));
+    }
 
     #[test]
     fn args_include_forward_spec_and_reliability_options() {
@@ -245,7 +336,8 @@ mod sshd_integration {
     use crate::forward_supervisor::ForwardTransport;
     use std::net::TcpListener;
     use std::process::Command as StdCommand;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
 
     /// A throwaway sshd + keypair rooted in a scratch directory, torn down on drop.
     struct LocalSshd {
