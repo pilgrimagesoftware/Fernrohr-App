@@ -9,9 +9,20 @@ use crate::paths;
 use gpui_kit::component::Root;
 use gpui_kit::component::dock::{DockArea, DockLayout, panel_handle};
 use gpui_kit::*;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 actions!(shell, [NewWindow, ToggleCommandPalette]);
+
+/// Last known geometry of every window that has closed this run, keyed by
+/// `WindowId`. Populated from each window's `on_window_should_close` hook,
+/// since under `QuitMode::LastWindowClosed` the app-quit callback fires only
+/// after every window is already gone - `cx.windows()` is empty by then, so
+/// geometry has to be captured on the way out rather than read at quit time.
+#[derive(Default)]
+struct ClosedWindowLayouts(HashMap<WindowId, WindowLayout>);
+
+impl Global for ClosedWindowLayouts {}
 
 pub const NEW_WINDOW_COMMAND_ID: &str = "shell.new_window";
 pub const NEW_WINDOW_DEFAULT_BINDING: &str = "cmd-n";
@@ -102,6 +113,16 @@ fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixels> {
     }
 }
 
+fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
+    WindowLayout {
+        width: f32::from(bounds.size.width),
+        height: f32::from(bounds.size.height),
+        x: Some(f32::from(bounds.origin.x)),
+        y: Some(f32::from(bounds.origin.y)),
+        panels: Vec::new(),
+    }
+}
+
 /// Opens one window with a two-panel split workspace: a live Pods panel
 /// (connects to the current kubeconfig context) alongside a placeholder,
 /// proving the dock's split mechanics and the window persistence path both
@@ -115,6 +136,18 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             ..Default::default()
         },
         |window, cx| {
+            let window_id = window.window_handle().window_id();
+            window.on_window_should_close(cx, move |window, cx| {
+                let layout = layout_from_bounds(window.bounds());
+                if !cx.has_global::<ClosedWindowLayouts>() {
+                    cx.set_global(ClosedWindowLayouts::default());
+                }
+                cx.global_mut::<ClosedWindowLayouts>()
+                    .0
+                    .insert(window_id, layout);
+                true
+            });
+
             let left = cx.new(crate::pods::PodsPanel::new);
             let right = cx.new(|cx| PlaceholderPanel::new("Panel 2", cx));
             let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
@@ -205,28 +238,25 @@ pub fn open_saved_or_default(cx: &mut App, workspace_path: &Path) {
     }
 }
 
-/// Snapshots every open window's geometry into `workspace_path`. Panel
-/// descriptors are left empty until a later change adds panel kinds worth
-/// restoring (see [`open_window`]'s placeholder split).
+/// Snapshots every window's geometry into `workspace_path`: still-open
+/// windows read fresh from `cx.windows()`, plus any already closed this run
+/// (see [`ClosedWindowLayouts`]) - under `QuitMode::LastWindowClosed` that's
+/// every window, since the app-quit callback fires after the last one
+/// closes. Panel descriptors are left empty until a later change adds panel
+/// kinds worth restoring (see [`open_window`]'s placeholder split).
 pub fn save(cx: &mut App, workspace_path: &Path) {
-    let windows: Vec<WindowLayout> = cx
-        .windows()
-        .into_iter()
-        .filter_map(|handle| {
-            handle
-                .update(cx, |_, window, _cx| {
-                    let bounds = window.bounds();
-                    WindowLayout {
-                        width: f32::from(bounds.size.width),
-                        height: f32::from(bounds.size.height),
-                        x: Some(f32::from(bounds.origin.x)),
-                        y: Some(f32::from(bounds.origin.y)),
-                        panels: Vec::new(),
-                    }
-                })
-                .ok()
-        })
-        .collect();
+    let mut layouts = if cx.has_global::<ClosedWindowLayouts>() {
+        cx.global::<ClosedWindowLayouts>().0.clone()
+    } else {
+        HashMap::new()
+    };
+    for handle in cx.windows() {
+        if let Ok(layout) = handle.update(cx, |_, window, _cx| layout_from_bounds(window.bounds()))
+        {
+            layouts.insert(handle.window_id(), layout);
+        }
+    }
+    let windows: Vec<WindowLayout> = layouts.into_values().collect();
     let _ = config::save(workspace_path, &WorkspaceConfig { windows });
 }
 
@@ -236,11 +266,13 @@ mod tests {
     // macro, which would shadow `core::prelude::v1::test` for the plain
     // synchronous test below.
     use super::{
-        PanelDescriptor, ToggleCommandPalette, WindowLayout, WorkspaceConfig, config, init,
-        open_saved_or_default, open_window, register_commands, restorable_panels, save,
+        ClosedWindowLayouts, PanelDescriptor, ToggleCommandPalette, WindowLayout, WorkspaceConfig,
+        config, init, open_saved_or_default, open_window, register_commands, restorable_panels,
+        save,
     };
     use crate::command::CommandRegistry;
-    use gpui_kit::TestAppContext;
+    use gpui_kit::{TestAppContext, WindowId};
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -307,6 +339,38 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&keymap_path);
+    }
+
+    #[gpui_kit::test]
+    async fn save_persists_geometry_of_a_window_already_closed(cx: &mut TestAppContext) {
+        // Regression test: under `QuitMode::LastWindowClosed`, `on_app_quit`
+        // fires after every window is already gone, so `cx.windows()` alone
+        // (the pre-fix implementation) sees nothing and silently saves an
+        // empty layout. `save` must also pick up geometry captured by
+        // `open_window`'s `on_window_should_close` hook and stashed in
+        // `ClosedWindowLayouts` before the window disappeared.
+        let path = temp_workspace_path();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(ClosedWindowLayouts(HashMap::from([(
+                WindowId::from(1),
+                WindowLayout {
+                    width: 900.0,
+                    height: 700.0,
+                    x: Some(10.0),
+                    y: Some(20.0),
+                    panels: Vec::new(),
+                },
+            )])));
+            save(cx, &path);
+        });
+
+        let saved: WorkspaceConfig = config::load(&path);
+        assert_eq!(saved.windows.len(), 1);
+        assert_eq!(saved.windows[0].width, 900.0);
+        assert_eq!(saved.windows[0].height, 700.0);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[gpui_kit::test]
