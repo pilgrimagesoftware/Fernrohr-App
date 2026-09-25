@@ -6,6 +6,7 @@ mod config;
 mod consts;
 mod forward_registry;
 mod forward_supervisor;
+mod k8s_port_forward;
 mod keychain;
 mod keymap;
 mod logs;
