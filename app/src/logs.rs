@@ -132,6 +132,165 @@ where
     })
 }
 
+/// Streams `container`'s logs in `namespace`/`pod_name` on `client`, line by
+/// line, until the stream ends or the returned `Task` is dropped. A failure
+/// to start the stream (e.g. the container hasn't started yet) reports
+/// through the same channel as [`LogEvent::RequestFailed`] rather than
+/// erroring the caller, matching [`LogsView`]'s own terminal-state handling.
+pub fn stream_container_logs(
+    client: kube::Client,
+    namespace: String,
+    pod_name: String,
+    container: String,
+    view: gpui_kit::Entity<LogsView>,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::Task<()> {
+    start_stream(view, cx, 64, move |tx| async move {
+        use futures_util::{AsyncBufReadExt, StreamExt};
+        use k8s_openapi::api::core::v1::Pod;
+        use kube::Api;
+        use kube::api::LogParams;
+
+        let api: Api<Pod> = Api::namespaced(client, &namespace);
+        let lp = LogParams {
+            container: Some(container),
+            follow: true,
+            ..Default::default()
+        };
+        let stream = match api.log_stream(&pod_name, &lp).await {
+            Ok(stream) => stream,
+            Err(error) => {
+                let _ = tx.send(LogEvent::RequestFailed(error.to_string())).await;
+                return;
+            }
+        };
+        let mut lines = stream.lines();
+        loop {
+            match lines.next().await {
+                Some(Ok(line)) => {
+                    if tx.send(LogEvent::Line(line)).await.is_err() {
+                        break;
+                    }
+                }
+                None => {
+                    let _ = tx.send(LogEvent::Ended).await;
+                    break;
+                }
+                Some(Err(error)) => {
+                    let _ = tx.send(LogEvent::RequestFailed(error.to_string())).await;
+                    break;
+                }
+            }
+        }
+    })
+}
+
+use crate::pods::{PodSelection, SelectedPod};
+use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
+use gpui_kit::*;
+
+/// A dock panel streaming the container logs of whichever pod was last
+/// clicked in a Pods panel (see [`SelectedPod`]).
+pub struct LogsPanel {
+    connection: Entity<crate::cluster::connection::ClusterConnection>,
+    view: Entity<LogsView>,
+    stream: Option<Task<()>>,
+    current: Option<(String, String, String)>,
+    focus_handle: FocusHandle,
+}
+
+impl LogsPanel {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        use crate::cluster::session::ClusterSession;
+
+        let connection = ClusterSession::connection(cx);
+        cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
+            .detach();
+        cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
+            .detach();
+
+        let mut this = Self {
+            connection,
+            view: cx.new(|_| LogsView::new(vec![String::new()])),
+            stream: None,
+            current: None,
+            focus_handle: cx.focus_handle(),
+        };
+        this.sync(cx);
+        this
+    }
+
+    /// Starts (or restarts) the stream if the selected pod/container changed
+    /// since the last sync. A no-op while nothing is selected or the cluster
+    /// isn't connected yet - [`Self::new`]'s observers call this again once
+    /// either changes.
+    fn sync(&mut self, cx: &mut Context<Self>) {
+        let Some(selection) = cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()) else {
+            return;
+        };
+        let crate::cluster::connection::ConnectionState::Connected(client) =
+            &self.connection.read(cx).state
+        else {
+            return;
+        };
+        let PodSelection {
+            namespace,
+            name,
+            containers,
+        } = selection;
+        let container = containers.first().cloned().unwrap_or_default();
+        let key = (namespace.clone(), name.clone(), container.clone());
+        if self.current.as_ref() == Some(&key) {
+            return;
+        }
+        self.current = Some(key);
+
+        let client = client.clone();
+        let view = cx.new(|_| LogsView::new(containers));
+        cx.observe(&view, |_, _, cx| cx.notify()).detach();
+        self.stream = Some(stream_container_logs(
+            client,
+            namespace,
+            name,
+            container,
+            view.clone(),
+            cx,
+        ));
+        self.view = view;
+    }
+}
+
+impl Focusable for LogsPanel {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl EventEmitter<PanelEvent> for LogsPanel {}
+
+impl Render for LogsPanel {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = self.view.read(cx);
+        if let Some(message) = view.terminal_message() {
+            return div().size_full().child(message.to_string());
+        }
+        if self.current.is_none() {
+            return div().size_full().child("Click a pod to view its logs.");
+        }
+        div()
+            .size_full()
+            .children(view.lines().iter().cloned().map(|line| div().child(line)))
+    }
+}
+
+impl BasePanel for LogsPanel {
+    fn panel_name(&self) -> &'static str {
+        "Logs"
+    }
+}
+
+impl Panel for LogsPanel {}
+
 #[cfg(test)]
 mod tests {
     use super::{FollowState, LogEvent, LogsView, start_stream};

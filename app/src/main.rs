@@ -5,7 +5,6 @@ mod command;
 mod config;
 mod keymap;
 mod logs;
-mod panel;
 mod paths;
 mod pods;
 mod resource_index;

@@ -216,6 +216,21 @@ pub fn view_rows(
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
 use gpui_kit::*;
 
+/// The pod a Logs panel should stream, set by clicking a row in a Pods
+/// panel. App-scoped rather than a direct link between the two panels, since
+/// either can live in any dock split of any window.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PodSelection {
+    pub namespace: String,
+    pub name: String,
+    pub containers: Vec<String>,
+}
+
+#[derive(Default)]
+pub struct SelectedPod(pub Option<PodSelection>);
+
+impl Global for SelectedPod {}
+
 /// A dock panel connecting to the current kubeconfig context and rendering
 /// its live, all-namespaces Pods table.
 pub struct PodsPanel {
@@ -293,18 +308,44 @@ impl Render for PodsPanel {
                 .child(format!("Connection failed: {reason}")),
             ConnectionState::Connected(_) => {
                 let now = Timestamp::now();
-                let rows = self
+                let items: Vec<(PodRow, PodSelection)> = self
                     .table
                     .read(cx)
                     .pods()
                     .iter()
-                    .map(|pod| pod_row(pod, now));
-                div().size_full().children(rows.map(|row| {
-                    div().child(format!(
-                        "{}\t{}\t{}\t{}\t{}\t{}",
-                        row.name, row.namespace, row.ready, row.status, row.restarts, row.age
-                    ))
-                }))
+                    .map(|pod| {
+                        let containers = pod
+                            .spec
+                            .as_ref()
+                            .map(|spec| spec.containers.iter().map(|c| c.name.clone()).collect())
+                            .unwrap_or_default();
+                        let selection = PodSelection {
+                            namespace: pod.metadata.namespace.clone().unwrap_or_default(),
+                            name: pod.metadata.name.clone().unwrap_or_default(),
+                            containers,
+                        };
+                        (pod_row(pod, now), selection)
+                    })
+                    .collect();
+                div()
+                    .size_full()
+                    .children(items.into_iter().map(|(row, selection)| {
+                        let row_id = format!("pod-row-{}-{}", row.namespace, row.name);
+                        div()
+                            .id(SharedString::from(row_id))
+                            .on_click(move |_event, _window, cx| {
+                                cx.set_global(SelectedPod(Some(selection.clone())));
+                            })
+                            .child(format!(
+                                "{}\t{}\t{}\t{}\t{}\t{}",
+                                row.name,
+                                row.namespace,
+                                row.ready,
+                                row.status,
+                                row.restarts,
+                                row.age
+                            ))
+                    }))
             }
         }
     }

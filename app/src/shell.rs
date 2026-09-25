@@ -4,7 +4,6 @@ use crate::config::{
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
 use crate::keymap;
-use crate::panel::PlaceholderPanel;
 use crate::paths;
 use gpui_kit::component::Root;
 use gpui_kit::component::dock::{DockArea, DockLayout, panel_handle};
@@ -124,10 +123,8 @@ fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
 }
 
 /// Opens one window with a two-panel split workspace: a live Pods panel
-/// (connects to the current kubeconfig context) alongside a placeholder,
-/// proving the dock's split mechanics and the window persistence path both
-/// have something concrete to exercise. The pod-logs panel kind lands in a
-/// later change.
+/// (connects to the current kubeconfig context) alongside a Logs panel that
+/// streams whichever pod was last clicked in either.
 pub fn open_window(cx: &mut App, layout: WindowLayout) {
     let bounds = window_bounds(&layout, cx);
     cx.open_window(
@@ -149,7 +146,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             });
 
             let left = cx.new(crate::pods::PodsPanel::new);
-            let right = cx.new(|cx| PlaceholderPanel::new("Panel 2", cx));
+            let right = cx.new(crate::logs::LogsPanel::new);
             let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
             dock_area.update(cx, |area, cx| {
                 area.set_center(
