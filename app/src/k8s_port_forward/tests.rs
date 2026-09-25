@@ -1,4 +1,4 @@
-//! Section 4.1's test coverage. `kind`/Docker aren't available in this dev
+//! Sections 4.1 and 4.2's test coverage. `kind`/Docker aren't available in this dev
 //! environment (see section 3's local-`sshd` tests for the same constraint), so these
 //! stand up a minimal fake API server instead: plain HTTP/1.1 over a real local
 //! `TcpListener`, hand-rolled far enough to serve a `Pod` GET and to perform the
@@ -6,15 +6,26 @@
 //! channel-multiplexed wire protocol (see `kube_client::api::portforward`) well enough
 //! to echo whatever the "forwarded port" receives - standing in for a real Service.
 //!
-//! Not coverage of target-loss recovery (a Pod disappearing mid-forward) - that's
-//! section 4.2.
+//! Section 4.2 (target loss) needs no new production code: `PodPortForwardTransport`'s
+//! `connect`/`health_check` already return `Err` on a 404 same as a non-`Running`
+//! phase, and section 2.3's `ForwardSupervisor` already treats any `health_check` `Err`
+//! as a transition to `Reconnecting` that retries `connect`. So the fake server's `Pod`
+//! phase is made mutable here (`Arc<parking_lot::Mutex<PodPhase>>`) and
+//! `pod_disappears_and_reappears_drives_the_supervisor_through_reconnecting` drives that
+//! existing composition end to end rather than adding a new code path.
 
 use super::*;
+use crate::forward_supervisor::{BackoffPolicy, ForwardSupervisor, SupervisorOptions};
+use crate::managed_forward::ForwardState;
 use futures_util::{SinkExt, StreamExt};
 use kube::{Client, Config};
+use parking_lot::Mutex;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener as StdTcpListener;
+use tokio::runtime::Handle;
+use tokio::sync::watch;
 use tokio::time::{Duration, timeout};
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message;
@@ -23,6 +34,25 @@ use tokio_tungstenite::tungstenite::protocol::Role;
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 const REMOTE_PORT: u16 = 8080;
+
+/// The fake API server's current answer for the `Pod` GET. `Deleted` answers 404 with a
+/// minimal Kubernetes `Status` body, the same shape a real deleted Pod produces.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PodPhase {
+    Running,
+    Pending,
+    Deleted,
+}
+
+impl PodPhase {
+    fn as_str(self) -> &'static str {
+        match self {
+            PodPhase::Running => "Running",
+            PodPhase::Pending => "Pending",
+            PodPhase::Deleted => unreachable!("Deleted has no phase string - it's a 404"),
+        }
+    }
+}
 
 /// Reads one HTTP/1.1 request's headers off `stream` (no body handling - every request
 /// this fake server receives, `Pod` GET or portforward upgrade, is bodyless). Case is
@@ -49,12 +79,24 @@ fn extract_header<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
-async fn respond_pod_json(stream: &mut TcpStream, phase: &str) {
-    let body = format!(
-        r#"{{"apiVersion":"v1","kind":"Pod","metadata":{{"name":"target"}},"status":{{"phase":"{phase}"}}}}"#
-    );
+async fn respond_pod(stream: &mut TcpStream, phase: PodPhase) {
+    let (status_line, body) = if phase == PodPhase::Deleted {
+        (
+            "HTTP/1.1 404 Not Found",
+            r#"{"kind":"Status","apiVersion":"v1","status":"Failure","message":"pods \"target\" not found","reason":"NotFound","code":404}"#
+                .to_string(),
+        )
+    } else {
+        (
+            "HTTP/1.1 200 OK",
+            format!(
+                r#"{{"apiVersion":"v1","kind":"Pod","metadata":{{"name":"target"}},"status":{{"phase":"{}"}}}}"#,
+                phase.as_str()
+            ),
+        )
+    };
     let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
     let _ = stream.write_all(response.as_bytes()).await;
@@ -107,27 +149,37 @@ async fn serve_portforward_upgrade(stream: TcpStream, headers: &str) {
 
 /// One fake API server: any request with WebSocket upgrade headers is treated as the
 /// portforward call and echoes; anything else is answered as a `Pod` GET reporting
-/// `phase`.
-async fn spawn_fake_api_server(phase: &'static str) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+/// the shared `phase`'s current value at request time - callers can flip it mid-test
+/// (section 4.2) to simulate the Pod being deleted and later recreated.
+async fn spawn_fake_api_server(
+    initial: PodPhase,
+) -> (
+    SocketAddr,
+    Arc<Mutex<PodPhase>>,
+    tokio::task::JoinHandle<()>,
+) {
     let listener = StdTcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    let phase = Arc::new(Mutex::new(initial));
+    let server_phase = phase.clone();
     let handle = tokio::spawn(async move {
         loop {
             let Ok((mut stream, _)) = listener.accept().await else {
                 return;
             };
-            let phase = phase;
+            let phase = server_phase.clone();
             tokio::spawn(async move {
                 let headers = read_request_headers(&mut stream).await;
                 if extract_header(&headers, "upgrade").is_some_and(|v| v == "websocket") {
                     serve_portforward_upgrade(stream, &headers).await;
                 } else {
-                    respond_pod_json(&mut stream, phase).await;
+                    let current_phase = *phase.lock();
+                    respond_pod(&mut stream, current_phase).await;
                 }
             });
         }
     });
-    (addr, handle)
+    (addr, phase, handle)
 }
 
 fn test_client(addr: SocketAddr) -> Client {
@@ -146,7 +198,7 @@ fn test_config(addr: SocketAddr) -> K8sPortForwardConfig {
 
 #[tokio::test]
 async fn connect_succeeds_when_pod_is_running() {
-    let (addr, _server) = spawn_fake_api_server("Running").await;
+    let (addr, _phase, _server) = spawn_fake_api_server(PodPhase::Running).await;
     let mut transport = PodPortForwardTransport::new(test_config(addr));
 
     assert!(transport.connect().await.is_ok());
@@ -154,7 +206,7 @@ async fn connect_succeeds_when_pod_is_running() {
 
 #[tokio::test]
 async fn connect_fails_when_pod_is_not_running() {
-    let (addr, _server) = spawn_fake_api_server("Pending").await;
+    let (addr, _phase, _server) = spawn_fake_api_server(PodPhase::Pending).await;
     let mut transport = PodPortForwardTransport::new(test_config(addr));
 
     let result = transport.connect().await;
@@ -162,11 +214,19 @@ async fn connect_fails_when_pod_is_not_running() {
     assert!(result.unwrap_err().contains("Pending"));
 }
 
+#[tokio::test]
+async fn connect_fails_when_pod_is_deleted() {
+    let (addr, _phase, _server) = spawn_fake_api_server(PodPhase::Deleted).await;
+    let mut transport = PodPortForwardTransport::new(test_config(addr));
+
+    assert!(transport.connect().await.is_err());
+}
+
 /// Section 4.1's required proof: a local `TcpListener` bridging accepted connections to
 /// a fresh port-forward stream each, actually carrying bytes end to end.
 #[tokio::test]
 async fn serve_bridges_a_local_connection_to_the_pod_port_forward() {
-    let (api_addr, _server) = spawn_fake_api_server("Running").await;
+    let (api_addr, _phase, _server) = spawn_fake_api_server(PodPhase::Running).await;
     let config = test_config(api_addr);
 
     let local_listener = StdTcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -189,4 +249,50 @@ async fn serve_bridges_a_local_connection_to_the_pod_port_forward() {
     assert_eq!(&buf[..n], b"hello from the client");
 
     serve_task.abort();
+}
+
+fn fast_options() -> SupervisorOptions {
+    SupervisorOptions {
+        health_check_interval: Duration::from_millis(5),
+        backoff: BackoffPolicy {
+            initial: Duration::from_millis(5),
+            max: Duration::from_millis(20),
+        },
+    }
+}
+
+async fn wait_for(state: &mut watch::Receiver<ForwardState>, target: ForwardState) {
+    timeout(TEST_TIMEOUT, async {
+        loop {
+            if *state.borrow() == target {
+                return;
+            }
+            state.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("timed out waiting for {target:?}"));
+}
+
+/// Section 4.2's required proof: deleting the backing Pod moves the forward to
+/// `Reconnecting`, and it recovers to `Up` once a matching Pod returns. No new
+/// production code drives this - see the module doc comment - so this test exercises
+/// `ForwardSupervisor` (section 2.3) with `PodPortForwardTransport` the same way
+/// `forward_supervisor`'s own tests exercise it with a scripted fake.
+#[tokio::test]
+async fn pod_disappears_and_reappears_drives_the_supervisor_through_reconnecting() {
+    let (api_addr, phase, _server) = spawn_fake_api_server(PodPhase::Running).await;
+    let transport = PodPortForwardTransport::new(test_config(api_addr));
+    let local_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let supervisor =
+        ForwardSupervisor::spawn(&Handle::current(), local_addr, transport, fast_options());
+    let mut state = supervisor.state();
+
+    wait_for(&mut state, ForwardState::Up).await;
+
+    *phase.lock() = PodPhase::Deleted;
+    wait_for(&mut state, ForwardState::Reconnecting).await;
+
+    *phase.lock() = PodPhase::Running;
+    wait_for(&mut state, ForwardState::Up).await;
 }
