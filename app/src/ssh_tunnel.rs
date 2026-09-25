@@ -39,6 +39,18 @@ pub struct SshTunnelConfig {
     /// throwaway local sshd; production tunnels leave this `None` and get ssh's normal
     /// known-hosts behavior.
     pub known_hosts_file: Option<PathBuf>,
+    /// Test-only `-F <path>` config file override for the spawned `ssh`. `-J` hops are
+    /// not driven by this struct's own `-o` flags: OpenSSH resolves each `-J` hop by
+    /// launching a *separate* `ssh` subprocess (`ProxyCommand=ssh ... -W %h:%p <hop>`)
+    /// that, by default, re-resolves `~/.ssh/config` from the real user's home
+    /// directory (via the password database, not the `$HOME` env var, so overriding
+    /// `$HOME` on the child process has no effect) - confirmed by tracing a real `-J`
+    /// connection with `-vvv`. `-F`, unlike `$HOME`, is passed through verbatim to that
+    /// nested subprocess, so it is the only override that reaches a `-J` hop. Production
+    /// tunnels rely on the user's real `~/.ssh/config` already trusting the jump hosts,
+    /// so this stays `None`; the section 3.3 chain test points it at a scratch config
+    /// aliasing the jump hop to the throwaway key and known_hosts file.
+    pub ssh_config_file: Option<PathBuf>,
 }
 
 // UNWIRED(#3): only exercised by this module's own tests until SshTransport::connect
@@ -60,11 +72,17 @@ impl SshTunnelConfig {
         )
     }
 
-    /// Builds the argument list documented in task 3.1: `-N -L ...`, an optional `-J`
-    /// chain, `ExitOnForwardFailure`/`ServerAliveInterval` always, `BatchMode` only when
-    /// a key is configured, and the test-only known-hosts override when set.
+    /// Builds the argument list documented in task 3.1: an optional test-only `-F`
+    /// config override first, then `-N -L ...`, an optional `-J` chain,
+    /// `ExitOnForwardFailure`/`ServerAliveInterval` always, `BatchMode` only when a key
+    /// is configured, and the test-only known-hosts override when set.
     fn args(&self) -> Vec<String> {
-        let mut args = vec![
+        let mut args = Vec::new();
+        if let Some(config_file) = &self.ssh_config_file {
+            args.push("-F".to_string());
+            args.push(config_file.display().to_string());
+        }
+        args.extend([
             "-N".to_string(),
             "-L".to_string(),
             self.forward_spec(),
@@ -74,7 +92,7 @@ impl SshTunnelConfig {
             "ExitOnForwardFailure=yes".to_string(),
             "-o".to_string(),
             "ServerAliveInterval=15".to_string(),
-        ];
+        ]);
 
         if let Some(jump) = self.jump_flag() {
             args.push("-J".to_string());
@@ -275,6 +293,7 @@ mod tests {
             local_port: 40000,
             identity_file: None,
             known_hosts_file: None,
+            ssh_config_file: None,
         };
 
         let args = config.args();
@@ -299,6 +318,7 @@ mod tests {
             local_port: 40000,
             identity_file: Some(PathBuf::from("/keys/id_ed25519")),
             known_hosts_file: None,
+            ssh_config_file: None,
         };
 
         let args = config.args();
@@ -319,6 +339,7 @@ mod tests {
             local_port: 40000,
             identity_file: None,
             known_hosts_file: None,
+            ssh_config_file: None,
         };
 
         let args = config.args();
@@ -350,26 +371,50 @@ mod sshd_integration {
 
     impl LocalSshd {
         fn spawn() -> Option<Self> {
+            Self::spawn_with_client_key(None)
+        }
+
+        /// Spawns a throwaway sshd, optionally reusing a client key generated for
+        /// another instance (rather than minting a fresh one) so one client identity
+        /// authenticates against every hop in a jump-host chain. Section 3.3.
+        fn spawn_with_client_key(shared_client_key: Option<&PathBuf>) -> Option<Self> {
             let sshd_path = which("sshd")?;
             let ssh_keygen = which("ssh-keygen")?;
 
-            let dir =
-                std::env::temp_dir().join(format!("fernrohr-sshd-test-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!(
+                "fernrohr-sshd-test-{}-{}",
+                std::process::id(),
+                uid()
+            ));
             std::fs::create_dir_all(&dir).ok()?;
 
             let host_key = dir.join("host_key");
-            let client_key = dir.join("client_key");
-            for key in [&host_key, &client_key] {
-                let status = StdCommand::new(&ssh_keygen)
-                    .args(["-q", "-t", "ed25519", "-N", ""])
-                    .arg("-f")
-                    .arg(key)
-                    .status()
-                    .ok()?;
-                if !status.success() {
-                    return None;
-                }
+            let status = StdCommand::new(&ssh_keygen)
+                .args(["-q", "-t", "ed25519", "-N", ""])
+                .arg("-f")
+                .arg(&host_key)
+                .status()
+                .ok()?;
+            if !status.success() {
+                return None;
             }
+
+            let client_key = match shared_client_key {
+                Some(existing) => existing.clone(),
+                None => {
+                    let generated = dir.join("client_key");
+                    let status = StdCommand::new(&ssh_keygen)
+                        .args(["-q", "-t", "ed25519", "-N", ""])
+                        .arg("-f")
+                        .arg(&generated)
+                        .status()
+                        .ok()?;
+                    if !status.success() {
+                        return None;
+                    }
+                    generated
+                }
+            };
 
             let authorized_keys = dir.join("authorized_keys");
             std::fs::copy(client_key.with_extension("pub"), &authorized_keys).ok()?;
@@ -447,16 +492,32 @@ mod sshd_integration {
         }
 
         fn config(&self, remote_port: u16, local_port: u16) -> SshTunnelConfig {
+            self.config_via(&[], remote_port, local_port, &self.known_hosts, None)
+        }
+
+        /// Builds a config that reaches this instance's sshd through `jump_hosts` (each
+        /// naming a `Host` alias resolved via `ssh_config_file`'s `-F` config), using
+        /// `known_hosts` instead of this instance's own file so a merged file covering
+        /// every hop can be supplied. Section 3.3.
+        fn config_via(
+            &self,
+            jump_hosts: &[String],
+            remote_port: u16,
+            local_port: u16,
+            known_hosts: &std::path::Path,
+            ssh_config_file: Option<&PathBuf>,
+        ) -> SshTunnelConfig {
             SshTunnelConfig {
                 bastion_user: std::env::var("USER").unwrap(),
                 bastion_host: "127.0.0.1".to_string(),
                 bastion_port: self.port,
-                jump_hosts: vec![],
+                jump_hosts: jump_hosts.to_vec(),
                 remote_host: "127.0.0.1".to_string(),
                 remote_port,
                 local_port,
                 identity_file: Some(self.client_key.clone()),
-                known_hosts_file: Some(self.known_hosts.clone()),
+                known_hosts_file: Some(known_hosts.to_path_buf()),
+                ssh_config_file: ssh_config_file.cloned(),
             }
         }
     }
@@ -467,6 +528,14 @@ mod sshd_integration {
             let _ = self.sshd.wait();
             let _ = std::fs::remove_dir_all(&self.dir);
         }
+    }
+
+    /// Distinguishes multiple `LocalSshd` scratch dirs spawned within the same test
+    /// process (e.g. a jump host and a target in a chain), since `process::id()` alone
+    /// is the same for both.
+    fn uid() -> u32 {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
     fn which(bin: &str) -> Option<PathBuf> {
@@ -545,6 +614,95 @@ mod sshd_integration {
         let mut buf = [0u8; 64];
         let n = stream.read(&mut buf).await.unwrap();
         assert_eq!(&buf[..n], b"hello through the tunnel");
+
+        transport
+            .health_check()
+            .await
+            .expect("ssh child should still be running");
+    }
+
+    /// Section 3.3: proves `-J` chains actually establish the forward through the jump
+    /// host in order, not just that the flag is present in the argument list (that's
+    /// the unit test above). Two independent local sshd instances stand in for "two
+    /// chained local sshd containers" - jump hops to target, target's sshd carries the
+    /// `-L` forward to the echo server.
+    #[tokio::test]
+    async fn ssh_tunnel_forwards_through_a_jump_host_chain() {
+        let Some(jump) = LocalSshd::spawn() else {
+            eprintln!("skipping: no local sshd/ssh-keygen available to spawn a test jump host");
+            return;
+        };
+        let Some(target) = LocalSshd::spawn_with_client_key(Some(&jump.client_key)) else {
+            eprintln!("skipping: failed to spawn the chained target sshd");
+            return;
+        };
+
+        // The outer ssh's own -o UserKnownHostsFile/-i only cover the direct (target)
+        // connection: -J hops are resolved by a *separate* ssh subprocess that
+        // re-reads ~/.ssh/config from the real user's home directory, ignoring the
+        // outer process's -o flags entirely (confirmed with -vvv against these two
+        // throwaway sshd instances). -F, unlike $HOME, is passed through to that
+        // nested subprocess, so the jump hop is trusted via a scratch -F config that
+        // aliases it to the shared client key and known_hosts.
+        let jump_user = std::env::var("USER").unwrap();
+        let ssh_config_file = jump.dir.join("jump_ssh_config");
+        std::fs::write(
+            &ssh_config_file,
+            format!(
+                "Host jumphop\n\
+                 \tHostName 127.0.0.1\n\
+                 \tPort {}\n\
+                 \tUser {jump_user}\n\
+                 \tIdentityFile {}\n\
+                 \tUserKnownHostsFile {}\n\
+                 \tStrictHostKeyChecking yes\n\
+                 \tBatchMode yes\n",
+                jump.port,
+                jump.client_key.display(),
+                jump.known_hosts.display(),
+            ),
+        )
+        .unwrap();
+
+        let echo_port = spawn_echo_server().await;
+        let local_port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+
+        let config = target.config_via(
+            &["jumphop".to_string()],
+            echo_port,
+            local_port,
+            &target.known_hosts,
+            Some(&ssh_config_file),
+        );
+        let mut transport = SshTransport::new(config);
+        transport
+            .connect()
+            .await
+            .expect("ssh forward should come up through the jump host chain");
+
+        let mut stream = None;
+        for _ in 0..20 {
+            match tokio::net::TcpStream::connect(("127.0.0.1", local_port)).await {
+                Ok(s) => {
+                    stream = Some(s);
+                    break;
+                }
+                Err(_) => tokio::time::sleep(Duration::from_millis(100)).await,
+            }
+        }
+        let mut stream = stream.expect("forwarded local port should accept connections");
+
+        stream
+            .write_all(b"hello through the jump chain")
+            .await
+            .unwrap();
+        let mut buf = [0u8; 64];
+        let n = stream.read(&mut buf).await.unwrap();
+        assert_eq!(&buf[..n], b"hello through the jump chain");
 
         transport
             .health_check()
