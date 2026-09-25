@@ -140,4 +140,101 @@ mod tests {
 
         assert!(matches!(state, ConnectionState::Failed(_)));
     }
+
+    /// Section 1.2 spike: through an SSH tunnel, `cluster_url` points at
+    /// `127.0.0.1:<local-port>` but the certificate is issued for the real API
+    /// server host, so `tls_server_name` must be pinned to that host or
+    /// validation fails. Proven here with a self-signed cert (rather than a
+    /// real bastioned cluster) whose SAN deliberately excludes "127.0.0.1".
+    mod tls_rewrite {
+        use super::*;
+        use rcgen::{CertifiedKey, generate_simple_self_signed};
+        use rustls::ServerConfig;
+        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+        use std::sync::Once;
+        use tokio_rustls::TlsAcceptor;
+
+        const PINNED_HOST: &str = "fernrohr-tls-spike.internal";
+
+        fn install_crypto_provider() {
+            static ONCE: Once = Once::new();
+            ONCE.call_once(|| {
+                let _ = rustls::crypto::ring::default_provider().install_default();
+            });
+        }
+
+        fn self_signed_cert() -> (CertificateDer<'static>, PrivateKeyDer<'static>) {
+            let CertifiedKey { cert, signing_key } =
+                generate_simple_self_signed(vec![PINNED_HOST.to_string()]).unwrap();
+            let key = PrivateKeyDer::Pkcs8(signing_key.into());
+            (cert.der().clone(), key)
+        }
+
+        /// Serves one HTTP/1.1 response over TLS using `cert`/`key`, returning the
+        /// address to connect to and the cert's DER bytes to trust as root CA.
+        async fn spawn_tls_server() -> (std::net::SocketAddr, Vec<u8>) {
+            install_crypto_provider();
+            let (cert, key) = self_signed_cert();
+            let root_cert_der = cert.to_vec();
+
+            let server_config = ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(vec![cert], key)
+                .unwrap();
+            let acceptor = TlsAcceptor::from(std::sync::Arc::new(server_config));
+
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let tls_stream = acceptor.accept(stream).await.unwrap();
+                let (mut reader, mut writer) = tokio::io::split(tls_stream);
+                let mut buf = [0u8; 1024];
+                let _ = reader.read(&mut buf).await;
+                let body = version_info_json().await;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = writer.write_all(response.as_bytes()).await;
+                let _ = writer.shutdown().await;
+            });
+            (addr, root_cert_der)
+        }
+
+        #[tokio::test]
+        async fn probe_succeeds_when_tls_server_name_is_pinned_to_the_real_host() {
+            let (addr, root_cert_der) = spawn_tls_server().await;
+
+            let mut config = Config::new(format!("https://{addr}").parse().unwrap());
+            config.connect_timeout = Some(Duration::from_millis(500));
+            config.root_cert = Some(vec![root_cert_der]);
+            config.tls_server_name = Some(PINNED_HOST.to_string());
+
+            let state = probe(config).await;
+
+            assert!(
+                matches!(state, ConnectionState::Connected(_)),
+                "expected the pinned server name to validate against the cert's SAN"
+            );
+        }
+
+        #[tokio::test]
+        async fn probe_fails_without_the_pin_because_127_0_0_1_is_not_in_the_cert() {
+            let (addr, root_cert_der) = spawn_tls_server().await;
+
+            // No `tls_server_name`: kube falls back to validating against the
+            // `cluster_url` host, "127.0.0.1", which the cert was never issued for.
+            let mut config = Config::new(format!("https://{addr}").parse().unwrap());
+            config.connect_timeout = Some(Duration::from_millis(500));
+            config.root_cert = Some(vec![root_cert_der]);
+
+            let state = probe(config).await;
+
+            assert!(
+                matches!(state, ConnectionState::Failed(_)),
+                "expected certificate validation to fail without the server-name pin"
+            );
+        }
+    }
 }
