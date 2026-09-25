@@ -14,8 +14,8 @@ pub(crate) const SSH_READINESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// `SshTransport::connect` readiness probe: delay between failed dial attempts.
 pub(crate) const SSH_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-// UNWIRED(#3): section 5.3's tunnel CRUD UI is the first real caller of the section
-// 5.2 keychain wrapper this backs.
+// UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
+// the section 5.2 keychain wrapper this backs.
 #[allow(dead_code)]
 /// `keyring` service name for tunnel secrets (`account` is the tunnel id). A distinct
 /// service from `keychain.rs`'s smoke-test constant so a spike credential never

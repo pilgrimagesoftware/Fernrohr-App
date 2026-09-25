@@ -4,8 +4,8 @@
 //! no secret material - a tunnel's private key lives in the OS keychain, keyed by
 //! tunnel id (section 5.2), never in this file. `no_secret_fields` below guards against
 //! that boundary eroding as fields get added.
-// UNWIRED(#3): section 5.3's tunnel CRUD UI and section 6's context binding are the
-// first real callers; today only this module's own tests build one.
+// UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller;
+// section 6's context binding UI is the first caller of `TunnelStore` itself.
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};

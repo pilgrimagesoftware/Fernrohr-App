@@ -21,6 +21,7 @@ mod shell;
 mod ssh_path;
 mod ssh_tunnel;
 mod tunnel_secrets;
+mod tunnel_store;
 
 fn main() {
     gpui_kit::application()
