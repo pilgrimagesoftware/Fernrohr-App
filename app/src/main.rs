@@ -20,6 +20,7 @@ mod runtime;
 mod shell;
 mod ssh_path;
 mod ssh_tunnel;
+mod tunnel_secrets;
 
 fn main() {
     gpui_kit::application()
