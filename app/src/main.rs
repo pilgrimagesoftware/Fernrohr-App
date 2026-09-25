@@ -11,6 +11,7 @@ mod pods;
 mod resource_index;
 mod runtime;
 mod shell;
+mod ssh_path;
 
 fn main() {
     gpui_kit::application()
