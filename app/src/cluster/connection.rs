@@ -1,10 +1,10 @@
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use kube::{Client, Config};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub enum ConnectionState {
     Connecting,
-    Connected,
+    Connected(Client),
     Failed(String),
 }
 
@@ -18,7 +18,7 @@ pub async fn probe(config: Config) -> ConnectionState {
         Err(error) => return ConnectionState::Failed(error.to_string()),
     };
     match client.apiserver_version().await {
-        Ok(_) => ConnectionState::Connected,
+        Ok(_) => ConnectionState::Connected(client),
         Err(error) => ConnectionState::Failed(error.to_string()),
     }
 }
@@ -30,13 +30,18 @@ pub struct ClusterConnection {
 }
 
 impl ClusterConnection {
-    /// Starts connecting in the background; the returned entity begins in
+    /// Starts connecting to the context selected by `$KUBECONFIG`/
+    /// `~/.kube/config`'s current-context (or in-cluster config, if run
+    /// inside a cluster) in the background; the returned entity begins in
     /// `Connecting` and updates itself (and notifies observers) once the
     /// probe on the tokio runtime completes.
-    pub fn connect(config: Config, cx: &mut App) -> Entity<Self> {
+    pub fn connect(cx: &mut App) -> Entity<Self> {
         cx.new(|cx: &mut Context<Self>| {
             let rx = crate::runtime::spawn_stream(cx, 1, move |tx| async move {
-                let state = probe(config).await;
+                let state = match Config::infer().await {
+                    Ok(config) => probe(config).await,
+                    Err(error) => ConnectionState::Failed(error.to_string()),
+                };
                 let _ = tx.send(state).await;
             });
             cx.spawn(async move |this, cx| {
@@ -98,7 +103,7 @@ mod tests {
 
         let state = probe(config_for(addr)).await;
 
-        assert_eq!(state, ConnectionState::Connected);
+        assert!(matches!(state, ConnectionState::Connected(_)));
     }
 
     #[tokio::test]

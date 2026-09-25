@@ -143,6 +143,41 @@ pub fn apply_and_notify(
     });
 }
 
+/// Starts a `kube_runtime::watcher` for all Pods across every namespace on
+/// `client` and applies its events to `table` as they arrive. Reconnect and
+/// backoff after a stream error are `kube_runtime`'s own job (design D3);
+/// this just keeps consuming the stream.
+pub fn watch_all_namespaces(
+    client: kube::Client,
+    table: gpui_kit::Entity<PodsTable>,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::Task<()> {
+    use futures_util::StreamExt;
+    use kube::Api;
+
+    let rx = crate::runtime::spawn_stream(cx, 64, move |tx| async move {
+        let api: Api<Pod> = Api::all(client);
+        let mut stream = Box::pin(watcher::watcher(api, watcher::Config::default()));
+        while let Some(event) = stream.next().await {
+            let Ok(event) = event else {
+                continue;
+            };
+            if tx.send(event).await.is_err() {
+                break;
+            }
+        }
+    });
+    cx.spawn(async move |cx| {
+        crate::runtime::drain(rx, |event| {
+            let _ = table.update(cx, |table, cx| {
+                table.apply(event);
+                cx.notify();
+            });
+        })
+        .await;
+    })
+}
+
 use crate::config::workspace::{NamespaceScope, SortState};
 
 pub fn matches_namespace(pod: &Pod, scope: &NamespaceScope) -> bool {
@@ -195,19 +230,52 @@ pub fn view_rows(
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
 use gpui_kit::*;
 
-/// A dock panel rendering one cluster's live Pods table.
+/// A dock panel connecting to the current kubeconfig context and rendering
+/// its live, all-namespaces Pods table.
 pub struct PodsPanel {
+    connection: Entity<crate::cluster::connection::ClusterConnection>,
     table: Entity<PodsTable>,
+    watch: Option<gpui_kit::Task<()>>,
     focus_handle: FocusHandle,
 }
 
 impl PodsPanel {
-    pub fn new(table: Entity<PodsTable>, cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        use crate::cluster::connection::ClusterConnection;
+
+        let connection = ClusterConnection::connect(cx);
+        let table = cx.new(|_| PodsTable::new());
+        cx.observe(&connection, |this: &mut Self, connection, cx| {
+            this.start_watch_if_connected(&connection, cx);
+            cx.notify();
+        })
+        .detach();
         cx.observe(&table, |_, _, cx| cx.notify()).detach();
-        Self {
+
+        let mut this = Self {
+            connection: connection.clone(),
             table,
+            watch: None,
             focus_handle: cx.focus_handle(),
+        };
+        this.start_watch_if_connected(&connection, cx);
+        this
+    }
+
+    fn start_watch_if_connected(
+        &mut self,
+        connection: &Entity<crate::cluster::connection::ClusterConnection>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.watch.is_some() {
+            return;
         }
+        let crate::cluster::connection::ConnectionState::Connected(client) =
+            &connection.read(cx).state
+        else {
+            return;
+        };
+        self.watch = Some(watch_all_namespaces(client.clone(), self.table.clone(), cx));
     }
 }
 
@@ -221,19 +289,29 @@ impl EventEmitter<PanelEvent> for PodsPanel {}
 
 impl Render for PodsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let now = Timestamp::now();
-        let rows = self
-            .table
-            .read(cx)
-            .pods()
-            .iter()
-            .map(|pod| pod_row(pod, now));
-        div().size_full().children(rows.map(|row| {
-            div().child(format!(
-                "{}\t{}\t{}\t{}\t{}\t{}",
-                row.name, row.namespace, row.ready, row.status, row.restarts, row.age
-            ))
-        }))
+        use crate::cluster::connection::ConnectionState;
+
+        match &self.connection.read(cx).state {
+            ConnectionState::Connecting => div().size_full().child("Connecting..."),
+            ConnectionState::Failed(reason) => div()
+                .size_full()
+                .child(format!("Connection failed: {reason}")),
+            ConnectionState::Connected(_) => {
+                let now = Timestamp::now();
+                let rows = self
+                    .table
+                    .read(cx)
+                    .pods()
+                    .iter()
+                    .map(|pod| pod_row(pod, now));
+                div().size_full().children(rows.map(|row| {
+                    div().child(format!(
+                        "{}\t{}\t{}\t{}\t{}\t{}",
+                        row.name, row.namespace, row.ready, row.status, row.restarts, row.age
+                    ))
+                }))
+            }
+        }
     }
 }
 

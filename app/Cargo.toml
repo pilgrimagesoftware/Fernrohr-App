@@ -15,6 +15,7 @@ toml = "=1.1.6"
 rust-i18n = "=4.2.2"
 log = "=0.4.34"
 jiff = "=0.2.37"
+futures-util = "=0.3.34"
 
 [dev-dependencies]
 gpui-kit = { version = "=0.6.6", features = ["test-support"] }

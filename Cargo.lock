@@ -1859,6 +1859,7 @@ name = "fernrohr"
 version = "0.1.0"
 dependencies = [
  "dirs 7.0.0",
+ "futures-util",
  "gpui-kit",
  "jiff",
  "k8s-openapi",

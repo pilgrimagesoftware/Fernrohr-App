@@ -102,10 +102,11 @@ fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixels> {
     }
 }
 
-/// Opens one window with a two-panel split workspace. The real (Pods, logs)
-/// panel kinds land in later changes; today every window shows the same
-/// placeholder split so the dock's add/split/resize/close mechanics and the
-/// window persistence path both have something concrete to exercise.
+/// Opens one window with a two-panel split workspace: a live Pods panel
+/// (connects to the current kubeconfig context) alongside a placeholder,
+/// proving the dock's split mechanics and the window persistence path both
+/// have something concrete to exercise. The pod-logs panel kind lands in a
+/// later change.
 pub fn open_window(cx: &mut App, layout: WindowLayout) {
     let bounds = window_bounds(&layout, cx);
     cx.open_window(
@@ -114,7 +115,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             ..Default::default()
         },
         |window, cx| {
-            let left = cx.new(|cx| PlaceholderPanel::new("Panel 1", cx));
+            let left = cx.new(crate::pods::PodsPanel::new);
             let right = cx.new(|cx| PlaceholderPanel::new("Panel 2", cx));
             let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
             dock_area.update(cx, |area, cx| {
@@ -277,10 +278,12 @@ mod tests {
 
     #[gpui_kit::test]
     async fn quitting_persists_open_window_geometry(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
         let path = temp_workspace_path();
         let keymap_path = temp_workspace_path();
         cx.update(|cx| {
             gpui_kit::init(cx);
+            crate::runtime::init(cx);
             init(cx, path.clone(), &keymap_path);
             open_window(
                 cx,
@@ -308,11 +311,13 @@ mod tests {
 
     #[gpui_kit::test]
     async fn corrupt_workspace_file_yields_one_default_window(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
         let path = temp_workspace_path();
         std::fs::write(&path, "not valid toml {{{").unwrap();
 
         cx.update(|cx| {
             gpui_kit::init(cx);
+            crate::runtime::init(cx);
             open_saved_or_default(cx, &path);
         });
         cx.run_until_parked();
@@ -329,8 +334,10 @@ mod tests {
 
     #[gpui_kit::test]
     async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
         cx.update(|cx| {
             gpui_kit::init(cx);
+            crate::runtime::init(cx);
             let mut registry = CommandRegistry::new();
             register_commands(&mut registry);
             cx.set_global(registry);
