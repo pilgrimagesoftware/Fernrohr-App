@@ -6,8 +6,13 @@
 //! the secret (if any) to the keychain in one call, and deleting a tunnel removes both
 //! plus any `context -> tunnel id` bindings that pointed at it. Renaming is just an
 //! edit - the tunnel id is stable and never derived from its display name.
-// UNWIRED(#3): section 6.1's binding UI and section 6.2's connect-path integration are
-// the first real callers.
+//!
+//! Section 6.1 adds `context -> tunnel id` binding on top of the same file: a context
+//! binds to zero or one tunnel (`bind` overwrites any prior binding for that context)
+//! and many contexts may share one tunnel (`bind` never checks who else points at
+//! `tunnel_id`). Persistence is `tunnels.toml` itself, already loaded/saved by every
+//! method here - there is nothing else to persist across a relaunch.
+// UNWIRED(#3): section 6.2's connect-path integration is the first real caller.
 #![allow(dead_code)]
 
 use crate::config::{
@@ -119,6 +124,35 @@ impl TunnelStore {
         self.secrets.delete(id)?;
         config::save(&self.config_path, &config)?;
         Ok(unbound)
+    }
+
+    /// Lists every `context -> tunnel id` binding.
+    pub fn bindings(&self) -> Vec<(String, String)> {
+        let config: TunnelsConfig = config::load(&self.config_path);
+        config.context_bindings.into_iter().collect()
+    }
+
+    /// Binds `context` to `tunnel_id`, overwriting any prior binding for that context.
+    /// Fails if `tunnel_id` does not exist. Many contexts may bind to the same tunnel.
+    pub fn bind(&self, context: &str, tunnel_id: &str) -> Result<(), TunnelStoreError> {
+        let mut config: TunnelsConfig = config::load(&self.config_path);
+        if !config.tunnels.contains_key(tunnel_id) {
+            return Err(TunnelStoreError::NotFound);
+        }
+        config
+            .context_bindings
+            .insert(context.to_string(), tunnel_id.to_string());
+        config::save(&self.config_path, &config)?;
+        Ok(())
+    }
+
+    /// Removes `context`'s binding, if any. A no-op (not an error) if it was already
+    /// unbound.
+    pub fn unbind(&self, context: &str) -> Result<(), TunnelStoreError> {
+        let mut config: TunnelsConfig = config::load(&self.config_path);
+        config.context_bindings.remove(context);
+        config::save(&self.config_path, &config)?;
+        Ok(())
     }
 }
 
@@ -256,5 +290,83 @@ mod tests {
         let store = TunnelStore::new(temp_config_path());
         let err = store.delete("missing").unwrap_err();
         assert!(matches!(err, TunnelStoreError::NotFound));
+    }
+
+    /// Tasks.md 6.1's "bind and persist" scenario: a binding written by one `TunnelStore`
+    /// is visible to a fresh one reading the same file, standing in for a relaunch.
+    #[test]
+    fn bind_persists_across_a_fresh_store_over_the_same_file() {
+        let path = temp_config_path();
+        let store = TunnelStore::new(path.clone());
+        store
+            .create("qa-bastion", sample_tunnel("QA"), None)
+            .unwrap();
+        store.bind("qa-1", "qa-bastion").unwrap();
+
+        let reopened = TunnelStore::new(path);
+        assert_eq!(
+            reopened.bindings(),
+            vec![("qa-1".to_string(), "qa-bastion".to_string())]
+        );
+    }
+
+    /// Tasks.md 6.1's "shared tunnel" scenario: many contexts may point at one tunnel id.
+    #[test]
+    fn many_contexts_can_share_one_tunnel() {
+        let store = TunnelStore::new(temp_config_path());
+        store
+            .create("qa-bastion", sample_tunnel("QA"), None)
+            .unwrap();
+        store.bind("qa-1", "qa-bastion").unwrap();
+        store.bind("qa-2", "qa-bastion").unwrap();
+
+        let mut bindings = store.bindings();
+        bindings.sort();
+        assert_eq!(
+            bindings,
+            vec![
+                ("qa-1".to_string(), "qa-bastion".to_string()),
+                ("qa-2".to_string(), "qa-bastion".to_string()),
+            ]
+        );
+    }
+
+    /// A context binds to at most one tunnel: rebinding overwrites, it never accumulates.
+    #[test]
+    fn rebinding_a_context_overwrites_its_prior_binding() {
+        let store = TunnelStore::new(temp_config_path());
+        store.create("a", sample_tunnel("A"), None).unwrap();
+        store.create("b", sample_tunnel("B"), None).unwrap();
+        store.bind("ctx", "a").unwrap();
+        store.bind("ctx", "b").unwrap();
+
+        assert_eq!(store.bindings(), vec![("ctx".to_string(), "b".to_string())]);
+    }
+
+    #[test]
+    fn bind_to_a_missing_tunnel_fails() {
+        let store = TunnelStore::new(temp_config_path());
+        let err = store.bind("ctx", "missing").unwrap_err();
+        assert!(matches!(err, TunnelStoreError::NotFound));
+        assert!(store.bindings().is_empty());
+    }
+
+    /// Tasks.md 6.1's "unbind" scenario.
+    #[test]
+    fn unbind_removes_the_binding() {
+        let store = TunnelStore::new(temp_config_path());
+        store.create("a", sample_tunnel("A"), None).unwrap();
+        store.bind("ctx", "a").unwrap();
+
+        store.unbind("ctx").unwrap();
+
+        assert!(store.bindings().is_empty());
+    }
+
+    #[test]
+    fn unbind_of_an_unbound_context_is_a_no_op() {
+        let store = TunnelStore::new(temp_config_path());
+        store.unbind("never-bound").unwrap();
+        assert!(store.bindings().is_empty());
     }
 }
