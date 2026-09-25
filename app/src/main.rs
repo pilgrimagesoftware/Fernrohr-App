@@ -16,6 +16,7 @@ mod resource_index;
 mod runtime;
 mod shell;
 mod ssh_path;
+mod ssh_tunnel;
 
 fn main() {
     gpui_kit::application()
