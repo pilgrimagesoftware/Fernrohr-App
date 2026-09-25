@@ -2039,6 +2039,7 @@ dependencies = [
  "kube",
  "kube-runtime",
  "log",
+ "parking_lot",
  "rcgen",
  "rust-i18n",
  "rustls",

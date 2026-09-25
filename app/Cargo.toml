@@ -17,6 +17,7 @@ log = "=0.4.34"
 jiff = "=0.2.37"
 futures-util = "=0.3.34"
 keyring = "=4.2.0"
+parking_lot = "=0.12.5"
 
 [dev-dependencies]
 gpui-kit = { version = "=0.6.6", features = ["test-support"] }
