@@ -66,7 +66,7 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
 }
 
 /// The live Pods index for one watch, kept up to date by [`PodsTable::apply`]
-/// as `watcher::Event`s arrive off the coalescing drain.
+/// as `watcher::Event`s arrive off the drain.
 #[derive(Default)]
 pub struct PodsTable {
     index: ResourceIndex<Pod>,
@@ -127,20 +127,6 @@ impl PodsTable {
             }
         }
     }
-}
-
-/// Applies `event` to `table` and notifies its observers, i.e. the entity
-/// half of the (model, view) pair - a Pods panel holds `Entity<PodsTable>`
-/// and calls this from the watch's drain callback.
-pub fn apply_and_notify(
-    table: &gpui_kit::Entity<PodsTable>,
-    event: watcher::Event<Pod>,
-    cx: &mut gpui_kit::App,
-) {
-    table.update(cx, |table, cx| {
-        table.apply(event);
-        cx.notify();
-    });
 }
 
 /// Starts a `kube_runtime::watcher` for all Pods across every namespace on
@@ -235,27 +221,31 @@ use gpui_kit::*;
 pub struct PodsPanel {
     connection: Entity<crate::cluster::connection::ClusterConnection>,
     table: Entity<PodsTable>,
-    watch: Option<gpui_kit::Task<()>>,
+    subscribed: bool,
     focus_handle: FocusHandle,
 }
 
 impl PodsPanel {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        use crate::cluster::connection::ClusterConnection;
+        use crate::cluster::session::ClusterSession;
 
-        let connection = ClusterConnection::connect(cx);
-        let table = cx.new(|_| PodsTable::new());
+        let connection = ClusterSession::connection(cx);
         cx.observe(&connection, |this: &mut Self, connection, cx| {
             this.start_watch_if_connected(&connection, cx);
             cx.notify();
         })
         .detach();
-        cx.observe(&table, |_, _, cx| cx.notify()).detach();
+        cx.on_release(|this, cx| {
+            if this.subscribed {
+                ClusterSession::unsubscribe_pods(cx);
+            }
+        })
+        .detach();
 
         let mut this = Self {
             connection: connection.clone(),
-            table,
-            watch: None,
+            table: cx.new(|_| PodsTable::default()),
+            subscribed: false,
             focus_handle: cx.focus_handle(),
         };
         this.start_watch_if_connected(&connection, cx);
@@ -267,7 +257,9 @@ impl PodsPanel {
         connection: &Entity<crate::cluster::connection::ClusterConnection>,
         cx: &mut Context<Self>,
     ) {
-        if self.watch.is_some() {
+        use crate::cluster::session::ClusterSession;
+
+        if self.subscribed {
             return;
         }
         let crate::cluster::connection::ConnectionState::Connected(client) =
@@ -275,7 +267,10 @@ impl PodsPanel {
         else {
             return;
         };
-        self.watch = Some(watch_all_namespaces(client.clone(), self.table.clone(), cx));
+        let client = client.clone();
+        self.table = ClusterSession::subscribe_pods(cx, client);
+        cx.observe(&self.table, |_, _, cx| cx.notify()).detach();
+        self.subscribed = true;
     }
 }
 
