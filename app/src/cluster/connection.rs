@@ -101,6 +101,14 @@ pub struct ClusterConnection {
 }
 
 impl ClusterConnection {
+    /// The bound forward's state receiver, for section 7.2's `ConnectionHealth` to watch -
+    /// `None` for an unbound context, which has no forward to go unhealthy.
+    pub fn forward_state(&self) -> Option<watch::Receiver<ForwardState>> {
+        self._forward
+            .as_ref()
+            .map(|handle| handle.forward().state())
+    }
+
     /// Starts connecting to the context selected by `$KUBECONFIG`/
     /// `~/.kube/config`'s current-context (or in-cluster config, if run
     /// inside a cluster) in the background; the returned entity begins in
