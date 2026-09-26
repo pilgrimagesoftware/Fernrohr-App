@@ -3,13 +3,25 @@ use gpui_kit::*;
 mod cluster;
 mod command;
 mod config;
+mod consts;
+mod forward_registry;
+mod forward_supervisor;
+mod k8s_port_forward;
+mod keychain;
 mod keymap;
 mod logs;
+mod managed_forward;
 mod paths;
+mod pidfile;
 mod pods;
+mod port_allocator;
 mod resource_index;
 mod runtime;
 mod shell;
+mod ssh_path;
+mod ssh_tunnel;
+mod tunnel_secrets;
+mod tunnel_store;
 
 fn main() {
     gpui_kit::application()
