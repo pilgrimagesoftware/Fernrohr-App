@@ -4,6 +4,9 @@ use std::collections::BTreeSet;
 
 /// Runs API discovery against `client` and returns the distinct resource
 /// kind names found across every discovered api group (core and otherwise).
+// UNWIRED: no resource-kind picker calls this yet; only its own test drives
+// it against a fake API server.
+#[allow(dead_code)]
 pub async fn discover_kinds(client: Client) -> kube::Result<Vec<String>> {
     let discovery = Discovery::new(client).run().await?;
     let mut kinds: BTreeSet<String> = BTreeSet::new();

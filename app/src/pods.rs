@@ -80,6 +80,9 @@ pub struct PodsTable {
 }
 
 impl PodsTable {
+    // UNWIRED: `PodsPanel::new` builds this via `PodsTable::default`; only
+    // this module's own tests call `new`.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -129,13 +132,37 @@ impl PodsTable {
     }
 }
 
+/// True for a watch stream error that came back as an HTTP 401 - an expired or otherwise
+/// rejected credential, as opposed to a transient network error `kube_runtime`'s own
+/// backoff already retries transparently. Section 7.3: this is what routes a stream error
+/// through the exec-plugin-refresh path instead of the ordinary swallow-and-retry one.
+fn is_unauthorized(error: &watcher::Error) -> bool {
+    let kube_error = match error {
+        watcher::Error::InitialListFailed(error)
+        | watcher::Error::WatchStartFailed(error)
+        | watcher::Error::WatchFailed(error) => Some(error),
+        watcher::Error::WatchError(_) | watcher::Error::NoResourceVersion => None,
+    };
+    matches!(kube_error, Some(kube::Error::Api(status)) if status.code == 401)
+}
+
+/// One outcome off the watch stream: a normal event to apply, or a 401 - which ends this
+/// watch (the caller decides whether/how to restart it with a refreshed credential).
+enum WatchOutcome {
+    Event(Box<watcher::Event<Pod>>),
+    Unauthorized,
+}
+
 /// Starts a `kube_runtime::watcher` for all Pods across every namespace on
 /// `client` and applies its events to `table` as they arrive. Reconnect and
-/// backoff after a stream error are `kube_runtime`'s own job (design D3);
-/// this just keeps consuming the stream.
+/// backoff after a transient stream error are `kube_runtime`'s own job (design D3); this
+/// just keeps consuming the stream - except a 401, which this watch has no way to recover
+/// from itself (the same expired credential would just come back), so it stops and calls
+/// `on_unauthorized` once instead of retrying forever against a token that will never work.
 pub fn watch_all_namespaces(
     client: kube::Client,
     table: gpui_kit::Entity<PodsTable>,
+    on_unauthorized: impl FnOnce(&mut gpui_kit::App) + Send + 'static,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::Task<()> {
     use futures_util::StreamExt;
@@ -145,20 +172,34 @@ pub fn watch_all_namespaces(
         let api: Api<Pod> = Api::all(client);
         let mut stream = Box::pin(watcher::watcher(api, watcher::Config::default()));
         while let Some(event) = stream.next().await {
-            let Ok(event) = event else {
-                continue;
-            };
-            if tx.send(event).await.is_err() {
-                break;
+            match event {
+                Ok(event) => {
+                    if tx.send(WatchOutcome::Event(Box::new(event))).await.is_err() {
+                        break;
+                    }
+                }
+                Err(error) if is_unauthorized(&error) => {
+                    let _ = tx.send(WatchOutcome::Unauthorized).await;
+                    return;
+                }
+                Err(_) => continue,
             }
         }
     });
     cx.spawn(async move |cx| {
-        crate::runtime::drain(rx, |event| {
-            let _ = table.update(cx, |table, cx| {
-                table.apply(event);
-                cx.notify();
-            });
+        let mut on_unauthorized = Some(on_unauthorized);
+        crate::runtime::drain(rx, move |outcome| match outcome {
+            WatchOutcome::Event(event) => {
+                table.update(cx, |table, cx| {
+                    table.apply(*event);
+                    cx.notify();
+                });
+            }
+            WatchOutcome::Unauthorized => {
+                if let Some(on_unauthorized) = on_unauthorized.take() {
+                    cx.update(|cx| on_unauthorized(cx));
+                }
+            }
         })
         .await;
     })
@@ -166,6 +207,11 @@ pub fn watch_all_namespaces(
 
 use crate::config::workspace::{NamespaceScope, SortState};
 
+// UNWIRED: `view_rows` below composes this into the view pipeline; `PodsPanel::render`
+// doesn't call `view_rows` yet (it renders `pods()` unfiltered/unsorted), so neither
+// reaches the bin target. First real caller is whatever wires namespace-scope/sort
+// UI state into the panel.
+#[allow(dead_code)]
 pub fn matches_namespace(pod: &Pod, scope: &NamespaceScope) -> bool {
     match scope {
         NamespaceScope::All => true,
@@ -175,10 +221,14 @@ pub fn matches_namespace(pod: &Pod, scope: &NamespaceScope) -> bool {
     }
 }
 
+// UNWIRED: see `matches_namespace` above.
+#[allow(dead_code)]
 fn matches_filter(row: &PodRow, filter: &str) -> bool {
     filter.is_empty() || row.name.contains(filter)
 }
 
+// UNWIRED: see `matches_namespace` above.
+#[allow(dead_code)]
 fn sort_rows(rows: &mut [PodRow], sort: &SortState) {
     rows.sort_by(|a, b| match sort.column.as_str() {
         "namespace" => a.namespace.cmp(&b.namespace),
@@ -196,6 +246,8 @@ fn sort_rows(rows: &mut [PodRow], sort: &SortState) {
 /// The full view pipeline for a Pods panel: scope to a namespace, project to
 /// rows, apply the name filter, then sort. Pure and GPUI-free so it's
 /// directly unit-testable as "the view model".
+// UNWIRED: see `matches_namespace` above - `PodsPanel::render` doesn't call this yet.
+#[allow(dead_code)]
 pub fn view_rows(
     pods: &[Pod],
     now: Timestamp,
@@ -303,10 +355,25 @@ impl Render for PodsPanel {
 
         match &self.connection.read(cx).state {
             ConnectionState::Connecting => div().size_full().child("Connecting..."),
+            ConnectionState::WaitingForTunnel => div().size_full().child("Waiting for tunnel..."),
             ConnectionState::Failed(reason) => div()
                 .size_full()
                 .child(format!("Connection failed: {reason}")),
             ConnectionState::Connected(_) => {
+                use crate::cluster::session::ClusterSession;
+                use crate::cluster::watch_registry::PauseReason;
+
+                let pause_banner = ClusterSession::pods_pause_info(cx).map(|(reason, elapsed)| {
+                    let reason = match reason {
+                        PauseReason::Reconnecting => "tunnel reconnecting",
+                        PauseReason::CredentialRefresh => "refreshing credentials",
+                    };
+                    div().child(format!(
+                        "Paused ({reason}) - {} ago",
+                        format_age(elapsed.as_secs() as i64)
+                    ))
+                });
+
                 let now = Timestamp::now();
                 let items: Vec<(PodRow, PodSelection)> = self
                     .table
@@ -329,6 +396,7 @@ impl Render for PodsPanel {
                     .collect();
                 div()
                     .size_full()
+                    .children(pause_banner)
                     .children(items.into_iter().map(|(row, selection)| {
                         let row_id = format!("pod-row-{}-{}", row.namespace, row.name);
                         div()
@@ -364,10 +432,46 @@ mod tests {
     // Not `use super::*`: `gpui_kit::*` (imported above for `PodsPanel`)
     // re-exports its own `test` attribute macro, which would shadow
     // `core::prelude::v1::test` for these plain synchronous tests.
-    use super::{NamespaceScope, Pod, PodsTable, SortState, pod_row, view_rows, watcher};
+    use super::{
+        NamespaceScope, Pod, PodsTable, SortState, is_unauthorized, pod_row, view_rows, watcher,
+    };
     use jiff::Timestamp;
     use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
+    use kube::core::response::Status;
+
+    fn api_error(code: u16) -> kube::Error {
+        kube::Error::Api(Box::new(Status {
+            code,
+            ..Default::default()
+        }))
+    }
+
+    #[test]
+    fn watch_failed_401_is_unauthorized() {
+        assert!(is_unauthorized(&watcher::Error::WatchFailed(api_error(
+            401
+        ))));
+    }
+
+    #[test]
+    fn initial_list_failed_401_is_unauthorized() {
+        assert!(is_unauthorized(&watcher::Error::InitialListFailed(
+            api_error(401)
+        )));
+    }
+
+    #[test]
+    fn a_403_is_not_unauthorized() {
+        assert!(!is_unauthorized(&watcher::Error::WatchFailed(api_error(
+            403
+        ))));
+    }
+
+    #[test]
+    fn no_resource_version_is_not_unauthorized() {
+        assert!(!is_unauthorized(&watcher::Error::NoResourceVersion));
+    }
 
     fn pod(uid: &str, name: &str) -> Pod {
         pod_in("default", uid, name, 0)

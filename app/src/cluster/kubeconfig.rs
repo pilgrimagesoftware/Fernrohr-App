@@ -4,12 +4,27 @@ use std::path::Path;
 /// Lists context names from the kubeconfig at `path`, or, if `path` is
 /// `None`, from `$KUBECONFIG` then `~/.kube/config` (kube's own default
 /// resolution). Never writes: `Kubeconfig::read` only reads the file.
+// UNWIRED: no context-switcher UI calls this yet; only its own fixture tests
+// exercise it. `current_context_name` below is the section 6.2 caller.
+#[allow(dead_code)]
 pub fn list_context_names(path: Option<&Path>) -> Result<Vec<String>, KubeconfigError> {
     let kubeconfig = match path {
         Some(path) => Kubeconfig::read_from(path)?,
         None => Kubeconfig::read()?,
     };
     Ok(kubeconfig.contexts.into_iter().map(|c| c.name).collect())
+}
+
+/// The kubeconfig's `current-context`, by the same resolution as
+/// [`list_context_names`]. `Config::infer` doesn't retain the context name it
+/// resolved to, so the section 6.2 connect path reads it separately here to
+/// look up a `tunnels.toml` binding.
+pub fn current_context_name(path: Option<&Path>) -> Result<Option<String>, KubeconfigError> {
+    let kubeconfig = match path {
+        Some(path) => Kubeconfig::read_from(path)?,
+        None => Kubeconfig::read()?,
+    };
+    Ok(kubeconfig.current_context)
 }
 
 #[cfg(test)]
