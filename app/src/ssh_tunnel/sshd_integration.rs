@@ -455,3 +455,58 @@ async fn dropping_the_transport_kills_the_whole_process_group_including_the_jump
         "no member of ssh's process group (including the -J hop) should survive Drop"
     );
 }
+
+/// Section 6.2: proves `SshTunnel` - the `ManagedForward` wrapper the connect path
+/// acquires from `ForwardRegistry` - actually reaches `ForwardState::Up` and proxies
+/// traffic against a real local sshd, not just that its glue compiles against a fake.
+/// `SshTransport`/`ForwardSupervisor` already have their own coverage above and in
+/// `forward_supervisor.rs`; this test is only about `SshTunnel` composing them.
+#[tokio::test]
+async fn ssh_tunnel_wrapper_reaches_up_and_proxies_through_local_sshd() {
+    use crate::forward_supervisor::{BackoffPolicy, SupervisorOptions};
+    use crate::managed_forward::{ForwardState, ManagedForward as _};
+    use std::time::Duration as StdDuration;
+
+    let Some(sshd) = LocalSshd::spawn() else {
+        eprintln!("skipping: no local sshd/ssh-keygen available to spawn a test bastion");
+        return;
+    };
+
+    let echo_port = spawn_echo_server().await;
+    let local_addr: std::net::SocketAddr = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+
+    let tunnel = SshTunnel::spawn(
+        &tokio::runtime::Handle::current(),
+        sshd.config(echo_port, local_addr.port()),
+        None,
+        local_addr,
+        SupervisorOptions {
+            health_check_interval: StdDuration::from_secs(30),
+            backoff: BackoffPolicy {
+                initial: StdDuration::from_millis(100),
+                max: StdDuration::from_secs(1),
+            },
+        },
+    );
+
+    let mut state = tunnel.state();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while *state.borrow() != ForwardState::Up {
+        tokio::select! {
+            result = state.changed() => result.expect("supervisor task should not exit while the tunnel is held"),
+            _ = tokio::time::sleep_until(deadline) => panic!("tunnel never reached Up"),
+        }
+    }
+    assert_eq!(tunnel.local_addr(), local_addr);
+
+    let mut stream = tokio::net::TcpStream::connect(local_addr)
+        .await
+        .expect("forwarded local port should accept connections once Up");
+    stream.write_all(b"hello via SshTunnel").await.unwrap();
+    let mut buf = [0u8; 64];
+    let n = stream.read(&mut buf).await.unwrap();
+    assert_eq!(&buf[..n], b"hello via SshTunnel");
+}

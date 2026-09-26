@@ -61,6 +61,25 @@ impl TunnelStore {
         config.tunnels.into_iter().collect()
     }
 
+    /// A single tunnel's non-secret config, if `id` exists.
+    pub fn get(&self, id: &str) -> Option<TunnelConfig> {
+        let config: TunnelsConfig = config::load(&self.config_path);
+        config.tunnels.get(id).cloned()
+    }
+
+    /// The tunnel id `context` is bound to, if any - section 6.2's connect path uses
+    /// this to decide whether to route a context's connection through a forward.
+    pub fn binding_for(&self, context: &str) -> Option<String> {
+        let config: TunnelsConfig = config::load(&self.config_path);
+        config.context_bindings.get(context).cloned()
+    }
+
+    /// `tunnel_id`'s stored secret (private key), if any. Kept separate from
+    /// [`Self::get`] since reading a secret means a keychain round trip.
+    pub fn secret(&self, tunnel_id: &str) -> Result<Option<String>, TunnelStoreError> {
+        Ok(self.secrets.read(tunnel_id)?)
+    }
+
     /// Creates a new tunnel under `id`. Fails if `id` is already in use - use
     /// [`Self::update`] to edit or rename an existing tunnel.
     pub fn create(

@@ -296,6 +296,10 @@ fn classify_exit_failure(status: ExitStatus, stderr_output: &str) -> String {
     }
 }
 
+mod handle;
+pub use handle::SshTunnel;
+pub(crate) use handle::TransientIdentityFile;
+
 #[cfg(test)]
 mod tests;
 

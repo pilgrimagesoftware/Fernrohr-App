@@ -12,6 +12,18 @@ pub fn list_context_names(path: Option<&Path>) -> Result<Vec<String>, Kubeconfig
     Ok(kubeconfig.contexts.into_iter().map(|c| c.name).collect())
 }
 
+/// The kubeconfig's `current-context`, by the same resolution as
+/// [`list_context_names`]. `Config::infer` doesn't retain the context name it
+/// resolved to, so the section 6.2 connect path reads it separately here to
+/// look up a `tunnels.toml` binding.
+pub fn current_context_name(path: Option<&Path>) -> Result<Option<String>, KubeconfigError> {
+    let kubeconfig = match path {
+        Some(path) => Kubeconfig::read_from(path)?,
+        None => Kubeconfig::read()?,
+    };
+    Ok(kubeconfig.current_context)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

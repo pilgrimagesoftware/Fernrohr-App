@@ -303,6 +303,7 @@ impl Render for PodsPanel {
 
         match &self.connection.read(cx).state {
             ConnectionState::Connecting => div().size_full().child("Connecting..."),
+            ConnectionState::WaitingForTunnel => div().size_full().child("Waiting for tunnel..."),
             ConnectionState::Failed(reason) => div()
                 .size_full()
                 .child(format!("Connection failed: {reason}")),
