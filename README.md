@@ -16,6 +16,8 @@ Fernrohr App is the desktop UI component of the Fernrohr meta-repository, provid
 
 - Rust 1.70+
 - macOS 11+ (currently macOS-only)
+- `ssh` on `PATH` - required to connect any kube context bound to an SSH tunnel; Fernrohr
+  shells out to the system OpenSSH client rather than bundling its own
 
 ### Build Commands
 
