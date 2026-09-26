@@ -27,48 +27,28 @@ jobs:
             libgtk-3-dev \
             mesa-vulkan-drivers
 
-      - name: Start D-Bus session and gnome-keyring
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get install -y dbus-x11 gnome-keyring
-          eval "$(dbus-launch --sh-syntax)"
-          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
-          mkdir -p ~/.local/share/keyrings
-          printf '\n' | gnome-keyring-daemon --unlock --components=secrets
-          eval "$(printf '\n' | gnome-keyring-daemon --start --components=secrets)"
-          echo "GNOME_KEYRING_CONTROL=$GNOME_KEYRING_CONTROL" >> "$GITHUB_ENV"
-
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        if: runner.os != 'Linux'
-        run: cargo build --workspace --locked
-
-      - name: Build
-        if: runner.os == 'Linux'
-        env:
-          RUSTFLAGS: -C debuginfo=0
-          CARGO_BUILD_JOBS: "2"
         run: cargo build --workspace --locked
 
       - name: Test
         if: runner.os != 'Linux'
         run: cargo test --workspace --locked
 
+      # The ubuntu-latest runner has repeatedly died mid-test-run ("lost communication
+      # with the server") on this branch specifically, long before the base suite's own
+      # pre-existing failures (keychain/pidfile, tracked separately) would surface. Bound
+      # it with `timeout` so a future recurrence fails fast with output instead of burning
+      # a 50-minute runner slot with no uploaded log.
       - name: Test
         if: runner.os == 'Linux'
-        env:
-          RUSTFLAGS: -C debuginfo=0
-          CARGO_BUILD_JOBS: 2
         run: |
           set -o pipefail
-          (while true; do sleep 15; free -h; done) &
-          monitor_pid=$!
           stdbuf -oL -eL timeout 300 cargo test --workspace --locked -- --test-threads=1 --nocapture 2>&1 | tee test-output.log
           code=$?
-          kill "$monitor_pid" 2>/dev/null
           if [ "$code" = "124" ]; then
             echo "::error::cargo test timed out after 300s; last lines of output:"
             tail -n 40 test-output.log
