@@ -27,6 +27,17 @@ jobs:
             libgtk-3-dev \
             mesa-vulkan-drivers
 
+      - name: Start D-Bus session and gnome-keyring
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y dbus-x11 gnome-keyring
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+          mkdir -p ~/.local/share/keyrings
+          printf '\n' | gnome-keyring-daemon --unlock --components=secrets
+          eval "$(printf '\n' | gnome-keyring-daemon --start --components=secrets)"
+          echo "GNOME_KEYRING_CONTROL=$GNOME_KEYRING_CONTROL" >> "$GITHUB_ENV"
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
