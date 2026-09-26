@@ -21,6 +21,9 @@ pub fn preference_dir() -> PathBuf {
 }
 
 /// Discovery cache, metric buffers: `dirs::cache_dir()/<app_dir>/`.
+// UNWIRED: no cache-backed feature exists yet; discovery and metrics are the
+// first intended callers.
+#[allow(dead_code)]
 pub fn cache_dir() -> PathBuf {
     resolve(dirs::cache_dir())
 }

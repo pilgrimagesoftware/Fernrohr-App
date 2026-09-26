@@ -158,7 +158,7 @@ pub fn watch_all_namespaces(
     });
     cx.spawn(async move |cx| {
         crate::runtime::drain(rx, |event| {
-            let _ = table.update(cx, |table, cx| {
+            table.update(cx, |table, cx| {
                 table.apply(event);
                 cx.notify();
             });
