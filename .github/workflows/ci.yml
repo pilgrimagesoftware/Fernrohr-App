@@ -43,6 +43,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C debuginfo=0' || '' }}
+          CARGO_BUILD_JOBS: ${{ runner.os == 'Linux' && '2' || '' }}
         run: cargo build --workspace --locked
 
       - name: Test
@@ -51,10 +54,16 @@ jobs:
 
       - name: Test
         if: runner.os == 'Linux'
+        env:
+          RUSTFLAGS: -C debuginfo=0
+          CARGO_BUILD_JOBS: 2
         run: |
           set -o pipefail
+          (while true; do sleep 15; free -h; done) &
+          monitor_pid=$!
           stdbuf -oL -eL timeout 300 cargo test --workspace --locked -- --test-threads=1 --nocapture 2>&1 | tee test-output.log
           code=$?
+          kill "$monitor_pid" 2>/dev/null
           if [ "$code" = "124" ]; then
             echo "::error::cargo test timed out after 300s; last lines of output:"
             tail -n 40 test-output.log
