@@ -53,7 +53,12 @@ fn rewrite_for_tunnel(config: &mut Config, local_addr: SocketAddr) {
 /// forward's state receiver and local address, waits for the forward to reach `Up`
 /// (reporting `WaitingForTunnel` meanwhile), rewrites the config, and probes - sending
 /// every intermediate and final state to `tx` in order.
-async fn connect_and_probe(
+///
+/// `pub(in crate::cluster)`: section 7.3's credential-refresh path (`cluster::session`)
+/// reuses this directly rather than duplicating the tunnel-wait/rewrite/probe sequence -
+/// a 401 needs exactly the same "resolve config, wait for the tunnel if bound, probe"
+/// dance a first connect does, just triggered by a different signal.
+pub(in crate::cluster) async fn connect_and_probe(
     config_result: Result<Config, String>,
     forward_wait: Option<(watch::Receiver<ForwardState>, SocketAddr)>,
     tx: mpsc::Sender<ConnectionState>,
@@ -107,6 +112,18 @@ impl ClusterConnection {
         self._forward
             .as_ref()
             .map(|handle| handle.forward().state())
+    }
+
+    /// The state receiver and local address together, for section 7.3's credential-refresh
+    /// path - it needs both to call [`connect_and_probe`] again without re-resolving the
+    /// context's tunnel binding, exactly what [`ClusterConnection::connect`] captured at the
+    /// original connect.
+    pub(in crate::cluster) fn forward_wait(
+        &self,
+    ) -> Option<(watch::Receiver<ForwardState>, SocketAddr)> {
+        self._forward
+            .as_ref()
+            .map(|handle| (handle.forward().state(), handle.forward().local_addr()))
     }
 
     /// Starts connecting to the context selected by `$KUBECONFIG`/
