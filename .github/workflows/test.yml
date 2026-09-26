@@ -4,14 +4,16 @@ on:
   push:
     branches: [master, develop]
     paths:
-      - 'src/**'
+      - 'app/src/**'
+      - 'app/Cargo.toml'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/test.yml'
   pull_request:
     branches: [master, develop]
     paths:
-      - 'src/**'
+      - 'app/src/**'
+      - 'app/Cargo.toml'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/test.yml'
