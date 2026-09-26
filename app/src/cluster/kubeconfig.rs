@@ -4,6 +4,9 @@ use std::path::Path;
 /// Lists context names from the kubeconfig at `path`, or, if `path` is
 /// `None`, from `$KUBECONFIG` then `~/.kube/config` (kube's own default
 /// resolution). Never writes: `Kubeconfig::read` only reads the file.
+// UNWIRED: no context-switcher UI calls this yet; only its own fixture tests
+// exercise it. `current_context_name` below is the section 6.2 caller.
+#[allow(dead_code)]
 pub fn list_context_names(path: Option<&Path>) -> Result<Vec<String>, KubeconfigError> {
     let kubeconfig = match path {
         Some(path) => Kubeconfig::read_from(path)?,

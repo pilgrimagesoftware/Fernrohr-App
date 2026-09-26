@@ -17,6 +17,10 @@ pub enum FollowState {
     Following,
     /// The user scrolled up to read history; new lines still arrive but the
     /// view doesn't jump to them until they scroll back to the bottom.
+    // UNWIRED: `LogsPanel::render` has no scroll handler that calls
+    // `LogsView::scroll_up` yet, so nothing ever constructs this variant
+    // outside tests.
+    #[allow(dead_code)]
     Paused,
 }
 
@@ -24,8 +28,14 @@ pub enum FollowState {
 /// container selection. GPUI-free so it's directly unit-testable.
 pub struct LogsView {
     lines: Vec<String>,
+    // UNWIRED: read by `follow_state`/written by `scroll_up`/`scroll_to_bottom`, none of
+    // which `LogsPanel::render` calls yet - there's no scroll or container-picker UI, just
+    // an unconditional line dump. First real caller is that panel UI.
+    #[allow(dead_code)]
     follow: FollowState,
+    #[allow(dead_code)]
     containers: Vec<String>,
+    #[allow(dead_code)]
     selected_container: String,
     terminal_message: Option<String>,
 }
@@ -47,10 +57,14 @@ impl LogsView {
         &self.lines
     }
 
+    // UNWIRED: no scroll or container-picker UI reads/drives this yet - `LogsPanel::render`
+    // unconditionally dumps every line. First real caller is that panel UI.
+    #[allow(dead_code)]
     pub fn follow_state(&self) -> FollowState {
         self.follow
     }
 
+    #[allow(dead_code)]
     pub fn selected_container(&self) -> &str {
         &self.selected_container
     }
@@ -61,6 +75,7 @@ impl LogsView {
 
     /// Whether a container picker needs to be shown at all - a single
     /// container needs no pick.
+    #[allow(dead_code)]
     pub fn needs_container_picker(&self) -> bool {
         self.containers.len() > 1
     }
@@ -69,10 +84,12 @@ impl LogsView {
         self.lines.push(line);
     }
 
+    #[allow(dead_code)]
     pub fn scroll_up(&mut self) {
         self.follow = FollowState::Paused;
     }
 
+    #[allow(dead_code)]
     pub fn scroll_to_bottom(&mut self) {
         self.follow = FollowState::Following;
     }
@@ -80,6 +97,7 @@ impl LogsView {
     /// Selects `container`. Returns whether the selection actually changed -
     /// the caller restarts the stream only then, and this clears the history
     /// and terminal state from the previous container's stream.
+    #[allow(dead_code)]
     pub fn select_container(&mut self, container: &str) -> bool {
         if container == self.selected_container {
             return false;
@@ -109,7 +127,6 @@ impl LogsView {
 /// let a caller-held handle drop) to stop applying further lines, e.g. when
 /// switching containers or closing the panel. Production callers that want
 /// fire-and-forget behavior can `.detach()` the result themselves.
-#[must_use]
 pub fn start_stream<F, Fut>(
     view: gpui_kit::Entity<LogsView>,
     cx: &mut gpui_kit::App,
@@ -123,7 +140,7 @@ where
     let rx = crate::runtime::spawn_stream(cx, capacity, produce);
     cx.spawn(async move |cx| {
         crate::runtime::drain(rx, |event| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.apply(event);
                 cx.notify();
             });

@@ -104,6 +104,9 @@ impl<K: Eq + Hash> WatchRegistry<K> {
         entry.paused.take().is_some()
     }
 
+    // UNWIRED on the non-test bin target: only tests read this boolean form;
+    // `pause_info` above is the production accessor.
+    #[allow(dead_code)]
     pub fn is_paused(&self, key: &K) -> bool {
         self.entries
             .get(key)

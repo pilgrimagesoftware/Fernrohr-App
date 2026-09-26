@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+// UNWIRED: no settings UI or config-load call site reads this yet; only its
+// own round-trip tests exercise it. First real caller is whatever surfaces a
+// theme picker.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
@@ -14,6 +18,8 @@ impl Default for UiConfig {
     }
 }
 
+// UNWIRED: see `UiConfig` above - no caller reads a theme yet.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
