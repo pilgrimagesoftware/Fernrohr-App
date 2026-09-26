@@ -157,6 +157,9 @@ mod tests {
 
         let result = cx.update(|cx| acquire_for_context(cx, &path, "no-such-context"));
         assert!(matches!(result, Ok(None)));
+        // Section 6.3: an unbound context must never initialize `TunnelForwards` -
+        // `ForwardRegistry` stays untouched, not just empty.
+        assert!(!cx.update(|cx| cx.has_global::<TunnelForwards>()));
 
         let _ = std::fs::remove_file(&path);
     }
