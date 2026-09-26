@@ -3,6 +3,7 @@ use crate::forward_registry::RegistryHandle;
 use crate::managed_forward::{ForwardState, ManagedForward as _};
 use crate::ssh_tunnel::SshTunnel;
 use gpui_kit::{App, AppContext as _, Context, Entity};
+use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Client, Config};
 use std::net::SocketAddr;
 use tokio::sync::{mpsc, watch};
@@ -31,6 +32,40 @@ pub async fn probe(config: Config) -> ConnectionState {
         Ok(_) => ConnectionState::Connected(client),
         Err(error) => ConnectionState::Failed(error.to_string()),
     }
+}
+
+/// Resolves `Config` for `context_name`, or the kubeconfig's own `current-context`
+/// (or in-cluster config) when `None`. Pure async, no GPUI context, so it's testable
+/// on its own - the picker's "connect to this specific context" behavior lives here,
+/// not scattered across [`ClusterConnection::connect`].
+pub(in crate::cluster) async fn resolve_config(
+    context_name: Option<&str>,
+) -> Result<Config, String> {
+    match context_name {
+        Some(name) => {
+            let kubeconfig = Kubeconfig::read().map_err(|error| error.to_string())?;
+            resolve_named_context(kubeconfig, name).await
+        }
+        None => Config::infer().await.map_err(|error| error.to_string()),
+    }
+}
+
+/// [`resolve_config`]'s named-context branch, taking an already-loaded [`Kubeconfig`]
+/// rather than reading `$KUBECONFIG`/`~/.kube/config` itself - the seam that lets tests
+/// inject a fixture kubeconfig instead of this machine's real one.
+async fn resolve_named_context(
+    kubeconfig: Kubeconfig,
+    context_name: &str,
+) -> Result<Config, String> {
+    Config::from_custom_kubeconfig(
+        kubeconfig,
+        &KubeConfigOptions {
+            context: Some(context_name.to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 /// Points `config.cluster_url` at the tunnel's local forward and pins
@@ -126,25 +161,26 @@ impl ClusterConnection {
             .map(|handle| (handle.forward().state(), handle.forward().local_addr()))
     }
 
-    /// Starts connecting to the context selected by `$KUBECONFIG`/
-    /// `~/.kube/config`'s current-context (or in-cluster config, if run
-    /// inside a cluster) in the background; the returned entity begins in
-    /// `Connecting` and updates itself (and notifies observers) once the
-    /// probe on the tokio runtime completes.
+    /// Starts connecting to `context_name`, or the kubeconfig's own current-context
+    /// (or in-cluster config, if run inside a cluster) when `context_name` is `None`,
+    /// in the background; the returned entity begins in `Connecting` and updates
+    /// itself (and notifies observers) once the probe on the tokio runtime completes.
     ///
     /// If that context is bound to a tunnel (`tunnels.toml`), acquires the shared
     /// forward first, reports `WaitingForTunnel` until it reaches `Up`, then rewrites
-    /// the inferred config to route through it before probing - section 6.2. Resolving
+    /// the resolved config to route through it before probing - section 6.2. Resolving
     /// the binding and acquiring the forward both happen synchronously here, on the
     /// GPUI foreground thread, since acquiring needs `&mut App`; only the already-
     /// extracted state receiver and local address move into the background task.
-    pub fn connect(cx: &mut App) -> Entity<Self> {
+    pub fn connect(cx: &mut App, context_name: Option<String>) -> Entity<Self> {
         cx.new(|cx: &mut Context<Self>| {
-            let context_name = crate::cluster::kubeconfig::current_context_name(None)
-                .ok()
-                .flatten();
+            let bound_context = context_name.clone().or_else(|| {
+                crate::cluster::kubeconfig::current_context_name(None)
+                    .ok()
+                    .flatten()
+            });
             let tunnels_path = crate::paths::preference_dir().join("tunnels.toml");
-            let forward = context_name.and_then(|context| {
+            let forward = bound_context.and_then(|context| {
                 tunnel::acquire_for_context(cx, &tunnels_path, &context)
                     .ok()
                     .flatten()
@@ -154,7 +190,7 @@ impl ClusterConnection {
                 .map(|handle| (handle.forward().state(), handle.forward().local_addr()));
 
             let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
-                let config_result = Config::infer().await.map_err(|error| error.to_string());
+                let config_result = resolve_config(context_name.as_deref()).await;
                 connect_and_probe(config_result, forward_wait, tx).await;
             });
             cx.spawn(async move |this, cx| {
@@ -204,6 +240,57 @@ mod tests {
         let mut config = Config::new(format!("http://{addr}").parse().unwrap());
         config.connect_timeout = Some(Duration::from_millis(500));
         config
+    }
+
+    fn two_context_kubeconfig() -> Kubeconfig {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let yaml = r#"
+apiVersion: v1
+kind: Config
+clusters:
+  - name: kind-dev
+    cluster:
+      server: https://127.0.0.1:6443
+  - name: staging
+    cluster:
+      server: https://staging.example.com:6443
+contexts:
+  - name: kind-dev
+    context:
+      cluster: kind-dev
+      user: kind-dev
+  - name: staging
+    context:
+      cluster: staging
+      user: staging
+current-context: kind-dev
+users:
+  - name: kind-dev
+    user: {}
+  - name: staging
+    user: {}
+"#;
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("fernrohr-connection-fixture-{n}.yaml"));
+        std::fs::write(&path, yaml).unwrap();
+        Kubeconfig::read_from(&path).unwrap()
+    }
+
+    #[tokio::test]
+    async fn resolve_named_context_picks_that_context_not_current_context() {
+        let config = resolve_named_context(two_context_kubeconfig(), "staging")
+            .await
+            .unwrap();
+        assert_eq!(config.cluster_url.host(), Some("staging.example.com"));
+    }
+
+    #[tokio::test]
+    async fn resolve_named_context_reports_an_unknown_context() {
+        let error = resolve_named_context(two_context_kubeconfig(), "does-not-exist")
+            .await
+            .unwrap_err();
+        assert!(error.contains("does-not-exist"));
     }
 
     #[tokio::test]

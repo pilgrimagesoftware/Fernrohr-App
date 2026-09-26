@@ -12,6 +12,7 @@ mod keymap;
 mod logs;
 mod managed_forward;
 mod paths;
+mod picker;
 mod pidfile;
 mod pods;
 mod port_allocator;

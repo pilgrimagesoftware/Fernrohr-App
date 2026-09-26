@@ -217,10 +217,10 @@ pub struct LogsPanel {
 }
 
 impl LogsPanel {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        use crate::cluster::session::ClusterSession;
+    pub fn new(context_name: String, cx: &mut Context<Self>) -> Self {
+        use crate::cluster::session::ClusterRegistry;
 
-        let connection = ClusterSession::connection(cx);
+        let connection = ClusterRegistry::connection(cx, &context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
         cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))

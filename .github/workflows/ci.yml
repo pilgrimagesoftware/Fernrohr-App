@@ -35,4 +35,22 @@ jobs:
         run: cargo build --workspace --locked
 
       - name: Test
+        if: runner.os != 'Linux'
         run: cargo test --workspace --locked
+
+      # The ubuntu-latest runner has repeatedly died mid-test-run ("lost communication
+      # with the server") on this branch specifically, long before the base suite's own
+      # pre-existing failures (keychain/pidfile, tracked separately) would surface. Bound
+      # it with `timeout` so a future recurrence fails fast with output instead of burning
+      # a 50-minute runner slot with no uploaded log.
+      - name: Test
+        if: runner.os == 'Linux'
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL timeout 300 cargo test --workspace --locked -- --test-threads=1 --nocapture 2>&1 | tee test-output.log
+          code=$?
+          if [ "$code" = "124" ]; then
+            echo "::error::cargo test timed out after 300s; last lines of output:"
+            tail -n 40 test-output.log
+          fi
+          exit "$code"
