@@ -43,9 +43,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
+        if: runner.os != 'Linux'
+        run: cargo build --workspace --locked
+
+      - name: Build
+        if: runner.os == 'Linux'
         env:
-          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C debuginfo=0' || '' }}
-          CARGO_BUILD_JOBS: ${{ runner.os == 'Linux' && '2' || '' }}
+          RUSTFLAGS: -C debuginfo=0
+          CARGO_BUILD_JOBS: "2"
         run: cargo build --workspace --locked
 
       - name: Test
