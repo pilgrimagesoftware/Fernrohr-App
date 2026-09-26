@@ -11,6 +11,7 @@ mod keychain;
 mod keymap;
 mod logs;
 mod managed_forward;
+mod nav;
 mod paths;
 mod picker;
 mod pidfile;
