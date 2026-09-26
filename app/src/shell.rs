@@ -90,8 +90,6 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
 /// descriptor whose `kind` this build doesn't recognize deserializes as
 /// [`PanelDescriptor::Unknown`] (see `config::workspace`) and is skipped here
 /// with a log line, rather than failing the whole layout.
-// UNWIRED: window restore doesn't call this yet; only its own tests do.
-#[allow(dead_code)]
 pub fn restorable_panels(layout: &WindowLayout) -> Vec<&PanelDescriptor> {
     layout
         .panels
@@ -124,11 +122,58 @@ fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
     }
 }
 
-/// Opens one window with a two-panel split workspace: a live Pods panel
-/// (connects to the current kubeconfig context) alongside a Logs panel that
-/// streams whichever pod was last clicked in either.
+/// Builds the two-panel split workspace for `context_name`: a live Pods panel alongside
+/// a Logs panel that streams whichever pod was last clicked in either. Full restoration
+/// of an arbitrary persisted panel arrangement is future work (see the
+/// `cluster-picker-and-navigation` change's design doc); today every workspace uses this
+/// fixed split, seeded from whichever context the picker connected to (or, for a window
+/// restored with existing panels, that layout's first panel's `cluster_context`).
+fn build_workspace(context_name: String, window: &mut Window, cx: &mut App) -> Entity<DockArea> {
+    let left = cx.new(|cx| crate::pods::PodsPanel::new(context_name.clone(), cx));
+    let right = cx.new(|cx| crate::logs::LogsPanel::new(context_name, cx));
+    let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
+    dock_area.update(cx, |area, cx| {
+        area.set_center(
+            DockLayout::h_split()
+                .child(DockLayout::tabs().panel_view(panel_handle(left), cx), None)
+                .child(DockLayout::tabs().panel_view(panel_handle(right), cx), None),
+            window,
+            cx,
+        );
+    });
+    dock_area
+}
+
+/// The first restorable panel's `cluster_context`, if any - used to pick which context
+/// a restored (non-empty) layout's workspace connects to, since full per-panel
+/// reconstruction from `PanelDescriptor` is future work.
+fn first_restored_context(layout: &WindowLayout) -> Option<String> {
+    restorable_panels(layout)
+        .into_iter()
+        .find_map(|descriptor| match descriptor {
+            PanelDescriptor::Pods {
+                cluster_context, ..
+            }
+            | PanelDescriptor::Logs {
+                cluster_context, ..
+            } => Some(cluster_context.clone()),
+            PanelDescriptor::Unknown => None,
+        })
+}
+
+/// A window's body: the cluster picker (no connected context yet) or a connected
+/// workspace. A window opens in `Picker` whenever it has no restored panels, per the
+/// `cluster-picker` and `app-shell` specs.
+enum WindowMode {
+    Picker(Entity<crate::picker::ClusterPicker>),
+    Workspace(Entity<DockArea>),
+}
+
+/// Opens one window, in `Picker` mode if `layout` has no restorable panels, or directly
+/// into a connected workspace (seeded from the restored layout's context) otherwise.
 pub fn open_window(cx: &mut App, layout: WindowLayout) {
     let bounds = window_bounds(&layout, cx);
+    let restored_context = first_restored_context(&layout);
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -147,21 +192,33 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                 true
             });
 
-            let left = cx.new(crate::pods::PodsPanel::new);
-            let right = cx.new(crate::logs::LogsPanel::new);
-            let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
-            dock_area.update(cx, |area, cx| {
-                area.set_center(
-                    DockLayout::h_split()
-                        .child(DockLayout::tabs().panel_view(panel_handle(left), cx), None)
-                        .child(DockLayout::tabs().panel_view(panel_handle(right), cx), None),
-                    window,
-                    cx,
-                );
-            });
-            let view = cx.new(|cx| MainWindow {
-                dock_area,
-                focus_handle: cx.focus_handle(),
+            let mode = match restored_context {
+                Some(context_name) => {
+                    WindowMode::Workspace(build_workspace(context_name, window, cx))
+                }
+                None => WindowMode::Picker(cx.new(crate::picker::ClusterPicker::new)),
+            };
+            let view = cx.new(|cx| {
+                if let WindowMode::Picker(picker) = &mode {
+                    cx.subscribe_in(
+                        picker,
+                        window,
+                        |this: &mut MainWindow, _picker, event, window, cx| {
+                            let crate::picker::PickerEvent::Connected { context_name, .. } = event;
+                            this.mode = WindowMode::Workspace(build_workspace(
+                                context_name.clone(),
+                                window,
+                                cx,
+                            ));
+                            cx.notify();
+                        },
+                    )
+                    .detach();
+                }
+                MainWindow {
+                    mode,
+                    focus_handle: cx.focus_handle(),
+                }
             });
             // Action dispatch (both real keystrokes and `Window::dispatch_action`)
             // starts at the focused element and bubbles up; with nothing
@@ -177,7 +234,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
 }
 
 pub struct MainWindow {
-    dock_area: Entity<DockArea>,
+    mode: WindowMode,
     focus_handle: FocusHandle,
 }
 
@@ -213,13 +270,17 @@ fn open_command_palette(window: &mut Window, cx: &mut App) {
 
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let body: AnyElement = match &self.mode {
+            WindowMode::Picker(picker) => picker.clone().into_any_element(),
+            WindowMode::Workspace(dock_area) => dock_area.clone().into_any_element(),
+        };
         div()
             .size_full()
             .track_focus(&self.focus_handle)
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
             })
-            .child(self.dock_area.clone())
+            .child(body)
     }
 }
 

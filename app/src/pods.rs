@@ -283,9 +283,10 @@ pub struct SelectedPod(pub Option<PodSelection>);
 
 impl Global for SelectedPod {}
 
-/// A dock panel connecting to the current kubeconfig context and rendering
-/// its live, all-namespaces Pods table.
+/// A dock panel connecting to `context_name` and rendering its live,
+/// all-namespaces Pods table.
 pub struct PodsPanel {
+    context_name: String,
     connection: Entity<crate::cluster::connection::ClusterConnection>,
     table: Entity<PodsTable>,
     subscribed: bool,
@@ -293,23 +294,27 @@ pub struct PodsPanel {
 }
 
 impl PodsPanel {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        use crate::cluster::session::ClusterSession;
+    pub fn new(context_name: String, cx: &mut Context<Self>) -> Self {
+        use crate::cluster::session::ClusterRegistry;
 
-        let connection = ClusterSession::connection(cx);
+        let connection = ClusterRegistry::connection(cx, &context_name);
         cx.observe(&connection, |this: &mut Self, connection, cx| {
             this.start_watch_if_connected(&connection, cx);
             cx.notify();
         })
         .detach();
-        cx.on_release(|this, cx| {
-            if this.subscribed {
-                ClusterSession::unsubscribe_pods(cx);
+        cx.on_release({
+            let context_name = context_name.clone();
+            move |this: &mut Self, cx| {
+                if this.subscribed {
+                    ClusterRegistry::unsubscribe_pods(cx, &context_name);
+                }
             }
         })
         .detach();
 
         let mut this = Self {
+            context_name,
             connection: connection.clone(),
             table: cx.new(|_| PodsTable::default()),
             subscribed: false,
@@ -324,7 +329,7 @@ impl PodsPanel {
         connection: &Entity<crate::cluster::connection::ClusterConnection>,
         cx: &mut Context<Self>,
     ) {
-        use crate::cluster::session::ClusterSession;
+        use crate::cluster::session::ClusterRegistry;
 
         if self.subscribed {
             return;
@@ -335,7 +340,7 @@ impl PodsPanel {
             return;
         };
         let client = client.clone();
-        self.table = ClusterSession::subscribe_pods(cx, client);
+        self.table = ClusterRegistry::subscribe_pods(cx, &self.context_name, client);
         cx.observe(&self.table, |_, _, cx| cx.notify()).detach();
         self.subscribed = true;
     }
@@ -360,19 +365,21 @@ impl Render for PodsPanel {
                 .size_full()
                 .child(format!("Connection failed: {reason}")),
             ConnectionState::Connected(_) => {
-                use crate::cluster::session::ClusterSession;
+                use crate::cluster::session::ClusterRegistry;
                 use crate::cluster::watch_registry::PauseReason;
 
-                let pause_banner = ClusterSession::pods_pause_info(cx).map(|(reason, elapsed)| {
-                    let reason = match reason {
-                        PauseReason::Reconnecting => "tunnel reconnecting",
-                        PauseReason::CredentialRefresh => "refreshing credentials",
-                    };
-                    div().child(format!(
-                        "Paused ({reason}) - {} ago",
-                        format_age(elapsed.as_secs() as i64)
-                    ))
-                });
+                let pause_banner = ClusterRegistry::pods_pause_info(cx, &self.context_name).map(
+                    |(reason, elapsed)| {
+                        let reason = match reason {
+                            PauseReason::Reconnecting => "tunnel reconnecting",
+                            PauseReason::CredentialRefresh => "refreshing credentials",
+                        };
+                        div().child(format!(
+                            "Paused ({reason}) - {} ago",
+                            format_age(elapsed.as_secs() as i64)
+                        ))
+                    },
+                );
 
                 let now = Timestamp::now();
                 let items: Vec<(PodRow, PodSelection)> = self
