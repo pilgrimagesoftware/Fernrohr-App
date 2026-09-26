@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/fernrohr-logo.png" alt="Fernrohr" width="320">
+</p>
+
 # Fernrohr App
 
 A Rust desktop application for Kubernetes cluster monitoring and resource browsing, built with GPUI and GPUI-Kit.
