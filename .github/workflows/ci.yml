@@ -46,4 +46,12 @@ jobs:
         run: cargo build --workspace --locked
 
       - name: Test
-        run: cargo test --workspace --locked
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL timeout 300 cargo test --workspace --locked -- --test-threads=1 --nocapture 2>&1 | tee test-output.log
+          code=$?
+          if [ "$code" = "124" ]; then
+            echo "::error::cargo test timed out after 300s; last lines of output:"
+            tail -n 40 test-output.log
+          fi
+          exit "$code"
