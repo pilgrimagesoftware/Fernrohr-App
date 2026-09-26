@@ -22,6 +22,9 @@ impl<T> Default for ResourceIndex<T> {
 }
 
 impl<T> ResourceIndex<T> {
+    // UNWIRED: production callers build this via `Default` (e.g.
+    // `PodsTable::default`); only this module's own tests call `new`.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
