@@ -1,6 +1,6 @@
 use super::connection::ClusterConnection;
 use super::health::{self, HealthTransition};
-use super::watch_registry::WatchRegistry;
+use super::watch_registry::{PauseReason, WatchRegistry};
 use crate::pods::{PodsTable, watch_all_namespaces};
 use gpui_kit::{App, AppContext as _, Entity, Global};
 use kube::Client;
@@ -60,8 +60,8 @@ impl ClusterSession {
             return;
         }
         match edge {
-            HealthTransition::Pause => {
-                if cx.global_mut::<Self>().watchers.pause(&"pods") {
+            HealthTransition::Pause(reason) => {
+                if cx.global_mut::<Self>().watchers.pause(&"pods", reason) {
                     cx.global_mut::<Self>().pods_watch = None;
                 }
             }
@@ -116,7 +116,7 @@ impl ClusterSession {
         if !cx.has_global::<Self>() {
             return;
         }
-        Self::apply_health_transition(cx, HealthTransition::Pause);
+        Self::apply_health_transition(cx, HealthTransition::Pause(PauseReason::CredentialRefresh));
 
         let connection = cx.global::<Self>().connection.clone();
         let forward_wait = connection.read(cx).forward_wait();
@@ -145,6 +145,15 @@ impl ClusterSession {
         }
         cx.global_mut::<Self>().pods_client = Some(client);
         Self::apply_health_transition(cx, HealthTransition::Resume);
+    }
+
+    /// Why the Pods watch is currently paused and for how long, for section 7.4's panel
+    /// display. `None` when the watch is active or nobody is subscribed.
+    pub fn pods_pause_info(cx: &App) -> Option<(PauseReason, std::time::Duration)> {
+        if !cx.has_global::<Self>() {
+            return None;
+        }
+        cx.global::<Self>().watchers.pause_info(&"pods")
     }
 
     /// Unsubscribes a panel from the shared Pods watch, tearing it down on
@@ -216,7 +225,12 @@ mod tests {
         cx.update(|cx| ClusterSession::subscribe_pods(cx, client));
         assert!(cx.update(|cx| cx.global::<ClusterSession>().pods_watch.is_some()));
 
-        cx.update(|cx| ClusterSession::apply_health_transition(cx, HealthTransition::Pause));
+        cx.update(|cx| {
+            ClusterSession::apply_health_transition(
+                cx,
+                HealthTransition::Pause(PauseReason::CredentialRefresh),
+            )
+        });
         assert!(cx.update(|cx| cx.global::<ClusterSession>().watchers.is_paused(&"pods")));
         assert!(cx.update(|cx| cx.global::<ClusterSession>().pods_watch.is_none()));
 
@@ -238,7 +252,12 @@ mod tests {
 
         let client = test_client(cx);
         cx.update(|cx| ClusterSession::subscribe_pods(cx, client));
-        cx.update(|cx| ClusterSession::apply_health_transition(cx, HealthTransition::Pause));
+        cx.update(|cx| {
+            ClusterSession::apply_health_transition(
+                cx,
+                HealthTransition::Pause(PauseReason::CredentialRefresh),
+            )
+        });
         cx.update(ClusterSession::unsubscribe_pods);
 
         let refreshed_client = test_client(cx);

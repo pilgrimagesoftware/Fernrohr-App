@@ -346,6 +346,20 @@ impl Render for PodsPanel {
                 .size_full()
                 .child(format!("Connection failed: {reason}")),
             ConnectionState::Connected(_) => {
+                use crate::cluster::session::ClusterSession;
+                use crate::cluster::watch_registry::PauseReason;
+
+                let pause_banner = ClusterSession::pods_pause_info(cx).map(|(reason, elapsed)| {
+                    let reason = match reason {
+                        PauseReason::Reconnecting => "tunnel reconnecting",
+                        PauseReason::CredentialRefresh => "refreshing credentials",
+                    };
+                    div().child(format!(
+                        "Paused ({reason}) - {} ago",
+                        format_age(elapsed.as_secs() as i64)
+                    ))
+                });
+
                 let now = Timestamp::now();
                 let items: Vec<(PodRow, PodSelection)> = self
                     .table
@@ -368,6 +382,7 @@ impl Render for PodsPanel {
                     .collect();
                 div()
                     .size_full()
+                    .children(pause_banner)
                     .children(items.into_iter().map(|(row, selection)| {
                         let row_id = format!("pod-row-{}-{}", row.namespace, row.name);
                         div()

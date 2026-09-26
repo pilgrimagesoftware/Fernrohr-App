@@ -1,5 +1,17 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::time::{Duration, Instant};
+
+/// Why a watch is currently paused - section 7.4 surfaces this (plus elapsed
+/// time) on affected panels so a stalled connection reads as "reconnecting"
+/// rather than a silently frozen table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PauseReason {
+    /// The bound tunnel's forward dropped from `Up` to `Reconnecting`.
+    Reconnecting,
+    /// A 401 is being resolved by re-running the exec-plugin credential flow.
+    CredentialRefresh,
+}
 
 /// One key's subscription state: how many panels hold it open, and whether
 /// its watch is currently suspended (section 7.1's recoverable-interruption
@@ -8,10 +20,7 @@ use std::hash::Hash;
 /// refcount that would otherwise tear them down).
 struct Entry {
     refcount: usize,
-    // UNWIRED: section 7.2 (ConnectionHealth) is the first real caller of
-    // pause/resume; only tests read this until then.
-    #[allow(dead_code)]
-    paused: bool,
+    paused: Option<(PauseReason, Instant)>,
 }
 
 /// Reference-counts watch subscriptions per key (a resource kind, for
@@ -40,7 +49,7 @@ impl<K: Eq + Hash> WatchRegistry<K> {
     pub fn subscribe(&mut self, key: K) -> bool {
         let entry = self.entries.entry(key).or_insert(Entry {
             refcount: 0,
-            paused: false,
+            paused: None,
         });
         entry.refcount += 1;
         entry.refcount == 1
@@ -67,18 +76,19 @@ impl<K: Eq + Hash> WatchRegistry<K> {
         self.entries.get(key).map_or(0, |entry| entry.refcount)
     }
 
-    /// Marks `key` paused. Returns `true` on the not-paused-to-paused
-    /// transition, when the caller should stop consuming the underlying
-    /// stream (without unsubscribing - the refcount is untouched). A no-op,
-    /// returning `false`, on an already-paused or untracked key.
-    pub fn pause(&mut self, key: &K) -> bool {
+    /// Marks `key` paused for `reason`. Returns `true` on the
+    /// not-paused-to-paused transition, when the caller should stop consuming
+    /// the underlying stream (without unsubscribing - the refcount is
+    /// untouched). A no-op, returning `false`, on an already-paused or
+    /// untracked key.
+    pub fn pause(&mut self, key: &K, reason: PauseReason) -> bool {
         let Some(entry) = self.entries.get_mut(key) else {
             return false;
         };
-        if entry.paused {
+        if entry.paused.is_some() {
             false
         } else {
-            entry.paused = true;
+            entry.paused = Some((reason, Instant::now()));
             true
         }
     }
@@ -91,16 +101,20 @@ impl<K: Eq + Hash> WatchRegistry<K> {
         let Some(entry) = self.entries.get_mut(key) else {
             return false;
         };
-        if entry.paused {
-            entry.paused = false;
-            true
-        } else {
-            false
-        }
+        entry.paused.take().is_some()
     }
 
     pub fn is_paused(&self, key: &K) -> bool {
-        self.entries.get(key).is_some_and(|entry| entry.paused)
+        self.entries
+            .get(key)
+            .is_some_and(|entry| entry.paused.is_some())
+    }
+
+    /// Why `key` is paused and how long it's been that way, for section 7.4's
+    /// panel display. `None` for an active or untracked key.
+    pub fn pause_info(&self, key: &K) -> Option<(PauseReason, Duration)> {
+        let (reason, since) = self.entries.get(key)?.paused?;
+        Some((reason, since.elapsed()))
     }
 }
 
@@ -165,14 +179,17 @@ mod tests {
         registry.subscribe("pods");
         watcher.consuming = true;
 
-        assert!(registry.pause(&"pods"), "first pause should transition");
+        assert!(
+            registry.pause(&"pods", PauseReason::Reconnecting),
+            "first pause should transition"
+        );
         if registry.is_paused(&"pods") {
             watcher.consuming = false;
         }
         assert!(!watcher.consuming, "paused watcher must stop consuming");
 
         assert!(
-            !registry.pause(&"pods"),
+            !registry.pause(&"pods", PauseReason::Reconnecting),
             "pausing an already-paused key is a no-op"
         );
 
@@ -191,9 +208,25 @@ mod tests {
     }
 
     #[test]
+    fn pause_info_reports_reason_and_elapsed_then_clears_on_resume() {
+        let mut registry = WatchRegistry::new();
+        registry.subscribe("pods");
+
+        assert!(registry.pause_info(&"pods").is_none());
+
+        registry.pause(&"pods", PauseReason::CredentialRefresh);
+        let (reason, elapsed) = registry.pause_info(&"pods").expect("should be paused");
+        assert_eq!(reason, PauseReason::CredentialRefresh);
+        assert!(elapsed < Duration::from_secs(1));
+
+        registry.resume(&"pods");
+        assert!(registry.pause_info(&"pods").is_none());
+    }
+
+    #[test]
     fn pause_and_resume_of_untracked_key_are_no_ops() {
         let mut registry: WatchRegistry<&str> = WatchRegistry::new();
-        assert!(!registry.pause(&"pods"));
+        assert!(!registry.pause(&"pods", PauseReason::Reconnecting));
         assert!(!registry.resume(&"pods"));
         assert!(!registry.is_paused(&"pods"));
     }
@@ -202,7 +235,7 @@ mod tests {
     fn teardown_while_paused_drops_the_paused_flag() {
         let mut registry = WatchRegistry::new();
         registry.subscribe("pods");
-        registry.pause(&"pods");
+        registry.pause(&"pods", PauseReason::Reconnecting);
 
         assert!(registry.unsubscribe(&"pods"), "last unsubscribe tears down");
         assert!(!registry.is_paused(&"pods"));

@@ -1,3 +1,4 @@
+use super::watch_registry::PauseReason;
 use crate::managed_forward::ForwardState;
 use tokio::sync::{mpsc, watch};
 
@@ -6,7 +7,7 @@ use tokio::sync::{mpsc, watch};
 /// `ClusterConnection`'s own `WaitingForTunnel` already covers).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthTransition {
-    Pause,
+    Pause(PauseReason),
     Resume,
 }
 
@@ -15,7 +16,9 @@ pub enum HealthTransition {
 /// a health edge - there is nothing to recover from yet.
 fn transition(prev: ForwardState, next: ForwardState) -> Option<HealthTransition> {
     match (prev, next) {
-        (ForwardState::Up, ForwardState::Reconnecting) => Some(HealthTransition::Pause),
+        (ForwardState::Up, ForwardState::Reconnecting) => {
+            Some(HealthTransition::Pause(PauseReason::Reconnecting))
+        }
         (ForwardState::Reconnecting, ForwardState::Up) => Some(HealthTransition::Resume),
         _ => None,
     }
@@ -49,7 +52,7 @@ mod tests {
     fn up_to_reconnecting_pauses() {
         assert_eq!(
             transition(ForwardState::Up, ForwardState::Reconnecting),
-            Some(HealthTransition::Pause)
+            Some(HealthTransition::Pause(PauseReason::Reconnecting))
         );
     }
 
@@ -87,7 +90,10 @@ mod tests {
         tokio::task::yield_now().await;
 
         state_tx.send(ForwardState::Reconnecting).unwrap();
-        assert_eq!(rx.recv().await, Some(HealthTransition::Pause));
+        assert_eq!(
+            rx.recv().await,
+            Some(HealthTransition::Pause(PauseReason::Reconnecting))
+        );
 
         state_tx.send(ForwardState::Up).unwrap();
         assert_eq!(rx.recv().await, Some(HealthTransition::Resume));
