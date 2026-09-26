@@ -80,6 +80,9 @@ pub struct PodsTable {
 }
 
 impl PodsTable {
+    // UNWIRED: `PodsPanel::new` builds this via `PodsTable::default`; only
+    // this module's own tests call `new`.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -166,6 +169,11 @@ pub fn watch_all_namespaces(
 
 use crate::config::workspace::{NamespaceScope, SortState};
 
+// UNWIRED: `view_rows` below composes this into the view pipeline; `PodsPanel::render`
+// doesn't call `view_rows` yet (it renders `pods()` unfiltered/unsorted), so neither
+// reaches the bin target. First real caller is whatever wires namespace-scope/sort
+// UI state into the panel.
+#[allow(dead_code)]
 pub fn matches_namespace(pod: &Pod, scope: &NamespaceScope) -> bool {
     match scope {
         NamespaceScope::All => true,
@@ -175,10 +183,14 @@ pub fn matches_namespace(pod: &Pod, scope: &NamespaceScope) -> bool {
     }
 }
 
+// UNWIRED: see `matches_namespace` above.
+#[allow(dead_code)]
 fn matches_filter(row: &PodRow, filter: &str) -> bool {
     filter.is_empty() || row.name.contains(filter)
 }
 
+// UNWIRED: see `matches_namespace` above.
+#[allow(dead_code)]
 fn sort_rows(rows: &mut [PodRow], sort: &SortState) {
     rows.sort_by(|a, b| match sort.column.as_str() {
         "namespace" => a.namespace.cmp(&b.namespace),
@@ -196,6 +208,8 @@ fn sort_rows(rows: &mut [PodRow], sort: &SortState) {
 /// The full view pipeline for a Pods panel: scope to a namespace, project to
 /// rows, apply the name filter, then sort. Pure and GPUI-free so it's
 /// directly unit-testable as "the view model".
+// UNWIRED: see `matches_namespace` above - `PodsPanel::render` doesn't call this yet.
+#[allow(dead_code)]
 pub fn view_rows(
     pods: &[Pod],
     now: Timestamp,

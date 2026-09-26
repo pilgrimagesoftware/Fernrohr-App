@@ -46,6 +46,9 @@ impl<K: Eq + Hash> WatchRegistry<K> {
         }
     }
 
+    // UNWIRED on the non-test bin target: only tests read the refcount
+    // directly today; a future status row is the first production caller.
+    #[allow(dead_code)]
     pub fn refcount(&self, key: &K) -> usize {
         self.refcounts.get(key).copied().unwrap_or(0)
     }

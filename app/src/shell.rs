@@ -90,6 +90,8 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
 /// descriptor whose `kind` this build doesn't recognize deserializes as
 /// [`PanelDescriptor::Unknown`] (see `config::workspace`) and is skipped here
 /// with a log line, rather than failing the whole layout.
+// UNWIRED: window restore doesn't call this yet; only its own tests do.
+#[allow(dead_code)]
 pub fn restorable_panels(layout: &WindowLayout) -> Vec<&PanelDescriptor> {
     layout
         .panels

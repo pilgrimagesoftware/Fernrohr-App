@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 /// The last-known geometry of the main window, restored on launch.
+// UNWIRED: no load/save call site wires this into window-open yet; only its
+// own round-trip tests exercise it.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowStateConfig {
