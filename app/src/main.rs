@@ -12,6 +12,7 @@ mod keymap;
 mod logs;
 mod managed_forward;
 mod nav;
+mod panel_title;
 mod paths;
 mod picker;
 mod pidfile;
