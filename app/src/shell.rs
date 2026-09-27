@@ -7,8 +7,7 @@ use crate::keymap;
 use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
 use crate::paths;
 use gpui_kit::component::Root;
-use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement};
-use gpui_kit::component::sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem};
+use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, PanelId};
 use gpui_kit::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -137,36 +136,23 @@ fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
     }
 }
 
-/// Builds the single-panel workspace for `context_name`, landing on
-/// `NavTarget::Pods` - the default resource view for a freshly connected
-/// cluster. `switch_nav` swaps the dock's center to a different kind later
-/// without rebuilding the `DockArea` or reconnecting.
-fn build_workspace(context_name: String, window: &mut Window, cx: &mut App) -> Entity<DockArea> {
-    let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
-    dock_area.update(cx, |area, cx| {
-        area.set_center(
-            nav::build_layout(NavTarget::Pods, context_name, cx),
-            window,
-            cx,
-        );
-    });
-    dock_area
-}
-
-/// Replaces `dock_area`'s center with `target`'s panel, backed by the same
-/// `context_name` (and so the same `ClusterSession`) the workspace already
-/// used - satisfies the `resource-browser` spec's "without reconnecting"
-/// requirement.
-fn switch_nav(
-    dock_area: &Entity<DockArea>,
-    target: NavTarget,
+/// Builds the workspace dock for `context_name` and opens its first panel:
+/// Pods, the default view for a freshly connected cluster. Every later panel
+/// goes through `MainWindow::open_target`, which reuses this dock - and the
+/// window's `ClusterSession` - rather than rebuilding either.
+fn build_workspace(
     context_name: String,
     window: &mut Window,
     cx: &mut App,
-) {
-    dock_area.update(cx, |area, cx| {
-        area.set_center(nav::build_layout(target, context_name, cx), window, cx);
+) -> (Entity<DockArea>, PanelId) {
+    let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
+    // Returned so the window records it in `open_panels` like any other: a
+    // window that opened Pods at startup must still recognise Pods as open,
+    // or the first click on the Pod row would duplicate it (spec 9.3).
+    let first = dock_area.update(cx, |area, cx| {
+        nav::add_panel(area, &NavTarget::pods(), context_name, window, cx)
     });
+    (dock_area, first)
 }
 
 /// The first restorable panel's `cluster_context`, if any - used to pick which context
@@ -186,6 +172,26 @@ fn first_restored_context(layout: &WindowLayout) -> Option<String> {
         })
 }
 
+/// Enough to recognise a panel the dock already holds: which kind, in which
+/// cluster, over which namespace scope. The spec's rule is "the same kind,
+/// cluster, and namespace scope" (9.3), so all three are in the key - a window
+/// with two clusters open, or two namespace pickers on one kind, needs them.
+///
+/// `namespace` is `None` for every panel until section 10.2's title-bar picker
+/// gives it a value; `None` means all namespaces.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+struct PanelKey {
+    target: NavTarget,
+    context_name: String,
+    namespace: Option<String>,
+}
+
+/// A panel the window opened, and how to find it again in the dock.
+struct OpenPanel {
+    key: PanelKey,
+    id: PanelId,
+}
+
 /// A window's body: the cluster picker (no connected context yet) or a connected
 /// workspace. A window opens in `Picker` whenever it has no restored panels, per the
 /// `cluster-picker` and `app-shell` specs.
@@ -194,6 +200,18 @@ enum WindowMode {
     Workspace {
         dock_area: Entity<DockArea>,
         context_name: String,
+        /// The discovered-kind list in the window's left edge. It reads the
+        /// same `ClusterSession` as `dock_area`, so picking a kind opens a
+        /// panel without reconnecting.
+        resource_panel: Entity<crate::resource_panel::ResourcePanel>,
+        /// Every panel this window has opened, in the order it opened them.
+        /// The dock does not report which panel a `PanelId` belongs to, so
+        /// this is also how a closed panel is recognised as closed.
+        open_panels: Vec<OpenPanel>,
+        /// What the Resource panel's row should mark. The window's most
+        /// recently opened or focused kind, which is not the same as the
+        /// dock's active panel once the user clicks tabs directly (section 12
+        /// tracks that).
         nav: NavTarget,
     },
 }
@@ -223,27 +241,21 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                 true
             });
 
-            let mode = match restored_context {
-                Some(context_name) => WindowMode::Workspace {
-                    dock_area: build_workspace(context_name.clone(), window, cx),
-                    context_name,
-                    nav: NavTarget::Pods,
-                },
-                None => {
-                    WindowMode::Picker(cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)))
-                }
-            };
             let view = cx.new(|cx| {
-                match &mode {
-                    WindowMode::Picker(picker) => watch_picker(picker, window, cx),
-                    WindowMode::Workspace { dock_area, .. } => {
-                        watch_workspace(dock_area, window, cx)
-                    }
-                }
-                MainWindow {
-                    mode,
+                let mut view = MainWindow {
+                    mode: WindowMode::Picker(
+                        cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)),
+                    ),
                     focus_handle: cx.focus_handle(),
+                };
+                let WindowMode::Picker(picker) = &view.mode else {
+                    unreachable!("just constructed a picker-mode window")
+                };
+                watch_picker(picker, window, cx);
+                if let Some(context_name) = restored_context {
+                    view.enter_workspace(context_name, window, cx);
                 }
+                view
             });
             // Action dispatch (both real keystrokes and `Window::dispatch_action`)
             // starts at the focused element and bubbles up; with nothing
@@ -270,14 +282,7 @@ fn watch_picker(
         window,
         |this: &mut MainWindow, _picker, event, window, cx| {
             let crate::picker::PickerEvent::Connected { context_name, .. } = event;
-            let dock_area = build_workspace(context_name.clone(), window, cx);
-            watch_workspace(&dock_area, window, cx);
-            this.mode = WindowMode::Workspace {
-                dock_area,
-                context_name: context_name.clone(),
-                nav: NavTarget::Pods,
-            };
-            cx.notify();
+            this.enter_workspace(context_name.clone(), window, cx);
         },
     )
     .detach();
@@ -298,13 +303,11 @@ fn watch_workspace(
             if !matches!(event, DockEvent::LayoutChanged) {
                 return;
             }
+            this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
                 return;
             }
-            let picker = cx.new(|cx| crate::picker::ClusterPicker::new(window, cx));
-            watch_picker(&picker, window, cx);
-            this.mode = WindowMode::Picker(picker);
-            cx.notify();
+            this.enter_picker(window, cx);
         },
     )
     .detach();
@@ -316,31 +319,118 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
+    /// Swaps this window to a connected workspace on `context_name`: the dock
+    /// (defaulting to Pods), the Resource panel listing that cluster's
+    /// discovered kinds, and the subscription that opens whatever is picked.
+    /// Both windows-enter-workspace sites go through here so the Resource
+    /// panel cannot be wired up in one of them and forgotten in the other.
+    fn enter_workspace(
+        &mut self,
+        context_name: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (dock_area, first) = build_workspace(context_name.clone(), window, cx);
+        watch_workspace(&dock_area, window, cx);
+        let resource_panel =
+            cx.new(|cx| crate::resource_panel::ResourcePanel::new(context_name.clone(), cx));
+        cx.subscribe_in(
+            &resource_panel,
+            window,
+            |this: &mut MainWindow, _panel, event, window, cx| {
+                let crate::resource_panel::ResourceEvent::Open(target) = event;
+                this.open_target(target.clone(), window, cx);
+            },
+        )
+        .detach();
+        self.mode = WindowMode::Workspace {
+            dock_area,
+            context_name: context_name.clone(),
+            resource_panel,
+            open_panels: vec![OpenPanel {
+                key: PanelKey {
+                    target: NavTarget::pods(),
+                    context_name,
+                    namespace: None,
+                },
+                id: first,
+            }],
+            nav: NavTarget::pods(),
+        };
+        cx.notify();
+    }
+
+    fn enter_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let picker = cx.new(|cx| crate::picker::ClusterPicker::new(window, cx));
+        watch_picker(&picker, window, cx);
+        self.mode = WindowMode::Picker(picker);
+        cx.notify();
+    }
+
     fn on_action_show_pods(&mut self, _: &ShowPods, window: &mut Window, cx: &mut Context<Self>) {
-        self.switch_nav(NavTarget::Pods, window, cx);
+        self.open_target(NavTarget::pods(), window, cx);
     }
 
     fn on_action_show_logs(&mut self, _: &ShowLogs, window: &mut Window, cx: &mut Context<Self>) {
-        self.switch_nav(NavTarget::Logs, window, cx);
+        self.open_target(NavTarget::Logs, window, cx);
     }
 
-    /// Switches a connected workspace's active panel to `target`, a no-op if
-    /// it is already showing that kind or the window has no workspace yet.
-    fn switch_nav(&mut self, target: NavTarget, window: &mut Window, cx: &mut Context<Self>) {
+    /// Shows `target`: a new panel in the dock if that kind is not already
+    /// open in this window, otherwise a focus of the panel that is (spec 9.3).
+    /// A no-op if the window has no workspace yet.
+    ///
+    /// Every route to a panel - double-click, the row's context menu, and the
+    /// `nav.show_pods` / `nav.show_logs` commands - lands here, which is what
+    /// makes 8.3's "same panel" and 9.2's "equivalent to double-click" hold by
+    /// construction rather than by three call sites agreeing.
+    ///
+    /// Panels are built against the window's existing `context_name`, so
+    /// opening one never reconnects.
+    fn open_target(&mut self, target: NavTarget, window: &mut Window, cx: &mut Context<Self>) {
         let WindowMode::Workspace {
             dock_area,
             context_name,
+            resource_panel,
+            open_panels,
             nav,
         } = &mut self.mode
         else {
             return;
         };
-        if *nav == target {
-            return;
+        let key = PanelKey {
+            target: target.clone(),
+            context_name: context_name.clone(),
+            namespace: None,
+        };
+        match open_panels.iter().find(|open| open.key == key) {
+            Some(open) => {
+                let id = open.id;
+                dock_area.update(cx, |area, cx| area.select_panel(id, window, cx));
+            }
+            None => {
+                let id = dock_area.update(cx, |area, cx| {
+                    nav::add_panel(area, &target, context_name.clone(), window, cx)
+                });
+                open_panels.push(OpenPanel { key, id });
+            }
         }
-        switch_nav(dock_area, target, context_name.clone(), window, cx);
         *nav = target;
+        let showing = nav.clone();
+        resource_panel.update(cx, |panel, cx| panel.set_selected(Some(showing), cx));
         cx.notify();
+    }
+
+    /// Drops bookkeeping for panels the user closed, so re-selecting one later
+    /// opens a fresh panel instead of focusing a dock id that no longer exists.
+    fn forget_closed_panels(&mut self, dock_area: &Entity<DockArea>, cx: &mut App) {
+        let WindowMode::Workspace { open_panels, .. } = &mut self.mode else {
+            return;
+        };
+        let Some(tree) = dock_area.read(cx).layout(DockPlacement::Center) else {
+            return;
+        };
+        let held: Vec<PanelId> = tree.panels().collect();
+        open_panels.retain(|open| held.contains(&open.id));
     }
 }
 
@@ -374,35 +464,23 @@ fn open_command_palette(window: &mut Window, cx: &mut App) {
     });
 }
 
-/// The sidebar's click targets - kept in one place so they stay identical to
-/// the palette/keymap commands `nav::register_commands` contributes.
-const NAV_TARGETS: [NavTarget; 2] = [NavTarget::Pods, NavTarget::Logs];
-
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.mode {
             WindowMode::Picker(picker) => picker.clone().into_any_element(),
-            WindowMode::Workspace { dock_area, nav, .. } => {
-                let current = *nav;
-                let sidebar = Sidebar::new("nav").collapsible(false).child(
-                    SidebarGroup::new("Resources").child(SidebarMenu::new().children(
-                        NAV_TARGETS.map(|target| {
-                            SidebarMenuItem::new(target.label())
-                                .icon(target.icon())
-                                .active(target == current)
-                                .on_click(cx.listener(move |this, _event, window, cx| {
-                                    this.switch_nav(target, window, cx);
-                                }))
-                        }),
-                    )),
-                );
-                div()
-                    .flex()
-                    .size_full()
-                    .child(sidebar)
-                    .child(dock_area.clone().into_any_element())
-                    .into_any_element()
-            }
+            // The Resource panel is the window's left edge. It used to be a
+            // fixed Pods/Logs list built here; the kinds now come from the
+            // cluster's own discovery (spec 8.1), so it owns its own chrome.
+            WindowMode::Workspace {
+                dock_area,
+                resource_panel,
+                ..
+            } => div()
+                .flex()
+                .size_full()
+                .child(resource_panel.clone())
+                .child(dock_area.clone().into_any_element())
+                .into_any_element(),
         };
         div()
             .size_full()
@@ -458,14 +536,16 @@ mod tests {
     // macro, which would shadow `core::prelude::v1::test` for the plain
     // synchronous test below.
     use super::{
-        ClosedWindowLayouts, MainWindow, PanelDescriptor, ToggleCommandPalette, WindowLayout,
-        WindowMode, WorkspaceConfig, build_workspace, config, init, open_saved_or_default,
-        open_window, register_commands, restorable_panels, save, watch_workspace,
+        ClosedWindowLayouts, MainWindow, NavTarget, PanelDescriptor, PanelKey,
+        ToggleCommandPalette, WindowLayout, WindowMode, WorkspaceConfig, config, init,
+        open_saved_or_default, open_window, register_commands, restorable_panels, save,
     };
+    use crate::cluster::discovery::DiscoveredKind;
+    use crate::cluster::session::ClusterRegistry;
     use crate::command::CommandRegistry;
-    use crate::nav::NavTarget;
-    use gpui_kit::component::dock::DockLayout;
-    use gpui_kit::{TestAppContext, WindowId};
+    use gpui_kit::component::dock::{DockLayout, DockPlacement};
+    use gpui_kit::{AppContext as _, TestAppContext, WindowId};
+    use kube::core::GroupVersionKind;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -475,6 +555,183 @@ mod tests {
     fn temp_workspace_path() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("fernrohr-shell-test-{n}.toml"))
+    }
+
+    /// A connected window on `context_name`, for the panel-opening tests.
+    async fn connected_window(
+        cx: &mut TestAppContext,
+        context_name: &str,
+    ) -> gpui_kit::WindowHandle<MainWindow> {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        cx.add_window(|window, cx| {
+            let mut main_window = MainWindow {
+                mode: WindowMode::Picker(
+                    cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)),
+                ),
+                focus_handle: cx.focus_handle(),
+            };
+            main_window.enter_workspace(context_name.to_string(), window, cx);
+            main_window
+        })
+    }
+
+    /// A kind with no concrete panel, as discovery would report a CRD's.
+    fn crd_kind() -> DiscoveredKind {
+        DiscoveredKind {
+            gvk: GroupVersionKind::gvk("ferns.example.com", "v1", "Fern"),
+            plural: "ferns".to_string(),
+            namespaced: true,
+        }
+    }
+
+    /// Section 9.1: selecting a kind adds a panel to the dock rather than
+    /// replacing what was there, and it reuses the window's connection instead
+    /// of opening a new one - so the kinds listed and the panels opened stay on
+    /// one `ClusterSession`.
+    #[gpui_kit::test]
+    async fn opening_a_kind_adds_a_panel_and_keeps_the_session(cx: &mut TestAppContext) {
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+
+        let session_before =
+            cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
+
+        window
+            .update(cx, |main_window, window, cx| {
+                let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                    panic!("a connected window is in workspace mode")
+                };
+                let before = dock_area
+                    .read(cx)
+                    .layout(DockPlacement::Center)
+                    .expect("a workspace dock has a centre")
+                    .panels()
+                    .count();
+
+                main_window.open_target(NavTarget::Kind(crd_kind()), window, cx);
+
+                let dock_area = match &main_window.mode {
+                    WindowMode::Workspace { dock_area, .. } => dock_area,
+                    _ => unreachable!("open_target did not leave workspace mode"),
+                };
+                let after = dock_area
+                    .read(cx)
+                    .layout(DockPlacement::Center)
+                    .expect("a workspace dock has a centre")
+                    .panels()
+                    .count();
+                assert_eq!(after, before + 1, "the kind got its own panel");
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        let session_after = cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
+        assert_eq!(
+            session_before, session_after,
+            "opening a panel must not reconnect the window"
+        );
+    }
+
+    /// Section 9.3: a kind that already has a panel open is focused rather than
+    /// opened a second time. The workspace starts with Pods open, so the first
+    /// selection of Pods is already the "already open" case.
+    #[gpui_kit::test]
+    async fn reopening_a_kind_focuses_it_instead_of_duplicating(cx: &mut TestAppContext) {
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, window, cx| {
+                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                    panic!("a connected window is in workspace mode")
+                };
+                assert_eq!(
+                    open_panels.len(),
+                    1,
+                    "the workspace opens Pods and records it"
+                );
+                assert_eq!(
+                    open_panels[0].key,
+                    PanelKey {
+                        target: NavTarget::pods(),
+                        context_name: "kind-dev".to_string(),
+                        namespace: None,
+                    }
+                );
+
+                // A second, different kind is a genuinely new panel...
+                main_window.open_target(NavTarget::Kind(crd_kind()), window, cx);
+                // ...and the first one again, which must not add a third.
+                main_window.open_target(NavTarget::pods(), window, cx);
+                main_window.open_target(NavTarget::pods(), window, cx);
+
+                let WindowMode::Workspace {
+                    open_panels,
+                    dock_area,
+                    ..
+                } = &main_window.mode
+                else {
+                    unreachable!("open_target did not leave workspace mode")
+                };
+                assert_eq!(
+                    open_panels.len(),
+                    2,
+                    "two distinct kinds, however many times each is selected"
+                );
+                let distinct: std::collections::HashSet<_> =
+                    open_panels.iter().map(|open| open.key.clone()).collect();
+                assert_eq!(distinct.len(), 2, "the recorded keys are distinct");
+                assert_eq!(
+                    dock_area
+                        .read(cx)
+                        .layout(DockPlacement::Center)
+                        .expect("a workspace dock has a centre")
+                        .panels()
+                        .count(),
+                    2,
+                    "the dock holds one panel per distinct kind"
+                );
+            })
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    /// Closing a panel frees its key, so re-selecting the kind afterwards opens
+    /// a fresh panel instead of focusing a dock id the area no longer holds.
+    /// The dock has no id-keyed removal, so the centre is emptied the way the
+    /// app's own "last panel closed" path empties it.
+    #[gpui_kit::test]
+    async fn a_closed_kind_is_opened_again_rather_than_focused(cx: &mut TestAppContext) {
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, window, cx| {
+                let dock_area = match &main_window.mode {
+                    WindowMode::Workspace { dock_area, .. } => dock_area.clone(),
+                    _ => panic!("a connected window is in workspace mode"),
+                };
+                dock_area.update(cx, |area, cx| {
+                    area.set_center(DockLayout::tabs(), window, cx);
+                });
+                main_window.forget_closed_panels(&dock_area, cx);
+
+                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                    unreachable!()
+                };
+                assert!(open_panels.is_empty(), "the closed panel was forgotten");
+
+                main_window.open_target(NavTarget::pods(), window, cx);
+                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                    unreachable!()
+                };
+                assert_eq!(open_panels.len(), 1, "so the kind opens again");
+            })
+            .unwrap();
+        cx.run_until_parked();
     }
 
     #[test]
@@ -514,16 +771,16 @@ mod tests {
         });
 
         let window = cx.add_window(|window, cx| {
-            let dock_area = build_workspace("kind-dev".to_string(), window, cx);
-            watch_workspace(&dock_area, window, cx);
-            MainWindow {
-                mode: WindowMode::Workspace {
-                    dock_area,
-                    context_name: "kind-dev".to_string(),
-                    nav: NavTarget::Pods,
-                },
+            // Goes through the same transition a real connect does, so this
+            // covers the Resource panel being wired up as well as the dock.
+            let mut main_window = MainWindow {
+                mode: WindowMode::Picker(
+                    cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)),
+                ),
                 focus_handle: cx.focus_handle(),
-            }
+            };
+            main_window.enter_workspace("kind-dev".to_string(), window, cx);
+            main_window
         });
 
         window
