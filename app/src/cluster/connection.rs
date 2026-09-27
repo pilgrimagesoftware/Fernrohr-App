@@ -68,6 +68,18 @@ async fn resolve_named_context(
     .map_err(|error| error.to_string())
 }
 
+/// The context name whose tunnel binding decides `connect`'s forward, per section 1.2:
+/// a picker-selected `context_name` always wins over the kubeconfig's own
+/// current-context, which is only consulted when `context_name` is `None` (the
+/// `None`-caller path, unchanged from before this section).
+fn resolve_bound_context(context_name: Option<String>) -> Option<String> {
+    context_name.or_else(|| {
+        crate::cluster::kubeconfig::current_context_name(None)
+            .ok()
+            .flatten()
+    })
+}
+
 /// Points `config.cluster_url` at the tunnel's local forward and pins
 /// `tls_server_name` to the API server host the certificate was actually issued for
 /// (section 1.2's spike), unless the kubeconfig already set one explicitly.
@@ -141,6 +153,19 @@ pub struct ClusterConnection {
 }
 
 impl ClusterConnection {
+    /// A connection in a chosen state with no forward, for tests elsewhere in the crate
+    /// (e.g. `picker.rs`'s "picker stays interactive after a failed connection" case)
+    /// that need a `ClusterConnection` in `Failed`/`Connected`/etc. without driving a
+    /// real [`connect`](Self::connect) - which would need a runtime, a kubeconfig, and
+    /// a reachable (or deliberately unreachable) server.
+    #[cfg(test)]
+    pub(crate) fn test_with_state(state: ConnectionState) -> Self {
+        Self {
+            state,
+            _forward: None,
+        }
+    }
+
     /// The bound forward's state receiver, for section 7.2's `ConnectionHealth` to watch -
     /// `None` for an unbound context, which has no forward to go unhealthy.
     pub fn forward_state(&self) -> Option<watch::Receiver<ForwardState>> {
@@ -174,11 +199,7 @@ impl ClusterConnection {
     /// extracted state receiver and local address move into the background task.
     pub fn connect(cx: &mut App, context_name: Option<String>) -> Entity<Self> {
         cx.new(|cx: &mut Context<Self>| {
-            let bound_context = context_name.clone().or_else(|| {
-                crate::cluster::kubeconfig::current_context_name(None)
-                    .ok()
-                    .flatten()
-            });
+            let bound_context = resolve_bound_context(context_name.clone());
             let tunnels_path = crate::paths::preference_dir().join("tunnels.toml");
             let forward = bound_context.and_then(|context| {
                 tunnel::acquire_for_context(cx, &tunnels_path, &context)
@@ -275,6 +296,16 @@ users:
         let path = std::env::temp_dir().join(format!("fernrohr-connection-fixture-{n}.yaml"));
         std::fs::write(&path, yaml).unwrap();
         Kubeconfig::read_from(&path).unwrap()
+    }
+
+    #[test]
+    fn resolve_bound_context_prefers_the_passed_context_name() {
+        // Deterministic regardless of this machine's real kubeconfig/current-context:
+        // `Some(name)` short-circuits before `current_context_name` is ever consulted.
+        assert_eq!(
+            resolve_bound_context(Some("staging".to_string())),
+            Some("staging".to_string())
+        );
     }
 
     #[tokio::test]

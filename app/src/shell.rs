@@ -4,9 +4,11 @@ use crate::config::{
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
 use crate::keymap;
+use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
 use crate::paths;
 use gpui_kit::component::Root;
-use gpui_kit::component::dock::{DockArea, DockLayout, panel_handle};
+use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement};
+use gpui_kit::component::sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem};
 use gpui_kit::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -50,6 +52,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         context: None,
         action: Box::new(ToggleCommandPalette),
     });
+    nav::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -69,9 +72,21 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         TOGGLE_PALETTE_DEFAULT_BINDING,
         &keymap,
     );
+    let show_pods_binding = keymap::resolve(
+        nav::SHOW_PODS_COMMAND_ID,
+        nav::SHOW_PODS_DEFAULT_BINDING,
+        &keymap,
+    );
+    let show_logs_binding = keymap::resolve(
+        nav::SHOW_LOGS_COMMAND_ID,
+        nav::SHOW_LOGS_DEFAULT_BINDING,
+        &keymap,
+    );
     cx.bind_keys([
         KeyBinding::new(&new_window_binding, NewWindow, None),
         KeyBinding::new(&palette_binding, ToggleCommandPalette, None),
+        KeyBinding::new(&show_pods_binding, ShowPods, None),
+        KeyBinding::new(&show_logs_binding, ShowLogs, None),
     ]);
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
@@ -122,26 +137,36 @@ fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
     }
 }
 
-/// Builds the two-panel split workspace for `context_name`: a live Pods panel alongside
-/// a Logs panel that streams whichever pod was last clicked in either. Full restoration
-/// of an arbitrary persisted panel arrangement is future work (see the
-/// `cluster-picker-and-navigation` change's design doc); today every workspace uses this
-/// fixed split, seeded from whichever context the picker connected to (or, for a window
-/// restored with existing panels, that layout's first panel's `cluster_context`).
+/// Builds the single-panel workspace for `context_name`, landing on
+/// `NavTarget::Pods` - the default resource view for a freshly connected
+/// cluster. `switch_nav` swaps the dock's center to a different kind later
+/// without rebuilding the `DockArea` or reconnecting.
 fn build_workspace(context_name: String, window: &mut Window, cx: &mut App) -> Entity<DockArea> {
-    let left = cx.new(|cx| crate::pods::PodsPanel::new(context_name.clone(), cx));
-    let right = cx.new(|cx| crate::logs::LogsPanel::new(context_name, cx));
     let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
     dock_area.update(cx, |area, cx| {
         area.set_center(
-            DockLayout::h_split()
-                .child(DockLayout::tabs().panel_view(panel_handle(left), cx), None)
-                .child(DockLayout::tabs().panel_view(panel_handle(right), cx), None),
+            nav::build_layout(NavTarget::Pods, context_name, cx),
             window,
             cx,
         );
     });
     dock_area
+}
+
+/// Replaces `dock_area`'s center with `target`'s panel, backed by the same
+/// `context_name` (and so the same `ClusterSession`) the workspace already
+/// used - satisfies the `resource-browser` spec's "without reconnecting"
+/// requirement.
+fn switch_nav(
+    dock_area: &Entity<DockArea>,
+    target: NavTarget,
+    context_name: String,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    dock_area.update(cx, |area, cx| {
+        area.set_center(nav::build_layout(target, context_name, cx), window, cx);
+    });
 }
 
 /// The first restorable panel's `cluster_context`, if any - used to pick which context
@@ -166,7 +191,11 @@ fn first_restored_context(layout: &WindowLayout) -> Option<String> {
 /// `cluster-picker` and `app-shell` specs.
 enum WindowMode {
     Picker(Entity<crate::picker::ClusterPicker>),
-    Workspace(Entity<DockArea>),
+    Workspace {
+        dock_area: Entity<DockArea>,
+        context_name: String,
+        nav: NavTarget,
+    },
 }
 
 /// Opens one window, in `Picker` mode if `layout` has no restorable panels, or directly
@@ -180,6 +209,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             ..Default::default()
         },
         |window, cx| {
+            crate::theme::watch_window(window, cx);
+
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
                 let layout = layout_from_bounds(window.bounds());
@@ -193,27 +224,21 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             });
 
             let mode = match restored_context {
-                Some(context_name) => {
-                    WindowMode::Workspace(build_workspace(context_name, window, cx))
+                Some(context_name) => WindowMode::Workspace {
+                    dock_area: build_workspace(context_name.clone(), window, cx),
+                    context_name,
+                    nav: NavTarget::Pods,
+                },
+                None => {
+                    WindowMode::Picker(cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)))
                 }
-                None => WindowMode::Picker(cx.new(crate::picker::ClusterPicker::new)),
             };
             let view = cx.new(|cx| {
-                if let WindowMode::Picker(picker) = &mode {
-                    cx.subscribe_in(
-                        picker,
-                        window,
-                        |this: &mut MainWindow, _picker, event, window, cx| {
-                            let crate::picker::PickerEvent::Connected { context_name, .. } = event;
-                            this.mode = WindowMode::Workspace(build_workspace(
-                                context_name.clone(),
-                                window,
-                                cx,
-                            ));
-                            cx.notify();
-                        },
-                    )
-                    .detach();
+                match &mode {
+                    WindowMode::Picker(picker) => watch_picker(picker, window, cx),
+                    WindowMode::Workspace { dock_area, .. } => {
+                        watch_workspace(dock_area, window, cx)
+                    }
                 }
                 MainWindow {
                     mode,
@@ -233,9 +258,90 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
     .expect("failed to open window");
 }
 
+/// Subscribes so a successful connect on `picker` swaps this window into
+/// `Workspace` mode and arms [`watch_workspace`] on the new dock.
+fn watch_picker(
+    picker: &Entity<crate::picker::ClusterPicker>,
+    window: &mut Window,
+    cx: &mut Context<MainWindow>,
+) {
+    cx.subscribe_in(
+        picker,
+        window,
+        |this: &mut MainWindow, _picker, event, window, cx| {
+            let crate::picker::PickerEvent::Connected { context_name, .. } = event;
+            let dock_area = build_workspace(context_name.clone(), window, cx);
+            watch_workspace(&dock_area, window, cx);
+            this.mode = WindowMode::Workspace {
+                dock_area,
+                context_name: context_name.clone(),
+                nav: NavTarget::Pods,
+            };
+            cx.notify();
+        },
+    )
+    .detach();
+}
+
+/// Subscribes so closing `dock_area`'s last panel swaps this window back into
+/// `Picker` mode, per the `app-shell` spec's "closing the last panel returns
+/// to the picker" scenario.
+fn watch_workspace(
+    dock_area: &Entity<DockArea>,
+    window: &mut Window,
+    cx: &mut Context<MainWindow>,
+) {
+    cx.subscribe_in(
+        dock_area,
+        window,
+        |this: &mut MainWindow, dock_area, event, window, cx| {
+            if !matches!(event, DockEvent::LayoutChanged) {
+                return;
+            }
+            if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
+                return;
+            }
+            let picker = cx.new(|cx| crate::picker::ClusterPicker::new(window, cx));
+            watch_picker(&picker, window, cx);
+            this.mode = WindowMode::Picker(picker);
+            cx.notify();
+        },
+    )
+    .detach();
+}
+
 pub struct MainWindow {
     mode: WindowMode,
     focus_handle: FocusHandle,
+}
+
+impl MainWindow {
+    fn on_action_show_pods(&mut self, _: &ShowPods, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_nav(NavTarget::Pods, window, cx);
+    }
+
+    fn on_action_show_logs(&mut self, _: &ShowLogs, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_nav(NavTarget::Logs, window, cx);
+    }
+
+    /// Switches a connected workspace's active panel to `target`, a no-op if
+    /// it is already showing that kind or the window has no workspace yet.
+    fn switch_nav(&mut self, target: NavTarget, window: &mut Window, cx: &mut Context<Self>) {
+        let WindowMode::Workspace {
+            dock_area,
+            context_name,
+            nav,
+        } = &mut self.mode
+        else {
+            return;
+        };
+        if *nav == target {
+            return;
+        }
+        switch_nav(dock_area, target, context_name.clone(), window, cx);
+        *nav = target;
+        cx.notify();
+    }
 }
 
 /// Opens the command palette in a dialog on `window`'s `Root`. A fresh
@@ -268,11 +374,35 @@ fn open_command_palette(window: &mut Window, cx: &mut App) {
     });
 }
 
+/// The sidebar's click targets - kept in one place so they stay identical to
+/// the palette/keymap commands `nav::register_commands` contributes.
+const NAV_TARGETS: [NavTarget; 2] = [NavTarget::Pods, NavTarget::Logs];
+
 impl Render for MainWindow {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.mode {
             WindowMode::Picker(picker) => picker.clone().into_any_element(),
-            WindowMode::Workspace(dock_area) => dock_area.clone().into_any_element(),
+            WindowMode::Workspace { dock_area, nav, .. } => {
+                let current = *nav;
+                let sidebar = Sidebar::new("nav").collapsible(false).child(
+                    SidebarGroup::new("Resources").child(SidebarMenu::new().children(
+                        NAV_TARGETS.map(|target| {
+                            SidebarMenuItem::new(target.label())
+                                .icon(target.icon())
+                                .active(target == current)
+                                .on_click(cx.listener(move |this, _event, window, cx| {
+                                    this.switch_nav(target, window, cx);
+                                }))
+                        }),
+                    )),
+                );
+                div()
+                    .flex()
+                    .size_full()
+                    .child(sidebar)
+                    .child(dock_area.clone().into_any_element())
+                    .into_any_element()
+            }
         };
         div()
             .size_full()
@@ -280,6 +410,8 @@ impl Render for MainWindow {
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
             })
+            .on_action(cx.listener(Self::on_action_show_pods))
+            .on_action(cx.listener(Self::on_action_show_logs))
             .child(body)
     }
 }
@@ -326,11 +458,13 @@ mod tests {
     // macro, which would shadow `core::prelude::v1::test` for the plain
     // synchronous test below.
     use super::{
-        ClosedWindowLayouts, PanelDescriptor, ToggleCommandPalette, WindowLayout, WorkspaceConfig,
-        config, init, open_saved_or_default, open_window, register_commands, restorable_panels,
-        save,
+        ClosedWindowLayouts, MainWindow, PanelDescriptor, ToggleCommandPalette, WindowLayout,
+        WindowMode, WorkspaceConfig, build_workspace, config, init, open_saved_or_default,
+        open_window, register_commands, restorable_panels, save, watch_workspace,
     };
     use crate::command::CommandRegistry;
+    use crate::nav::NavTarget;
+    use gpui_kit::component::dock::DockLayout;
     use gpui_kit::{TestAppContext, WindowId};
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -366,6 +500,55 @@ mod tests {
 
         assert_eq!(kept.len(), 1);
         assert!(matches!(kept[0], PanelDescriptor::Pods { .. }));
+    }
+
+    /// Section 4.4: emptying a workspace's center dock (what closing its last panel
+    /// leaves behind) flips the window back to `Picker` mode - `watch_workspace`'s
+    /// `DockEvent::LayoutChanged` subscription, driven directly here via `set_center`
+    /// with an empty layout rather than a real interactive panel close.
+    #[gpui_kit::test]
+    async fn closing_the_last_panel_returns_to_the_picker(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+
+        let window = cx.add_window(|window, cx| {
+            let dock_area = build_workspace("kind-dev".to_string(), window, cx);
+            watch_workspace(&dock_area, window, cx);
+            MainWindow {
+                mode: WindowMode::Workspace {
+                    dock_area,
+                    context_name: "kind-dev".to_string(),
+                    nav: NavTarget::Pods,
+                },
+                focus_handle: cx.focus_handle(),
+            }
+        });
+
+        window
+            .update(cx, |main_window, _window, _cx| {
+                assert!(matches!(main_window.mode, WindowMode::Workspace { .. }));
+            })
+            .unwrap();
+
+        window
+            .update(cx, |main_window, window, cx| {
+                let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                    unreachable!("just asserted Workspace mode above");
+                };
+                dock_area.update(cx, |area, cx| {
+                    area.set_center(DockLayout::tabs(), window, cx);
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, _window, _cx| {
+                assert!(matches!(main_window.mode, WindowMode::Picker(_)));
+            })
+            .unwrap();
     }
 
     #[gpui_kit::test]

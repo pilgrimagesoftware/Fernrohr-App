@@ -163,4 +163,50 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
+
+    /// Section 1.2: a context bound to a tunnel acquires that tunnel's forward when
+    /// looked up by its own name, not the kubeconfig's `current-context` - the case
+    /// `connection.rs`'s `connect(cx, Some(context_name))` now relies on via
+    /// `resolve_bound_context`. Only acquisition is asserted here; the forward
+    /// actually reaching `Up` against a real bastion is `tunnel-bastion-verification`
+    /// (deferred, blocked on a real bastion to test against).
+    #[gpui_kit::test]
+    async fn bound_context_acquires_its_tunnel_by_name(cx: &mut gpui_kit::TestAppContext) {
+        use crate::config::tunnels::TunnelConfig;
+        use crate::tunnel_store::TunnelStore;
+
+        let path = std::env::temp_dir().join(format!(
+            "fernrohr-cluster-tunnel-bound-test-{}.toml",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let store = TunnelStore::new(path.clone());
+        store
+            .create(
+                "staging-bastion",
+                TunnelConfig {
+                    name: "staging".to_string(),
+                    bastion_user: "deploy".to_string(),
+                    bastion_host: "bastion.example.invalid".to_string(),
+                    bastion_port: 22,
+                    jump_hosts: Vec::new(),
+                    remote_host: "10.0.0.1".to_string(),
+                    remote_port: 6443,
+                },
+                None,
+            )
+            .unwrap();
+        store.bind("staging", "staging-bastion").unwrap();
+
+        cx.update(crate::runtime::init);
+        let result = cx.update(|cx| acquire_for_context(cx, &path, "staging"));
+        assert!(matches!(result, Ok(Some(_))));
+        // A context sharing the kubeconfig's current-context, but not named "staging",
+        // must not match - the binding is looked up by the exact name passed in.
+        let miss = cx.update(|cx| acquire_for_context(cx, &path, "not-staging"));
+        assert!(matches!(miss, Ok(None)));
+
+        let _ = std::fs::remove_file(&path);
+    }
 }
