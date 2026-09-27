@@ -73,13 +73,25 @@ mod tests {
     #[test]
     fn explicit_port_is_honored() {
         // Reserve a free port the OS picked, then re-request it explicitly to avoid
-        // a fixed port number flaking on a busy CI box.
-        let probe = allocate().unwrap();
-        let port = probe.addr().port();
-        drop(probe);
+        // a fixed port number flaking on a busy CI box. Dropping the probe opens a
+        // window in which a parallel test can claim that port, so re-probe on
+        // AddrInUse instead of reporting that race as a failure of this module.
+        const ATTEMPTS: usize = 8;
+        for _ in 0..ATTEMPTS {
+            let probe = allocate().unwrap();
+            let port = probe.addr().port();
+            drop(probe);
 
-        let allocated = allocate_explicit(port).unwrap();
-        assert_eq!(allocated.addr().port(), port);
+            match allocate_explicit(port) {
+                Ok(allocated) => {
+                    assert_eq!(allocated.addr().port(), port);
+                    return;
+                }
+                Err(error) if error.kind() == io::ErrorKind::AddrInUse => continue,
+                Err(error) => panic!("allocate_explicit({port}) failed: {error}"),
+            }
+        }
+        panic!("could not claim a free port for an explicit request in {ATTEMPTS} attempts");
     }
 
     #[test]

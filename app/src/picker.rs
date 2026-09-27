@@ -12,6 +12,7 @@ use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
 use gpui_kit::component::{ActiveTheme as _, Icon};
 use gpui_kit::*;
+use std::sync::{Arc, LazyLock};
 
 pub enum PickerEvent {
     Connected { context_name: String },
@@ -29,6 +30,12 @@ pub struct ClusterPicker {
     command_state: Entity<CommandState>,
     attempt: Option<Attempt>,
     focus_handle: FocusHandle,
+    /// Test-only stand-in for `ClusterRegistry::connection`. Real connections spawn
+    /// tokio work on a runtime worker thread, which gpui's test scheduler rejects
+    /// as cross-thread nondeterminism - so tests substitute a stub instead of
+    /// driving a real connect.
+    #[cfg(test)]
+    connection_factory: Option<fn(&mut App, &str) -> Entity<ClusterConnection>>,
 }
 
 impl ClusterPicker {
@@ -38,11 +45,27 @@ impl ClusterPicker {
             command_state: cx.new(|cx| CommandState::new(window, cx)),
             attempt: None,
             focus_handle: cx.focus_handle(),
+            #[cfg(test)]
+            connection_factory: None,
         }
     }
 
+    /// The connection a [`Self::select`] attempt should observe. Production always
+    /// goes through the shared registry; only tests take the stub path.
+    fn new_connection(
+        &self,
+        context_name: &str,
+        cx: &mut Context<Self>,
+    ) -> Entity<ClusterConnection> {
+        #[cfg(test)]
+        if let Some(factory) = self.connection_factory {
+            return factory(cx, context_name);
+        }
+        ClusterRegistry::connection(cx, context_name)
+    }
+
     fn select(&mut self, context_name: String, cx: &mut Context<Self>) {
-        let connection = ClusterRegistry::connection(cx, &context_name);
+        let connection = self.new_connection(&context_name, cx);
         cx.observe(&connection, {
             let context_name = context_name.clone();
             move |_this: &mut Self, connection, cx| {
@@ -90,6 +113,29 @@ fn card(cx: &App) -> Div {
         .p_6()
 }
 
+/// The Fernrohr logo, centered above the picker card.
+///
+/// Embedded at compile time rather than resolved from disk at runtime:
+/// `images/` holds the untouched brand sources (1254px, multi-megabyte), while
+/// `app/assets/` holds the trimmed, screen-sized render that ships in the
+/// binary. Embedding means the picker is unaffected by the working directory
+/// or by how the app is packaged.
+fn logo() -> impl IntoElement {
+    // Built once and reused: `Image`'s `Hash` impl hashes its own bytes, which
+    // is what gpui's asset cache keys on, so only the first render decodes it.
+    static LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
+        Arc::new(Image::from_bytes(
+            ImageFormat::Png,
+            include_bytes!("../assets/fernrohr-logo.png").to_vec(),
+        ))
+    });
+
+    img(LOGO.clone())
+        .w(px(96.))
+        .h(px(93.)) // matches the 192x186 source aspect so the mark isn't stretched
+        .object_fit(ObjectFit::Contain)
+}
+
 fn header(cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     div()
@@ -118,6 +164,8 @@ fn header(cx: &App) -> impl IntoElement {
 impl Render for ClusterPicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
+        // The logo sits outside the card so it reads as app branding rather than
+        // as part of the command-palette chrome the card deliberately mimics.
         let backdrop = |content: AnyElement| {
             div()
                 .size_full()
@@ -125,7 +173,15 @@ impl Render for ClusterPicker {
                 .items_center()
                 .justify_center()
                 .bg(theme.background)
-                .child(content)
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap_6()
+                        .child(logo())
+                        .child(content),
+                )
         };
 
         let contexts = match &self.contexts {
@@ -267,18 +323,48 @@ users:
         assert!(result.is_err());
     }
 
+    /// Guards the `include_bytes!` in [`super::logo`]: a truncated or placeholder
+    /// asset compiles fine and only fails as a blank gap in the UI, so assert the
+    /// embedded bytes are a complete PNG rather than just non-empty.
+    #[test]
+    fn the_embedded_logo_is_a_complete_png() {
+        const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+        let bytes = include_bytes!("../assets/fernrohr-logo.png");
+        assert!(bytes.starts_with(SIGNATURE), "missing PNG signature");
+        assert!(
+            bytes.ends_with(b"IEND\xae\x42\x60\x82"),
+            "missing PNG IEND trailer"
+        );
+        assert!(bytes.len() > 1024, "logo looks truncated");
+    }
+
     /// Section 3.2: drives `ClusterPicker` into a fake `Failed` attempt directly (via
     /// `ClusterConnection::test_with_state`, no real connect) rather than through
     /// `select`, so the failure path doesn't depend on network access or a real
-    /// kubeconfig - then confirms the picker remains interactive by driving a second,
-    /// real `select` call afterward.
+    /// kubeconfig - then confirms the picker remains interactive by driving a second
+    /// `select` call afterward.
+    ///
+    /// The retry also goes through the stub connection factory rather than
+    /// `ClusterRegistry::connection`: a real connect spawns tokio work on a runtime
+    /// worker thread, which gpui's test scheduler flags as nondeterminism and turns
+    /// into a flaky failure. This test previously failed that way on `develop`.
     #[gpui_kit::test]
     async fn failed_attempt_shows_the_reason_and_stays_interactive(
         cx: &mut gpui_kit::TestAppContext,
     ) {
         use super::{Attempt, ClusterPicker};
         use crate::cluster::connection::{ClusterConnection, ConnectionState};
-        use gpui_kit::AppContext as _;
+        use gpui_kit::{AppContext as _, Entity};
+
+        /// Stands in for `ClusterRegistry::connection`: hands back a connection in a
+        /// non-terminal state so selecting again replaces the attempt without any
+        /// real I/O.
+        fn stub_connection(
+            cx: &mut gpui_kit::App,
+            _context_name: &str,
+        ) -> Entity<ClusterConnection> {
+            cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting))
+        }
 
         cx.update(|cx| {
             gpui_kit::init(cx);
@@ -288,6 +374,7 @@ users:
 
         window
             .update(cx, |picker, _window, cx| {
+                picker.connection_factory = Some(stub_connection);
                 picker.attempt = Some(Attempt {
                     context_name: "kind-dev".to_string(),
                     connection: cx.new(|_| {
