@@ -162,13 +162,30 @@ pub const MIN_WINDOW_SIZE: Size<Pixels> = Size {
 ///
 /// Embedded at compile time rather than resolved from disk at runtime, so the
 /// picker is unaffected by the working directory or by how the app is packaged.
-/// The size is not the reason it stays embedded, though: the brand source in
-/// `images/` is a 1.6MB PNG, but re-encoding it as WebP at *full* resolution
-/// costs 215KB (q90, PSNR ~40dB, alpha bit-exact), which is noise in a binary
-/// this size. Runtime loading would only buy that 215KB back in exchange for a
-/// missing-file failure mode on a decorative asset and new packaging work for
-/// every platform's bundle layout. The asset is trimmed to its alpha bounding
-/// box so the rendered height matches the mark rather than the source canvas.
+/// 1.14MB is not a reason to load it at runtime: that is under 1% of even a
+/// debug build, and it buys back a missing-file failure mode on a decorative
+/// asset plus new packaging work for every platform's bundle layout.
+///
+/// The asset is **lossless** - verified bit-identical to the master, alpha
+/// included - because a lossy encode is not good enough at this size. The mark
+/// is effectively photographic (259,771 distinct colours across 1.57M pixels, so
+/// continuous gradient rather than flat fills), which is why lossless WebP only
+/// reaches 1.14MB against the 1.6MB PNG instead of the 6x a graphic would give.
+/// An earlier q90 encode was 215KB and scored PSNR 40dB, but that reads as
+/// clean at 96px and shows at 192px, and PSNR is the wrong instrument for
+/// judging a logo.
+///
+/// Reproduce with (note the ordering - `-preset` must precede `-lossless`, or it
+/// silently overwrites it and the output is lossy despite the flag):
+///
+/// ```sh
+/// magick images/fernrohr-logo.png -trim +repage trimmed.png
+/// cwebp -preset picture -lossless -z 9 -m 6 trimmed.png -o app/assets/fernrohr-logo.webp
+/// ```
+///
+/// The asset is trimmed to its alpha bounding box so the rendered height tracks
+/// the mark rather than the source canvas, which carried ~60px of horizontal and
+/// ~90px of vertical transparent margin.
 fn logo() -> impl IntoElement {
     // Built once and reused: `Image`'s `Hash` impl hashes its own bytes, which
     // is what gpui's asset cache keys on, so only the first render decodes it.
@@ -393,13 +410,14 @@ users:
             "RIFF size disagrees with file length - asset looks truncated"
         );
 
-        // The full-resolution re-encode is ~215KB. The floor catches a
-        // placeholder; the ceiling catches the 1.6MB brand source in `images/`
-        // being committed here by mistake, which is what this asset exists to
-        // avoid.
+        // The lossless full-resolution encode is ~1.14MB. The floor catches a
+        // placeholder; the ceiling catches either the 1.6MB brand source in
+        // `images/` or a lossy re-encode being committed here by mistake - this
+        // asset is required to be bit-identical to the master, and both of those
+        // are not.
         assert!(
-            (100_000..1_000_000).contains(&bytes.len()),
-            "logo is {} bytes, outside the expected full-resolution range",
+            (1_000_000..1_400_000).contains(&bytes.len()),
+            "logo is {} bytes, outside the expected lossless full-resolution range",
             bytes.len()
         );
     }
@@ -443,18 +461,20 @@ users:
     /// the real canvas out of the shipped bytes and hold both.
     #[test]
     fn the_embedded_logo_is_large_enough_for_the_size_it_renders_at() {
-        /// Canvas dimensions of `app/assets/fernrohr-logo.webp`. cwebp emits the
-        /// extended format (VP8X) for any lossy image carrying alpha, which puts the
-        /// canvas size at a fixed offset: 12 bytes of RIFF header, then the chunk id
-        /// and its length, then 4 bytes of flags/reserved, then width and height as
-        /// 24-bit little-endian values biased by one.
+        /// Canvas dimensions of `app/assets/fernrohr-logo.webp`. A lossless WebP is a
+        /// single `VP8L` chunk - unlike the lossy-with-alpha `VP8X` extended format -
+        /// and packs the canvas into a 32-bit field: 12 bytes of RIFF header, then the
+        /// chunk id and its length, then a 0x2f signature byte, then width-1 in bits
+        /// 0-13 and height-1 in bits 14-27.
         fn canvas_size() -> (usize, usize) {
             let bytes = include_bytes!("../assets/fernrohr-logo.webp");
-            assert_eq!(&bytes[12..16], b"VP8X", "expected the extended WebP format");
-            let dim = |at: usize| {
-                u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], 0]) as usize + 1
-            };
-            (dim(24), dim(27))
+            assert_eq!(&bytes[12..16], b"VP8L", "expected a lossless (VP8L) WebP");
+            assert_eq!(bytes[20], 0x2f, "missing the VP8L signature byte");
+            let packed = u32::from_le_bytes(bytes[21..25].try_into().unwrap());
+            (
+                (packed & 0x3fff) as usize + 1,
+                ((packed >> 14) & 0x3fff) as usize + 1,
+            )
         }
 
         let (width, height) = canvas_size();
