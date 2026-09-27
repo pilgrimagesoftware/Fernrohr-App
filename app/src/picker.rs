@@ -113,26 +113,38 @@ fn card(cx: &App) -> Div {
         .p_6()
 }
 
+/// Displayed width of the logo, in logical pixels. The embedded asset is 1241px
+/// wide, so this stays sharp to ~2x on a Retina display with room to spare.
+const LOGO_WIDTH: f32 = 192.;
+
+/// Displayed height, derived from the asset's 1241x1183 geometry so the mark is
+/// never stretched.
+const LOGO_HEIGHT: f32 = 183.;
+
 /// The Fernrohr logo, centered above the picker card.
 ///
-/// Embedded at compile time rather than resolved from disk at runtime:
-/// `images/` holds the untouched brand sources (1254px, multi-megabyte), while
-/// `app/assets/` holds the trimmed, screen-sized render that ships in the
-/// binary. Embedding means the picker is unaffected by the working directory
-/// or by how the app is packaged.
+/// Embedded at compile time rather than resolved from disk at runtime, so the
+/// picker is unaffected by the working directory or by how the app is packaged.
+/// The size is not the reason it stays embedded, though: the brand source in
+/// `images/` is a 1.6MB PNG, but re-encoding it as WebP at *full* resolution
+/// costs 215KB (q90, PSNR ~40dB, alpha bit-exact), which is noise in a binary
+/// this size. Runtime loading would only buy that 215KB back in exchange for a
+/// missing-file failure mode on a decorative asset and new packaging work for
+/// every platform's bundle layout. The asset is trimmed to its alpha bounding
+/// box so the rendered height matches the mark rather than the source canvas.
 fn logo() -> impl IntoElement {
     // Built once and reused: `Image`'s `Hash` impl hashes its own bytes, which
     // is what gpui's asset cache keys on, so only the first render decodes it.
     static LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
         Arc::new(Image::from_bytes(
-            ImageFormat::Png,
-            include_bytes!("../assets/fernrohr-logo.png").to_vec(),
+            ImageFormat::Webp,
+            include_bytes!("../assets/fernrohr-logo.webp").to_vec(),
         ))
     });
 
     img(LOGO.clone())
-        .w(px(96.))
-        .h(px(93.)) // matches the 192x186 source aspect so the mark isn't stretched
+        .w(px(LOGO_WIDTH))
+        .h(px(LOGO_HEIGHT))
         .object_fit(ObjectFit::Contain)
 }
 
@@ -324,18 +336,31 @@ users:
     }
 
     /// Guards the `include_bytes!` in [`super::logo`]: a truncated or placeholder
-    /// asset compiles fine and only fails as a blank gap in the UI, so assert the
-    /// embedded bytes are a complete PNG rather than just non-empty.
+    /// asset compiles fine and only fails as a blank gap in the UI. WebP's RIFF
+    /// header carries the total file size, so a length that disagrees with it
+    /// catches truncation exactly rather than by proxy.
     #[test]
-    fn the_embedded_logo_is_a_complete_png() {
-        const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
-        let bytes = include_bytes!("../assets/fernrohr-logo.png");
-        assert!(bytes.starts_with(SIGNATURE), "missing PNG signature");
-        assert!(
-            bytes.ends_with(b"IEND\xae\x42\x60\x82"),
-            "missing PNG IEND trailer"
+    fn the_embedded_logo_is_a_complete_webp() {
+        let bytes = include_bytes!("../assets/fernrohr-logo.webp");
+        assert!(bytes.starts_with(b"RIFF"), "missing RIFF signature");
+        assert_eq!(&bytes[8..12], b"WEBP", "RIFF payload is not WebP");
+
+        let declared = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        assert_eq!(
+            declared + 8,
+            bytes.len(),
+            "RIFF size disagrees with file length - asset looks truncated"
         );
-        assert!(bytes.len() > 1024, "logo looks truncated");
+
+        // The full-resolution re-encode is ~215KB. The floor catches a
+        // placeholder; the ceiling catches the 1.6MB brand source in `images/`
+        // being committed here by mistake, which is what this asset exists to
+        // avoid.
+        assert!(
+            (100_000..1_000_000).contains(&bytes.len()),
+            "logo is {} bytes, outside the expected full-resolution range",
+            bytes.len()
+        );
     }
 
     /// Section 3.2: drives `ClusterPicker` into a fake `Failed` attempt directly (via
