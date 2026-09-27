@@ -51,6 +51,23 @@ pub struct ResourcePanel {
 impl ResourcePanel {
     pub fn new(context_name: String, cx: &mut Context<Self>) -> Self {
         let connection = ClusterRegistry::connection(cx, &context_name);
+        Self::with_connection(context_name, connection, cx)
+    }
+
+    /// Construction from an explicit connection, so tests can hand in a stub.
+    ///
+    /// [`Self::new`] has to source the connection from `ClusterRegistry`, which
+    /// starts a *real* connect: a tokio task that gpui's test scheduler reports as
+    /// cross-thread nondeterminism if it's still in flight when the test ends, and
+    /// whose timing depends on the machine's real kubeconfig (a context that fails
+    /// fast on CI, a live one locally). Tests drive `state` directly and never
+    /// need that, so they pass a connection that stays in a non-`Connected` state -
+    /// which also keeps `sync` from kicking off real discovery.
+    fn with_connection(
+        context_name: String,
+        connection: Entity<ClusterConnection>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         cx.observe(&connection, |this: &mut Self, connection, cx| {
             this.sync(&connection, cx)
         })
@@ -255,9 +272,10 @@ impl Render for ResourcePanel {
 #[cfg(test)]
 mod tests {
     use super::{ResourcePanel, ResourceState};
+    use crate::cluster::connection::{ClusterConnection, ConnectionState};
     use crate::cluster::discovery::DiscoveredKind;
     use crate::nav::{NavTarget, has_concrete_panel};
-    use gpui_kit::TestAppContext;
+    use gpui_kit::{AppContext as _, TestAppContext, WindowHandle};
     use kube::core::GroupVersionKind;
 
     fn kind(group: &str, kind: &str) -> DiscoveredKind {
@@ -266,6 +284,18 @@ mod tests {
             plural: format!("{}s", kind.to_lowercase()),
             namespaced: true,
         }
+    }
+
+    /// A panel wired to a stub connection instead of the real registry - see
+    /// [`ResourcePanel::with_connection`]. The stub stays non-`Connected`, so
+    /// nothing spawns a real connect or discovery task.
+    fn stub_panel(cx: &mut TestAppContext) -> WindowHandle<ResourcePanel> {
+        let connection = cx.update(|cx| {
+            cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting))
+        });
+        cx.add_window(|_window, cx| {
+            ResourcePanel::with_connection("kind-dev".to_string(), connection.clone(), cx)
+        })
     }
 
     /// Section 8.1: what the panel lists is exactly what discovery returned -
@@ -278,7 +308,7 @@ mod tests {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
         });
-        let window = cx.add_window(|_, cx| ResourcePanel::new("kind-dev".to_string(), cx));
+        let window = stub_panel(cx);
 
         let discovered = vec![
             kind("", "Pod"),
@@ -318,7 +348,7 @@ mod tests {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
         });
-        let window = cx.add_window(|_, cx| ResourcePanel::new("kind-dev".to_string(), cx));
+        let window = stub_panel(cx);
 
         let fern = kind("ferns.example.com", "Fern");
         let pod = DiscoveredKind::pods();
@@ -372,7 +402,7 @@ mod tests {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
         });
-        let window = cx.add_window(|_, cx| ResourcePanel::new("kind-dev".to_string(), cx));
+        let window = stub_panel(cx);
 
         let kinds = vec![
             kind("", "Service"),
@@ -411,7 +441,7 @@ mod tests {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
         });
-        let window = cx.add_window(|_, cx| ResourcePanel::new("kind-dev".to_string(), cx));
+        let window = stub_panel(cx);
 
         let fern = kind("ferns.example.com", "Fern");
         let opened: Vec<NavTarget> = Vec::new();
@@ -456,7 +486,7 @@ mod tests {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
         });
-        let window = cx.add_window(|_, cx| ResourcePanel::new("kind-dev".to_string(), cx));
+        let window = stub_panel(cx);
 
         window
             .update(cx, |panel, _window, cx| {
@@ -481,7 +511,7 @@ mod tests {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
         });
-        let window = cx.add_window(|_, cx| ResourcePanel::new("kind-dev".to_string(), cx));
+        let window = stub_panel(cx);
 
         window
             .update(cx, |panel, _window, cx| {
