@@ -12,15 +12,12 @@ mod keymap;
 mod logs;
 mod managed_forward;
 mod nav;
-mod panel_title;
 mod paths;
-mod picker;
 mod pidfile;
 mod placeholder;
 mod pods;
 mod port_allocator;
 mod resource_index;
-mod resource_panel;
 mod runtime;
 mod shell;
 mod ssh_path;
@@ -28,9 +25,11 @@ mod ssh_tunnel;
 mod theme;
 mod tunnel_secrets;
 mod tunnel_store;
+mod ui;
 
 fn main() {
     gpui_kit::application()
+        .with_assets(gpui_kit::assets::Assets)
         .with_quit_mode(QuitMode::LastWindowClosed)
         .run(|cx: &mut App| {
             gpui_kit::init(cx);

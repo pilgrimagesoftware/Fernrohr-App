@@ -84,6 +84,10 @@ impl ClusterPicker {
         });
         cx.notify();
     }
+
+    pub fn command_focus_handle(&self, cx: &App) -> FocusHandle {
+        self.command_state.read(cx).focus_handle(cx)
+    }
 }
 
 impl EventEmitter<PickerEvent> for ClusterPicker {}
@@ -126,7 +130,7 @@ fn logo() -> impl IntoElement {
     static LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
         Arc::new(Image::from_bytes(
             ImageFormat::Png,
-            include_bytes!("../assets/fernrohr-logo.png").to_vec(),
+            include_bytes!("../../assets/fernrohr-logo.png").to_vec(),
         ))
     });
 
@@ -329,7 +333,7 @@ users:
     #[test]
     fn the_embedded_logo_is_a_complete_png() {
         const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
-        let bytes = include_bytes!("../assets/fernrohr-logo.png");
+        let bytes = include_bytes!("../../assets/fernrohr-logo.png");
         assert!(bytes.starts_with(SIGNATURE), "missing PNG signature");
         assert!(
             bytes.ends_with(b"IEND\xae\x42\x60\x82"),

@@ -7,24 +7,29 @@
 //! the row doing nothing at all, which would leave a listed kind looking broken.
 
 use crate::cluster::discovery::DiscoveredKind;
-use crate::panel_title::{self, PanelScope, ScopeEvent};
+use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
+use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
 use gpui_kit::*;
 
 /// A dock panel standing in for a kind this build has no table for.
 pub struct PlaceholderPanel {
     kind: DiscoveredKind,
     scope: PanelScope,
+    namespaces: Entity<crate::cluster::namespaces::NamespaceList>,
     focus_handle: FocusHandle,
 }
 
 impl PlaceholderPanel {
     pub fn new(kind: DiscoveredKind, scope: PanelScope, cx: &mut Context<Self>) -> Self {
+        let namespaces =
+            crate::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
+        cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
         Self {
             kind,
             scope,
+            namespaces,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -111,10 +116,11 @@ impl Panel for PlaceholderPanel {
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         let this = cx.weak_entity();
-        panel_title::namespace_picker(&self.scope, move |namespace, cx| {
+        let namespaces = self.namespaces.read(cx).names();
+        panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
             let _ = this.update(cx, |this: &mut Self, cx| {
-                this.scope = this.scope.scoped_to(namespace.clone());
-                cx.emit(ScopeEvent::NamespaceChanged(namespace));
+                this.scope = this.scope.scoped_to(namespaces.clone());
+                cx.emit(ScopeEvent::NamespacesChanged(namespaces));
             });
         })
     }
@@ -126,6 +132,10 @@ impl Panel for PlaceholderPanel {
     ) -> Option<Vec<Button>> {
         panel_title::toolbar_buttons()
     }
+
+    fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {
+        Some(PanelControl::Toolbar)
+    }
 }
 
 #[cfg(test)]
@@ -133,7 +143,7 @@ mod tests {
     use super::PlaceholderPanel;
     use crate::cluster::discovery::DiscoveredKind;
     use crate::nav::NavTarget;
-    use crate::panel_title::PanelScope;
+    use crate::ui::panel_title::PanelScope;
     use gpui_kit::TestAppContext;
     use kube::core::GroupVersionKind;
 

@@ -5,9 +5,9 @@
 
 use crate::cluster::discovery::DiscoveredKind;
 use crate::command::{Command, CommandRegistry};
-use crate::panel_title::PanelScope;
+use crate::ui::panel_title::PanelScope;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId};
+use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
 use gpui_kit::*;
 
 actions!(nav, [ShowPods, ShowLogs]);
@@ -88,7 +88,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 ///
 /// The window subscribes to this to hear a panel re-scope itself (10.2's
 /// namespace picker), and `PanelKey` is built from the same
-/// [`PanelScope`](crate::panel_title::PanelScope) the panel was constructed
+/// [`PanelScope`](crate::ui::panel_title::PanelScope) the panel was constructed
 /// with. Returning the concrete type rather than a `PanelId` alone is what
 /// makes that subscription possible; an erased handle could not be updated.
 pub enum OpenedPanel {
@@ -129,13 +129,25 @@ pub fn add_panel(
         NavTarget::Logs => {
             let panel = cx.new(|cx| crate::logs::LogsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
-            area.add_panel(panel.clone(), DockPlacement::Center, None, window, cx);
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
             (id, OpenedPanel::Logs(panel))
         }
         NavTarget::Kind(kind) if has_concrete_panel(kind) => {
             let panel = cx.new(|cx| crate::pods::PodsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
-            area.add_panel(panel.clone(), DockPlacement::Center, None, window, cx);
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
             (id, OpenedPanel::Pods(panel))
         }
         NavTarget::Kind(kind) => {
@@ -143,7 +155,13 @@ pub fn add_panel(
                 crate::placeholder::PlaceholderPanel::new(kind.clone(), scope.clone(), cx)
             });
             let id = PanelId::from(panel.entity_id());
-            area.add_panel(panel.clone(), DockPlacement::Center, None, window, cx);
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
             (id, OpenedPanel::Placeholder(panel))
         }
     }
