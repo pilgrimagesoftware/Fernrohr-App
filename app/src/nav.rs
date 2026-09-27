@@ -5,6 +5,7 @@
 
 use crate::cluster::discovery::DiscoveredKind;
 use crate::command::{Command, CommandRegistry};
+use crate::panel_title::PanelScope;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId};
 use gpui_kit::*;
@@ -83,8 +84,33 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     });
 }
 
-/// Builds the panel for `target` in `context_name`'s session and adds it to
-/// `area`'s centre, returning the dock's id for it.
+/// A panel `add_panel` just built, as the typed entity the window needs.
+///
+/// The window subscribes to this to hear a panel re-scope itself (10.2's
+/// namespace picker), and `PanelKey` is built from the same
+/// [`PanelScope`](crate::panel_title::PanelScope) the panel was constructed
+/// with. Returning the concrete type rather than a `PanelId` alone is what
+/// makes that subscription possible; an erased handle could not be updated.
+pub enum OpenedPanel {
+    Pods(Entity<crate::pods::PodsPanel>),
+    Placeholder(Entity<crate::placeholder::PlaceholderPanel>),
+    Logs(Entity<crate::logs::LogsPanel>),
+}
+
+impl OpenedPanel {
+    /// The dock id of the panel just built, without naming its type - what the
+    /// window files it under and what `rescope` needs to find it again.
+    pub fn panel_id(&self) -> PanelId {
+        match self {
+            OpenedPanel::Pods(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::Placeholder(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
+        }
+    }
+}
+
+/// Builds the panel for `scope` in its cluster's session and adds it to `area`'s
+/// centre.
 ///
 /// One code path for "open a panel", so a kind opened from the Resource panel,
 /// from the context menu, or from `nav.show_pods` cannot drift apart. The
@@ -92,34 +118,33 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 /// existing one is the window's bookkeeping, not the panel's.
 pub fn add_panel(
     area: &mut DockArea,
-    target: &NavTarget,
-    context_name: String,
+    scope: &PanelScope,
     window: &mut Window,
     cx: &mut Context<DockArea>,
-) -> PanelId {
+) -> (PanelId, OpenedPanel) {
     // Three concrete panel types, so the match cannot collapse into one
     // generic call - but every arm does the same two things in the same order,
     // and the id is taken from the entity before `add_panel` consumes it.
-    match target {
+    match &scope.target {
         NavTarget::Logs => {
-            let panel = cx.new(|cx| crate::logs::LogsPanel::new(context_name, cx));
+            let panel = cx.new(|cx| crate::logs::LogsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
-            area.add_panel(panel, DockPlacement::Center, None, window, cx);
-            id
+            area.add_panel(panel.clone(), DockPlacement::Center, None, window, cx);
+            (id, OpenedPanel::Logs(panel))
         }
         NavTarget::Kind(kind) if has_concrete_panel(kind) => {
-            let panel = cx.new(|cx| crate::pods::PodsPanel::new(context_name, cx));
+            let panel = cx.new(|cx| crate::pods::PodsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
-            area.add_panel(panel, DockPlacement::Center, None, window, cx);
-            id
+            area.add_panel(panel.clone(), DockPlacement::Center, None, window, cx);
+            (id, OpenedPanel::Pods(panel))
         }
         NavTarget::Kind(kind) => {
             let panel = cx.new(|cx| {
-                crate::placeholder::PlaceholderPanel::new(kind.clone(), context_name, cx)
+                crate::placeholder::PlaceholderPanel::new(kind.clone(), scope.clone(), cx)
             });
             let id = PanelId::from(panel.entity_id());
-            area.add_panel(panel, DockPlacement::Center, None, window, cx);
-            id
+            area.add_panel(panel.clone(), DockPlacement::Center, None, window, cx);
+            (id, OpenedPanel::Placeholder(panel))
         }
     }
 }

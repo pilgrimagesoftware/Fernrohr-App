@@ -7,22 +7,24 @@
 //! the row doing nothing at all, which would leave a listed kind looking broken.
 
 use crate::cluster::discovery::DiscoveredKind;
+use crate::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
 use gpui_kit::*;
 
 /// A dock panel standing in for a kind this build has no table for.
 pub struct PlaceholderPanel {
     kind: DiscoveredKind,
-    context_name: String,
+    scope: PanelScope,
     focus_handle: FocusHandle,
 }
 
 impl PlaceholderPanel {
-    pub fn new(kind: DiscoveredKind, context_name: String, cx: &mut Context<Self>) -> Self {
+    pub fn new(kind: DiscoveredKind, scope: PanelScope, cx: &mut Context<Self>) -> Self {
         Self {
             kind,
-            context_name,
+            scope,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -42,6 +44,7 @@ impl Focusable for PlaceholderPanel {
 }
 
 impl EventEmitter<PanelEvent> for PlaceholderPanel {}
+impl EventEmitter<ScopeEvent> for PlaceholderPanel {}
 
 impl Render for PlaceholderPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -73,27 +76,64 @@ impl Render for PlaceholderPanel {
                 div()
                     .text_sm()
                     .text_color(theme.muted_foreground)
-                    .child(format!("Discovered from cluster {}.", self.context_name)),
+                    .child(format!(
+                        "Discovered from cluster {}.",
+                        self.scope.context_name
+                    )),
             )
     }
 }
 
 // `Resource` rather than the kind's name: `panel_name` is a persisted-layout
 // identifier and must be `&'static str`, while the kind is only known at
-// runtime. Section 10's per-kind title bar is what names a panel for the user;
-// this only has to be stable and distinct from the concrete panels.
+// runtime. The title bar below is what names a panel for the user; this only
+// has to be stable and distinct from the concrete panels.
 impl BasePanel for PlaceholderPanel {
     fn panel_name(&self) -> &'static str {
         "Resource"
     }
 }
 
-impl Panel for PlaceholderPanel {}
+/// Section 10: the title bar. The dock draws it and lays the parts out - this
+/// only supplies them, so a placeholder and a concrete panel get the same bar.
+impl Panel for PlaceholderPanel {
+    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title(&self.scope)
+    }
+
+    fn tab_name(&self, _cx: &App) -> Option<SharedString> {
+        panel_title::tab_name(&self.scope)
+    }
+
+    fn title_suffix(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        let this = cx.weak_entity();
+        panel_title::namespace_picker(&self.scope, move |namespace, cx| {
+            let _ = this.update(cx, |this: &mut Self, cx| {
+                this.scope = this.scope.scoped_to(namespace.clone());
+                cx.emit(ScopeEvent::NamespaceChanged(namespace));
+            });
+        })
+    }
+
+    fn toolbar_buttons(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Vec<Button>> {
+        panel_title::toolbar_buttons()
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::PlaceholderPanel;
     use crate::cluster::discovery::DiscoveredKind;
+    use crate::nav::NavTarget;
+    use crate::panel_title::PanelScope;
     use gpui_kit::TestAppContext;
     use kube::core::GroupVersionKind;
 
@@ -117,7 +157,10 @@ mod tests {
         let window = cx.add_window(|_window, cx| {
             PlaceholderPanel::new(
                 kind("ferns.example.com", "Fern"),
-                "kind-dev".to_string(),
+                PanelScope::new(
+                    NavTarget::Kind(kind("ferns.example.com", "Fern")),
+                    "kind-dev".into(),
+                ),
                 cx,
             )
         });

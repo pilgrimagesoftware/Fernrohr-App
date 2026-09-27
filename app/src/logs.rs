@@ -202,13 +202,16 @@ pub fn stream_container_logs(
     })
 }
 
+use crate::panel_title::{self, PanelScope, ScopeEvent};
 use crate::pods::{PodSelection, SelectedPod};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
 use gpui_kit::*;
 
 /// A dock panel streaming the container logs of whichever pod was last
 /// clicked in a Pods panel (see [`SelectedPod`]).
 pub struct LogsPanel {
+    scope: PanelScope,
     connection: Entity<crate::cluster::connection::ClusterConnection>,
     view: Entity<LogsView>,
     stream: Option<Task<()>>,
@@ -217,16 +220,17 @@ pub struct LogsPanel {
 }
 
 impl LogsPanel {
-    pub fn new(context_name: String, cx: &mut Context<Self>) -> Self {
+    pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
         use crate::cluster::session::ClusterRegistry;
 
-        let connection = ClusterRegistry::connection(cx, &context_name);
+        let connection = ClusterRegistry::connection(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
         cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
             .detach();
 
         let mut this = Self {
+            scope,
             connection,
             view: cx.new(|_| LogsView::new(vec![String::new()])),
             stream: None,
@@ -284,6 +288,7 @@ impl Focusable for LogsPanel {
 }
 
 impl EventEmitter<PanelEvent> for LogsPanel {}
+impl EventEmitter<ScopeEvent> for LogsPanel {}
 
 impl Render for LogsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -306,7 +311,38 @@ impl BasePanel for LogsPanel {
     }
 }
 
-impl Panel for LogsPanel {}
+/// Section 10: the title bar, supplied to the dock rather than drawn here.
+impl Panel for LogsPanel {
+    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title(&self.scope)
+    }
+
+    fn tab_name(&self, _cx: &App) -> Option<SharedString> {
+        panel_title::tab_name(&self.scope)
+    }
+
+    fn title_suffix(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        let this = cx.weak_entity();
+        panel_title::namespace_picker(&self.scope, move |namespace, cx| {
+            let _ = this.update(cx, |this: &mut Self, cx| {
+                this.scope = this.scope.scoped_to(namespace.clone());
+                cx.emit(ScopeEvent::NamespaceChanged(namespace));
+            });
+        })
+    }
+
+    fn toolbar_buttons(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Vec<Button>> {
+        panel_title::toolbar_buttons()
+    }
+}
 
 #[cfg(test)]
 mod tests {

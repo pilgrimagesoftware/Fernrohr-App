@@ -5,6 +5,7 @@ use crate::config::{
 };
 use crate::keymap;
 use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
+use crate::panel_title::{self, PanelScope};
 use crate::paths;
 use gpui_kit::component::Root;
 use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, PanelId};
@@ -142,17 +143,22 @@ fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
 /// window's `ClusterSession` - rather than rebuilding either.
 fn build_workspace(
     context_name: String,
+    connection_count: usize,
     window: &mut Window,
     cx: &mut App,
-) -> (Entity<DockArea>, PanelId) {
+) -> (Entity<DockArea>, PanelScope, (PanelId, nav::OpenedPanel)) {
     let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
+    let scope = PanelScope {
+        connection_count,
+        ..PanelScope::new(NavTarget::pods(), context_name)
+    };
     // Returned so the window records it in `open_panels` like any other: a
     // window that opened Pods at startup must still recognise Pods as open,
-    // or the first click on the Pod row would duplicate it (spec 9.3).
-    let first = dock_area.update(cx, |area, cx| {
-        nav::add_panel(area, &NavTarget::pods(), context_name, window, cx)
-    });
-    (dock_area, first)
+    // or the first click on the Pod row would duplicate it (spec 9.3). The
+    // scope comes back too, so the key is derived from the very scope the panel
+    // was built with rather than restated beside it.
+    let first = dock_area.update(cx, |area, cx| nav::add_panel(area, &scope, window, cx));
+    (dock_area, scope, first)
 }
 
 /// The first restorable panel's `cluster_context`, if any - used to pick which context
@@ -177,13 +183,28 @@ fn first_restored_context(layout: &WindowLayout) -> Option<String> {
 /// cluster, and namespace scope" (9.3), so all three are in the key - a window
 /// with two clusters open, or two namespace pickers on one kind, needs them.
 ///
-/// `namespace` is `None` for every panel until section 10.2's title-bar picker
-/// gives it a value; `None` means all namespaces.
+/// `namespace` is `None` for a panel whose title-bar picker still reads "All
+/// namespaces", which is every panel until the picker has a narrower scope to
+/// offer.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct PanelKey {
     target: NavTarget,
     context_name: String,
     namespace: Option<String>,
+}
+
+impl From<&PanelScope> for PanelKey {
+    /// Derived rather than built alongside, so the key a panel is filed under
+    /// and the scope its title bar draws cannot describe different panels -
+    /// which is exactly the disagreement 10.2's namespace picker would
+    /// otherwise create.
+    fn from(scope: &PanelScope) -> Self {
+        Self {
+            target: scope.target.clone(),
+            context_name: scope.context_name.clone(),
+            namespace: scope.namespace.clone(),
+        }
+    }
 }
 
 /// A panel the window opened, and how to find it again in the dock.
@@ -213,6 +234,12 @@ enum WindowMode {
         /// dock's active panel once the user clicks tabs directly (section 12
         /// tracks that).
         nav: NavTarget,
+        /// How many cluster connections this window holds. One today: adding a
+        /// second connection to an already-connected window is an explicit
+        /// non-goal of this change (`design.md`), so the count is the window's
+        /// to state and pass on rather than something panels assume. Section
+        /// 10.1's title bar reads it.
+        connection_count: usize,
     },
 }
 
@@ -330,7 +357,11 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let (dock_area, first) = build_workspace(context_name.clone(), window, cx);
+        // One connection per connected window in this change; see
+        // `WindowMode::Workspace::connection_count`.
+        const CONNECTIONS: usize = 1;
+        let (dock_area, scope, (first_id, first)) =
+            build_workspace(context_name.clone(), CONNECTIONS, window, cx);
         watch_workspace(&dock_area, window, cx);
         let resource_panel =
             cx.new(|cx| crate::resource_panel::ResourcePanel::new(context_name.clone(), cx));
@@ -345,18 +376,76 @@ impl MainWindow {
         .detach();
         self.mode = WindowMode::Workspace {
             dock_area,
-            context_name: context_name.clone(),
+            context_name,
             resource_panel,
             open_panels: vec![OpenPanel {
-                key: PanelKey {
-                    target: NavTarget::pods(),
-                    context_name,
-                    namespace: None,
-                },
-                id: first,
+                key: PanelKey::from(&scope),
+                id: first_id,
             }],
             nav: NavTarget::pods(),
+            connection_count: CONNECTIONS,
         };
+        self.watch_scope_changes(first, window, cx);
+        cx.notify();
+    }
+
+    /// Re-files an open panel under the scope it now shows.
+    ///
+    /// A panel's title-bar namespace picker re-scopes the panel in place
+    /// (10.2). Without this the window would keep the panel under its old key,
+    /// so asking for that old scope again would focus a panel no longer showing
+    /// it, and the panel's current scope would be unreachable.
+    fn watch_scope_changes(
+        &mut self,
+        opened: nav::OpenedPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // `PanelId` rather than the entity: the subscription closure has to be
+        // `'static`, and an id says everything `rescope` needs.
+        let id = opened.panel_id();
+        let rekey = move |this: &mut MainWindow,
+                          event: &panel_title::ScopeEvent,
+                          cx: &mut Context<MainWindow>| {
+            let panel_title::ScopeEvent::NamespaceChanged(namespace) = event;
+            this.rescope(id, namespace.clone(), cx);
+        };
+        match opened {
+            nav::OpenedPanel::Pods(panel) => {
+                cx.subscribe_in(
+                    &panel,
+                    window,
+                    move |this: &mut MainWindow, _panel, event, _window, cx| rekey(this, event, cx),
+                )
+                .detach();
+            }
+            nav::OpenedPanel::Placeholder(panel) => {
+                cx.subscribe_in(
+                    &panel,
+                    window,
+                    move |this: &mut MainWindow, _panel, event, _window, cx| rekey(this, event, cx),
+                )
+                .detach();
+            }
+            nav::OpenedPanel::Logs(panel) => {
+                cx.subscribe_in(
+                    &panel,
+                    window,
+                    move |this: &mut MainWindow, _panel, event, _window, cx| rekey(this, event, cx),
+                )
+                .detach();
+            }
+        }
+    }
+
+    /// Moves the panel with `id` to a new namespace, whichever panel type it is.
+    fn rescope(&mut self, id: PanelId, namespace: Option<String>, cx: &mut Context<Self>) {
+        let WindowMode::Workspace { open_panels, .. } = &mut self.mode else {
+            return;
+        };
+        if let Some(open) = open_panels.iter_mut().find(|open| open.id == id) {
+            open.key.namespace = namespace;
+        }
         cx.notify();
     }
 
@@ -393,30 +482,38 @@ impl MainWindow {
             resource_panel,
             open_panels,
             nav,
+            connection_count,
         } = &mut self.mode
         else {
             return;
         };
-        let key = PanelKey {
-            target: target.clone(),
-            context_name: context_name.clone(),
-            namespace: None,
+        let connection_count = *connection_count;
+        // Set only when a panel was actually built, so the subscription below
+        // is not made for a panel the dock already had.
+        let mut watch_scope = None;
+        let scope = PanelScope {
+            connection_count,
+            ..PanelScope::new(target.clone(), context_name.clone())
         };
+        let key = PanelKey::from(&scope);
         match open_panels.iter().find(|open| open.key == key) {
             Some(open) => {
                 let id = open.id;
                 dock_area.update(cx, |area, cx| area.select_panel(id, window, cx));
             }
             None => {
-                let id = dock_area.update(cx, |area, cx| {
-                    nav::add_panel(area, &target, context_name.clone(), window, cx)
-                });
+                let (id, opened) =
+                    dock_area.update(cx, |area, cx| nav::add_panel(area, &scope, window, cx));
                 open_panels.push(OpenPanel { key, id });
+                watch_scope = Some(opened);
             }
         }
         *nav = target;
         let showing = nav.clone();
         resource_panel.update(cx, |panel, cx| panel.set_selected(Some(showing), cx));
+        if let Some(opened) = watch_scope {
+            self.watch_scope_changes(opened, window, cx);
+        }
         cx.notify();
     }
 
@@ -543,8 +640,10 @@ mod tests {
     use crate::cluster::discovery::DiscoveredKind;
     use crate::cluster::session::ClusterRegistry;
     use crate::command::CommandRegistry;
-    use gpui_kit::component::dock::{DockLayout, DockPlacement};
-    use gpui_kit::{AppContext as _, TestAppContext, WindowId};
+    use crate::nav;
+    use crate::panel_title::PanelScope;
+    use gpui_kit::component::dock::{self, DockLayout, DockPlacement, PanelView as _};
+    use gpui_kit::{App, AppContext as _, Entity, SharedString, TestAppContext, Window, WindowId};
     use kube::core::GroupVersionKind;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -585,6 +684,34 @@ mod tests {
             plural: "ferns".to_string(),
             namespaced: true,
         }
+    }
+
+    /// A cluster-scoped CRD, the kind 10.2 says must not grow a namespace picker.
+    fn cluster_scoped_kind() -> DiscoveredKind {
+        DiscoveredKind {
+            gvk: GroupVersionKind::gvk("widgets.example.com", "v1", "Widget"),
+            plural: "widgets".to_string(),
+            namespaced: false,
+        }
+    }
+
+    /// The title bar the dock builds for `panel`, read back the way the dock
+    /// reads it: through `PanelView`, which is the object-safe face of `Panel`
+    /// and takes no panel context.
+    ///
+    /// Returns the tab name, whether a namespace picker is on the bar, and how
+    /// many controls sit at its trailing end.
+    fn title_bar_of<T: dock::Panel>(
+        panel: &Entity<T>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (Option<SharedString>, bool, usize) {
+        let name = panel.tab_name(cx);
+        let picker = panel.title_suffix(window, cx).is_some();
+        let controls = panel
+            .toolbar_buttons(window, cx)
+            .map_or(0, |buttons| buttons.len());
+        (name, picker, controls)
     }
 
     /// Section 9.1: selecting a kind adds a panel to the dock rather than
@@ -757,6 +884,119 @@ mod tests {
 
         assert_eq!(kept.len(), 1);
         assert!(matches!(kept[0], PanelDescriptor::Pods { .. }));
+    }
+
+    /// Section 10.1-10.3, checked on every panel type the dock holds rather than
+    /// on the title-bar helpers alone: each panel's tab names its kind, a
+    /// namespace picker is on the bar exactly when the kind is namespaced, and
+    /// the close control the dock needs is on every one of them.
+    ///
+    /// A cluster-scoped kind is in the list on purpose - it is the case where
+    /// the picker must be *absent*, which a test over namespaced kinds alone
+    /// could not catch.
+    #[gpui_kit::test]
+    async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+
+        let expected = 4;
+        let cases: [(NavTarget, bool); 4] = [
+            (NavTarget::pods(), true),
+            (NavTarget::Logs, true),
+            (NavTarget::Kind(crd_kind()), true),
+            (NavTarget::Kind(cluster_scoped_kind()), false),
+        ];
+
+        let mut checked: Vec<String> = Vec::new();
+        window
+            .update(cx, |main_window, window, cx| {
+                let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                    panic!("a connected window is in workspace mode")
+                };
+                for (target, namespaced) in cases {
+                    let scope = PanelScope::new(target.clone(), "kind-dev".to_string());
+                    let (_id, opened) =
+                        dock_area.update(cx, |area, cx| nav::add_panel(area, &scope, window, cx));
+                    let (name, picker, controls) = match opened {
+                        nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
+                        nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
+                        nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
+                    };
+                    assert_eq!(
+                        name.as_deref(),
+                        Some(target.label()).as_deref(),
+                        "the title bar names the kind, and adds the cluster only \
+                         when the window holds more than one connection"
+                    );
+                    assert_eq!(
+                        picker, namespaced,
+                        "a namespace picker belongs on a namespaced kind and on \
+                         nothing else"
+                    );
+                    assert!(
+                        controls > 0,
+                        "every resource panel needs its close control, found \
+                         none on {}",
+                        target.label()
+                    );
+                    checked.push(target.label());
+                }
+            })
+            .unwrap();
+
+        assert_eq!(
+            checked.len(),
+            expected,
+            "every panel type was checked: {checked:?}"
+        );
+    }
+
+    /// Section 10.2's second half: a panel that reports a narrower namespace is
+    /// re-filed under it.
+    ///
+    /// This is the body the title-bar subscription runs, driven directly: the
+    /// dock hands out panel ids rather than panel entities, so there is no way
+    /// from a test to pick a namespace in the rendered menu and watch the
+    /// event arrive. What it pins down is the rule the subscription exists for
+    /// - the panel stops being filed under the scope it no longer shows.
+    #[gpui_kit::test]
+    async fn a_narrowed_namespace_rekeys_the_open_panel(cx: &mut TestAppContext) {
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, _window, cx| {
+                let (id, before) = match &main_window.mode {
+                    WindowMode::Workspace { open_panels, .. } => {
+                        let open = &open_panels[0];
+                        (open.id, open.key.clone())
+                    }
+                    _ => panic!("a connected window is in workspace mode"),
+                };
+                assert_eq!(before.namespace, None, "it starts on all namespaces");
+
+                main_window.rescope(id, Some("staging".to_string()), cx);
+
+                let after = match &main_window.mode {
+                    WindowMode::Workspace { open_panels, .. } => open_panels[0].key.clone(),
+                    _ => unreachable!("rescope did not leave workspace mode"),
+                };
+                assert_ne!(
+                    before, after,
+                    "the panel must stop being filed under the scope it dropped"
+                );
+                assert_eq!(
+                    after.namespace,
+                    Some("staging".to_string()),
+                    "and be filed under the one it now shows"
+                );
+                assert_eq!(after.target, before.target, "only the namespace moved");
+                assert_eq!(
+                    after.context_name, before.context_name,
+                    "the cluster is still the cluster"
+                );
+            })
+            .unwrap();
     }
 
     /// Section 4.4: emptying a workspace's center dock (what closing its last panel

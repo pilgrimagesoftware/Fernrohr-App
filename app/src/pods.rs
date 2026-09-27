@@ -1,3 +1,4 @@
+use crate::panel_title::{self, PanelScope, ScopeEvent};
 use crate::resource_index::ResourceIndex;
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
@@ -265,6 +266,7 @@ pub fn view_rows(
     rows
 }
 
+use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
 use gpui_kit::*;
 
@@ -283,10 +285,10 @@ pub struct SelectedPod(pub Option<PodSelection>);
 
 impl Global for SelectedPod {}
 
-/// A dock panel connecting to `context_name` and rendering its live,
+/// A dock panel connecting to its scope's cluster and rendering its live,
 /// all-namespaces Pods table.
 pub struct PodsPanel {
-    context_name: String,
+    scope: PanelScope,
     connection: Entity<crate::cluster::connection::ClusterConnection>,
     table: Entity<PodsTable>,
     subscribed: bool,
@@ -294,9 +296,10 @@ pub struct PodsPanel {
 }
 
 impl PodsPanel {
-    pub fn new(context_name: String, cx: &mut Context<Self>) -> Self {
+    pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
         use crate::cluster::session::ClusterRegistry;
 
+        let context_name = scope.context_name.clone();
         let connection = ClusterRegistry::connection(cx, &context_name);
         cx.observe(&connection, |this: &mut Self, connection, cx| {
             this.start_watch_if_connected(&connection, cx);
@@ -314,7 +317,7 @@ impl PodsPanel {
         .detach();
 
         let mut this = Self {
-            context_name,
+            scope,
             connection: connection.clone(),
             table: cx.new(|_| PodsTable::default()),
             subscribed: false,
@@ -340,7 +343,7 @@ impl PodsPanel {
             return;
         };
         let client = client.clone();
-        self.table = ClusterRegistry::subscribe_pods(cx, &self.context_name, client);
+        self.table = ClusterRegistry::subscribe_pods(cx, &self.scope.context_name, client);
         cx.observe(&self.table, |_, _, cx| cx.notify()).detach();
         self.subscribed = true;
     }
@@ -353,6 +356,7 @@ impl Focusable for PodsPanel {
 }
 
 impl EventEmitter<PanelEvent> for PodsPanel {}
+impl EventEmitter<ScopeEvent> for PodsPanel {}
 
 impl Render for PodsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -368,8 +372,8 @@ impl Render for PodsPanel {
                 use crate::cluster::session::ClusterRegistry;
                 use crate::cluster::watch_registry::PauseReason;
 
-                let pause_banner = ClusterRegistry::pods_pause_info(cx, &self.context_name).map(
-                    |(reason, elapsed)| {
+                let pause_banner = ClusterRegistry::pods_pause_info(cx, &self.scope.context_name)
+                    .map(|(reason, elapsed)| {
                         let reason = match reason {
                             PauseReason::Reconnecting => "tunnel reconnecting",
                             PauseReason::CredentialRefresh => "refreshing credentials",
@@ -378,8 +382,7 @@ impl Render for PodsPanel {
                             "Paused ({reason}) - {} ago",
                             format_age(elapsed.as_secs() as i64)
                         ))
-                    },
-                );
+                    });
 
                 let now = Timestamp::now();
                 let items: Vec<(PodRow, PodSelection)> = self
@@ -432,7 +435,39 @@ impl BasePanel for PodsPanel {
     }
 }
 
-impl Panel for PodsPanel {}
+/// Section 10: the title bar, supplied to the dock rather than drawn here, so
+/// this panel and a placeholder get an identical bar.
+impl Panel for PodsPanel {
+    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title(&self.scope)
+    }
+
+    fn tab_name(&self, _cx: &App) -> Option<SharedString> {
+        panel_title::tab_name(&self.scope)
+    }
+
+    fn title_suffix(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        let this = cx.weak_entity();
+        panel_title::namespace_picker(&self.scope, move |namespace, cx| {
+            let _ = this.update(cx, |this: &mut Self, cx| {
+                this.scope = this.scope.scoped_to(namespace.clone());
+                cx.emit(ScopeEvent::NamespaceChanged(namespace));
+            });
+        })
+    }
+
+    fn toolbar_buttons(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<Vec<Button>> {
+        panel_title::toolbar_buttons()
+    }
+}
 
 #[cfg(test)]
 mod tests {
