@@ -36,9 +36,8 @@ pub struct PanelScope {
     /// this change (see `design.md`), so the window passes its count rather
     /// than the bar assuming one.
     pub connection_count: usize,
-    /// The namespace this panel is scoped to. `None` is "all namespaces", the
-    /// only scope a window can represent today - see [`namespaces_offered`].
-    pub namespace: Option<String>,
+    /// Namespaces this panel is scoped to. An empty list means all namespaces.
+    pub namespaces: Vec<String>,
 }
 
 impl PanelScope {
@@ -47,15 +46,17 @@ impl PanelScope {
             target,
             context_name,
             connection_count: 1,
-            namespace: None,
+            namespaces: Vec::new(),
         }
     }
 
     /// The same scope pointed at a different namespace - what the title bar's
     /// namespace picker produces.
-    pub fn scoped_to(&self, namespace: Option<String>) -> Self {
+    pub fn scoped_to(&self, mut namespaces: Vec<String>) -> Self {
+        namespaces.sort_unstable();
+        namespaces.dedup();
         Self {
-            namespace,
+            namespaces,
             ..self.clone()
         }
     }
@@ -86,24 +87,23 @@ pub fn title(scope: &PanelScope) -> String {
     }
 }
 
-/// The label a namespace scope reads on the picker's button. `None` is "all
-/// namespaces", the scope a window can represent before anything narrows it.
-fn label_for(namespace: &Option<String>) -> String {
-    namespace
-        .clone()
-        .unwrap_or_else(|| "All namespaces".to_string())
+/// The label a namespace scope reads on the picker's button.
+fn label_for(namespaces: &[String]) -> String {
+    match namespaces {
+        [] => "All namespaces".to_string(),
+        [namespace] => namespace.clone(),
+        namespaces => format!("{} namespaces", namespaces.len()),
+    }
 }
 
-/// The namespace scopes this build's picker offers.
-///
-/// "All namespaces" and nothing else, on purpose. Listing a cluster's
-/// namespaces needs a namespace list/watch that this change does not add
-/// (see `design.md`'s non-goals), and section 10.2's contract is that the
-/// picker *appears* for namespaced kinds and is absent for cluster-scoped ones,
-/// not that it enumerates anything. Growing this list is the namespace
-/// discovery work's job, and it lands as data, not as a change here.
-pub fn namespaces_offered() -> Vec<Option<String>> {
-    vec![None]
+type OnPick = Rc<dyn Fn(Vec<String>, &mut App)>;
+
+/// The namespace scopes a picker offers: all namespaces, then the cluster's
+/// sorted namespace names.
+pub fn namespaces_offered(namespaces: &[String]) -> Vec<Option<String>> {
+    std::iter::once(None)
+        .chain(namespaces.iter().cloned().map(Some))
+        .collect()
 }
 
 /// The tab name the dock labels the panel's tab with, which is its title.
@@ -134,12 +134,6 @@ pub fn close_button() -> Button {
         .on_click(|_event, window, cx| window.dispatch_action(Box::new(ClosePanel), cx))
 }
 
-/// What the picker's menu items call when one is chosen: the newly picked
-/// scope, and the `App` to act in - the panel owns the scope and needs its own
-/// `Context` to change it. Shared rather than cloned per item, because a
-/// callback is not `Clone` and every item needs its own handle on it.
-type OnPick = Rc<dyn Fn(Option<String>, &mut App)>;
-
 /// The namespace picker, or nothing for a cluster-scoped kind.
 ///
 /// Pinned to the trailing end of the title bar by `Panel::title_suffix`. The
@@ -148,7 +142,8 @@ type OnPick = Rc<dyn Fn(Option<String>, &mut App)>;
 /// disagree.
 pub fn namespace_picker(
     scope: &PanelScope,
-    on_pick: impl Fn(Option<String>, &mut App) + 'static,
+    namespaces: &[String],
+    on_pick: impl Fn(Vec<String>, &mut App) + 'static,
 ) -> Option<AnyElement> {
     if !scope.is_namespaced() {
         return None;
@@ -156,8 +151,8 @@ pub fn namespace_picker(
     // The menu closure is `'static`, so everything it reads is captured by
     // value: the menu outlives this render, and the panel it belongs to may be
     // dropped before the menu is.
-    let current = scope.namespace.clone();
-    let offered = namespaces_offered();
+    let current = scope.namespaces.clone();
+    let offered = namespaces_offered(namespaces);
     let on_pick: OnPick = Rc::new(on_pick);
     let picker = Button::new("panel-namespace")
         .label(label_for(&current))
@@ -173,11 +168,33 @@ pub fn namespace_picker(
             for offered in &offered {
                 let on_pick = on_pick.clone();
                 let offered = offered.clone();
-                let checked = offered == current;
+                let checked = match &offered {
+                    None => current.is_empty(),
+                    Some(namespace) => current.contains(namespace),
+                };
+                let label = match &offered {
+                    None => "All namespaces".to_string(),
+                    Some(namespace) => namespace.clone(),
+                };
+                let next = match &offered {
+                    None => Vec::new(),
+                    Some(namespace) if current.contains(namespace) => current
+                        .iter()
+                        .filter(|selected| *selected != namespace)
+                        .cloned()
+                        .collect(),
+                    Some(namespace) => {
+                        let mut selected = current.clone();
+                        selected.push(namespace.clone());
+                        selected.sort_unstable();
+                        selected.dedup();
+                        selected
+                    }
+                };
                 menu = menu.item(
-                    PopupMenuItem::new(label_for(&offered))
+                    PopupMenuItem::new(label)
                         .checked(checked)
-                        .on_click(move |_event, _window, cx| on_pick(offered.clone(), cx)),
+                        .on_click(move |_event, _window, cx| on_pick(next.clone(), cx)),
                 );
             }
             menu
@@ -202,7 +219,7 @@ pub fn toolbar_buttons() -> Option<Vec<Button>> {
 /// came up.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScopeEvent {
-    NamespaceChanged(Option<String>),
+    NamespacesChanged(Vec<String>),
 }
 
 #[cfg(test)]
@@ -269,20 +286,21 @@ mod tests {
     #[test]
     fn the_picker_reads_its_current_scope() {
         let mut s = scope(kind("Pod", true), 1);
-        assert_eq!(label_for(&s.namespace), "All namespaces");
-        s = s.scoped_to(Some("staging".to_string()));
-        assert_eq!(label_for(&s.namespace), "staging");
-        s = s.scoped_to(None);
-        assert_eq!(label_for(&s.namespace), "All namespaces");
+        assert_eq!(label_for(&s.namespaces), "All namespaces");
+        s = s.scoped_to(vec!["staging".to_string()]);
+        assert_eq!(label_for(&s.namespaces), "staging");
+        s = s.scoped_to(vec!["staging".to_string(), "default".to_string()]);
+        assert_eq!(label_for(&s.namespaces), "2 namespaces");
+        s = s.scoped_to(Vec::new());
+        assert_eq!(label_for(&s.namespaces), "All namespaces");
     }
 
     /// A window can only represent the scopes the picker offers, so the default
     /// it starts on has to be among them.
     #[test]
     fn the_default_scope_is_one_the_picker_offers() {
-        let s = scope(kind("Pod", true), 1);
         assert!(
-            namespaces_offered().contains(&s.namespace),
+            namespaces_offered(&[]).contains(&None),
             "the scope a panel starts on must be selectable"
         );
     }
@@ -292,8 +310,8 @@ mod tests {
     #[test]
     fn scoping_changes_only_the_namespace() {
         let s = scope(kind("Pod", true), 2);
-        let scoped = s.scoped_to(Some("staging".to_string()));
-        assert_eq!(scoped.namespace.as_deref(), Some("staging"));
+        let scoped = s.scoped_to(vec!["staging".to_string(), "default".to_string()]);
+        assert_eq!(scoped.namespaces, ["default", "staging"]);
         assert_eq!(scoped.target, s.target);
         assert_eq!(scoped.context_name, s.context_name);
         assert_eq!(scoped.connection_count, s.connection_count);

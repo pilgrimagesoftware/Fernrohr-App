@@ -1,5 +1,5 @@
-use crate::panel_title::{self, PanelScope, ScopeEvent};
 use crate::resource_index::ResourceIndex;
+use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
 use kube_runtime::watcher;
@@ -222,6 +222,15 @@ pub fn matches_namespace(pod: &Pod, scope: &NamespaceScope) -> bool {
     }
 }
 
+pub fn matches_namespaces(pod: &Pod, namespaces: &[String]) -> bool {
+    namespaces.is_empty()
+        || pod
+            .metadata
+            .namespace
+            .as_ref()
+            .is_some_and(|namespace| namespaces.contains(namespace))
+}
+
 // UNWIRED: see `matches_namespace` above.
 #[allow(dead_code)]
 fn matches_filter(row: &PodRow, filter: &str) -> bool {
@@ -267,7 +276,7 @@ pub fn view_rows(
 }
 
 use gpui_kit::component::button::Button;
-use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
+use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
 use gpui_kit::*;
 
 /// The pod a Logs panel should stream, set by clicking a row in a Pods
@@ -291,6 +300,7 @@ pub struct PodsPanel {
     scope: PanelScope,
     connection: Entity<crate::cluster::connection::ClusterConnection>,
     table: Entity<PodsTable>,
+    namespaces: Entity<crate::cluster::namespaces::NamespaceList>,
     subscribed: bool,
     focus_handle: FocusHandle,
 }
@@ -301,11 +311,13 @@ impl PodsPanel {
 
         let context_name = scope.context_name.clone();
         let connection = ClusterRegistry::connection(cx, &context_name);
+        let namespaces = crate::cluster::namespaces::NamespaceRegistry::list(cx, &context_name);
         cx.observe(&connection, |this: &mut Self, connection, cx| {
             this.start_watch_if_connected(&connection, cx);
             cx.notify();
         })
         .detach();
+        cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
         cx.on_release({
             let context_name = context_name.clone();
             move |this: &mut Self, cx| {
@@ -320,6 +332,7 @@ impl PodsPanel {
             scope,
             connection: connection.clone(),
             table: cx.new(|_| PodsTable::default()),
+            namespaces,
             subscribed: false,
             focus_handle: cx.focus_handle(),
         };
@@ -363,10 +376,13 @@ impl Render for PodsPanel {
         use crate::cluster::connection::ConnectionState;
 
         match &self.connection.read(cx).state {
-            ConnectionState::Connecting => div().size_full().child("Connecting..."),
-            ConnectionState::WaitingForTunnel => div().size_full().child("Waiting for tunnel..."),
+            ConnectionState::Connecting => div().size_full().p_3().child("Connecting..."),
+            ConnectionState::WaitingForTunnel => {
+                div().size_full().p_3().child("Waiting for tunnel...")
+            }
             ConnectionState::Failed(reason) => div()
                 .size_full()
+                .p_3()
                 .child(format!("Connection failed: {reason}")),
             ConnectionState::Connected(_) => {
                 use crate::cluster::session::ClusterRegistry;
@@ -385,11 +401,13 @@ impl Render for PodsPanel {
                     });
 
                 let now = Timestamp::now();
+                let namespaces = &self.scope.namespaces;
                 let items: Vec<(PodRow, PodSelection)> = self
                     .table
                     .read(cx)
                     .pods()
                     .iter()
+                    .filter(|pod| matches_namespaces(pod, namespaces))
                     .map(|pod| {
                         let containers = pod
                             .spec
@@ -406,6 +424,7 @@ impl Render for PodsPanel {
                     .collect();
                 div()
                     .size_full()
+                    .p_3()
                     .children(pause_banner)
                     .children(items.into_iter().map(|(row, selection)| {
                         let row_id = format!("pod-row-{}-{}", row.namespace, row.name);
@@ -452,10 +471,11 @@ impl Panel for PodsPanel {
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         let this = cx.weak_entity();
-        panel_title::namespace_picker(&self.scope, move |namespace, cx| {
+        let namespaces = self.namespaces.read(cx).names();
+        panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
             let _ = this.update(cx, |this: &mut Self, cx| {
-                this.scope = this.scope.scoped_to(namespace.clone());
-                cx.emit(ScopeEvent::NamespaceChanged(namespace));
+                this.scope = this.scope.scoped_to(namespaces.clone());
+                cx.emit(ScopeEvent::NamespacesChanged(namespaces));
             });
         })
     }
@@ -467,6 +487,10 @@ impl Panel for PodsPanel {
     ) -> Option<Vec<Button>> {
         panel_title::toolbar_buttons()
     }
+
+    fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {
+        Some(PanelControl::Toolbar)
+    }
 }
 
 #[cfg(test)]
@@ -475,7 +499,8 @@ mod tests {
     // re-exports its own `test` attribute macro, which would shadow
     // `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
-        NamespaceScope, Pod, PodsTable, SortState, is_unauthorized, pod_row, view_rows, watcher,
+        NamespaceScope, Pod, PodsTable, SortState, is_unauthorized, matches_namespaces, pod_row,
+        view_rows, watcher,
     };
     use jiff::Timestamp;
     use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
@@ -626,6 +651,21 @@ mod tests {
         let rows = view_rows(&pods, now, &NamespaceScope::All, "", &default_sort());
 
         assert_eq!(rows.len(), 3);
+    }
+
+    #[test]
+    fn multiple_namespace_scope_includes_each_selected_namespace() {
+        let pods = mixed_namespace_fixture();
+        let namespaces = vec!["default".to_string(), "kube-system".to_string()];
+        let selected: Vec<&Pod> = pods
+            .iter()
+            .filter(|pod| matches_namespaces(pod, &namespaces))
+            .collect();
+        assert_eq!(selected.len(), 3);
+        assert!(!matches_namespaces(
+            &pod_in("other", "u4", "ignored", 0),
+            &namespaces
+        ));
     }
 
     #[test]

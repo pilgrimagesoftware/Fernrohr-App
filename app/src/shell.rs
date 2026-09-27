@@ -5,8 +5,8 @@ use crate::config::{
 };
 use crate::keymap;
 use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
-use crate::panel_title::{self, PanelScope};
 use crate::paths;
+use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::Root;
 use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, DockSkin, PanelId};
 use gpui_kit::*;
@@ -196,7 +196,7 @@ fn first_restored_context(layout: &WindowLayout) -> Option<String> {
 struct PanelKey {
     target: NavTarget,
     context_name: String,
-    namespace: Option<String>,
+    namespaces: Vec<String>,
 }
 
 impl From<&PanelScope> for PanelKey {
@@ -208,7 +208,7 @@ impl From<&PanelScope> for PanelKey {
         Self {
             target: scope.target.clone(),
             context_name: scope.context_name.clone(),
-            namespace: scope.namespace.clone(),
+            namespaces: scope.namespaces.clone(),
         }
     }
 }
@@ -223,7 +223,7 @@ struct OpenPanel {
 /// workspace. A window opens in `Picker` whenever it has no restored panels, per the
 /// `cluster-picker` and `app-shell` specs.
 enum WindowMode {
-    Picker(Entity<crate::picker::ClusterPicker>),
+    Picker(Entity<crate::ui::picker::ClusterPicker>),
     Workspace {
         dock_area: Entity<DockArea>,
         /// Keeps the dock's renderer alive. The default skin uses GPUI focus
@@ -233,7 +233,7 @@ enum WindowMode {
         /// The discovered-kind list in the window's left edge. It reads the
         /// same `ClusterSession` as `dock_area`, so picking a kind opens a
         /// panel without reconnecting.
-        resource_panel: Entity<crate::resource_panel::ResourcePanel>,
+        resource_panel: Entity<crate::ui::resource_panel::ResourcePanel>,
         /// Every panel this window has opened, in the order it opened them.
         /// The dock does not report which panel a `PanelId` belongs to, so
         /// this is also how a closed panel is recognised as closed.
@@ -264,7 +264,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             // - it is whatever size the user last left it, from before the logo
             // grew. Without a floor the picker's centred column overflows and the
             // logo is clipped off the top.
-            window_min_size: Some(crate::picker::MIN_WINDOW_SIZE),
+            window_min_size: Some(crate::ui::picker::MIN_WINDOW_SIZE),
             ..Default::default()
         },
         |window, cx| {
@@ -285,7 +285,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             let view = cx.new(|cx| {
                 let mut view = MainWindow {
                     mode: WindowMode::Picker(
-                        cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)),
+                        cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
                     ),
                     focus_handle: cx.focus_handle(),
                 };
@@ -298,13 +298,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                 }
                 view
             });
-            // Action dispatch (both real keystrokes and `Window::dispatch_action`)
-            // starts at the focused element and bubbles up; with nothing
-            // focused it starts at the window root and never reaches this
-            // view's `on_action` handlers at all. Focus it so ToggleCommandPalette
-            // (and any future window-level shortcut) actually fires.
-            let focus_handle = view.read(cx).focus_handle.clone();
-            focus_handle.focus(window, cx);
+            view.update(cx, |view, cx| view.focus_initial(window, cx));
             cx.new(|cx| Root::new(view, window, cx))
         },
     )
@@ -314,7 +308,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
 /// Subscribes so a successful connect on `picker` swaps this window into
 /// `Workspace` mode and arms [`watch_workspace`] on the new dock.
 fn watch_picker(
-    picker: &Entity<crate::picker::ClusterPicker>,
+    picker: &Entity<crate::ui::picker::ClusterPicker>,
     window: &mut Window,
     cx: &mut Context<MainWindow>,
 ) {
@@ -322,7 +316,7 @@ fn watch_picker(
         picker,
         window,
         |this: &mut MainWindow, _picker, event, window, cx| {
-            let crate::picker::PickerEvent::Connected { context_name, .. } = event;
+            let crate::ui::picker::PickerEvent::Connected { context_name, .. } = event;
             this.enter_workspace(context_name.clone(), window, cx);
         },
     )
@@ -360,6 +354,16 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
+    fn focus_initial(&self, window: &mut Window, cx: &mut App) {
+        if let WindowMode::Picker(picker) = &self.mode {
+            let picker = picker.clone();
+            let focus_handle = picker.read(cx).command_focus_handle(cx);
+            focus_handle.focus(window, cx);
+        } else {
+            self.focus_handle.focus(window, cx);
+        }
+    }
+
     /// Swaps this window to a connected workspace on `context_name`: the dock
     /// (defaulting to Pods), the Resource panel listing that cluster's
     /// discovered kinds, and the subscription that opens whatever is picked.
@@ -378,12 +382,12 @@ impl MainWindow {
             build_workspace(context_name.clone(), CONNECTIONS, window, cx);
         watch_workspace(&dock_area, window, cx);
         let resource_panel =
-            cx.new(|cx| crate::resource_panel::ResourcePanel::new(context_name.clone(), cx));
+            cx.new(|cx| crate::ui::resource_panel::ResourcePanel::new(context_name.clone(), cx));
         cx.subscribe_in(
             &resource_panel,
             window,
             |this: &mut MainWindow, _panel, event, window, cx| {
-                let crate::resource_panel::ResourceEvent::Open(target) = event;
+                let crate::ui::resource_panel::ResourceEvent::Open(target) = event;
                 this.open_target(target.clone(), window, cx);
             },
         )
@@ -422,8 +426,8 @@ impl MainWindow {
         let rekey = move |this: &mut MainWindow,
                           event: &panel_title::ScopeEvent,
                           cx: &mut Context<MainWindow>| {
-            let panel_title::ScopeEvent::NamespaceChanged(namespace) = event;
-            this.rescope(id, namespace.clone(), cx);
+            let panel_title::ScopeEvent::NamespacesChanged(namespaces) = event;
+            this.rescope(id, namespaces.clone(), cx);
         };
         match opened {
             nav::OpenedPanel::Pods(panel) => {
@@ -454,18 +458,18 @@ impl MainWindow {
     }
 
     /// Moves the panel with `id` to a new namespace, whichever panel type it is.
-    fn rescope(&mut self, id: PanelId, namespace: Option<String>, cx: &mut Context<Self>) {
+    fn rescope(&mut self, id: PanelId, namespaces: Vec<String>, cx: &mut Context<Self>) {
         let WindowMode::Workspace { open_panels, .. } = &mut self.mode else {
             return;
         };
         if let Some(open) = open_panels.iter_mut().find(|open| open.id == id) {
-            open.key.namespace = namespace;
+            open.key.namespaces = namespaces;
         }
         cx.notify();
     }
 
     fn enter_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let picker = cx.new(|cx| crate::picker::ClusterPicker::new(window, cx));
+        let picker = cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx));
         watch_picker(&picker, window, cx);
         self.mode = WindowMode::Picker(picker);
         cx.notify();
@@ -657,7 +661,7 @@ mod tests {
     use crate::cluster::session::ClusterRegistry;
     use crate::command::CommandRegistry;
     use crate::nav;
-    use crate::panel_title::PanelScope;
+    use crate::ui::panel_title::PanelScope;
     use gpui_kit::component::dock::{self, DockLayout, DockPlacement, PanelView as _};
     use gpui_kit::{App, AppContext as _, Entity, SharedString, TestAppContext, Window, WindowId};
     use kube::core::GroupVersionKind;
@@ -684,7 +688,7 @@ mod tests {
         cx.add_window(|window, cx| {
             let mut main_window = MainWindow {
                 mode: WindowMode::Picker(
-                    cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)),
+                    cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
                 ),
                 focus_handle: cx.focus_handle(),
             };
@@ -801,7 +805,7 @@ mod tests {
                     PanelKey {
                         target: NavTarget::pods(),
                         context_name: "kind-dev".to_string(),
-                        namespace: None,
+                        namespaces: Vec::new(),
                     }
                 );
 
@@ -989,9 +993,9 @@ mod tests {
                     }
                     _ => panic!("a connected window is in workspace mode"),
                 };
-                assert_eq!(before.namespace, None, "it starts on all namespaces");
+                assert!(before.namespaces.is_empty(), "it starts on all namespaces");
 
-                main_window.rescope(id, Some("staging".to_string()), cx);
+                main_window.rescope(id, vec!["staging".to_string(), "default".to_string()], cx);
 
                 let after = match &main_window.mode {
                     WindowMode::Workspace { open_panels, .. } => open_panels[0].key.clone(),
@@ -1002,9 +1006,9 @@ mod tests {
                     "the panel must stop being filed under the scope it dropped"
                 );
                 assert_eq!(
-                    after.namespace,
-                    Some("staging".to_string()),
-                    "and be filed under the one it now shows"
+                    after.namespaces,
+                    ["staging", "default"],
+                    "and be filed under the namespaces it now shows"
                 );
                 assert_eq!(after.target, before.target, "only the namespace moved");
                 assert_eq!(
@@ -1031,7 +1035,7 @@ mod tests {
             // covers the Resource panel being wired up as well as the dock.
             let mut main_window = MainWindow {
                 mode: WindowMode::Picker(
-                    cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)),
+                    cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
                 ),
                 focus_handle: cx.focus_handle(),
             };

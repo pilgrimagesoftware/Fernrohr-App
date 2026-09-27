@@ -84,6 +84,10 @@ impl ClusterPicker {
         });
         cx.notify();
     }
+
+    pub fn command_focus_handle(&self, cx: &App) -> FocusHandle {
+        self.command_state.read(cx).focus_handle(cx)
+    }
 }
 
 impl EventEmitter<PickerEvent> for ClusterPicker {}
@@ -192,7 +196,7 @@ fn logo() -> impl IntoElement {
     static LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
         Arc::new(Image::from_bytes(
             ImageFormat::Webp,
-            include_bytes!("../assets/fernrohr-logo.webp").to_vec(),
+            include_bytes!("../../assets/fernrohr-logo.webp").to_vec(),
         ))
     });
 
@@ -399,7 +403,7 @@ users:
     /// catches truncation exactly rather than by proxy.
     #[test]
     fn the_embedded_logo_is_a_complete_webp() {
-        let bytes = include_bytes!("../assets/fernrohr-logo.webp");
+        let bytes = include_bytes!("../../assets/fernrohr-logo.webp");
         assert!(bytes.starts_with(b"RIFF"), "missing RIFF signature");
         assert_eq!(&bytes[8..12], b"WEBP", "RIFF payload is not WebP");
 
@@ -467,7 +471,7 @@ users:
         /// chunk id and its length, then a 0x2f signature byte, then width-1 in bits
         /// 0-13 and height-1 in bits 14-27.
         fn canvas_size() -> (usize, usize) {
-            let bytes = include_bytes!("../assets/fernrohr-logo.webp");
+            let bytes = include_bytes!("../../assets/fernrohr-logo.webp");
             assert_eq!(&bytes[12..16], b"VP8L", "expected a lossless (VP8L) WebP");
             assert_eq!(bytes[20], 0x2f, "missing the VP8L signature byte");
             let packed = u32::from_le_bytes(bytes[21..25].try_into().unwrap());

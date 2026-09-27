@@ -202,10 +202,10 @@ pub fn stream_container_logs(
     })
 }
 
-use crate::panel_title::{self, PanelScope, ScopeEvent};
 use crate::pods::{PodSelection, SelectedPod};
+use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::button::Button;
-use gpui_kit::component::dock::{BasePanel, Panel, PanelEvent};
+use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
 use gpui_kit::*;
 
 /// A dock panel streaming the container logs of whichever pod was last
@@ -216,6 +216,7 @@ pub struct LogsPanel {
     view: Entity<LogsView>,
     stream: Option<Task<()>>,
     current: Option<(String, String, String)>,
+    namespaces: Entity<crate::cluster::namespaces::NamespaceList>,
     focus_handle: FocusHandle,
 }
 
@@ -224,10 +225,13 @@ impl LogsPanel {
         use crate::cluster::session::ClusterRegistry;
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
+        let namespaces =
+            crate::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
         cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
             .detach();
+        cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
 
         let mut this = Self {
             scope,
@@ -235,6 +239,7 @@ impl LogsPanel {
             view: cx.new(|_| LogsView::new(vec![String::new()])),
             stream: None,
             current: None,
+            namespaces,
             focus_handle: cx.focus_handle(),
         };
         this.sync(cx);
@@ -294,13 +299,17 @@ impl Render for LogsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = self.view.read(cx);
         if let Some(message) = view.terminal_message() {
-            return div().size_full().child(message.to_string());
+            return div().size_full().p_3().child(message.to_string());
         }
         if self.current.is_none() {
-            return div().size_full().child("Click a pod to view its logs.");
+            return div()
+                .size_full()
+                .p_3()
+                .child("Click a pod to view its logs.");
         }
         div()
             .size_full()
+            .p_3()
             .children(view.lines().iter().cloned().map(|line| div().child(line)))
     }
 }
@@ -327,10 +336,11 @@ impl Panel for LogsPanel {
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         let this = cx.weak_entity();
-        panel_title::namespace_picker(&self.scope, move |namespace, cx| {
+        let namespaces = self.namespaces.read(cx).names();
+        panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
             let _ = this.update(cx, |this: &mut Self, cx| {
-                this.scope = this.scope.scoped_to(namespace.clone());
-                cx.emit(ScopeEvent::NamespaceChanged(namespace));
+                this.scope = this.scope.scoped_to(namespaces.clone());
+                cx.emit(ScopeEvent::NamespacesChanged(namespaces));
             });
         })
     }
@@ -341,6 +351,10 @@ impl Panel for LogsPanel {
         _cx: &mut Context<Self>,
     ) -> Option<Vec<Button>> {
         panel_title::toolbar_buttons()
+    }
+
+    fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {
+        Some(PanelControl::Toolbar)
     }
 }
 
