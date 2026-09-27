@@ -12,6 +12,8 @@ use crate::cluster::discovery::{DiscoveredKind, discover_kinds};
 use crate::cluster::session::ClusterRegistry;
 use crate::nav::NavTarget;
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::Sizable as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::PopupMenuItem;
 use gpui_kit::component::sidebar::{Sidebar, SidebarMenuItem};
 use gpui_kit::*;
@@ -37,6 +39,7 @@ enum ResourceState {
 
 pub struct ResourcePanel {
     context_name: String,
+    contexts: Vec<String>,
     state: ResourceState,
     /// Whether a discovery request is in flight. The request itself is
     /// detached - nothing needs to cancel it, the panel is its only reader -
@@ -51,7 +54,7 @@ pub struct ResourcePanel {
 impl ResourcePanel {
     pub fn new(context_name: String, cx: &mut Context<Self>) -> Self {
         let connection = ClusterRegistry::connection(cx, &context_name);
-        Self::with_connection(context_name, connection, cx)
+        Self::with_connection(context_name.clone(), vec![context_name], connection, cx)
     }
 
     /// Construction from an explicit connection, so tests can hand in a stub.
@@ -65,6 +68,7 @@ impl ResourcePanel {
     /// which also keeps `sync` from kicking off real discovery.
     fn with_connection(
         context_name: String,
+        contexts: Vec<String>,
         connection: Entity<ClusterConnection>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -75,12 +79,27 @@ impl ResourcePanel {
 
         let mut this = Self {
             context_name,
+            contexts,
             state: ResourceState::WaitingForConnection,
             loading: false,
             selected: None,
         };
         this.sync(&connection, cx);
         this
+    }
+
+    #[cfg(test)]
+    fn with_contexts(
+        context_name: String,
+        contexts: Vec<String>,
+        connection: Entity<ClusterConnection>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::with_connection(context_name, contexts, connection, cx)
+    }
+
+    fn shows_cluster_dropdown(&self) -> bool {
+        self.contexts.len() > 1
     }
 
     /// Marks `target`'s row active, or clears the mark when given `None` (the
@@ -209,10 +228,8 @@ impl ResourcePanel {
             .into_any_element()
     }
 
-    /// The sidebar's header: which cluster's resources these rows are. The
-    /// seed of the spec's cluster dropdown - with one connection there is
-    /// nothing to choose, so it is a label rather than a control.
-    fn header(&self, cx: &App) -> impl IntoElement {
+    /// The sidebar's header: which cluster's resources these rows are.
+    fn header(&self, cx: &App) -> AnyElement {
         let theme = cx.theme().clone();
         div()
             .flex()
@@ -224,12 +241,21 @@ impl ResourcePanel {
                     .text_color(theme.sidebar_foreground)
                     .child("Resources"),
             )
-            .child(
+            .child(if self.shows_cluster_dropdown() {
+                Button::new("resource-cluster")
+                    .label(self.context_name.clone())
+                    .icon(gpui_kit::assets::IconName::ChevronDown)
+                    .xsmall()
+                    .ghost()
+                    .into_any_element()
+            } else {
                 div()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(self.context_name.clone()),
-            )
+                    .child(self.context_name.clone())
+                    .into_any_element()
+            })
+            .into_any_element()
     }
 }
 
@@ -294,8 +320,38 @@ mod tests {
             cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting))
         });
         cx.add_window(|_window, cx| {
-            ResourcePanel::with_connection("kind-dev".to_string(), connection.clone(), cx)
+            ResourcePanel::with_connection(
+                "kind-dev".to_string(),
+                vec!["kind-dev".to_string()],
+                connection.clone(),
+                cx,
+            )
         })
+    }
+
+    #[gpui_kit::test]
+    async fn cluster_dropdown_requires_multiple_connections(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        let connection = cx.update(|cx| {
+            cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting))
+        });
+        let window = cx.add_window(|_window, cx| {
+            ResourcePanel::with_contexts(
+                "kind-dev".to_string(),
+                vec!["kind-dev".to_string(), "kind-staging".to_string()],
+                connection,
+                cx,
+            )
+        });
+
+        window
+            .update(cx, |panel, _window, _cx| {
+                assert!(panel.shows_cluster_dropdown());
+            })
+            .unwrap();
     }
 
     /// Section 8.1: what the panel lists is exactly what discovery returned -

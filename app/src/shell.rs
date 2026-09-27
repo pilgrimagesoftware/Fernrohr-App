@@ -8,10 +8,11 @@ use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
 use crate::panel_title::{self, PanelScope};
 use crate::paths;
 use gpui_kit::component::Root;
-use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, PanelId};
+use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, DockSkin, PanelId};
 use gpui_kit::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 actions!(shell, [NewWindow, ToggleCommandPalette]);
 
@@ -146,8 +147,13 @@ fn build_workspace(
     connection_count: usize,
     window: &mut Window,
     cx: &mut App,
-) -> (Entity<DockArea>, PanelScope, (PanelId, nav::OpenedPanel)) {
-    let dock_area = cx.new(|cx| DockArea::new("main", Some(1), window, cx));
+) -> (
+    Entity<DockArea>,
+    Rc<DockSkin>,
+    PanelScope,
+    (PanelId, nav::OpenedPanel),
+) {
+    let (dock_area, dock_skin) = DockSkin::dock_area("main", Some(1), window, cx);
     let scope = PanelScope {
         connection_count,
         ..PanelScope::new(NavTarget::pods(), context_name)
@@ -158,7 +164,7 @@ fn build_workspace(
     // scope comes back too, so the key is derived from the very scope the panel
     // was built with rather than restated beside it.
     let first = dock_area.update(cx, |area, cx| nav::add_panel(area, &scope, window, cx));
-    (dock_area, scope, first)
+    (dock_area, dock_skin, scope, first)
 }
 
 /// The first restorable panel's `cluster_context`, if any - used to pick which context
@@ -220,6 +226,9 @@ enum WindowMode {
     Picker(Entity<crate::picker::ClusterPicker>),
     Workspace {
         dock_area: Entity<DockArea>,
+        /// Keeps the dock's renderer alive. The default skin uses GPUI focus
+        /// state for active panel chrome and provides its zoom control.
+        _dock_skin: Rc<DockSkin>,
         context_name: String,
         /// The discovered-kind list in the window's left edge. It reads the
         /// same `ClusterSession` as `dock_area`, so picking a kind opens a
@@ -233,7 +242,7 @@ enum WindowMode {
         /// recently opened or focused kind, which is not the same as the
         /// dock's active panel once the user clicks tabs directly (section 12
         /// tracks that).
-        nav: NavTarget,
+        nav: Box<NavTarget>,
         /// How many cluster connections this window holds. One today: adding a
         /// second connection to an already-connected window is an explicit
         /// non-goal of this change (`design.md`), so the count is the window's
@@ -365,7 +374,7 @@ impl MainWindow {
         // One connection per connected window in this change; see
         // `WindowMode::Workspace::connection_count`.
         const CONNECTIONS: usize = 1;
-        let (dock_area, scope, (first_id, first)) =
+        let (dock_area, dock_skin, scope, (first_id, first)) =
             build_workspace(context_name.clone(), CONNECTIONS, window, cx);
         watch_workspace(&dock_area, window, cx);
         let resource_panel =
@@ -381,13 +390,14 @@ impl MainWindow {
         .detach();
         self.mode = WindowMode::Workspace {
             dock_area,
+            _dock_skin: dock_skin,
             context_name,
             resource_panel,
             open_panels: vec![OpenPanel {
                 key: PanelKey::from(&scope),
                 id: first_id,
             }],
-            nav: NavTarget::pods(),
+            nav: Box::new(NavTarget::pods()),
             connection_count: CONNECTIONS,
         };
         self.watch_scope_changes(first, window, cx);
@@ -488,6 +498,7 @@ impl MainWindow {
             open_panels,
             nav,
             connection_count,
+            ..
         } = &mut self.mode
         else {
             return;
@@ -513,8 +524,8 @@ impl MainWindow {
                 watch_scope = Some(opened);
             }
         }
-        *nav = target;
-        let showing = nav.clone();
+        **nav = target;
+        let showing = (**nav).clone();
         resource_panel.update(cx, |panel, cx| panel.set_selected(Some(showing), cx));
         if let Some(opened) = watch_scope {
             self.watch_scope_changes(opened, window, cx);
