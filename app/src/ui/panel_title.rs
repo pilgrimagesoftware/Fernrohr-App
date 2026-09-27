@@ -11,11 +11,35 @@
 
 use crate::nav::NavTarget;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::*;
 use std::rc::Rc;
+
+/// Wraps dock-panel content with the same focus treatment used by every
+/// resource view. The dock skin owns title-bar chrome but has no focus-aware
+/// panel-style hook, so the panel body supplies the visible focus boundary.
+pub fn focus_frame(
+    content: impl IntoElement,
+    focus_handle: &FocusHandle,
+    window: &Window,
+    cx: &App,
+) -> impl IntoElement {
+    let theme = cx.theme();
+    let border = focus_border(focus_handle.is_focused(window), theme.primary, theme.border);
+
+    div()
+        .size_full()
+        .border_1()
+        .border_color(border)
+        .child(content)
+}
+
+fn focus_border(focused: bool, primary: Hsla, border: Hsla) -> Hsla {
+    if focused { primary } else { border }
+}
 
 /// Everything a panel needs to draw its title bar, and everything the window
 /// keys an open panel on.
@@ -224,10 +248,30 @@ pub enum ScopeEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::{PanelScope, label_for, namespaces_offered, title};
+    use super::{PanelScope, focus_border, label_for, namespaces_offered, title};
     use crate::cluster::discovery::DiscoveredKind;
     use crate::nav::NavTarget;
+    use gpui_kit::Hsla;
     use kube::core::GroupVersionKind;
+
+    #[test]
+    fn a_focused_panel_uses_the_primary_border() {
+        let primary = Hsla {
+            h: 0.,
+            s: 1.,
+            l: 0.5,
+            a: 1.,
+        };
+        let border = Hsla {
+            h: 0.5,
+            s: 1.,
+            l: 0.5,
+            a: 1.,
+        };
+
+        assert_eq!(focus_border(true, primary, border), primary);
+        assert_eq!(focus_border(false, primary, border), border);
+    }
 
     fn kind(kind: &str, namespaced: bool) -> NavTarget {
         NavTarget::Kind(DiscoveredKind {

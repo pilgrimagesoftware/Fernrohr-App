@@ -52,40 +52,45 @@ impl EventEmitter<PanelEvent> for PlaceholderPanel {}
 impl EventEmitter<ScopeEvent> for PlaceholderPanel {}
 
 impl Render for PlaceholderPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .p_6()
-            .child(
-                div()
-                    .text_lg()
-                    .text_color(theme.foreground)
-                    .child(self.kind.label()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(format!(
-                        "{} has no panel implementation yet.",
-                        self.kind.gvk.api_version()
-                    )),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(format!(
-                        "Discovered from cluster {}.",
-                        self.scope.context_name
-                    )),
-            )
+        panel_title::focus_frame(
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .p_6()
+                .child(
+                    div()
+                        .text_lg()
+                        .text_color(theme.foreground)
+                        .child(self.kind.label()),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(format!(
+                            "{} has no panel implementation yet.",
+                            self.kind.gvk.api_version()
+                        )),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(format!(
+                            "Discovered from cluster {}.",
+                            self.scope.context_name
+                        )),
+                ),
+            &self.focus_handle,
+            window,
+            cx,
+        )
     }
 }
 

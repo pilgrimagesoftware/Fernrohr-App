@@ -372,10 +372,10 @@ impl EventEmitter<PanelEvent> for PodsPanel {}
 impl EventEmitter<ScopeEvent> for PodsPanel {}
 
 impl Render for PodsPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use crate::cluster::connection::ConnectionState;
 
-        match &self.connection.read(cx).state {
+        let content = match &self.connection.read(cx).state {
             ConnectionState::Connecting => div().size_full().p_3().child("Connecting..."),
             ConnectionState::WaitingForTunnel => {
                 div().size_full().p_3().child("Waiting for tunnel...")
@@ -444,7 +444,9 @@ impl Render for PodsPanel {
                             ))
                     }))
             }
-        }
+        };
+
+        panel_title::focus_frame(content, &self.focus_handle, window, cx)
     }
 }
 

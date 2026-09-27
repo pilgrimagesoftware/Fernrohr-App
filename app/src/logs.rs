@@ -296,21 +296,36 @@ impl EventEmitter<PanelEvent> for LogsPanel {}
 impl EventEmitter<ScopeEvent> for LogsPanel {}
 
 impl Render for LogsPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = self.view.read(cx);
         if let Some(message) = view.terminal_message() {
-            return div().size_full().p_3().child(message.to_string());
+            return panel_title::focus_frame(
+                div().size_full().p_3().child(message.to_string()),
+                &self.focus_handle,
+                window,
+                cx,
+            );
         }
         if self.current.is_none() {
-            return div()
+            return panel_title::focus_frame(
+                div()
+                    .size_full()
+                    .p_3()
+                    .child("Click a pod to view its logs."),
+                &self.focus_handle,
+                window,
+                cx,
+            );
+        }
+        panel_title::focus_frame(
+            div()
                 .size_full()
                 .p_3()
-                .child("Click a pod to view its logs.");
-        }
-        div()
-            .size_full()
-            .p_3()
-            .children(view.lines().iter().cloned().map(|line| div().child(line)))
+                .children(view.lines().iter().cloned().map(|line| div().child(line))),
+            &self.focus_handle,
+            window,
+            cx,
+        )
     }
 }
 
