@@ -458,11 +458,13 @@ mod tests {
     // macro, which would shadow `core::prelude::v1::test` for the plain
     // synchronous test below.
     use super::{
-        ClosedWindowLayouts, PanelDescriptor, ToggleCommandPalette, WindowLayout, WorkspaceConfig,
-        config, init, open_saved_or_default, open_window, register_commands, restorable_panels,
-        save,
+        ClosedWindowLayouts, MainWindow, PanelDescriptor, ToggleCommandPalette, WindowLayout,
+        WindowMode, WorkspaceConfig, build_workspace, config, init, open_saved_or_default,
+        open_window, register_commands, restorable_panels, save, watch_workspace,
     };
     use crate::command::CommandRegistry;
+    use crate::nav::NavTarget;
+    use gpui_kit::component::dock::DockLayout;
     use gpui_kit::{TestAppContext, WindowId};
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -498,6 +500,55 @@ mod tests {
 
         assert_eq!(kept.len(), 1);
         assert!(matches!(kept[0], PanelDescriptor::Pods { .. }));
+    }
+
+    /// Section 4.4: emptying a workspace's center dock (what closing its last panel
+    /// leaves behind) flips the window back to `Picker` mode - `watch_workspace`'s
+    /// `DockEvent::LayoutChanged` subscription, driven directly here via `set_center`
+    /// with an empty layout rather than a real interactive panel close.
+    #[gpui_kit::test]
+    async fn closing_the_last_panel_returns_to_the_picker(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+
+        let window = cx.add_window(|window, cx| {
+            let dock_area = build_workspace("kind-dev".to_string(), window, cx);
+            watch_workspace(&dock_area, window, cx);
+            MainWindow {
+                mode: WindowMode::Workspace {
+                    dock_area,
+                    context_name: "kind-dev".to_string(),
+                    nav: NavTarget::Pods,
+                },
+                focus_handle: cx.focus_handle(),
+            }
+        });
+
+        window
+            .update(cx, |main_window, _window, _cx| {
+                assert!(matches!(main_window.mode, WindowMode::Workspace { .. }));
+            })
+            .unwrap();
+
+        window
+            .update(cx, |main_window, window, cx| {
+                let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                    unreachable!("just asserted Workspace mode above");
+                };
+                dock_area.update(cx, |area, cx| {
+                    area.set_center(DockLayout::tabs(), window, cx);
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, _window, _cx| {
+                assert!(matches!(main_window.mode, WindowMode::Picker(_)));
+            })
+            .unwrap();
     }
 
     #[gpui_kit::test]

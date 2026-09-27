@@ -266,4 +266,71 @@ users:
         let result = kubeconfig::list_context_names(Some(&missing));
         assert!(result.is_err());
     }
+
+    /// Section 3.2: drives `ClusterPicker` into a fake `Failed` attempt directly (via
+    /// `ClusterConnection::test_with_state`, no real connect) rather than through
+    /// `select`, so the failure path doesn't depend on network access or a real
+    /// kubeconfig - then confirms the picker remains interactive by driving a second,
+    /// real `select` call afterward.
+    #[gpui_kit::test]
+    async fn failed_attempt_shows_the_reason_and_stays_interactive(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        use super::{Attempt, ClusterPicker};
+        use crate::cluster::connection::{ClusterConnection, ConnectionState};
+        use gpui_kit::AppContext as _;
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        let window = cx.add_window(ClusterPicker::new);
+
+        window
+            .update(cx, |picker, _window, cx| {
+                picker.attempt = Some(Attempt {
+                    context_name: "kind-dev".to_string(),
+                    connection: cx.new(|_| {
+                        ClusterConnection::test_with_state(ConnectionState::Failed(
+                            "connection refused".to_string(),
+                        ))
+                    }),
+                });
+                cx.notify();
+            })
+            .unwrap();
+
+        window
+            .update(cx, |picker, _window, cx| {
+                let attempt = picker.attempt.as_ref().expect("attempt is still set");
+                assert_eq!(attempt.context_name, "kind-dev");
+                assert!(matches!(
+                    attempt.connection.read(cx).state,
+                    ConnectionState::Failed(ref reason) if reason == "connection refused"
+                ));
+            })
+            .unwrap();
+
+        // Stays interactive: a failed attempt doesn't leave the picker stuck - selecting
+        // again (retry, or a different context) starts a fresh attempt.
+        window
+            .update(cx, |picker, _window, cx| {
+                picker.select("kind-dev".to_string(), cx)
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        window
+            .update(cx, |picker, _window, _cx| {
+                assert_eq!(
+                    picker
+                        .attempt
+                        .as_ref()
+                        .expect("select started a new attempt")
+                        .context_name,
+                    "kind-dev"
+                );
+            })
+            .unwrap();
+    }
 }
