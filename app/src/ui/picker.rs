@@ -98,13 +98,16 @@ impl Focusable for ClusterPicker {
     }
 }
 
+/// Width of the picker card, matching the app's command-palette chrome.
+const CARD_WIDTH: f32 = 480.;
+
 /// A centered card matching the app's command-palette chrome (`popover`
 /// surface, `border` outline, `shadow_lg`), so the picker reads as part of
 /// the same design system rather than a bespoke first-run screen.
 fn card(cx: &App) -> Div {
     let theme = cx.theme();
     div()
-        .w(px(480.))
+        .w(px(CARD_WIDTH))
         .rounded_lg()
         .border_1()
         .border_color(theme.border)
@@ -117,26 +120,89 @@ fn card(cx: &App) -> Div {
         .p_6()
 }
 
+/// Displayed width of the logo, in logical pixels. The embedded asset is 1241px
+/// wide, so this stays sharp to ~2x on a Retina display with room to spare.
+const LOGO_WIDTH: f32 = 192.;
+
+/// Displayed height, derived from the asset's 1241x1183 geometry so the mark is
+/// never stretched.
+const LOGO_HEIGHT: f32 = 183.;
+
+// The picker's own layout, in logical pixels, as a sum the window minimum can be
+// derived from. These track the tailwind-style spacing the render uses (`p_6`,
+// `gap_4`, `gap_6` are 1.5rem/1rem/1.5rem at 16px per rem), and the `Command`
+// list's default `max_h` of 18.75rem. Deriving the minimum from them rather than
+// hardcoding a number is the point: doubling the logo above would otherwise have
+// silently started clipping the picker.
+
+/// Card padding top and bottom, plus the header row and the gap beneath it.
+const CARD_CHROME_HEIGHT: f32 = 48. + 48. + 16.;
+
+/// `Command`'s list at its `max_h` cap - the tallest it gets, however many
+/// contexts the kubeconfig has. Sizing for the cap rather than a typical list is
+/// what keeps the picker from clipping on a machine with many contexts.
+const CARD_LIST_MAX_HEIGHT: f32 = 300.;
+
+/// Gap between the logo and the card (`gap_6`).
+const PICKER_CONTENT_GAP: f32 = 24.;
+
+/// Breathing room either side of the 480px card, so the minimum does not let it
+/// sit flush against the window edge.
+const PICKER_SIDE_MARGIN: f32 = 40.;
+
+/// Minimum window size that fits the picker without clipping.
+///
+/// Set at window creation and not adjustable afterwards - gpui exposes
+/// `window_min_size` only on `WindowOptions`, with no setter on `Window`. A
+/// picker window is the same window the workspace is later shown in, so this
+/// also floors the workspace: 560x619 against a 1024x768 default leaves the
+/// dock room to breathe while still letting a user shrink a long way down.
+pub const MIN_WINDOW_SIZE: Size<Pixels> = Size {
+    width: px(CARD_WIDTH + 2. * PICKER_SIDE_MARGIN),
+    height: px(LOGO_HEIGHT + PICKER_CONTENT_GAP + CARD_CHROME_HEIGHT + CARD_LIST_MAX_HEIGHT),
+};
+
 /// The Fernrohr logo, centered above the picker card.
 ///
-/// Embedded at compile time rather than resolved from disk at runtime:
-/// `images/` holds the untouched brand sources (1254px, multi-megabyte), while
-/// `app/assets/` holds the trimmed, screen-sized render that ships in the
-/// binary. Embedding means the picker is unaffected by the working directory
-/// or by how the app is packaged.
+/// Embedded at compile time rather than resolved from disk at runtime, so the
+/// picker is unaffected by the working directory or by how the app is packaged.
+/// 1.14MB is not a reason to load it at runtime: that is under 1% of even a
+/// debug build, and it buys back a missing-file failure mode on a decorative
+/// asset plus new packaging work for every platform's bundle layout.
+///
+/// The asset is **lossless** - verified bit-identical to the master, alpha
+/// included - because a lossy encode is not good enough at this size. The mark
+/// is effectively photographic (259,771 distinct colours across 1.57M pixels, so
+/// continuous gradient rather than flat fills), which is why lossless WebP only
+/// reaches 1.14MB against the 1.6MB PNG instead of the 6x a graphic would give.
+/// An earlier q90 encode was 215KB and scored PSNR 40dB, but that reads as
+/// clean at 96px and shows at 192px, and PSNR is the wrong instrument for
+/// judging a logo.
+///
+/// Reproduce with (note the ordering - `-preset` must precede `-lossless`, or it
+/// silently overwrites it and the output is lossy despite the flag):
+///
+/// ```sh
+/// magick images/fernrohr-logo.png -trim +repage trimmed.png
+/// cwebp -preset picture -lossless -z 9 -m 6 trimmed.png -o app/assets/fernrohr-logo.webp
+/// ```
+///
+/// The asset is trimmed to its alpha bounding box so the rendered height tracks
+/// the mark rather than the source canvas, which carried ~60px of horizontal and
+/// ~90px of vertical transparent margin.
 fn logo() -> impl IntoElement {
     // Built once and reused: `Image`'s `Hash` impl hashes its own bytes, which
     // is what gpui's asset cache keys on, so only the first render decodes it.
     static LOGO: LazyLock<Arc<Image>> = LazyLock::new(|| {
         Arc::new(Image::from_bytes(
-            ImageFormat::Png,
-            include_bytes!("../../assets/fernrohr-logo.png").to_vec(),
+            ImageFormat::Webp,
+            include_bytes!("../../assets/fernrohr-logo.webp").to_vec(),
         ))
     });
 
     img(LOGO.clone())
-        .w(px(96.))
-        .h(px(93.)) // matches the 192x186 source aspect so the mark isn't stretched
+        .w(px(LOGO_WIDTH))
+        .h(px(LOGO_HEIGHT))
         .object_fit(ObjectFit::Contain)
 }
 
@@ -282,6 +348,10 @@ impl Render for ClusterPicker {
 // explicit imports below rather than a glob.
 #[cfg(test)]
 mod tests {
+    use super::{
+        CARD_CHROME_HEIGHT, CARD_LIST_MAX_HEIGHT, CARD_WIDTH, LOGO_HEIGHT, LOGO_WIDTH,
+        MIN_WINDOW_SIZE, PICKER_CONTENT_GAP,
+    };
     use crate::cluster::kubeconfig;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -328,18 +398,102 @@ users:
     }
 
     /// Guards the `include_bytes!` in [`super::logo`]: a truncated or placeholder
-    /// asset compiles fine and only fails as a blank gap in the UI, so assert the
-    /// embedded bytes are a complete PNG rather than just non-empty.
+    /// asset compiles fine and only fails as a blank gap in the UI. WebP's RIFF
+    /// header carries the total file size, so a length that disagrees with it
+    /// catches truncation exactly rather than by proxy.
     #[test]
-    fn the_embedded_logo_is_a_complete_png() {
-        const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
-        let bytes = include_bytes!("../../assets/fernrohr-logo.png");
-        assert!(bytes.starts_with(SIGNATURE), "missing PNG signature");
-        assert!(
-            bytes.ends_with(b"IEND\xae\x42\x60\x82"),
-            "missing PNG IEND trailer"
+    fn the_embedded_logo_is_a_complete_webp() {
+        let bytes = include_bytes!("../../assets/fernrohr-logo.webp");
+        assert!(bytes.starts_with(b"RIFF"), "missing RIFF signature");
+        assert_eq!(&bytes[8..12], b"WEBP", "RIFF payload is not WebP");
+
+        let declared = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        assert_eq!(
+            declared + 8,
+            bytes.len(),
+            "RIFF size disagrees with file length - asset looks truncated"
         );
-        assert!(bytes.len() > 1024, "logo looks truncated");
+
+        // The lossless full-resolution encode is ~1.14MB. The floor catches a
+        // placeholder; the ceiling catches either the 1.6MB brand source in
+        // `images/` or a lossy re-encode being committed here by mistake - this
+        // asset is required to be bit-identical to the master, and both of those
+        // are not.
+        assert!(
+            (1_000_000..1_400_000).contains(&bytes.len()),
+            "logo is {} bytes, outside the expected lossless full-resolution range",
+            bytes.len()
+        );
+    }
+
+    /// The window minimum exists so the picker's centred column never overflows and
+    /// clips the logo. These pin the composition it is derived from, and catch the
+    /// one mistake derivation cannot catch on its own: a minimum *larger* than the
+    /// default window, which would open every fresh window already violating its own
+    /// floor.
+    #[test]
+    fn the_window_minimum_fits_the_picker() {
+        let min_width = f32::from(MIN_WINDOW_SIZE.width);
+        let min_height = f32::from(MIN_WINDOW_SIZE.height);
+
+        assert!(
+            min_width >= CARD_WIDTH,
+            "minimum width {min_width} is narrower than the {CARD_WIDTH}px card"
+        );
+
+        let required = LOGO_HEIGHT + PICKER_CONTENT_GAP + CARD_CHROME_HEIGHT + CARD_LIST_MAX_HEIGHT;
+        assert!(
+            min_height >= required,
+            "minimum height {min_height} cannot fit the picker, which needs {required}"
+        );
+
+        let default_layout = crate::config::workspace::WindowLayout::default();
+        assert!(
+            min_width <= default_layout.width && min_height <= default_layout.height,
+            "minimum {}x{} exceeds the default window {}x{} - a fresh window would open \
+             already violating its own minimum",
+            min_width,
+            min_height,
+            default_layout.width,
+            default_layout.height
+        );
+    }
+
+    /// The asset is re-encoded at full source resolution precisely so that rendering it
+    /// at `LOGO_WIDTH` stays sharp on a Retina display, and `LOGO_HEIGHT` is typed to its
+    /// aspect so the mark is not stretched. Neither link is enforced at runtime, so read
+    /// the real canvas out of the shipped bytes and hold both.
+    #[test]
+    fn the_embedded_logo_is_large_enough_for_the_size_it_renders_at() {
+        /// Canvas dimensions of `app/assets/fernrohr-logo.webp`. A lossless WebP is a
+        /// single `VP8L` chunk - unlike the lossy-with-alpha `VP8X` extended format -
+        /// and packs the canvas into a 32-bit field: 12 bytes of RIFF header, then the
+        /// chunk id and its length, then a 0x2f signature byte, then width-1 in bits
+        /// 0-13 and height-1 in bits 14-27.
+        fn canvas_size() -> (usize, usize) {
+            let bytes = include_bytes!("../../assets/fernrohr-logo.webp");
+            assert_eq!(&bytes[12..16], b"VP8L", "expected a lossless (VP8L) WebP");
+            assert_eq!(bytes[20], 0x2f, "missing the VP8L signature byte");
+            let packed = u32::from_le_bytes(bytes[21..25].try_into().unwrap());
+            (
+                (packed & 0x3fff) as usize + 1,
+                ((packed >> 14) & 0x3fff) as usize + 1,
+            )
+        }
+
+        let (width, height) = canvas_size();
+        assert!(
+            width >= (2. * LOGO_WIDTH) as usize,
+            "asset is {width}px wide but renders at {LOGO_WIDTH}px - soft on Retina"
+        );
+
+        let asset_aspect = width as f32 / height as f32;
+        let rendered_aspect = LOGO_WIDTH / LOGO_HEIGHT;
+        assert!(
+            (asset_aspect - rendered_aspect).abs() < 0.01,
+            "asset aspect {asset_aspect} does not match the rendered {rendered_aspect} - \
+             the mark would be stretched"
+        );
     }
 
     /// Section 3.2: drives `ClusterPicker` into a fake `Failed` attempt directly (via

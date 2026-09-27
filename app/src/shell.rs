@@ -260,6 +260,11 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
+            // A restored layout can carry a window smaller than the picker needs
+            // - it is whatever size the user last left it, from before the logo
+            // grew. Without a floor the picker's centred column overflows and the
+            // logo is clipped off the top.
+            window_min_size: Some(crate::ui::picker::MIN_WINDOW_SIZE),
             ..Default::default()
         },
         |window, cx| {
