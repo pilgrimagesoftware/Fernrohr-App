@@ -6,10 +6,9 @@ use crate::config::{
 use crate::keymap;
 use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
 use crate::paths;
-use gpui_kit::base::Selectable;
 use gpui_kit::component::Root;
-use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement};
+use gpui_kit::component::sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem};
 use gpui_kit::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -210,6 +209,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             ..Default::default()
         },
         |window, cx| {
+            crate::theme::watch_window(window, cx);
+
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
                 let layout = layout_from_bounds(window.bounds());
@@ -228,7 +229,9 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                     context_name,
                     nav: NavTarget::Pods,
                 },
-                None => WindowMode::Picker(cx.new(crate::picker::ClusterPicker::new)),
+                None => {
+                    WindowMode::Picker(cx.new(|cx| crate::picker::ClusterPicker::new(window, cx)))
+                }
             };
             let view = cx.new(|cx| {
                 match &mode {
@@ -298,7 +301,7 @@ fn watch_workspace(
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
                 return;
             }
-            let picker = cx.new(crate::picker::ClusterPicker::new);
+            let picker = cx.new(|cx| crate::picker::ClusterPicker::new(window, cx));
             watch_picker(&picker, window, cx);
             this.mode = WindowMode::Picker(picker);
             cx.notify();
@@ -381,14 +384,18 @@ impl Render for MainWindow {
             WindowMode::Picker(picker) => picker.clone().into_any_element(),
             WindowMode::Workspace { dock_area, nav, .. } => {
                 let current = *nav;
-                let sidebar = div().flex().flex_col().children(NAV_TARGETS.map(|target| {
-                    Button::new(SharedString::from(target.label()))
-                        .label(target.label())
-                        .selected(target == current)
-                        .on_click(cx.listener(move |this, _event, window, cx| {
-                            this.switch_nav(target, window, cx);
-                        }))
-                }));
+                let sidebar = Sidebar::new("nav").collapsible(false).child(
+                    SidebarGroup::new("Resources").child(SidebarMenu::new().children(
+                        NAV_TARGETS.map(|target| {
+                            SidebarMenuItem::new(target.label())
+                                .icon(target.icon())
+                                .active(target == current)
+                                .on_click(cx.listener(move |this, _event, window, cx| {
+                                    this.switch_nav(target, window, cx);
+                                }))
+                        }),
+                    )),
+                );
                 div()
                     .flex()
                     .size_full()

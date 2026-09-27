@@ -22,6 +22,7 @@ mod runtime;
 mod shell;
 mod ssh_path;
 mod ssh_tunnel;
+mod theme;
 mod tunnel_secrets;
 mod tunnel_store;
 
@@ -31,6 +32,9 @@ fn main() {
         .run(|cx: &mut App| {
             gpui_kit::init(cx);
             runtime::init(cx);
+            let ui_config: config::ui::UiConfig =
+                config::load(&paths::preference_dir().join("ui.toml"));
+            theme::init(ui_config.theme, cx);
             let workspace_path = shell::default_workspace_path();
             let keymap_path = paths::preference_dir().join("keymap.toml");
             shell::init(cx, workspace_path.clone(), &keymap_path);

@@ -1,12 +1,16 @@
 //! The cluster picker: shown in place of a window's panel workspace whenever that window
-//! has no open or restored panels. Lists kubeconfig contexts, drives a connection through
+//! has no open or restored panels. Lists kubeconfig contexts through the same searchable
+//! `Command` widget the app-wide command palette uses, drives a connection through
 //! `ClusterRegistry`, and emits [`PickerEvent::Connected`] on success so `shell::MainWindow`
 //! can switch that window into its normal panel workspace.
 
 use crate::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::cluster::kubeconfig;
 use crate::cluster::session::ClusterRegistry;
-use gpui_kit::component::button::Button;
+use gpui_kit::assets::IconName;
+use gpui_kit::base::StyledExt as _;
+use gpui_kit::component::command::{Command, CommandItem, CommandState};
+use gpui_kit::component::{ActiveTheme as _, Icon};
 use gpui_kit::*;
 
 pub enum PickerEvent {
@@ -22,14 +26,16 @@ struct Attempt {
 
 pub struct ClusterPicker {
     contexts: Result<Vec<String>, String>,
+    command_state: Entity<CommandState>,
     attempt: Option<Attempt>,
     focus_handle: FocusHandle,
 }
 
 impl ClusterPicker {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             contexts: kubeconfig::list_context_names(None).map_err(|error| error.to_string()),
+            command_state: cx.new(|cx| CommandState::new(window, cx)),
             attempt: None,
             focus_handle: cx.focus_handle(),
         }
@@ -65,52 +71,148 @@ impl Focusable for ClusterPicker {
     }
 }
 
+/// A centered card matching the app's command-palette chrome (`popover`
+/// surface, `border` outline, `shadow_lg`), so the picker reads as part of
+/// the same design system rather than a bespoke first-run screen.
+fn card(cx: &App) -> Div {
+    let theme = cx.theme();
+    div()
+        .w(px(480.))
+        .rounded_lg()
+        .border_1()
+        .border_color(theme.border)
+        .bg(theme.popover)
+        .text_color(theme.popover_foreground)
+        .shadow_lg()
+        .flex()
+        .flex_col()
+        .gap_4()
+        .p_6()
+}
+
+fn header(cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .child(
+            Icon::new(IconName::Server)
+                .size(px(28.))
+                .text_color(theme.accent),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .child(div().text_lg().font_semibold().child("Select a cluster"))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child("Choose a kubeconfig context to connect to"),
+                ),
+        )
+}
+
 impl Render for ClusterPicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme().clone();
+        let backdrop = |content: AnyElement| {
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(theme.background)
+                .child(content)
+        };
+
         let contexts = match &self.contexts {
             Ok(contexts) if !contexts.is_empty() => contexts.clone(),
             Ok(_) => {
-                return div()
-                    .size_full()
-                    .child("No kubeconfig contexts are available.");
+                return backdrop(
+                    card(cx)
+                        .child(header(cx))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child("No kubeconfig contexts are available."),
+                        )
+                        .track_focus(&self.focus_handle)
+                        .into_any_element(),
+                )
+                .into_any_element();
             }
             Err(error) => {
-                return div()
-                    .size_full()
-                    .child(format!("Could not read kubeconfig: {error}"));
+                return backdrop(
+                    card(cx)
+                        .child(header(cx))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.danger)
+                                .child(format!("Could not read kubeconfig: {error}")),
+                        )
+                        .track_focus(&self.focus_handle)
+                        .into_any_element(),
+                )
+                .into_any_element();
             }
         };
 
+        let this = cx.weak_entity();
+        let items: Vec<CommandItem> = contexts
+            .iter()
+            .map(|name| {
+                CommandItem::new()
+                    .icon(Icon::new(IconName::Server))
+                    .label(name.clone())
+            })
+            .collect();
+        let command_contexts = contexts.clone();
+        let command = Command::new(&self.command_state)
+            .items(items)
+            .placeholder("Search contexts...")
+            .on_confirm(move |index_path, _window, cx| {
+                let Some(context_name) = command_contexts.get(index_path.row).cloned() else {
+                    return;
+                };
+                let _ = this.update(cx, |this, cx| this.select(context_name, cx));
+            });
+
         let status = self.attempt.as_ref().map(|attempt| {
             let context_name = attempt.context_name.clone();
-            match &attempt.connection.read(cx).state {
-                ConnectionState::Connecting => {
-                    div().child(format!("Connecting to {context_name}..."))
-                }
-                ConnectionState::WaitingForTunnel => {
-                    div().child(format!("Waiting for tunnel to {context_name}..."))
-                }
-                ConnectionState::Failed(reason) => {
-                    div().child(format!("Could not connect to {context_name}: {reason}"))
-                }
+            let (text, color) = match &attempt.connection.read(cx).state {
+                ConnectionState::Connecting => (
+                    format!("Connecting to {context_name}..."),
+                    theme.muted_foreground,
+                ),
+                ConnectionState::WaitingForTunnel => (
+                    format!("Waiting for tunnel to {context_name}..."),
+                    theme.muted_foreground,
+                ),
+                ConnectionState::Failed(reason) => (
+                    format!("Could not connect to {context_name}: {reason}"),
+                    theme.danger,
+                ),
                 ConnectionState::Connected(_) => {
-                    div().child(format!("Connected to {context_name}"))
+                    (format!("Connected to {context_name}"), theme.success)
                 }
-            }
+            };
+            div().text_sm().text_color(color).child(text)
         });
 
-        div()
-            .size_full()
-            .track_focus(&self.focus_handle)
-            .child("Select a cluster")
-            .children(status)
-            .children(contexts.into_iter().map(|context_name| {
-                Button::new(SharedString::from(context_name.clone()))
-                    .label(context_name.clone())
-                    .on_click(cx.listener(move |this, _event, _window, cx| {
-                        this.select(context_name.clone(), cx);
-                    }))
-            }))
+        backdrop(
+            card(cx)
+                .child(header(cx))
+                .child(command)
+                .children(status)
+                .track_focus(&self.focus_handle)
+                .into_any_element(),
+        )
+        .into_any_element()
     }
 }
 

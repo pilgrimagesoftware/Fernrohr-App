@@ -4,6 +4,7 @@
 //! change's `resource-browser` spec delta.
 
 use crate::command::{Command, CommandRegistry};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::dock::{DockLayout, panel_handle};
 use gpui_kit::*;
 
@@ -28,6 +29,13 @@ impl NavTarget {
         match self {
             NavTarget::Pods => "Pods",
             NavTarget::Logs => "Logs",
+        }
+    }
+
+    pub fn icon(self) -> IconName {
+        match self {
+            NavTarget::Pods => IconName::Boxes,
+            NavTarget::Logs => IconName::ScrollText,
         }
     }
 }
