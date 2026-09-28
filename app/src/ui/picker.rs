@@ -23,6 +23,7 @@ pub enum PickerEvent {
 struct Attempt {
     context_name: String,
     connection: Entity<ClusterConnection>,
+    connected: bool,
 }
 
 pub struct ClusterPicker {
@@ -67,13 +68,8 @@ impl ClusterPicker {
     fn select(&mut self, context_name: String, cx: &mut Context<Self>) {
         let connection = self.new_connection(&context_name, cx);
         cx.observe(&connection, {
-            let context_name = context_name.clone();
-            move |_this: &mut Self, connection, cx| {
-                if let ConnectionState::Connected(_) = &connection.read(cx).state {
-                    cx.emit(PickerEvent::Connected {
-                        context_name: context_name.clone(),
-                    });
-                }
+            move |this: &mut Self, _connection, cx| {
+                this.emit_connected(cx);
                 cx.notify();
             }
         })
@@ -81,8 +77,28 @@ impl ClusterPicker {
         self.attempt = Some(Attempt {
             context_name,
             connection,
+            connected: false,
         });
+        self.emit_connected(cx);
         cx.notify();
+    }
+
+    fn emit_connected(&mut self, cx: &mut Context<Self>) {
+        let Some(attempt) = &mut self.attempt else {
+            return;
+        };
+        if attempt.connected
+            || !matches!(
+                &attempt.connection.read(cx).state,
+                ConnectionState::Connected(_)
+            )
+        {
+            return;
+        }
+        attempt.connected = true;
+        cx.emit(PickerEvent::Connected {
+            context_name: attempt.context_name.clone(),
+        });
     }
 
     pub fn command_focus_handle(&self, cx: &App) -> FocusHandle {
@@ -540,6 +556,7 @@ users:
                             "connection refused".to_string(),
                         ))
                     }),
+                    connected: false,
                 });
                 cx.notify();
             })

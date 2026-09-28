@@ -9,8 +9,11 @@ use crate::paths;
 use crate::pods::{DescribePod, PANEL_KEY_CONTEXT, ShowPodLogs, ShowPodYaml, WarpNamespace};
 use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::Root;
-use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, DockSkin, PanelId};
+use gpui_kit::component::dock::{
+    DockArea, DockEvent, DockPlacement, DockSkin, PanelId, PanelInfo, PanelState,
+};
 use gpui_kit::*;
+use kube::core::GroupVersionKind;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -109,6 +112,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.set_global(registry);
     crate::pods::register_restore(cx);
     crate::logs::register_restore(cx);
+    crate::placeholder::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
     cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(
         &dock_layouts_path,
@@ -241,6 +245,42 @@ struct OpenPanel {
     id: PanelId,
 }
 
+fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
+    let mut keys = state
+        .children
+        .iter()
+        .flat_map(restored_panel_keys)
+        .collect::<Vec<_>>();
+    let PanelInfo::Panel(data) = &state.info else {
+        return keys;
+    };
+    let context_name = data["context_name"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let namespaces = serde_json::from_value(data["namespaces"].clone()).unwrap_or_default();
+    let target = match state.panel_name.as_str() {
+        "Pods" => NavTarget::pods(),
+        "Logs" => NavTarget::Logs,
+        "Resource" => NavTarget::Kind(crate::cluster::discovery::DiscoveredKind {
+            gvk: GroupVersionKind::gvk(
+                data["group"].as_str().unwrap_or_default(),
+                data["version"].as_str().unwrap_or("v1"),
+                data["kind"].as_str().unwrap_or("Resource"),
+            ),
+            plural: data["plural"].as_str().unwrap_or("resources").to_string(),
+            namespaced: data["namespaced"].as_bool().unwrap_or(false),
+        }),
+        _ => return keys,
+    };
+    keys.push(PanelKey {
+        target,
+        context_name,
+        namespaces,
+    });
+    keys
+}
+
 /// A window's body: the cluster picker (no connected context yet) or a connected
 /// workspace. A window opens in `Picker` whenever it has no restored panels, per the
 /// `cluster-picker` and `app-shell` specs.
@@ -360,13 +400,13 @@ fn watch_workspace(
             if !matches!(event, DockEvent::LayoutChanged) {
                 return;
             }
-            if let WindowMode::Workspace { context_name, .. } = &this.mode {
-                if cx.has_global::<SavedDockLayouts>() {
-                    let state = dock_area.read(cx).dump(cx);
-                    cx.global_mut::<SavedDockLayouts>()
-                        .0
-                        .insert(context_name.clone(), state);
-                }
+            if let WindowMode::Workspace { context_name, .. } = &this.mode
+                && cx.has_global::<SavedDockLayouts>()
+            {
+                let state = dock_area.read(cx).dump(cx);
+                cx.global_mut::<SavedDockLayouts>()
+                    .0
+                    .insert(context_name.clone(), state);
             }
             this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
@@ -418,12 +458,33 @@ impl MainWindow {
         };
         let (dock_area, dock_skin, scope, (first_id, first)) =
             build_workspace(context_name.clone(), CONNECTIONS, window, cx);
+        let restored = saved_layout.is_some();
+        let restored_keys = saved_layout
+            .as_ref()
+            .map(|state| restored_panel_keys(&state.center))
+            .unwrap_or_default();
         if let Some(state) = saved_layout {
             dock_area.update(cx, |area, cx| {
                 area.load(state, window, cx)
                     .expect("saved dock layout must load");
             });
         }
+        let open_panels = if restored {
+            let ids = dock_area
+                .read(cx)
+                .layout(DockPlacement::Center)
+                .map(|tree| tree.panels().collect::<Vec<_>>())
+                .unwrap_or_default();
+            ids.into_iter()
+                .zip(restored_keys)
+                .map(|(id, key)| OpenPanel { id, key })
+                .collect()
+        } else {
+            vec![OpenPanel {
+                key: PanelKey::from(&scope),
+                id: first_id,
+            }]
+        };
         watch_workspace(&dock_area, window, cx);
         let resource_panel =
             cx.new(|cx| crate::ui::resource_panel::ResourcePanel::new(context_name.clone(), cx));
@@ -441,14 +502,13 @@ impl MainWindow {
             _dock_skin: dock_skin,
             context_name,
             resource_panel,
-            open_panels: vec![OpenPanel {
-                key: PanelKey::from(&scope),
-                id: first_id,
-            }],
+            open_panels,
             nav: Box::new(NavTarget::pods()),
             connection_count: CONNECTIONS,
         };
-        self.watch_scope_changes(first, window, cx);
+        if !restored {
+            self.watch_scope_changes(first, window, cx);
+        }
         cx.notify();
     }
 
@@ -1254,5 +1314,26 @@ mod tests {
             .update(cx, |_, window, _cx| window.remove_window())
             .unwrap();
         cx.run_until_parked();
+    }
+
+    #[test]
+    fn restored_panel_keys_preserve_kind_context_and_namespace() {
+        use gpui_kit::component::dock::{PanelInfo, PanelState};
+
+        let state = PanelState {
+            panel_name: "Pods".to_string(),
+            children: Vec::new(),
+            info: PanelInfo::Panel(serde_json::json!({
+                "context_name": "kind-dev",
+                "namespaces": ["kube-system"],
+            })),
+        };
+
+        let keys = super::restored_panel_keys(&state);
+
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].target, NavTarget::pods());
+        assert_eq!(keys[0].context_name, "kind-dev");
+        assert_eq!(keys[0].namespaces, vec!["kube-system"]);
     }
 }

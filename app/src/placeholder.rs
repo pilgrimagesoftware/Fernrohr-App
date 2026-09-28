@@ -10,8 +10,36 @@ use crate::cluster::discovery::DiscoveredKind;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
+use gpui_kit::component::dock::{
+    BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
+};
 use gpui_kit::*;
+use kube::core::GroupVersionKind;
+
+pub fn register_restore(cx: &mut App) {
+    register_panel(cx, "Resource", |context, _window, cx| {
+        let PanelInfo::Panel(state) = context.info() else {
+            panic!("Resource layout state must be a panel");
+        };
+        let context_name = state["context_name"]
+            .as_str()
+            .expect("Resource layout state must name its cluster")
+            .to_string();
+        let namespaces = serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
+        let kind = DiscoveredKind {
+            gvk: GroupVersionKind::gvk(
+                state["group"].as_str().unwrap_or_default(),
+                state["version"].as_str().unwrap_or("v1"),
+                state["kind"].as_str().unwrap_or("Resource"),
+            ),
+            plural: state["plural"].as_str().unwrap_or("resources").to_string(),
+            namespaced: state["namespaced"].as_bool().unwrap_or(false),
+        };
+        let scope = PanelScope::new(crate::nav::NavTarget::Kind(kind.clone()), context_name)
+            .scoped_to(namespaces);
+        panel_handle(cx.new(|cx| PlaceholderPanel::new(kind, scope, cx)))
+    });
+}
 
 /// A dock panel standing in for a kind this build has no table for.
 pub struct PlaceholderPanel {
@@ -101,6 +129,22 @@ impl Render for PlaceholderPanel {
 impl BasePanel for PlaceholderPanel {
     fn panel_name(&self) -> &'static str {
         "Resource"
+    }
+
+    fn dump(&self, _cx: &App) -> PanelState {
+        PanelState {
+            panel_name: self.panel_name().to_string(),
+            children: Vec::new(),
+            info: PanelInfo::Panel(serde_json::json!({
+                "context_name": self.scope.context_name,
+                "namespaces": self.scope.namespaces,
+                "group": self.kind.gvk.group,
+                "version": self.kind.gvk.version,
+                "kind": self.kind.gvk.kind,
+                "plural": self.kind.plural,
+                "namespaced": self.kind.namespaced,
+            })),
+        }
     }
 }
 

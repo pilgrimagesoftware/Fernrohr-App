@@ -205,10 +205,12 @@ pub fn stream_container_logs(
 use crate::nav::NavTarget;
 use crate::pods::{PodSelection, SelectedPod};
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::*;
 
 pub fn register_restore(cx: &mut App) {
@@ -322,7 +324,8 @@ impl Render for LogsPanel {
                 &self.focus_handle,
                 window,
                 cx,
-            );
+            )
+            .into_any_element();
         }
         if self.current.is_none() {
             return panel_title::focus_frame(
@@ -333,17 +336,26 @@ impl Render for LogsPanel {
                 &self.focus_handle,
                 window,
                 cx,
-            );
+            )
+            .into_any_element();
         }
         panel_title::focus_frame(
             div()
                 .size_full()
                 .p_3()
-                .children(view.lines().iter().cloned().map(|line| div().child(line))),
+                .font_family(cx.theme().mono_font_family.clone())
+                .children(
+                    view.lines()
+                        .iter()
+                        .cloned()
+                        .map(|line| div().whitespace_nowrap().child(line)),
+                )
+                .overflow_scrollbar(),
             &self.focus_handle,
             window,
             cx,
         )
+        .into_any_element()
     }
 }
 

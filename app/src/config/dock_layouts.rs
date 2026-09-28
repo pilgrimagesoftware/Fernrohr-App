@@ -46,14 +46,26 @@ mod tests {
     fn layouts_round_trip_by_context() {
         let path = std::env::temp_dir().join("fernrohr-dock-layouts-test.json");
         let mut layouts = DockLayouts::default();
-        layouts.insert("dev".into(), DockAreaState::default());
-        layouts.insert("prod".into(), DockAreaState::default());
+        layouts.insert(
+            "dev".into(),
+            DockAreaState {
+                version: Some(1),
+                ..Default::default()
+            },
+        );
+        layouts.insert(
+            "prod".into(),
+            DockAreaState {
+                version: Some(2),
+                ..Default::default()
+            },
+        );
 
         save(&path, &layouts).unwrap();
         let loaded = load(&path);
 
-        assert!(loaded.get("dev").is_some());
-        assert!(loaded.get("prod").is_some());
+        assert_eq!(loaded.get("dev").and_then(|state| state.version), Some(1));
+        assert_eq!(loaded.get("prod").and_then(|state| state.version), Some(2));
         let _ = std::fs::remove_file(path);
     }
 }

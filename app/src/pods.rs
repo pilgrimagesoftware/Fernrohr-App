@@ -16,6 +16,8 @@ pub struct PodRow {
     pub status: String,
     pub restarts: i32,
     pub age: String,
+    pub pod_ip: String,
+    pub node: String,
     /// Raw seconds behind `age`'s display string - kept separately because
     /// the display string ("9m" vs "10m") doesn't sort correctly as text.
     pub age_secs: i64,
@@ -63,6 +65,12 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
         status: status.and_then(|s| s.phase.clone()).unwrap_or_default(),
         restarts,
         age: format_age(age_secs),
+        pod_ip: status.and_then(|s| s.pod_ip.clone()).unwrap_or_default(),
+        node: pod
+            .spec
+            .as_ref()
+            .and_then(|spec| spec.node_name.clone())
+            .unwrap_or_default(),
         age_secs,
     }
 }
@@ -276,10 +284,14 @@ pub fn view_rows(
     rows
 }
 
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
+use gpui_kit::component::kbd::Kbd;
+use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::table::{Column, DataTable, TableDelegate, TableEvent, TableState};
 use gpui_kit::*;
 
 actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
@@ -311,6 +323,69 @@ pub struct PodSelection {
     pub containers: Vec<String>,
 }
 
+struct PodTableRow {
+    row: PodRow,
+    selection: PodSelection,
+}
+
+#[derive(Default)]
+struct PodTableDelegate {
+    rows: Vec<PodTableRow>,
+}
+
+impl TableDelegate for PodTableDelegate {
+    fn columns_count(&self, _: &App) -> usize {
+        8
+    }
+
+    fn rows_count(&self, _: &App) -> usize {
+        self.rows.len()
+    }
+
+    fn column(&self, col_ix: usize, _: &App) -> Column {
+        let (id, title, width) = match col_ix {
+            0 => ("name", "Name", 220.),
+            1 => ("namespace", "Namespace", 150.),
+            2 => ("ready", "Ready", 80.),
+            3 => ("status", "Status", 130.),
+            4 => ("restarts", "Restarts", 90.),
+            5 => ("age", "Age", 70.),
+            6 => ("ip", "IP", 150.),
+            _ => ("node", "Node", 180.),
+        };
+        Column::new(id, title).width(px(width))
+    }
+
+    fn render_td(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let row = &self.rows[row_ix].row;
+        let value = match col_ix {
+            0 => row.name.clone(),
+            1 => row.namespace.clone(),
+            2 => row.ready.clone(),
+            3 => row.status.clone(),
+            4 => row.restarts.to_string(),
+            5 => row.age.clone(),
+            6 => row.pod_ip.clone(),
+            _ => row.node.clone(),
+        };
+        div()
+            .whitespace_nowrap()
+            .font_family(cx.theme().mono_font_family.clone())
+            .child(value)
+    }
+}
+
+enum PodDetail {
+    Description(String),
+    Yaml(String),
+}
+
 #[derive(Default)]
 pub struct SelectedPod(pub Option<PodSelection>);
 
@@ -326,7 +401,8 @@ pub struct PodsPanel {
     subscribed: bool,
     focus_handle: FocusHandle,
     selected: Option<Pod>,
-    detail: Option<String>,
+    detail: Option<PodDetail>,
+    pod_table: Option<Entity<TableState<PodTableDelegate>>>,
 }
 
 impl PodsPanel {
@@ -361,6 +437,7 @@ impl PodsPanel {
             focus_handle: cx.focus_handle(),
             selected: None,
             detail: None,
+            pod_table: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
@@ -414,11 +491,23 @@ impl PodsPanel {
         cx: &mut Context<Self>,
     ) {
         self.detail = self.selected_pod().map(|pod| {
-            format!(
-                "{} in {}",
+            PodDetail::Description(format!(
+                "Name: {}\nNamespace: {}\nStatus: {}\nNode: {}\nPod IP: {}",
                 pod.metadata.name.as_deref().unwrap_or("Pod"),
-                pod.metadata.namespace.as_deref().unwrap_or("default")
-            )
+                pod.metadata.namespace.as_deref().unwrap_or("default"),
+                pod.status
+                    .as_ref()
+                    .and_then(|status| status.phase.as_deref())
+                    .unwrap_or("Unknown"),
+                pod.spec
+                    .as_ref()
+                    .and_then(|spec| spec.node_name.as_deref())
+                    .unwrap_or("Unscheduled"),
+                pod.status
+                    .as_ref()
+                    .and_then(|status| status.pod_ip.as_deref())
+                    .unwrap_or("Unassigned"),
+            ))
         });
         cx.notify();
     }
@@ -442,8 +531,61 @@ impl PodsPanel {
     ) {
         self.detail = self
             .selected_pod()
-            .and_then(|pod| serde_json::to_string_pretty(pod).ok());
+            .and_then(|pod| serde_yaml_ng::to_string(pod).ok().map(PodDetail::Yaml));
         cx.notify();
+    }
+
+    fn sync_table(
+        &mut self,
+        rows: Vec<PodTableRow>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<TableState<PodTableDelegate>> {
+        if self.pod_table.is_none() {
+            let table = cx.new(|cx| {
+                TableState::new(PodTableDelegate::default(), window, cx)
+                    .row_selectable(true)
+                    .col_selectable(false)
+                    .sortable(false)
+                    .col_movable(false)
+                    .col_resizable(false)
+            });
+            cx.subscribe(&table, |this, table, event, cx| {
+                let TableEvent::SelectRow(row_ix) = event else {
+                    return;
+                };
+                let Some(selection) = table
+                    .read(cx)
+                    .delegate()
+                    .rows
+                    .get(*row_ix)
+                    .map(|row| row.selection.clone())
+                else {
+                    return;
+                };
+                cx.set_global(SelectedPod(Some(selection.clone())));
+                this.selected = this
+                    .table
+                    .read(cx)
+                    .pods()
+                    .iter()
+                    .find(|pod| {
+                        pod.metadata.name.as_deref() == Some(&selection.name)
+                            && pod.metadata.namespace.as_deref() == Some(&selection.namespace)
+                    })
+                    .cloned();
+                cx.notify();
+            })
+            .detach();
+            self.pod_table = Some(table);
+        }
+        let table = self.pod_table.as_ref().unwrap().clone();
+        table.update(cx, |table, cx| {
+            table.delegate_mut().rows = rows;
+            table.refresh(cx);
+            cx.notify();
+        });
+        table
     }
 }
 
@@ -487,7 +629,7 @@ impl Render for PodsPanel {
 
                 let now = Timestamp::now();
                 let namespaces = &self.scope.namespaces;
-                let items: Vec<(PodRow, PodSelection)> = self
+                let items: Vec<PodTableRow> = self
                     .table
                     .read(cx)
                     .pods()
@@ -504,51 +646,100 @@ impl Render for PodsPanel {
                             name: pod.metadata.name.clone().unwrap_or_default(),
                             containers,
                         };
-                        (pod_row(pod, now), selection)
+                        PodTableRow {
+                            row: pod_row(pod, now),
+                            selection,
+                        }
                     })
                     .collect();
-                let this = cx.weak_entity();
+                let table = self.sync_table(items, window, cx);
+                let namespace_key =
+                    Kbd::binding_for_action(&WarpNamespace, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse("w").expect("valid keybinding"))
+                        });
+                let describe_key =
+                    Kbd::binding_for_action(&DescribePod, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse("d").expect("valid keybinding"))
+                        });
+                let logs_key =
+                    Kbd::binding_for_action(&ShowPodLogs, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse("l").expect("valid keybinding"))
+                        });
+                let yaml_key =
+                    Kbd::binding_for_action(&ShowPodYaml, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse("y").expect("valid keybinding"))
+                        });
+                let shortcuts = div()
+                    .flex()
+                    .gap_3()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(namespace_key)
+                            .child("Namespace"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(describe_key)
+                            .child("Describe"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(logs_key)
+                            .child("Logs"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(yaml_key)
+                            .child("YAML"),
+                    );
                 div()
                     .size_full()
+                    .flex()
+                    .flex_col()
                     .p_3()
                     .children(pause_banner)
-                    .children(
-                        self.detail
-                            .as_ref()
-                            .map(|detail| div().child(detail.clone())),
-                    )
-                    .children(items.into_iter().map(|(row, selection)| {
-                        let row_id = format!("pod-row-{}-{}", row.namespace, row.name);
-                        let this = this.clone();
-                        div()
-                            .id(SharedString::from(row_id))
-                            .on_click(move |_event, window, cx| {
-                                cx.set_global(SelectedPod(Some(selection.clone())));
-                                let _ = this.update(cx, |this, cx| {
-                                    this.selected = this
-                                        .table
-                                        .read(cx)
-                                        .pods()
-                                        .iter()
-                                        .find(|pod| {
-                                            pod.metadata.name.as_deref() == Some(&selection.name)
-                                                && pod.metadata.namespace.as_deref()
-                                                    == Some(&selection.namespace)
-                                        })
-                                        .cloned();
-                                    this.focus_handle.focus(window, cx);
-                                });
-                            })
-                            .child(format!(
-                                "{}\t{}\t{}\t{}\t{}\t{}",
-                                row.name,
-                                row.namespace,
-                                row.ready,
-                                row.status,
-                                row.restarts,
-                                row.age
-                            ))
+                    .children(self.detail.as_ref().map(|detail| {
+                        match detail {
+                            PodDetail::Description(detail) => {
+                                div().mb_3().child(detail.clone()).into_any_element()
+                            }
+                            PodDetail::Yaml(yaml) => div()
+                                .mb_3()
+                                .max_h(px(240.))
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .whitespace_nowrap()
+                                .child(yaml.clone())
+                                .overflow_scrollbar()
+                                .into_any_element(),
+                        }
                     }))
+                    .child(
+                        div().flex_1().min_h_0().child(
+                            DataTable::new(&table)
+                                .stripe(true)
+                                .bordered(true)
+                                .scrollbar_visible(true, true),
+                        ),
+                    )
+                    .child(div().mt_2().child(shortcuts))
             }
         };
 
@@ -631,13 +822,33 @@ mod tests {
     // re-exports its own `test` attribute macro, which would shadow
     // `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
-        NamespaceScope, Pod, PodsTable, SortState, is_unauthorized, matches_namespaces, pod_row,
-        view_rows, watcher,
+        NamespaceScope, PanelScope, Pod, PodsPanel, PodsTable, ShowPodYaml, SortState,
+        is_unauthorized, matches_namespaces, pod_row, view_rows, watcher,
     };
+    use crate::nav::NavTarget;
+    use gpui_kit::{AppContext as _, ParentElement as _, Styled as _};
     use jiff::Timestamp;
     use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
     use kube::core::response::Status;
+
+    struct PanelHarness {
+        first: gpui_kit::Entity<PodsPanel>,
+        second: gpui_kit::Entity<PodsPanel>,
+    }
+
+    impl gpui_kit::Render for PanelHarness {
+        fn render(
+            &mut self,
+            _window: &mut gpui_kit::Window,
+            _cx: &mut gpui_kit::Context<Self>,
+        ) -> impl gpui_kit::IntoElement {
+            gpui_kit::div()
+                .size_full()
+                .child(self.first.clone())
+                .child(self.second.clone())
+        }
+    }
 
     fn api_error(code: u16) -> kube::Error {
         kube::Error::Api(Box::new(Status {
@@ -881,5 +1092,37 @@ mod tests {
             .collect();
         names.sort();
         assert_eq!(names, vec!["web-2", "web-3", "web-4"]);
+    }
+
+    #[gpui_kit::test]
+    async fn pod_shortcut_dispatches_only_to_the_focused_panel(cx: &mut gpui_kit::TestAppContext) {
+        let (first, second) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            let first =
+                cx.new(|cx| PodsPanel::new(PanelScope::new(NavTarget::pods(), "dev".into()), cx));
+            let second =
+                cx.new(|cx| PodsPanel::new(PanelScope::new(NavTarget::pods(), "prod".into()), cx));
+            first.update(cx, |panel, _| panel.selected = Some(Pod::default()));
+            second.update(cx, |panel, _| panel.selected = Some(Pod::default()));
+            (first, second)
+        });
+        let window = cx.add_window(|_, _| PanelHarness {
+            first: first.clone(),
+            second: second.clone(),
+        });
+        cx.run_until_parked();
+
+        window
+            .update(cx, |_, window, cx| {
+                let focus_handle = first.read(cx).focus_handle.clone();
+                focus_handle.focus(window, cx);
+                window.dispatch_action(Box::new(ShowPodYaml), cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert!(first.read_with(cx, |panel, _| panel.detail.is_some()));
+        assert!(second.read_with(cx, |panel, _| panel.detail.is_none()));
     }
 }
