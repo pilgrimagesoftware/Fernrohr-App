@@ -279,6 +279,10 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
 use gpui_kit::*;
 
+actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
+
+pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
+
 /// The pod a Logs panel should stream, set by clicking a row in a Pods
 /// panel. App-scoped rather than a direct link between the two panels, since
 /// either can live in any dock split of any window.
@@ -303,6 +307,8 @@ pub struct PodsPanel {
     namespaces: Entity<crate::cluster::namespaces::NamespaceList>,
     subscribed: bool,
     focus_handle: FocusHandle,
+    selected: Option<Pod>,
+    detail: Option<String>,
 }
 
 impl PodsPanel {
@@ -335,6 +341,8 @@ impl PodsPanel {
             namespaces,
             subscribed: false,
             focus_handle: cx.focus_handle(),
+            selected: None,
+            detail: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
@@ -359,6 +367,65 @@ impl PodsPanel {
         self.table = ClusterRegistry::subscribe_pods(cx, &self.scope.context_name, client);
         cx.observe(&self.table, |_, _, cx| cx.notify()).detach();
         self.subscribed = true;
+    }
+
+    fn selected_pod(&self) -> Option<&Pod> {
+        self.selected.as_ref()
+    }
+
+    fn on_action_warp_namespace(
+        &mut self,
+        _: &WarpNamespace,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(namespace) = self
+            .selected_pod()
+            .and_then(|pod| pod.metadata.namespace.clone())
+        else {
+            return;
+        };
+        self.scope = self.scope.scoped_to(vec![namespace.clone()]);
+        cx.emit(ScopeEvent::NamespacesChanged(vec![namespace]));
+    }
+
+    fn on_action_describe_pod(
+        &mut self,
+        _: &DescribePod,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.detail = self.selected_pod().map(|pod| {
+            format!(
+                "{} in {}",
+                pod.metadata.name.as_deref().unwrap_or("Pod"),
+                pod.metadata.namespace.as_deref().unwrap_or("default")
+            )
+        });
+        cx.notify();
+    }
+
+    fn on_action_show_pod_logs(
+        &mut self,
+        _: &ShowPodLogs,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_pod().is_some() {
+            window.dispatch_action(Box::new(crate::nav::ShowLogs), cx);
+        }
+    }
+
+    fn on_action_show_pod_yaml(
+        &mut self,
+        _: &ShowPodYaml,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.detail = self
+            .selected_pod()
+            .and_then(|pod| serde_json::to_string_pretty(pod).ok());
+        cx.notify();
     }
 }
 
@@ -422,16 +489,37 @@ impl Render for PodsPanel {
                         (pod_row(pod, now), selection)
                     })
                     .collect();
+                let this = cx.weak_entity();
                 div()
                     .size_full()
                     .p_3()
                     .children(pause_banner)
+                    .children(
+                        self.detail
+                            .as_ref()
+                            .map(|detail| div().child(detail.clone())),
+                    )
                     .children(items.into_iter().map(|(row, selection)| {
                         let row_id = format!("pod-row-{}-{}", row.namespace, row.name);
+                        let this = this.clone();
                         div()
                             .id(SharedString::from(row_id))
-                            .on_click(move |_event, _window, cx| {
+                            .on_click(move |_event, window, cx| {
                                 cx.set_global(SelectedPod(Some(selection.clone())));
+                                let _ = this.update(cx, |this, cx| {
+                                    this.selected = this
+                                        .table
+                                        .read(cx)
+                                        .pods()
+                                        .iter()
+                                        .find(|pod| {
+                                            pod.metadata.name.as_deref() == Some(&selection.name)
+                                                && pod.metadata.namespace.as_deref()
+                                                    == Some(&selection.namespace)
+                                        })
+                                        .cloned();
+                                    this.focus_handle.focus(window, cx);
+                                });
                             })
                             .child(format!(
                                 "{}\t{}\t{}\t{}\t{}\t{}",
@@ -446,7 +534,20 @@ impl Render for PodsPanel {
             }
         };
 
-        panel_title::focus_frame(content, &self.focus_handle, window, cx)
+        div()
+            .size_full()
+            .key_context(PANEL_KEY_CONTEXT)
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::on_action_warp_namespace))
+            .on_action(cx.listener(Self::on_action_describe_pod))
+            .on_action(cx.listener(Self::on_action_show_pod_logs))
+            .on_action(cx.listener(Self::on_action_show_pod_yaml))
+            .child(panel_title::focus_frame(
+                content,
+                &self.focus_handle,
+                window,
+                cx,
+            ))
     }
 }
 

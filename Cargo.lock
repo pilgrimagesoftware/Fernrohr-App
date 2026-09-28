@@ -2044,6 +2044,7 @@ dependencies = [
  "rust-i18n",
  "rustls",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",

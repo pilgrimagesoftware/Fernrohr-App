@@ -6,6 +6,7 @@ use crate::config::{
 use crate::keymap;
 use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
 use crate::paths;
+use crate::pods::{DescribePod, PANEL_KEY_CONTEXT, ShowPodLogs, ShowPodYaml, WarpNamespace};
 use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::Root;
 use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, DockSkin, PanelId};
@@ -88,6 +89,10 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         KeyBinding::new(&palette_binding, ToggleCommandPalette, None),
         KeyBinding::new(&show_pods_binding, ShowPods, None),
         KeyBinding::new(&show_logs_binding, ShowLogs, None),
+        KeyBinding::new("w", WarpNamespace, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new("d", DescribePod, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new("l", ShowPodLogs, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new("y", ShowPodYaml, Some(PANEL_KEY_CONTEXT)),
     ]);
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
