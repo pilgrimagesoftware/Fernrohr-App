@@ -102,6 +102,8 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     });
 
     cx.set_global(registry);
+    crate::pods::register_restore(cx);
+    crate::logs::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
     cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(
         &dock_layouts_path,
@@ -401,8 +403,22 @@ impl MainWindow {
         // One connection per connected window in this change; see
         // `WindowMode::Workspace::connection_count`.
         const CONNECTIONS: usize = 1;
+        let saved_layout = if cx.has_global::<SavedDockLayouts>() {
+            cx.global::<SavedDockLayouts>()
+                .0
+                .get(&context_name)
+                .cloned()
+        } else {
+            None
+        };
         let (dock_area, dock_skin, scope, (first_id, first)) =
             build_workspace(context_name.clone(), CONNECTIONS, window, cx);
+        if let Some(state) = saved_layout {
+            dock_area.update(cx, |area, cx| {
+                area.load(state, window, cx)
+                    .expect("saved dock layout must load");
+            });
+        }
         watch_workspace(&dock_area, window, cx);
         let resource_panel =
             cx.new(|cx| crate::ui::resource_panel::ResourcePanel::new(context_name.clone(), cx));

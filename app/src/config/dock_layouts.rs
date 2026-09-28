@@ -12,7 +12,6 @@ pub struct DockLayouts {
 }
 
 impl DockLayouts {
-    #[cfg(test)]
     pub fn get(&self, context_name: &str) -> Option<&DockAreaState> {
         self.layouts.get(context_name)
     }

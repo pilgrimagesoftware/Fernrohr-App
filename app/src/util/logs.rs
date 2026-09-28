@@ -203,10 +203,28 @@ pub fn stream_container_logs(
 }
 
 use crate::k8s::resource::pods::{PodSelection, SelectedPod};
+use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::button::Button;
-use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
+use gpui_kit::component::dock::{
+    BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
+};
 use gpui_kit::*;
+
+pub fn register_restore(cx: &mut App) {
+    register_panel(cx, "Logs", |context, _window, cx| {
+        let PanelInfo::Panel(state) = context.info() else {
+            panic!("Logs layout state must be a panel");
+        };
+        let context_name = state["context_name"]
+            .as_str()
+            .expect("Logs layout state must name its cluster")
+            .to_string();
+        let namespaces = serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
+        let scope = PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
+        panel_handle(cx.new(|cx| LogsPanel::new(scope, cx)))
+    });
+}
 
 /// A dock panel streaming the container logs of whichever pod was last
 /// clicked in a Pods panel (see [`SelectedPod`]).
@@ -332,6 +350,17 @@ impl Render for LogsPanel {
 impl BasePanel for LogsPanel {
     fn panel_name(&self) -> &'static str {
         "Logs"
+    }
+
+    fn dump(&self, _cx: &App) -> PanelState {
+        PanelState {
+            panel_name: self.panel_name().to_string(),
+            children: Vec::new(),
+            info: PanelInfo::Panel(serde_json::json!({
+                "context_name": self.scope.context_name,
+                "namespaces": self.scope.namespaces,
+            })),
+        }
     }
 }
 

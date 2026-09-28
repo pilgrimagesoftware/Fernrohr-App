@@ -1,4 +1,5 @@
-use crate::resource_index::ResourceIndex;
+use crate::ui::nav::NavTarget;
+use crate::util::resource_index::ResourceIndex;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
@@ -276,8 +277,29 @@ pub fn view_rows(
 }
 
 use gpui_kit::component::button::Button;
-use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
+use gpui_kit::component::dock::{
+    BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
+};
 use gpui_kit::*;
+
+actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
+
+pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
+
+pub fn register_restore(cx: &mut App) {
+    register_panel(cx, "Pods", |context, _window, cx| {
+        let PanelInfo::Panel(state) = context.info() else {
+            panic!("Pods layout state must be a panel");
+        };
+        let context_name = state["context_name"]
+            .as_str()
+            .expect("Pods layout state must name its cluster")
+            .to_string();
+        let namespaces = serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
+        let scope = PanelScope::new(NavTarget::pods(), context_name).scoped_to(namespaces);
+        panel_handle(cx.new(|cx| PodsPanel::new(scope, cx)))
+    });
+}
 
 /// The pod a Logs panel should stream, set by clicking a row in a Pods
 /// panel. App-scoped rather than a direct link between the two panels, since
@@ -453,6 +475,17 @@ impl Render for PodsPanel {
 impl BasePanel for PodsPanel {
     fn panel_name(&self) -> &'static str {
         "Pods"
+    }
+
+    fn dump(&self, _cx: &App) -> PanelState {
+        PanelState {
+            panel_name: self.panel_name().to_string(),
+            children: Vec::new(),
+            info: PanelInfo::Panel(serde_json::json!({
+                "context_name": self.scope.context_name,
+                "namespaces": self.scope.namespaces,
+            })),
+        }
     }
 }
 
