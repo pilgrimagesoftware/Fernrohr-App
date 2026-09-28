@@ -1,7 +1,7 @@
 use super::tunnel;
 use crate::forward_registry::RegistryHandle;
 use crate::managed_forward::{ForwardState, ManagedForward as _};
-use crate::ssh_tunnel::SshTunnel;
+use crate::tunnel::ssh::SshTunnel;
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Client, Config};
@@ -38,7 +38,7 @@ pub async fn probe(config: Config) -> ConnectionState {
 /// (or in-cluster config) when `None`. Pure async, no GPUI context, so it's testable
 /// on its own - the picker's "connect to this specific context" behavior lives here,
 /// not scattered across [`ClusterConnection::connect`].
-pub(in crate::cluster) async fn resolve_config(
+pub(in crate::k8s::cluster) async fn resolve_config(
     context_name: Option<&str>,
 ) -> Result<Config, String> {
     match context_name {

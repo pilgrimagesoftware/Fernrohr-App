@@ -4,8 +4,8 @@ use crate::config::{
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
 use crate::keymap;
-use crate::nav::{self, NavTarget, ShowLogs, ShowPods};
-use crate::paths;
+use crate::ui::nav::{self, NavTarget, ShowLogs, ShowPods};
+use crate::util::paths;
 use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::Root;
 use gpui_kit::component::dock::{DockArea, DockEvent, DockPlacement, DockSkin, PanelId};

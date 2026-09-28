@@ -202,7 +202,7 @@ pub fn stream_container_logs(
     })
 }
 
-use crate::pods::{PodSelection, SelectedPod};
+use crate::k8s::resource::pods::{PodSelection, SelectedPod};
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};

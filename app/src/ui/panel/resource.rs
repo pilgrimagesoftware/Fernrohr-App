@@ -7,10 +7,10 @@
 //! it opens all share one `ClusterSession` and switching between them never
 //! reconnects.
 
-use crate::cluster::connection::{ClusterConnection, ConnectionState};
-use crate::cluster::discovery::{DiscoveredKind, discover_kinds};
-use crate::cluster::session::ClusterRegistry;
-use crate::nav::NavTarget;
+use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
+use crate::k8s::cluster::session::ClusterRegistry;
+use crate::ui::nav::NavTarget;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};

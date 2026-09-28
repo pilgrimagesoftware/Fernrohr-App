@@ -8,7 +8,7 @@
 //! behind by a crash (a normal `Drop` removes its own pidfile, so anything `sweep_stale`
 //! finds at startup is necessarily from a run that never got to clean up).
 
-use crate::paths;
+use crate::util::paths;
 use std::fs;
 use std::path::{Path, PathBuf};
 
