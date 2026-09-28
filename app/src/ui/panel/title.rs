@@ -9,7 +9,7 @@
 //! the same inputs rather than each one re-deriving "should this panel name its
 //! cluster?" in its own render.
 
-use crate::nav::NavTarget;
+use crate::ui::nav::NavTarget;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
@@ -47,7 +47,7 @@ fn focus_border(focused: bool, primary: Hsla, border: Hsla) -> Hsla {
 /// One struct rather than loose fields, because the title bar and the window's
 /// dedup key want the same facts and must not disagree: the bar says "Pod ·
 /// staging" and the key that finds that panel again has to carry the same
-/// staging. [`PanelKey`](crate::shell::PanelKey) is derived from this, not
+/// staging. [`PanelKey`](crate::util::shell::PanelKey) is derived from this, not
 /// maintained beside it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PanelScope {
@@ -249,8 +249,8 @@ pub enum ScopeEvent {
 #[cfg(test)]
 mod tests {
     use super::{PanelScope, focus_border, label_for, namespaces_offered, title};
-    use crate::cluster::discovery::DiscoveredKind;
-    use crate::nav::NavTarget;
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use crate::ui::nav::NavTarget;
     use gpui_kit::Hsla;
     use kube::core::GroupVersionKind;
 

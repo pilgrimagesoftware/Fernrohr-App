@@ -1,2 +1,2 @@
-mod cluster;
-mod resource;
+pub(crate) mod cluster;
+pub(crate) mod resource;

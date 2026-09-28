@@ -7,7 +7,7 @@
 //! shared `F` is torn down (via its own `Drop`) the instant the last [`RegistryHandle`]
 //! for that identity is dropped, rather than lingering as a stopped-but-cached object.
 
-use crate::managed_forward::{ForwardHandle, ManagedForward};
+use crate::forward::managed::{ForwardHandle, ManagedForward};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
@@ -85,7 +85,7 @@ impl<F: ManagedForward> ForwardRegistry<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::managed_forward::ForwardState;
+    use crate::forward::managed::ForwardState;
     use std::net::SocketAddr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::watch;

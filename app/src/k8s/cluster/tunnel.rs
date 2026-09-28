@@ -6,10 +6,10 @@
 //! `forward_registry.rs`). Building a [`SshTunnelConfig`] from a stored [`TunnelConfig`]
 //! and allocating the local port both live here too, since nothing else needs them.
 
-use crate::forward_registry::{ForwardRegistry, RegistryHandle};
-use crate::forward_supervisor::{BackoffPolicy, SupervisorOptions};
-use crate::ssh_tunnel::{SshTunnel, SshTunnelConfig, TransientIdentityFile};
-use crate::tunnel_store::{TunnelStore, TunnelStoreError};
+use crate::forward::registry::{ForwardRegistry, RegistryHandle};
+use crate::forward::supervisor::{BackoffPolicy, SupervisorOptions};
+use crate::tunnel::ssh::{SshTunnel, SshTunnelConfig, TransientIdentityFile};
+use crate::tunnel::store::{TunnelStore, TunnelStoreError};
 use gpui_kit::{App, Global};
 use std::io;
 use std::path::Path;
@@ -96,7 +96,7 @@ pub fn acquire_for_context(
     // that case (the identity file's `Drop` removes it immediately).
     // ponytail: a secret briefly touches disk on every acquire, not just the first;
     // add a `ForwardRegistry::contains` peek if that overhead/exposure ever matters.
-    let local_addr = crate::port_allocator::allocate()?.addr();
+    let local_addr = crate::util::port_allocator::allocate()?.addr();
     let identity_file = secret
         .as_deref()
         .map(|secret| TransientIdentityFile::write(&tunnel_id, secret))
@@ -173,7 +173,7 @@ mod tests {
     #[gpui_kit::test]
     async fn bound_context_acquires_its_tunnel_by_name(cx: &mut gpui_kit::TestAppContext) {
         use crate::config::tunnels::TunnelConfig;
-        use crate::tunnel_store::TunnelStore;
+        use crate::tunnel::store::TunnelStore;
 
         let path = std::env::temp_dir().join(format!(
             "fernrohr-cluster-tunnel-bound-test-{}.toml",

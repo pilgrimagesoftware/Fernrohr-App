@@ -12,7 +12,7 @@
 //! accept forwarded connections" means for a Pod-backed forward. Target loss (Pod
 //! deleted mid-session) is section 4.2.
 
-use crate::forward_supervisor::ForwardTransport;
+use crate::forward::supervisor::ForwardTransport;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
 use tokio::net::{TcpListener, TcpStream};

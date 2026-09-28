@@ -1,5 +1,5 @@
-use crate::cluster::connection::{ClusterConnection, ConnectionState};
-use crate::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+use crate::k8s::cluster::session::ClusterRegistry;
 use gpui_kit::*;
 use k8s_openapi::api::core::v1::Namespace;
 use kube::{Api, api::ListParams};

@@ -3,12 +3,14 @@ use gpui_kit::*;
 mod command;
 mod config;
 mod consts;
+mod forward;
+mod k8s;
 mod keymap;
 mod runtime;
 mod ssh_path;
+mod tunnel;
 mod ui;
 mod util;
-mod k8s;
 
 fn main() {
     gpui_kit::application()
@@ -20,8 +22,8 @@ fn main() {
             let ui_config: config::ui::UiConfig =
                 config::load(&util::paths::preference_dir().join("ui.toml"));
             ui::theme::init(ui_config.theme, cx);
-            let workspace_path = shell::default_workspace_path();
-            let keymap_path = paths::preference_dir().join("keymap.toml");
+            let workspace_path = util::shell::default_workspace_path();
+            let keymap_path = util::paths::preference_dir().join("keymap.toml");
             util::shell::init(cx, workspace_path.clone(), &keymap_path);
             util::shell::open_saved_or_default(cx, &workspace_path);
         });

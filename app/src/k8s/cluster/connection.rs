@@ -1,6 +1,6 @@
 use super::tunnel;
-use crate::forward_registry::RegistryHandle;
-use crate::managed_forward::{ForwardState, ManagedForward as _};
+use crate::forward::managed::{ForwardState, ManagedForward as _};
+use crate::forward::registry::RegistryHandle;
 use crate::tunnel::ssh::SshTunnel;
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use kube::config::{KubeConfigOptions, Kubeconfig};
@@ -74,7 +74,7 @@ async fn resolve_named_context(
 /// `None`-caller path, unchanged from before this section).
 fn resolve_bound_context(context_name: Option<String>) -> Option<String> {
     context_name.or_else(|| {
-        crate::cluster::kubeconfig::current_context_name(None)
+        crate::k8s::cluster::kubeconfig::current_context_name(None)
             .ok()
             .flatten()
     })
@@ -101,11 +101,11 @@ fn rewrite_for_tunnel(config: &mut Config, local_addr: SocketAddr) {
 /// (reporting `WaitingForTunnel` meanwhile), rewrites the config, and probes - sending
 /// every intermediate and final state to `tx` in order.
 ///
-/// `pub(in crate::cluster)`: section 7.3's credential-refresh path (`cluster::session`)
+/// `pub(in crate::k8s::cluster)`: section 7.3's credential-refresh path (`cluster::session`)
 /// reuses this directly rather than duplicating the tunnel-wait/rewrite/probe sequence -
 /// a 401 needs exactly the same "resolve config, wait for the tunnel if bound, probe"
 /// dance a first connect does, just triggered by a different signal.
-pub(in crate::cluster) async fn connect_and_probe(
+pub(in crate::k8s::cluster) async fn connect_and_probe(
     config_result: Result<Config, String>,
     forward_wait: Option<(watch::Receiver<ForwardState>, SocketAddr)>,
     tx: mpsc::Sender<ConnectionState>,
@@ -178,7 +178,7 @@ impl ClusterConnection {
     /// path - it needs both to call [`connect_and_probe`] again without re-resolving the
     /// context's tunnel binding, exactly what [`ClusterConnection::connect`] captured at the
     /// original connect.
-    pub(in crate::cluster) fn forward_wait(
+    pub(in crate::k8s::cluster) fn forward_wait(
         &self,
     ) -> Option<(watch::Receiver<ForwardState>, SocketAddr)> {
         self._forward
@@ -200,7 +200,7 @@ impl ClusterConnection {
     pub fn connect(cx: &mut App, context_name: Option<String>) -> Entity<Self> {
         cx.new(|cx: &mut Context<Self>| {
             let bound_context = resolve_bound_context(context_name.clone());
-            let tunnels_path = crate::paths::preference_dir().join("tunnels.toml");
+            let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
             let forward = bound_context.and_then(|context| {
                 tunnel::acquire_for_context(cx, &tunnels_path, &context)
                     .ok()
@@ -380,7 +380,7 @@ users:
     /// (section 2.3) drive, plugged in here one layer up.
     mod connect_and_probe_tests {
         use super::*;
-        use crate::managed_forward::ForwardState;
+        use crate::forward::managed::ForwardState;
 
         async fn recv_all(mut rx: mpsc::Receiver<ConnectionState>) -> Vec<&'static str> {
             let mut labels = Vec::new();

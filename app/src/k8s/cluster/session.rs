@@ -1,7 +1,7 @@
 use super::connection::ClusterConnection;
 use super::health::{self, HealthTransition};
 use super::watch_registry::{PauseReason, WatchRegistry};
-use crate::pods::{PodsTable, watch_all_namespaces};
+use crate::k8s::resource::pods::{PodsTable, watch_all_namespaces};
 use gpui_kit::{App, AppContext as _, Entity, Global};
 use kube::Client;
 use std::collections::HashMap;

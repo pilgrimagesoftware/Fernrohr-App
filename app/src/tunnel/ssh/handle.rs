@@ -1,5 +1,5 @@
 //! Section 6.2 of the tunnel-subsystem change: `SshTunnel`, the [`ManagedForward`]
-//! wrapper the connect path acquires from a [`crate::forward_registry::ForwardRegistry`].
+//! wrapper the connect path acquires from a [`crate::forward::registry::ForwardRegistry`].
 //!
 //! `SshTransport`/`SshTunnelConfig` (this module's parent) and `ForwardSupervisor`
 //! (section 2.3) already implement spawn/supervise and the retry state machine; this
@@ -10,8 +10,8 @@
 //! last one drops this struct, which aborts the supervisor task via its own `Drop`.
 
 use super::{SshTransport, SshTunnelConfig};
-use crate::forward_supervisor::{ForwardSupervisor, SupervisorOptions};
-use crate::managed_forward::{ForwardHandle, ForwardState, ManagedForward};
+use crate::forward::managed::{ForwardHandle, ForwardState, ManagedForward};
+use crate::forward::supervisor::{ForwardSupervisor, SupervisorOptions};
 use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -65,7 +65,7 @@ impl SshTunnel {
     /// secret, must already be written (via [`TransientIdentityFile::write`]) with its
     /// path set on `config.identity_file` - building it is fallible (a temp-dir write),
     /// so callers do it before this infallible spawn rather than inside a
-    /// [`crate::forward_registry::ForwardRegistry`] factory closure, which can't fail.
+    /// [`crate::forward::registry::ForwardRegistry`] factory closure, which can't fail.
     pub(crate) fn spawn(
         rt: &Handle,
         config: SshTunnelConfig,

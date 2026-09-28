@@ -1,12 +1,12 @@
 //! Section 2.3 of the tunnel-subsystem change: the per-forward supervisor task that
-//! drives a `ManagedForward` implementation's [`ForwardState`](crate::managed_forward::ForwardState)
+//! drives a `ManagedForward` implementation's [`ForwardState`](crate::forward::managed::ForwardState)
 //! machine - connect, periodic health check, and reconnect-with-backoff on failure.
 //!
 //! `SshTunnel` and `K8sPortForward` (sections 3-4) each supply a [`ForwardTransport`]
 //! (spawn/supervise an `ssh` child, or hold a `kube` port-forward stream) and let this
 //! module own the retry policy so neither has to reimplement it.
 
-use crate::managed_forward::ForwardState;
+use crate::forward::managed::ForwardState;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::time::Duration;

@@ -6,25 +6,53 @@
 //! gives the user a panel that names it and says what is missing - rather than
 //! the row doing nothing at all, which would leave a listed kind looking broken.
 
-use crate::cluster::discovery::DiscoveredKind;
+use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::dock::{BasePanel, Panel, PanelControl, PanelEvent};
+use gpui_kit::component::dock::{
+    BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
+};
 use gpui_kit::*;
+use kube::core::GroupVersionKind;
+
+pub fn register_restore(cx: &mut App) {
+    register_panel(cx, "Resource", |context, _window, cx| {
+        let PanelInfo::Panel(state) = context.info() else {
+            panic!("Resource layout state must be a panel");
+        };
+        let context_name = state["context_name"]
+            .as_str()
+            .expect("Resource layout state must name its cluster")
+            .to_string();
+        let namespaces = serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
+        let kind = DiscoveredKind {
+            gvk: GroupVersionKind::gvk(
+                state["group"].as_str().unwrap_or_default(),
+                state["version"].as_str().unwrap_or("v1"),
+                state["kind"].as_str().unwrap_or("Resource"),
+            ),
+            plural: state["plural"].as_str().unwrap_or("resources").to_string(),
+            namespaced: state["namespaced"].as_bool().unwrap_or(false),
+        };
+        let scope = PanelScope::new(crate::ui::nav::NavTarget::Kind(kind.clone()), context_name)
+            .scoped_to(namespaces);
+        panel_handle(cx.new(|cx| PlaceholderPanel::new(kind, scope, cx)))
+    });
+}
 
 /// A dock panel standing in for a kind this build has no table for.
 pub struct PlaceholderPanel {
     kind: DiscoveredKind,
     scope: PanelScope,
-    namespaces: Entity<crate::cluster::namespaces::NamespaceList>,
+    namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
     focus_handle: FocusHandle,
 }
 
 impl PlaceholderPanel {
     pub fn new(kind: DiscoveredKind, scope: PanelScope, cx: &mut Context<Self>) -> Self {
         let namespaces =
-            crate::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
+            crate::k8s::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
         cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
         Self {
             kind,
@@ -102,6 +130,22 @@ impl BasePanel for PlaceholderPanel {
     fn panel_name(&self) -> &'static str {
         "Resource"
     }
+
+    fn dump(&self, _cx: &App) -> PanelState {
+        PanelState {
+            panel_name: self.panel_name().to_string(),
+            children: Vec::new(),
+            info: PanelInfo::Panel(serde_json::json!({
+                "context_name": self.scope.context_name,
+                "namespaces": self.scope.namespaces,
+                "group": self.kind.gvk.group,
+                "version": self.kind.gvk.version,
+                "kind": self.kind.gvk.kind,
+                "plural": self.kind.plural,
+                "namespaced": self.kind.namespaced,
+            })),
+        }
+    }
 }
 
 /// Section 10: the title bar. The dock draws it and lays the parts out - this
@@ -146,8 +190,8 @@ impl Panel for PlaceholderPanel {
 #[cfg(test)]
 mod tests {
     use super::PlaceholderPanel;
-    use crate::cluster::discovery::DiscoveredKind;
-    use crate::nav::NavTarget;
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use crate::ui::nav::NavTarget;
     use crate::ui::panel_title::PanelScope;
     use gpui_kit::TestAppContext;
     use kube::core::GroupVersionKind;

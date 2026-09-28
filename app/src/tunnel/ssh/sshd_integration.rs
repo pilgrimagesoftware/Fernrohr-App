@@ -3,7 +3,7 @@
 //! actually comes `Up` and proxies bytes, not just that the child process spawns.
 
 use super::*;
-use crate::forward_supervisor::ForwardTransport;
+use crate::forward::supervisor::ForwardTransport;
 use std::net::TcpListener;
 use std::process::Command as StdCommand;
 use std::time::Duration;
@@ -463,8 +463,8 @@ async fn dropping_the_transport_kills_the_whole_process_group_including_the_jump
 /// `forward_supervisor.rs`; this test is only about `SshTunnel` composing them.
 #[tokio::test]
 async fn ssh_tunnel_wrapper_reaches_up_and_proxies_through_local_sshd() {
-    use crate::forward_supervisor::{BackoffPolicy, SupervisorOptions};
-    use crate::managed_forward::{ForwardState, ManagedForward as _};
+    use crate::forward::managed::{ForwardState, ManagedForward as _};
+    use crate::forward::supervisor::{BackoffPolicy, SupervisorOptions};
     use std::time::Duration as StdDuration;
 
     let Some(sshd) = LocalSshd::spawn() else {

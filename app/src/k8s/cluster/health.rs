@@ -1,5 +1,5 @@
 use super::watch_registry::PauseReason;
-use crate::managed_forward::ForwardState;
+use crate::forward::managed::ForwardState;
 use tokio::sync::{mpsc, watch};
 
 /// What a forward state transition means for the cluster's watchers - `None` for any

@@ -205,10 +205,12 @@ pub fn stream_container_logs(
 use crate::k8s::resource::pods::{PodSelection, SelectedPod};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::*;
 
 pub fn register_restore(cx: &mut App) {
@@ -230,21 +232,21 @@ pub fn register_restore(cx: &mut App) {
 /// clicked in a Pods panel (see [`SelectedPod`]).
 pub struct LogsPanel {
     scope: PanelScope,
-    connection: Entity<crate::cluster::connection::ClusterConnection>,
+    connection: Entity<crate::k8s::cluster::connection::ClusterConnection>,
     view: Entity<LogsView>,
     stream: Option<Task<()>>,
     current: Option<(String, String, String)>,
-    namespaces: Entity<crate::cluster::namespaces::NamespaceList>,
+    namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
     focus_handle: FocusHandle,
 }
 
 impl LogsPanel {
     pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
-        use crate::cluster::session::ClusterRegistry;
+        use crate::k8s::cluster::session::ClusterRegistry;
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         let namespaces =
-            crate::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
+            crate::k8s::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
         cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
@@ -272,7 +274,7 @@ impl LogsPanel {
         let Some(selection) = cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()) else {
             return;
         };
-        let crate::cluster::connection::ConnectionState::Connected(client) =
+        let crate::k8s::cluster::connection::ConnectionState::Connected(client) =
             &self.connection.read(cx).state
         else {
             return;
@@ -322,7 +324,8 @@ impl Render for LogsPanel {
                 &self.focus_handle,
                 window,
                 cx,
-            );
+            )
+            .into_any_element();
         }
         if self.current.is_none() {
             return panel_title::focus_frame(
@@ -333,17 +336,26 @@ impl Render for LogsPanel {
                 &self.focus_handle,
                 window,
                 cx,
-            );
+            )
+            .into_any_element();
         }
         panel_title::focus_frame(
             div()
                 .size_full()
                 .p_3()
-                .children(view.lines().iter().cloned().map(|line| div().child(line))),
+                .font_family(cx.theme().mono_font_family.clone())
+                .children(
+                    view.lines()
+                        .iter()
+                        .cloned()
+                        .map(|line| div().whitespace_nowrap().child(line)),
+                )
+                .overflow_scrollbar(),
             &self.focus_handle,
             window,
             cx,
         )
+        .into_any_element()
     }
 }
 

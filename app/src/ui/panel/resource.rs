@@ -298,9 +298,9 @@ impl Render for ResourcePanel {
 #[cfg(test)]
 mod tests {
     use super::{ResourcePanel, ResourceState};
-    use crate::cluster::connection::{ClusterConnection, ConnectionState};
-    use crate::cluster::discovery::DiscoveredKind;
-    use crate::nav::{NavTarget, has_concrete_panel};
+    use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use crate::ui::nav::{NavTarget, has_concrete_panel};
     use gpui_kit::{AppContext as _, TestAppContext, WindowHandle};
     use kube::core::GroupVersionKind;
 

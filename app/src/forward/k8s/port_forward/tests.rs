@@ -15,8 +15,8 @@
 //! existing composition end to end rather than adding a new code path.
 
 use super::*;
-use crate::forward_supervisor::{BackoffPolicy, ForwardSupervisor, SupervisorOptions};
-use crate::managed_forward::ForwardState;
+use crate::forward::managed::ForwardState;
+use crate::forward::supervisor::{BackoffPolicy, ForwardSupervisor, SupervisorOptions};
 use futures_util::{SinkExt, StreamExt};
 use kube::{Client, Config};
 use parking_lot::Mutex;

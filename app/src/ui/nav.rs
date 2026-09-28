@@ -3,8 +3,8 @@
 //! it, and every other discovered kind gets a placeholder, so the Resource
 //! panel never offers a row that opens nothing.
 
-use crate::cluster::discovery::DiscoveredKind;
 use crate::command::{Command, CommandRegistry};
+use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
@@ -54,7 +54,7 @@ impl NavTarget {
 
 /// Whether this build has a concrete panel for `kind`. Pods is the only one
 /// today; everything else falls through to
-/// [`crate::placeholder::PlaceholderPanel`].
+/// [`crate::ui::placeholder::PlaceholderPanel`].
 pub fn has_concrete_panel(kind: &DiscoveredKind) -> bool {
     kind.gvk.group.is_empty() && kind.gvk.kind == "Pod"
 }
@@ -92,9 +92,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 /// with. Returning the concrete type rather than a `PanelId` alone is what
 /// makes that subscription possible; an erased handle could not be updated.
 pub enum OpenedPanel {
-    Pods(Entity<crate::pods::PodsPanel>),
-    Placeholder(Entity<crate::placeholder::PlaceholderPanel>),
-    Logs(Entity<crate::logs::LogsPanel>),
+    Pods(Entity<crate::k8s::resource::pods::PodsPanel>),
+    Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
+    Logs(Entity<crate::util::logs::LogsPanel>),
 }
 
 impl OpenedPanel {
@@ -127,7 +127,7 @@ pub fn add_panel(
     // and the id is taken from the entity before `add_panel` consumes it.
     match &scope.target {
         NavTarget::Logs => {
-            let panel = cx.new(|cx| crate::logs::LogsPanel::new(scope.clone(), cx));
+            let panel = cx.new(|cx| crate::util::logs::LogsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(
                 panel_handle(panel.clone()),
@@ -139,7 +139,7 @@ pub fn add_panel(
             (id, OpenedPanel::Logs(panel))
         }
         NavTarget::Kind(kind) if has_concrete_panel(kind) => {
-            let panel = cx.new(|cx| crate::pods::PodsPanel::new(scope.clone(), cx));
+            let panel = cx.new(|cx| crate::k8s::resource::pods::PodsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(
                 panel_handle(panel.clone()),
@@ -152,7 +152,7 @@ pub fn add_panel(
         }
         NavTarget::Kind(kind) => {
             let panel = cx.new(|cx| {
-                crate::placeholder::PlaceholderPanel::new(kind.clone(), scope.clone(), cx)
+                crate::ui::placeholder::PlaceholderPanel::new(kind.clone(), scope.clone(), cx)
             });
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(
@@ -170,8 +170,8 @@ pub fn add_panel(
 #[cfg(test)]
 mod tests {
     use super::{NavTarget, SHOW_LOGS_COMMAND_ID, SHOW_PODS_COMMAND_ID, has_concrete_panel};
-    use crate::cluster::discovery::DiscoveredKind;
     use crate::command::{CommandRegistry, build_items};
+    use crate::k8s::cluster::discovery::DiscoveredKind;
     use gpui_kit::TestAppContext;
     use kube::core::GroupVersionKind;
 

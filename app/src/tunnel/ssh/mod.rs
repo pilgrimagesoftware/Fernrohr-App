@@ -13,8 +13,8 @@
 //! unix-only) so the whole tree can be torn down with one `killpg`-equivalent signal.
 
 use crate::consts::{SSH_READINESS_POLL_INTERVAL, SSH_READINESS_PROBE_TIMEOUT};
-use crate::pidfile;
 use crate::ssh_path::require_ssh_on_path;
+use crate::util::pidfile;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 use tokio::io::AsyncReadExt;
@@ -124,7 +124,7 @@ impl SshTunnelConfig {
     }
 }
 
-/// The [`crate::forward_supervisor::ForwardTransport`] `SshTunnel` plugs into
+/// The [`crate::forward::supervisor::ForwardTransport`] `SshTunnel` plugs into
 /// `ForwardSupervisor`: `connect` spawns the child, `health_check` confirms it's still
 /// running. A distinct exit reason per failure mode is section 3.2.
 // UNWIRED(#3): section 6.2's connect-path integration is the first real caller that
@@ -172,7 +172,7 @@ impl Drop for SshTransport {
     }
 }
 
-impl crate::forward_supervisor::ForwardTransport for SshTransport {
+impl crate::forward::supervisor::ForwardTransport for SshTransport {
     /// Declares the forward ready only once the local port actually accepts a
     /// connection, polling at [`SSH_READINESS_POLL_INTERVAL`] up to
     /// [`SSH_READINESS_PROBE_TIMEOUT`]. If `ssh` exits before that (auth rejected,

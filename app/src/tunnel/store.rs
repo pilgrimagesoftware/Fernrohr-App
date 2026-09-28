@@ -19,7 +19,7 @@ use crate::config::{
     self,
     tunnels::{TunnelConfig, TunnelsConfig},
 };
-use crate::tunnel_secrets::TunnelSecretStore;
+use crate::tunnel::secrets::TunnelSecretStore;
 use std::io;
 use std::path::PathBuf;
 
@@ -183,7 +183,9 @@ mod tests {
     fn temp_config_path() -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("fernrohr-tunnel-store-test-{n}.toml"))
+        let path = std::env::temp_dir().join(format!("fernrohr-tunnel-store-test-{n}.toml"));
+        let _ = std::fs::remove_file(&path);
+        path
     }
 
     fn sample_tunnel(name: &str) -> TunnelConfig {
