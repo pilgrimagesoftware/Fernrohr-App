@@ -26,6 +26,10 @@ struct ClosedWindowLayouts(HashMap<WindowId, WindowLayout>);
 
 impl Global for ClosedWindowLayouts {}
 
+struct SavedDockLayouts(crate::config::dock_layouts::DockLayouts);
+
+impl Global for SavedDockLayouts {}
+
 pub const NEW_WINDOW_COMMAND_ID: &str = "shell.new_window";
 pub const NEW_WINDOW_DEFAULT_BINDING: &str = "cmd-n";
 pub const TOGGLE_PALETTE_COMMAND_ID: &str = "shell.toggle_command_palette";
@@ -33,6 +37,10 @@ pub const TOGGLE_PALETTE_DEFAULT_BINDING: &str = "cmd-shift-p";
 
 pub fn default_workspace_path() -> PathBuf {
     paths::state_dir().join("workspace.toml")
+}
+
+pub fn default_dock_layouts_path() -> PathBuf {
+    paths::state_dir().join("dock-layouts.json")
 }
 
 /// The commands this module contributes to the app-wide [`CommandRegistry`].
@@ -94,9 +102,16 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     });
 
     cx.set_global(registry);
+    let dock_layouts_path = default_dock_layouts_path();
+    cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(
+        &dock_layouts_path,
+    )));
 
     cx.on_app_quit(move |cx| {
         save(cx, &workspace_path);
+        if let Some(layouts) = cx.try_global::<SavedDockLayouts>() {
+            let _ = crate::config::dock_layouts::save(&dock_layouts_path, &layouts.0);
+        }
         async {}
     })
     .detach();
@@ -337,6 +352,14 @@ fn watch_workspace(
         |this: &mut MainWindow, dock_area, event, window, cx| {
             if !matches!(event, DockEvent::LayoutChanged) {
                 return;
+            }
+            if let WindowMode::Workspace { context_name, .. } = &this.mode {
+                if cx.has_global::<SavedDockLayouts>() {
+                    let state = dock_area.read(cx).dump(cx);
+                    cx.global_mut::<SavedDockLayouts>()
+                        .0
+                        .insert(context_name.clone(), state);
+                }
             }
             this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {

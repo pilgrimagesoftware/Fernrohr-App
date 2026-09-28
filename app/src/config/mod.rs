@@ -2,6 +2,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::fs;
 use std::path::Path;
 
+pub mod dock_layouts;
 pub mod tunnels;
 pub mod ui;
 pub mod window_state;
