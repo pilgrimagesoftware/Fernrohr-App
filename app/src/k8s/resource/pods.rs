@@ -1316,4 +1316,58 @@ mod tests {
             );
         }
     }
+
+    /// The shortcut has to resolve with a *child* scope on the focus path, not
+    /// only when the panel itself holds focus.
+    ///
+    /// Selecting a row hands focus to the table inside the panel, and that is
+    /// the case the shortcut broke on: the panel's own handle is no longer the
+    /// focused element, so a binding scoped too tightly, or a listener that
+    /// only the panel answers, would both look correct until someone clicked a
+    /// row. A context binding matches at the depth of the focused context, so
+    /// the panel's bindings must come back for a stack that ends in the table.
+    #[test]
+    fn panel_bindings_resolve_beneath_a_focused_child_scope() {
+        use super::{DescribePod, PANEL_KEY_CONTEXT, panel_bindings};
+        use gpui_kit::{KeyContext, Keymap, Keystroke};
+
+        /// A one-element input slice, borrowed: the API takes a slice so a key
+        /// can be mid-chord, and cloning a keystroke to satisfy that is noise.
+        fn slice(key: &Keystroke) -> &[Keystroke] {
+            std::slice::from_ref(key)
+        }
+
+        let keymap = Keymap::new(panel_bindings().to_vec());
+        let panel = KeyContext::try_from(PANEL_KEY_CONTEXT).expect("a valid context name");
+        let table = KeyContext::try_from("DataTable").expect("a valid context name");
+        let d = Keystroke::parse("d").expect("a valid keystroke");
+        let one = |context: &KeyContext| [context.clone()];
+
+        let with_panel_focused = keymap.bindings_for_input(slice(&d), &one(&panel));
+        let with_table_focused = keymap.bindings_for_input(slice(&d), &[panel, table]);
+
+        for (depth, (matched, _)) in [("panel", with_panel_focused), ("table", with_table_focused)]
+        {
+            assert!(
+                matched
+                    .iter()
+                    .any(|binding| binding.action().partial_eq(&DescribePod)),
+                "`d` does not resolve to DescribePod with the {depth} scope focused"
+            );
+        }
+
+        // And it stops resolving once the panel is off the path, which is what
+        // makes these the panel's keys rather than the window's: with the logs
+        // panel focused, `d` is nobody's shortcut. A binding registered without
+        // a context would fail here, having passed the two cases above.
+        let logs = KeyContext::try_from("LogsPanel").expect("a valid context name");
+        let (elsewhere, _) = keymap.bindings_for_input(slice(&d), &one(&logs));
+        assert!(
+            !elsewhere
+                .iter()
+                .any(|binding| binding.action().partial_eq(&DescribePod)),
+            "`d` still opens a pod's detail from another panel, so the binding \
+             is not scoped to the pods panel"
+        );
+    }
 }
