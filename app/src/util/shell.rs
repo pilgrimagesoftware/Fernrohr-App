@@ -104,6 +104,10 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         KeyBinding::new(&show_pods_binding, ShowPods, None),
         KeyBinding::new(&show_logs_binding, ShowLogs, None),
     ]);
+    // The panels' own shortcuts, each in its own key context. A panel naming a
+    // key in its hint bar has not bound that key: without this the hint bar
+    // prints letters no keystroke resolves to, and the shortcut does nothing.
+    cx.bind_keys(crate::k8s::resource::pods::panel_bindings());
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });
@@ -1791,5 +1795,94 @@ mod tests {
         assert_eq!(keys[0].target, NavTarget::pods());
         assert_eq!(keys[0].context_name, "kind-dev");
         assert_eq!(keys[0].namespaces, vec!["kube-system"]);
+    }
+
+    /// The panel's own keys have to be *bound*, not merely printed.
+    ///
+    /// The hint bar under the pods table reads the keymap for each shortcut
+    /// and falls back to printing the letter, so an unbound `d` looks
+    /// identical to a working one on screen while doing nothing when pressed.
+    /// This presses the key rather than dispatching the action, because the
+    /// binding is exactly the part that can be missing.
+    ///
+    /// At the end of the module on purpose: `title_bar_of` above is being
+    /// changed on another branch, and a test whose context sits under it would
+    /// stop applying the moment that lands.
+    #[gpui_kit::test]
+    async fn a_pods_panel_shortcut_key_reaches_the_window(cx: &mut TestAppContext) {
+        use crate::k8s::resource::pods::{PodSelection, SelectedPod};
+        use gpui_kit::{Focusable as _, test::TestWindowExt as _};
+
+        let workspace = temp_workspace_path();
+        let keymap = temp_workspace_path();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            init(cx, workspace.clone(), &keymap);
+        });
+        let window = cx.add_window(|window, cx| {
+            let mut main_window = MainWindow {
+                mode: WindowMode::Picker(
+                    cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
+                ),
+                focus_handle: cx.focus_handle(),
+            };
+            main_window.enter_workspace("kind-dev".to_string(), window, cx);
+            main_window
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            cx.set_global(SelectedPod(Some(PodSelection {
+                namespace: "default".into(),
+                name: "web-1".into(),
+                containers: vec!["web".into()],
+            })));
+        });
+
+        // Focus the pods list, the way clicking into its table would.
+        window
+            .update(cx, |main_window, window, cx| {
+                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                    panic!("a connected window is in workspace mode")
+                };
+                let Some(OpenedPanel::Pods(panel)) = open_panels[0].panel.clone() else {
+                    panic!("a new workspace opens on the pods list")
+                };
+                panel.read(cx).focus_handle(cx).focus(window, cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        // A real keystroke, not a dispatched action. Dispatched through the
+        // window rather than the entity: a keypress re-renders, and re-entering
+        // the window's view while it is mid-update is what gpui forbids.
+        cx.update_window(window.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.dispatch_keystroke(
+                gpui_kit::Keystroke::parse("d").expect("valid keystroke"),
+                cx,
+            );
+            window.render_frame(cx);
+        })
+        .expect("the window is still open");
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, _window, _cx| {
+                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                    panic!("a connected window is in workspace mode")
+                };
+                assert!(
+                    open_panels
+                        .iter()
+                        .any(|open| open.key.target == NavTarget::pod("default", "web-1")),
+                    "pressing `d` in the pods list opened the selected pod's detail \
+                     panel, so the key was bound rather than only printed"
+                );
+            })
+            .unwrap();
+
+        let _ = std::fs::remove_file(&workspace);
+        let _ = std::fs::remove_file(&keymap);
     }
 }

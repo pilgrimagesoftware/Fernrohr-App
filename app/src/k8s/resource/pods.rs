@@ -298,6 +298,32 @@ actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
 
 pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
 
+/// The keys the panel's shortcut hint bar prints, and the keys the panel's
+/// bindings use. One set of letters, named once, because the hint bar reads
+/// the keymap and falls back to a literal: if the two lists drift, the panel
+/// advertises a shortcut it does not have.
+const NAMESPACE_KEY: &str = "w";
+const DESCRIBE_KEY: &str = "d";
+const LOGS_KEY: &str = "l";
+const YAML_KEY: &str = "y";
+
+/// The panel's own keybindings, in the panel's key context.
+///
+/// In the context rather than global on purpose: `d` means "describe the
+/// selected pod" while a Pods panel is on the focus path, and means nothing
+/// anywhere else. A context binding matches at any depth of the focus path,
+/// so these still fire once a table row has taken focus from the panel. The
+/// bindings are registered with the window's keymap rather than assumed: a
+/// panel that prints a key has not thereby bound it.
+pub fn panel_bindings() -> [KeyBinding; 4] {
+    [
+        KeyBinding::new(NAMESPACE_KEY, WarpNamespace, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new(DESCRIBE_KEY, DescribePod, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new(LOGS_KEY, ShowPodLogs, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new(YAML_KEY, ShowPodYaml, Some(PANEL_KEY_CONTEXT)),
+    ]
+}
+
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Pods", |context, _window, cx| {
         let PanelInfo::Panel(state) = context.info() else {
@@ -681,22 +707,22 @@ impl Render for PodsPanel {
                 let namespace_key =
                     Kbd::binding_for_action(&WarpNamespace, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
-                            Kbd::new(Keystroke::parse("w").expect("valid keybinding"))
+                            Kbd::new(Keystroke::parse(NAMESPACE_KEY).expect("valid keybinding"))
                         });
                 let describe_key =
                     Kbd::binding_for_action(&DescribePod, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
-                            Kbd::new(Keystroke::parse("d").expect("valid keybinding"))
+                            Kbd::new(Keystroke::parse(DESCRIBE_KEY).expect("valid keybinding"))
                         });
                 let logs_key =
                     Kbd::binding_for_action(&ShowPodLogs, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
-                            Kbd::new(Keystroke::parse("l").expect("valid keybinding"))
+                            Kbd::new(Keystroke::parse(LOGS_KEY).expect("valid keybinding"))
                         });
                 let yaml_key =
                     Kbd::binding_for_action(&ShowPodYaml, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
-                            Kbd::new(Keystroke::parse("y").expect("valid keybinding"))
+                            Kbd::new(Keystroke::parse(YAML_KEY).expect("valid keybinding"))
                         });
                 let shortcuts = div()
                     .flex()
@@ -1215,5 +1241,60 @@ mod tests {
             dispatches.borrow().is_empty(),
             "an unselected pod opens nothing"
         );
+    }
+    /// Every key the hint bar prints resolves to the action it names, in the
+    /// panel's context. The hint bar reads the keymap and falls back to a
+    /// literal, so a binding naming the wrong action, or leaving the context,
+    /// is invisible until a keystroke does the wrong thing.
+    ///
+    /// At the tail of the module, with its imports local, so it neither
+    /// depends on nor disturbs the shared import block above.
+    #[test]
+    fn panel_bindings_pair_each_key_with_the_action_the_hint_bar_names() {
+        use super::{ShowPodLogs, WarpNamespace, panel_bindings};
+        use gpui_kit::AsKeystroke as _;
+
+        let bindings = panel_bindings();
+        let actual: Vec<(String, &dyn gpui_kit::Action)> = bindings
+            .iter()
+            .map(|binding| {
+                // The keystroke as typed, not as displayed: the hint bar prints
+                // the platform's upper-case key form ("W"), but the binding has
+                // to answer to "w".
+                let keys: Vec<String> = binding
+                    .keystrokes()
+                    .iter()
+                    .map(|key| key.as_keystroke().key.clone())
+                    .collect();
+                assert_eq!(
+                    keys.len(),
+                    1,
+                    "a panel shortcut should be a single key, got {keys:?}"
+                );
+                (keys[0].clone(), binding.action())
+            })
+            .collect();
+        let expected: Vec<(String, &dyn gpui_kit::Action)> = vec![
+            ("w".to_string(), &WarpNamespace),
+            ("d".to_string(), &DescribePod),
+            ("l".to_string(), &ShowPodLogs),
+            ("y".to_string(), &ShowPodYaml),
+        ];
+        assert_eq!(
+            actual
+                .iter()
+                .map(|(key, _)| key.as_str())
+                .collect::<Vec<_>>(),
+            expected
+                .iter()
+                .map(|(key, _)| key.as_str())
+                .collect::<Vec<_>>()
+        );
+        for (index, (key, action)) in actual.iter().enumerate() {
+            assert!(
+                action.partial_eq(expected[index].1),
+                "key `{key}` is bound to the wrong action"
+            );
+        }
     }
 }

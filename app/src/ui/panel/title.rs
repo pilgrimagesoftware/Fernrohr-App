@@ -28,7 +28,16 @@ pub fn focus_frame(
     cx: &App,
 ) -> impl IntoElement {
     let theme = cx.theme();
-    let border = focus_border(focus_handle.is_focused(window), theme.primary, theme.border);
+    // `contains_focused`, not `is_focused`: a panel whose content takes focus
+    // itself (a table row, a text input) moves the window's focus to that
+    // child, and a border that lit only while the panel's own handle was the
+    // focused element would go dark the moment the panel was actually being
+    // used. The panel is active whenever the focus is inside it.
+    let border = focus_border(
+        focus_handle.contains_focused(window, cx),
+        theme.primary,
+        theme.border,
+    );
 
     // Inset rather than flush with the outer edge: a panel at the window's
     // bottom edge would otherwise have this border's square corners clipped
