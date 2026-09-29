@@ -932,17 +932,21 @@ mod tests {
     ///
     /// Returns the tab name, whether a namespace picker is on the bar, and how
     /// many controls sit at its trailing end.
+    /// The namespace picker moved out of the title bar into each panel's own
+    /// body (Paul's feedback: a picker shared across a tab group's title bar
+    /// was ambiguous about which tab it scoped), so this reads only what
+    /// still lives in the dock's title bar: the name and the toolbar
+    /// controls.
     fn title_bar_of<T: dock::Panel>(
         panel: &Entity<T>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (Option<SharedString>, bool, usize) {
+    ) -> (Option<SharedString>, usize) {
         let name = panel.tab_name(cx);
-        let picker = panel.title_suffix(window, cx).is_some();
         let controls = panel
             .toolbar_buttons(window, cx)
             .map_or(0, |buttons| buttons.len());
-        (name, picker, controls)
+        (name, controls)
     }
 
     /// Section 9.1: selecting a kind adds a panel to the dock rather than
@@ -1308,11 +1312,11 @@ mod tests {
         cx.run_until_parked();
 
         let expected = 4;
-        let cases: [(NavTarget, bool); 4] = [
-            (NavTarget::pods(), true),
-            (NavTarget::Logs, true),
-            (NavTarget::Kind(crd_kind()), true),
-            (NavTarget::Kind(cluster_scoped_kind()), false),
+        let cases: [NavTarget; 4] = [
+            NavTarget::pods(),
+            NavTarget::Logs,
+            NavTarget::Kind(crd_kind()),
+            NavTarget::Kind(cluster_scoped_kind()),
         ];
 
         let mut checked: Vec<String> = Vec::new();
@@ -1321,12 +1325,12 @@ mod tests {
                 let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
                     panic!("a connected window is in workspace mode")
                 };
-                for (target, namespaced) in cases {
+                for target in cases {
                     let scope = PanelScope::new(target.clone(), "kind-dev".to_string());
                     let (_id, opened) = dock_area.update(cx, |area, cx| {
                         nav::add_panel(area, &scope, None, window, cx)
                     });
-                    let (name, picker, controls) = match opened {
+                    let (name, controls) = match opened {
                         nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
                         nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
                         nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
@@ -1337,11 +1341,6 @@ mod tests {
                         Some(target.list_label()).as_deref(),
                         "the title bar names the kind, and adds the cluster only \
                          when the window holds more than one connection"
-                    );
-                    assert_eq!(
-                        picker, namespaced,
-                        "a namespace picker belongs on a namespaced kind and on \
-                         nothing else"
                     );
                     assert!(
                         controls > 0,

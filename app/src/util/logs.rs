@@ -319,30 +319,21 @@ impl EventEmitter<ScopeEvent> for LogsPanel {}
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = self.view.read(cx);
-        if let Some(message) = view.terminal_message() {
-            return panel_title::focus_frame(
-                div().size_full().p_3().child(message.to_string()),
-                &self.focus_handle,
-                window,
-                cx,
-            )
-            .into_any_element();
-        }
-        if self.current.is_none() {
-            return panel_title::focus_frame(
-                div()
-                    .size_full()
-                    .p_3()
-                    .child("Click a pod to view its logs."),
-                &self.focus_handle,
-                window,
-                cx,
-            )
-            .into_any_element();
-        }
-        let lines = Rc::new(view.lines().to_vec());
-        let line_count = lines.len();
-        panel_title::focus_frame(
+        let content = if let Some(message) = view.terminal_message() {
+            div()
+                .size_full()
+                .p_3()
+                .child(message.to_string())
+                .into_any_element()
+        } else if self.current.is_none() {
+            div()
+                .size_full()
+                .p_3()
+                .child("Click a pod to view its logs.")
+                .into_any_element()
+        } else {
+            let lines = Rc::new(view.lines().to_vec());
+            let line_count = lines.len();
             div()
                 .size_full()
                 .p_3()
@@ -364,7 +355,36 @@ impl Render for LogsPanel {
                         },
                     )
                     .size_full(),
-                ),
+                )
+                .into_any_element()
+        };
+
+        let this = cx.weak_entity();
+        let namespaces = self.namespaces.read(cx).names();
+        let namespace_bar =
+            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
+                let _ = this.update(cx, |this: &mut Self, cx| {
+                    this.scope = this.scope.scoped_to(namespaces.clone());
+                    cx.emit(ScopeEvent::NamespacesChanged(namespaces));
+                });
+            })
+            .map(|picker| {
+                div()
+                    .flex()
+                    .justify_end()
+                    .p_2()
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(picker)
+            });
+
+        panel_title::focus_frame(
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .children(namespace_bar)
+                .child(div().flex_1().min_h_0().child(content)),
             &self.focus_handle,
             window,
             cx,
@@ -417,21 +437,6 @@ impl Panel for LogsPanel {
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
         Some(self.streaming_title().into())
-    }
-
-    fn title_suffix(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<impl IntoElement> {
-        let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
-            let _ = this.update(cx, |this: &mut Self, cx| {
-                this.scope = this.scope.scoped_to(namespaces.clone());
-                cx.emit(ScopeEvent::NamespacesChanged(namespaces));
-            });
-        })
     }
 
     fn toolbar_buttons(

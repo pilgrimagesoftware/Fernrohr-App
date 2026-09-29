@@ -101,38 +101,65 @@ impl EventEmitter<ScopeEvent> for PlaceholderPanel {}
 impl Render for PlaceholderPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
+        let this = cx.weak_entity();
+        let namespaces = self.namespaces.read(cx).names();
+        let namespace_bar =
+            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
+                let _ = this.update(cx, |this: &mut Self, cx| {
+                    this.scope = this.scope.scoped_to(namespaces.clone());
+                    cx.emit(ScopeEvent::NamespacesChanged(namespaces));
+                });
+            })
+            .map(|picker| {
+                div()
+                    .flex()
+                    .justify_end()
+                    .p_2()
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(picker)
+            });
+
         panel_title::focus_frame(
             div()
                 .size_full()
                 .flex()
                 .flex_col()
-                .items_center()
-                .justify_center()
-                .gap_2()
-                .p_6()
+                .children(namespace_bar)
                 .child(
                     div()
-                        .text_lg()
-                        .text_color(theme.foreground)
-                        .child(self.kind.label()),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(theme.muted_foreground)
-                        .child(format!(
-                            "{} has no panel implementation yet.",
-                            self.kind.gvk.api_version()
-                        )),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(theme.muted_foreground)
-                        .child(format!(
-                            "Discovered from cluster {}.",
-                            self.scope.context_name
-                        )),
+                        .flex_1()
+                        .min_h_0()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .justify_center()
+                        .gap_2()
+                        .p_6()
+                        .child(
+                            div()
+                                .text_lg()
+                                .text_color(theme.foreground)
+                                .child(self.kind.label()),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child(format!(
+                                    "{} has no panel implementation yet.",
+                                    self.kind.gvk.api_version()
+                                )),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child(format!(
+                                    "Discovered from cluster {}.",
+                                    self.scope.context_name
+                                )),
+                        ),
                 ),
             &self.focus_handle,
             window,
@@ -176,21 +203,6 @@ impl Panel for PlaceholderPanel {
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
         panel_title::tab_name(&self.scope)
-    }
-
-    fn title_suffix(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<impl IntoElement> {
-        let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
-            let _ = this.update(cx, |this: &mut Self, cx| {
-                this.scope = this.scope.scoped_to(namespaces.clone());
-                cx.emit(ScopeEvent::NamespacesChanged(namespaces));
-            });
-        })
     }
 
     fn toolbar_buttons(

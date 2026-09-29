@@ -753,6 +753,25 @@ impl Render for PodsPanel {
             }
         };
 
+        let this = cx.weak_entity();
+        let namespaces = self.namespaces.read(cx).names();
+        let namespace_bar =
+            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
+                let _ = this.update(cx, |this: &mut Self, cx| {
+                    this.scope = this.scope.scoped_to(namespaces.clone());
+                    cx.emit(ScopeEvent::NamespacesChanged(namespaces));
+                });
+            })
+            .map(|picker| {
+                div()
+                    .flex()
+                    .justify_end()
+                    .p_2()
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(picker)
+            });
+
         div()
             .size_full()
             .key_context(PANEL_KEY_CONTEXT)
@@ -762,7 +781,12 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
             .child(panel_title::focus_frame(
-                content,
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .children(namespace_bar)
+                    .child(div().flex_1().min_h_0().child(content)),
                 &self.focus_handle,
                 window,
                 cx,
@@ -798,21 +822,6 @@ impl Panel for PodsPanel {
         panel_title::tab_name(&self.scope)
     }
 
-    fn title_suffix(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<impl IntoElement> {
-        let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
-            let _ = this.update(cx, |this: &mut Self, cx| {
-                this.scope = this.scope.scoped_to(namespaces.clone());
-                cx.emit(ScopeEvent::NamespacesChanged(namespaces));
-            });
-        })
-    }
-
     fn toolbar_buttons(
         &mut self,
         _window: &mut Window,
@@ -840,6 +849,7 @@ mod tests {
     use crate::ui::nav::NavTarget;
     use gpui_kit::{AppContext as _, InteractiveElement as _, ParentElement as _, Styled as _};
     use jiff::Timestamp;
+
     use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
     use kube::core::response::Status;

@@ -20,6 +20,7 @@ use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
 use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
@@ -52,6 +53,9 @@ pub enum PodFieldValue {
     /// Rows behind a disclosure, collapsed by default so a long list does not
     /// push the fields the user came for off screen.
     Collapsed(Vec<String>),
+    /// One card per container - the section a pod detail view exists to show
+    /// and a single screenshot never had room to demonstrate in full.
+    Containers(Vec<ContainerSummary>),
 }
 
 impl PodFieldValue {
@@ -70,8 +74,33 @@ impl PodFieldValue {
                 .collect::<Vec<_>>()
                 .join(", "),
             PodFieldValue::Collapsed(rows) => rows.join(", "),
+            PodFieldValue::Containers(containers) => containers
+                .iter()
+                .map(|c| c.name.clone())
+                .collect::<Vec<_>>()
+                .join(", "),
         }
     }
+}
+
+/// One container's summary: spec (image, ports, resources) joined with its
+/// live status (ready, restart count, current state) by container name - the
+/// two live on different parts of the `Pod` object and only line up by name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContainerSummary {
+    pub name: String,
+    pub image: String,
+    /// `None` before the container has any reported status (e.g. still being
+    /// scheduled) - rendered distinctly from a known-not-ready container.
+    pub ready: Option<bool>,
+    pub restart_count: i32,
+    /// "Running", "Waiting: ImagePullBackOff", "Terminated: Completed" - one
+    /// human string rather than the raw `ContainerState` union, since the
+    /// panel only ever displays it, never branches on which variant it is.
+    pub state: String,
+    pub ports: Vec<String>,
+    pub requests: Vec<String>,
+    pub limits: Vec<String>,
 }
 
 /// A condition's badge color, decided by the condition rather than looked up at
@@ -129,6 +158,39 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     }
     if let Some(namespace) = non_empty(&pod.metadata.namespace) {
         push("Namespace", PodFieldValue::Link(namespace.to_string()));
+    }
+    let containers = summarize_containers(
+        pod.spec
+            .as_ref()
+            .map(|spec| spec.containers.as_slice())
+            .unwrap_or_default(),
+        pod.status.as_ref(),
+    );
+    if !containers.is_empty() {
+        push("Containers", PodFieldValue::Containers(containers));
+    }
+    let init_containers = summarize_containers(
+        pod.spec
+            .as_ref()
+            .and_then(|spec| spec.init_containers.as_deref())
+            .unwrap_or_default(),
+        pod.status.as_ref(),
+    );
+    if !init_containers.is_empty() {
+        push(
+            "Init Containers",
+            PodFieldValue::Containers(init_containers),
+        );
+    }
+    let volumes: Vec<String> = pod
+        .spec
+        .as_ref()
+        .into_iter()
+        .flat_map(|spec| spec.volumes.iter().flatten())
+        .map(format_volume)
+        .collect();
+    if !volumes.is_empty() {
+        push("Volumes", PodFieldValue::Collapsed(volumes));
     }
     if let Some(labels) = non_empty_map(&pod.metadata.labels) {
         push(
@@ -248,6 +310,114 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     }
 
     fields
+}
+
+/// Joins `spec.containers` (or `spec.init_containers`) with their matching
+/// `status.container_statuses` entry by name - the two live on separate parts
+/// of the `Pod` object, and a container with no status yet (still scheduling)
+/// still gets a row, just without ready/restart/state data.
+fn summarize_containers(
+    containers: &[k8s_openapi::api::core::v1::Container],
+    status: Option<&k8s_openapi::api::core::v1::PodStatus>,
+) -> Vec<ContainerSummary> {
+    let statuses = status
+        .and_then(|status| status.container_statuses.as_ref())
+        .map(|statuses| statuses.as_slice())
+        .unwrap_or_default();
+
+    containers
+        .iter()
+        .map(|container| {
+            let matching = statuses.iter().find(|s| s.name == container.name);
+            let ports = container
+                .ports
+                .iter()
+                .flatten()
+                .map(|port| match non_empty(&port.protocol) {
+                    Some(protocol) => format!("{}/{protocol}", port.container_port),
+                    None => port.container_port.to_string(),
+                })
+                .collect();
+            let (requests, limits) = container
+                .resources
+                .as_ref()
+                .map(|resources| {
+                    (
+                        format_quantities(&resources.requests),
+                        format_quantities(&resources.limits),
+                    )
+                })
+                .unwrap_or_default();
+            ContainerSummary {
+                name: container.name.clone(),
+                image: container.image.clone().unwrap_or_default(),
+                ready: matching.map(|status| status.ready),
+                restart_count: matching.map(|status| status.restart_count).unwrap_or(0),
+                state: matching
+                    .and_then(|status| status.state.as_ref())
+                    .map(format_container_state)
+                    .unwrap_or_else(|| "Waiting".to_string()),
+                ports,
+                requests,
+                limits,
+            }
+        })
+        .collect()
+}
+
+fn format_quantities(
+    quantities: &Option<
+        std::collections::BTreeMap<String, k8s_openapi::apimachinery::pkg::api::resource::Quantity>,
+    >,
+) -> Vec<String> {
+    quantities
+        .iter()
+        .flatten()
+        .map(|(resource, quantity)| format!("{resource}={}", quantity.0))
+        .collect()
+}
+
+/// The one human string a `ContainerState` union renders as - a reason when
+/// the cluster gave one (`ImagePullBackOff`, `Completed`), the bare state
+/// name otherwise.
+fn format_container_state(state: &k8s_openapi::api::core::v1::ContainerState) -> String {
+    if let Some(running) = &state.running {
+        let _ = running;
+        return "Running".to_string();
+    }
+    if let Some(waiting) = &state.waiting {
+        return match non_empty(&waiting.reason) {
+            Some(reason) => format!("Waiting: {reason}"),
+            None => "Waiting".to_string(),
+        };
+    }
+    if let Some(terminated) = &state.terminated {
+        return match non_empty(&terminated.reason) {
+            Some(reason) => format!("Terminated: {reason}"),
+            None => "Terminated".to_string(),
+        };
+    }
+    "Unknown".to_string()
+}
+
+/// One volume, named and typed - `ConfigMap: my-config`, `EmptyDir`,
+/// `PersistentVolumeClaim: pvc-name` - covering the sources a pod actually
+/// uses in practice rather than every `VolumeSource` variant the API defines.
+fn format_volume(volume: &k8s_openapi::api::core::v1::Volume) -> String {
+    let kind = if let Some(config_map) = &volume.config_map {
+        format!("ConfigMap: {}", config_map.name.clone())
+    } else if let Some(secret) = &volume.secret {
+        format!("Secret: {}", secret.secret_name.clone().unwrap_or_default())
+    } else if let Some(pvc) = &volume.persistent_volume_claim {
+        format!("PersistentVolumeClaim: {}", pvc.claim_name)
+    } else if let Some(host_path) = &volume.host_path {
+        format!("HostPath: {}", host_path.path)
+    } else if volume.empty_dir.is_some() {
+        "EmptyDir".to_string()
+    } else {
+        "Other".to_string()
+    };
+    format!("{}: {kind}", volume.name)
 }
 
 /// One toleration, in kubectl's key/operator/value/effect shape. Absent pieces
@@ -402,8 +572,11 @@ pub struct PodDetailPanel {
     connection: Entity<ClusterConnection>,
     state: PodDetailState,
     viewing: DetailView,
-    managed_fields_open: bool,
-    tolerations_open: bool,
+    /// Which `Collapsed`-value sections (Managed Fields, Tolerations,
+    /// Volumes, ...) are expanded, keyed by field label. Absent means
+    /// collapsed - the default for a long list the user came for something
+    /// else in.
+    open_sections: std::collections::HashSet<&'static str>,
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
     fetching: bool,
@@ -424,8 +597,7 @@ impl PodDetailPanel {
             connection,
             state: PodDetailState::Loading,
             viewing: view,
-            managed_fields_open: false,
-            tolerations_open: false,
+            open_sections: std::collections::HashSet::new(),
             fetching: false,
             focus_handle: cx.focus_handle(),
         };
@@ -452,8 +624,7 @@ impl PodDetailPanel {
             connection,
             state: PodDetailState::Loading,
             viewing: view,
-            managed_fields_open: false,
-            tolerations_open: false,
+            open_sections: std::collections::HashSet::new(),
             fetching: false,
             focus_handle: cx.focus_handle(),
         };
@@ -585,10 +756,7 @@ impl PodDetailPanel {
                     // Bound before the closure: the id is used twice and the
                     // closure is `'static`, so it cannot borrow `field`.
                     let label = field.label;
-                    let open = match label {
-                        "Managed Fields" => self.managed_fields_open,
-                        _ => self.tolerations_open,
-                    };
+                    let open = self.open_sections.contains(label);
                     let this = cx.weak_entity();
                     div()
                         .flex()
@@ -602,11 +770,8 @@ impl PodDetailPanel {
                                 .tab_stop(false)
                                 .on_click(move |_event, _window, cx| {
                                     let _ = this.update(cx, |this: &mut Self, cx| {
-                                        match label {
-                                            "Managed Fields" => {
-                                                this.managed_fields_open = !this.managed_fields_open
-                                            }
-                                            _ => this.tolerations_open = !this.tolerations_open,
+                                        if !this.open_sections.remove(label) {
+                                            this.open_sections.insert(label);
                                         }
                                         cx.notify();
                                     });
@@ -617,6 +782,76 @@ impl PodDetailPanel {
                                 rows.iter().map(|row| div().text_sm().child(row.clone())),
                             ),
                         ))
+                        .into_any_element()
+                }
+                PodFieldValue::Containers(containers) => {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .children(containers.iter().map(|container| {
+                            let ready_color = match container.ready {
+                                Some(true) => theme.success,
+                                Some(false) => theme.warning,
+                                None => theme.muted_foreground,
+                            };
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .p_2()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme.border)
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().size(px(8.)).rounded_full().bg(ready_color))
+                                        .child(
+                                            div()
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .child(container.name.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(theme.muted_foreground)
+                                                .child(container.state.clone()),
+                                        ),
+                                )
+                                .child(div().text_sm().min_w_0().child(container.image.clone()))
+                                .when(container.restart_count > 0, |this| {
+                                    this.child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme.warning)
+                                            .child(format!("{} restarts", container.restart_count)),
+                                    )
+                                })
+                                .when(!container.ports.is_empty(), |this| {
+                                    this.child(
+                                        div().text_sm().text_color(theme.muted_foreground).child(
+                                            format!("Ports: {}", container.ports.join(", ")),
+                                        ),
+                                    )
+                                })
+                                .when(!container.requests.is_empty(), |this| {
+                                    this.child(
+                                        div().text_sm().text_color(theme.muted_foreground).child(
+                                            format!("Requests: {}", container.requests.join(", ")),
+                                        ),
+                                    )
+                                })
+                                .when(!container.limits.is_empty(), |this| {
+                                    this.child(
+                                        div().text_sm().text_color(theme.muted_foreground).child(
+                                            format!("Limits: {}", container.limits.join(", ")),
+                                        ),
+                                    )
+                                })
+                        }))
                         .into_any_element()
                 }
             };
@@ -632,7 +867,11 @@ impl PodDetailPanel {
                     .text_color(theme.muted_foreground)
                     .child(field.label),
             )
-            .child(div().flex_1().child(value))
+            // `min_w_0()`: without it a flex child sized by its own content
+            // (a long annotation value, an unbroken image reference) refuses
+            // to shrink below that content's width and pushes the row - and
+            // the panel - wider instead of wrapping.
+            .child(div().flex_1().min_w_0().child(value))
             .into_any_element()
     }
 
@@ -684,18 +923,25 @@ impl Render for PodDetailPanel {
                 .p_3()
                 .child(format!("Could not read pod: {reason}"))
                 .into_any_element(),
-            PodDetailState::Loaded(_) => {
-                let inner = match self.viewing {
-                    DetailView::Structured => self.render_structured(cx),
-                    DetailView::Yaml => self.render_yaml(cx),
-                };
-                div()
+            PodDetailState::Loaded(_) => match self.viewing {
+                // Field values wrap to the panel's width rather than
+                // overflowing it - vertical-only scroll, so nothing pushes
+                // the layout wider than the panel actually is.
+                DetailView::Structured => div()
+                    .size_full()
+                    .p_3()
+                    .overflow_y_scrollbar()
+                    .child(self.render_structured(cx))
+                    .into_any_element(),
+                // YAML is monospace and line-oriented like the Logs panel -
+                // it keeps both-axis scroll rather than wrapping lines.
+                DetailView::Yaml => div()
                     .size_full()
                     .p_3()
                     .overflow_scrollbar()
-                    .child(inner)
-                    .into_any_element()
-            }
+                    .child(self.render_yaml(cx))
+                    .into_any_element(),
+            },
         };
 
         panel_title::focus_frame(body, &self.focus_handle, window, cx)
@@ -897,6 +1143,7 @@ mod tests {
                 "Created",
                 "Name",
                 "Namespace",
+                "Containers",
                 "Labels",
                 "Annotations",
                 "Controlled By",
@@ -987,6 +1234,141 @@ mod tests {
             badges[1].tone,
             BadgeTone::Warning,
             "a condition that does not hold is not green"
+        );
+    }
+
+    /// Section: containers and volumes are the section a pod detail view
+    /// exists to show - image, ready state, restart count, ports, and
+    /// resource requests/limits, joined from `spec.containers` and its
+    /// matching `status.container_statuses` entry by name.
+    #[test]
+    fn containers_join_spec_and_status_by_name() {
+        use k8s_openapi::api::core::v1::{
+            ContainerPort, ContainerState, ContainerStateRunning, ContainerStatus,
+            ResourceRequirements,
+        };
+        use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+
+        let mut pod = rich_pod();
+        pod.spec.as_mut().unwrap().containers = vec![Container {
+            name: "app".into(),
+            image: Some("registry.example/app:1.2.3".into()),
+            ports: Some(vec![ContainerPort {
+                container_port: 8080,
+                protocol: Some("TCP".into()),
+                ..Default::default()
+            }]),
+            resources: Some(ResourceRequirements {
+                requests: Some(
+                    [("cpu".to_string(), Quantity("100m".into()))]
+                        .into_iter()
+                        .collect(),
+                ),
+                limits: Some(
+                    [("memory".to_string(), Quantity("256Mi".into()))]
+                        .into_iter()
+                        .collect(),
+                ),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+        pod.status.as_mut().unwrap().container_statuses = Some(vec![ContainerStatus {
+            name: "app".into(),
+            ready: true,
+            restart_count: 3,
+            state: Some(ContainerState {
+                running: Some(ContainerStateRunning::default()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }]);
+
+        let fields = pod_fields(&pod, Timestamp::from_second(0).unwrap());
+        let PodFieldValue::Containers(containers) = &field(&fields, "Containers").unwrap().value
+        else {
+            panic!("containers render as PodFieldValue::Containers");
+        };
+
+        assert_eq!(containers.len(), 1);
+        let app = &containers[0];
+        assert_eq!(app.name, "app");
+        assert_eq!(app.image, "registry.example/app:1.2.3");
+        assert_eq!(app.ready, Some(true));
+        assert_eq!(app.restart_count, 3);
+        assert_eq!(app.state, "Running");
+        assert_eq!(app.ports, vec!["8080/TCP"]);
+        assert_eq!(app.requests, vec!["cpu=100m"]);
+        assert_eq!(app.limits, vec!["memory=256Mi"]);
+    }
+
+    /// A container with no status yet (still scheduling) still gets a row -
+    /// it just does not know ready/restart/state.
+    #[test]
+    fn a_container_with_no_status_yet_still_gets_a_row() {
+        let mut pod = rich_pod();
+        pod.spec.as_mut().unwrap().containers = vec![Container {
+            name: "app".into(),
+            ..Default::default()
+        }];
+        pod.status.as_mut().unwrap().container_statuses = None;
+
+        let fields = pod_fields(&pod, Timestamp::from_second(0).unwrap());
+        let PodFieldValue::Containers(containers) = &field(&fields, "Containers").unwrap().value
+        else {
+            panic!("containers render as PodFieldValue::Containers");
+        };
+
+        assert_eq!(containers.len(), 1);
+        assert_eq!(containers[0].ready, None);
+        assert_eq!(containers[0].restart_count, 0);
+        assert_eq!(containers[0].state, "Waiting");
+    }
+
+    /// Volumes name and type each source a pod actually uses.
+    #[test]
+    fn volumes_are_named_and_typed() {
+        use k8s_openapi::api::core::v1::{
+            ConfigMapVolumeSource, EmptyDirVolumeSource, PersistentVolumeClaimVolumeSource, Volume,
+        };
+
+        let mut pod = rich_pod();
+        pod.spec.as_mut().unwrap().volumes = Some(vec![
+            Volume {
+                name: "config".into(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: "app-config".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Volume {
+                name: "data".into(),
+                persistent_volume_claim: Some(PersistentVolumeClaimVolumeSource {
+                    claim_name: "app-data".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Volume {
+                name: "scratch".into(),
+                empty_dir: Some(EmptyDirVolumeSource::default()),
+                ..Default::default()
+            },
+        ]);
+
+        let fields = pod_fields(&pod, Timestamp::from_second(0).unwrap());
+        let PodFieldValue::Collapsed(volumes) = &field(&fields, "Volumes").unwrap().value else {
+            panic!("volumes render as PodFieldValue::Collapsed");
+        };
+
+        assert_eq!(
+            volumes,
+            &vec![
+                "config: ConfigMap: app-config".to_string(),
+                "data: PersistentVolumeClaim: app-data".to_string(),
+                "scratch: EmptyDir".to_string(),
+            ]
         );
     }
 
