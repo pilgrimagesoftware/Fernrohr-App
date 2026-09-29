@@ -327,9 +327,10 @@ fn non_empty_map(
 }
 
 /// Which of the panel's two views is showing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DetailView {
     /// The structured field list, and the default.
+    #[default]
     Structured,
     /// The raw manifest.
     Yaml,
@@ -381,7 +382,14 @@ pub fn register_restore(cx: &mut gpui_kit::App) {
         let name = state["pod_name"].as_str().unwrap_or_default().to_string();
         let target = NavTarget::pod(namespace.clone(), name.clone());
         let scope = PanelScope::new(target, context_name);
-        panel_handle(cx.new(|cx| PodDetailPanel::new(PodRef { namespace, name }, scope, cx)))
+        panel_handle(cx.new(|cx| {
+            PodDetailPanel::new(
+                PodRef { namespace, name },
+                scope,
+                DetailView::Structured,
+                cx,
+            )
+        }))
     });
 }
 
@@ -403,7 +411,7 @@ pub struct PodDetailPanel {
 }
 
 impl PodDetailPanel {
-    pub fn new(pod: PodRef, scope: PanelScope, cx: &mut Context<Self>) -> Self {
+    pub fn new(pod: PodRef, scope: PanelScope, view: DetailView, cx: &mut Context<Self>) -> Self {
         use crate::k8s::cluster::session::ClusterRegistry;
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
@@ -415,7 +423,7 @@ impl PodDetailPanel {
             scope,
             connection,
             state: PodDetailState::Loading,
-            viewing: DetailView::Structured,
+            viewing: view,
             managed_fields_open: false,
             tolerations_open: false,
             fetching: false,
@@ -432,6 +440,7 @@ impl PodDetailPanel {
     fn with_connection(
         pod: PodRef,
         scope: PanelScope,
+        view: DetailView,
         connection: Entity<ClusterConnection>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -442,7 +451,7 @@ impl PodDetailPanel {
             scope,
             connection,
             state: PodDetailState::Loading,
-            viewing: DetailView::Structured,
+            viewing: view,
             managed_fields_open: false,
             tolerations_open: false,
             fetching: false,
@@ -486,9 +495,20 @@ impl PodDetailPanel {
         .detach();
     }
 
-    fn set_view(&mut self, view: DetailView, cx: &mut Context<Self>) {
+    /// Switches the view. Called by the toolbar toggle, and by `MainWindow`
+    /// when `nav.show_pod_detail_yaml` is dispatched for a panel that is
+    /// already open - `y` has to land on the YAML even when the panel exists.
+    pub fn set_view(&mut self, view: DetailView, cx: &mut Context<Self>) {
         self.viewing = view;
         cx.notify();
+    }
+
+    /// Which view is showing. The assertion hook for the window's
+    /// switch-on-focus path, which cannot read `viewing` across the module
+    /// boundary - hence test-only, like [`Self::with_connection`].
+    #[cfg(test)]
+    pub fn view(&self) -> DetailView {
+        self.viewing
     }
 
     /// The loaded pod, if the fetch has landed. Read by tests and by render.
@@ -1076,6 +1096,16 @@ mod tests {
         cx: &mut TestAppContext,
         state: ConnectionState,
     ) -> gpui_kit::WindowHandle<PodDetailPanel> {
+        stub_panel_viewing(cx, state, DetailView::Structured)
+    }
+
+    /// The same panel, opened on a specific view - so a test can cover the
+    /// `y` path (which opens straight into YAML) without a live cluster.
+    fn stub_panel_viewing(
+        cx: &mut TestAppContext,
+        state: ConnectionState,
+        view: DetailView,
+    ) -> gpui_kit::WindowHandle<PodDetailPanel> {
         let connection = cx.update(|cx| cx.new(|_| ClusterConnection::test_with_state(state)));
         cx.add_window(|_window, cx| {
             let pod = PodRef {
@@ -1086,8 +1116,35 @@ mod tests {
                 NavTarget::pod("staging", "api-7d9f-ftg5t"),
                 "kind-dev".into(),
             );
-            PodDetailPanel::with_connection(pod, scope, connection, cx)
+            PodDetailPanel::with_connection(pod, scope, view, connection, cx)
         })
+    }
+
+    /// `nav.show_pod_detail_yaml` asks for the panel on the YAML, so the view
+    /// the panel opens on is a construction argument rather than a constant.
+    /// The other half - that the same panel switches view when it is already
+    /// open - is `MainWindow`'s, and is tested there.
+    #[gpui_kit::test]
+    async fn a_panel_can_be_built_opening_on_the_yaml(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        let window = stub_panel_viewing(cx, ConnectionState::Connecting, DetailView::Yaml);
+
+        window
+            .update(cx, |panel, _window, _cx| {
+                assert_eq!(panel.viewing, DetailView::Yaml);
+            })
+            .unwrap();
+
+        // And it is a view, not a mode: the toggle still moves between the two.
+        window
+            .update(cx, |panel, _window, cx| {
+                panel.set_view(DetailView::Structured, cx);
+                assert_eq!(panel.viewing, DetailView::Structured);
+            })
+            .unwrap();
     }
 
     /// Section 4.1: the structured field list is the panel's default view, and

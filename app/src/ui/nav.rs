@@ -5,15 +5,21 @@
 
 use crate::command::{Command, CommandRegistry};
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
 use gpui_kit::*;
 
-// `ShowPodDetail` is deliberately not a registered command: unlike the two
-// above it needs a pod already selected (`SelectedPod`), so it is dispatched
-// from within a Pods panel rather than offered as a palette entry.
-actions!(nav, [ShowPods, ShowLogs, ShowPodDetail]);
+// `ShowPodDetail` and `ShowPodDetailYaml` are deliberately not registered
+// commands: unlike the two above them they need a pod already selected
+// (`SelectedPod`), so they are dispatched from within a Pods panel rather than
+// offered as palette entries. They are two actions rather than one with an
+// argument because `gpui_kit`'s actions are unit structs - and because the
+// whole point of `y` is "the YAML, now": splitting the intent across an
+// argument would leave the shortcut reaching the panel by the same route as
+// `d`, and landing on the field list.
+actions!(nav, [ShowPods, ShowLogs, ShowPodDetail, ShowPodDetailYaml]);
 
 pub const SHOW_PODS_COMMAND_ID: &str = "nav.show_pods";
 pub const SHOW_PODS_DEFAULT_BINDING: &str = "cmd-1";
@@ -150,6 +156,11 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 /// [`PanelScope`](crate::ui::panel_title::PanelScope) the panel was constructed
 /// with. Returning the concrete type rather than a `PanelId` alone is what
 /// makes that subscription possible; an erased handle could not be updated.
+///
+/// `Clone` because the window keeps a copy in `open_panels` to re-address a
+/// panel it already built - `Entity` is a handle, so the copy shares the one
+/// panel rather than duplicating it.
+#[derive(Clone)]
 pub enum OpenedPanel {
     Pods(Entity<crate::k8s::resource::pods::PodsPanel>),
     Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
@@ -177,9 +188,17 @@ impl OpenedPanel {
 /// from the context menu, or from `nav.show_pods` cannot drift apart. The
 /// caller owns deduplication: whether this is a new panel or a focus of an
 /// existing one is the window's bookkeeping, not the panel's.
+///
+/// `initial_view` is which view a panel that has two should open on - today
+/// only a pod's detail panel does, and only `nav.show_pod_detail_yaml` asks for
+/// anything but the default. It is a parameter rather than part of
+/// [`NavTarget`] because the target is *identity*: the same target has to mean
+/// "the same panel" whether the user described the pod or asked for its YAML,
+/// or the two would dedup into two panels over one pod.
 pub fn add_panel(
     area: &mut DockArea,
     scope: &PanelScope,
+    initial_view: Option<DetailView>,
     window: &mut Window,
     cx: &mut Context<DockArea>,
 ) -> (PanelId, OpenedPanel) {
@@ -227,11 +246,13 @@ pub fn add_panel(
         }
         // A pod's detail panel. Reads one pod through the cluster's existing
         // session, so it fetches that pod itself rather than joining a watch.
+        // `initial_view` is how `y` lands straight on the YAML.
         NavTarget::Pod(pod) => {
             let panel = cx.new(|cx| {
                 crate::k8s::resource::pod_detail::PodDetailPanel::new(
                     pod.clone(),
                     scope.clone(),
+                    initial_view.unwrap_or_default(),
                     cx,
                 )
             });

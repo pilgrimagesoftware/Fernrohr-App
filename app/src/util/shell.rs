@@ -3,9 +3,12 @@ use crate::config::{
     self,
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
+use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
-use crate::ui::nav::{self, NavTarget, ShowLogs, ShowPodDetail, ShowPods};
+use crate::ui::nav::{
+    self, NavTarget, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
+};
 use crate::ui::panel_title::{self, PanelScope};
 use crate::util::paths;
 use gpui_kit::component::Root;
@@ -186,7 +189,9 @@ fn build_workspace(
     // or the first click on the Pod row would duplicate it (spec 9.3). The
     // scope comes back too, so the key is derived from the very scope the panel
     // was built with rather than restated beside it.
-    let first = dock_area.update(cx, |area, cx| nav::add_panel(area, &scope, window, cx));
+    let first = dock_area.update(cx, |area, cx| {
+        nav::add_panel(area, &scope, None, window, cx)
+    });
     (dock_area, dock_skin, scope, first)
 }
 
@@ -240,6 +245,15 @@ impl From<&PanelScope> for PanelKey {
 struct OpenPanel {
     key: PanelKey,
     id: PanelId,
+    /// The typed handle, when this window built the panel. `None` for one
+    /// restored by the dock from layout - that one exists only as a
+    /// `PanelId`, with no entity the window ever held.
+    ///
+    /// Kept so a request that arrives for an already-open panel can do more
+    /// than focus it: `y` on a pod whose detail panel is already showing
+    /// fields has to switch that panel to the YAML, and switching needs the
+    /// entity, not the id.
+    panel: Option<nav::OpenedPanel>,
 }
 
 fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
@@ -481,12 +495,21 @@ impl MainWindow {
                 .unwrap_or_default();
             ids.into_iter()
                 .zip(restored_keys)
-                .map(|(id, key)| OpenPanel { id, key })
+                .map(|(id, key)| OpenPanel {
+                    id,
+                    key,
+                    panel: None,
+                })
                 .collect()
         } else {
             vec![OpenPanel {
                 key: PanelKey::from(&scope),
                 id: first_id,
+                // The first panel is the pods list, and the window did build
+                // it, so the handle is available: keeping it lets a later
+                // request for pods reuse the same `OpenedPanel` bookkeeping
+                // every other panel gets.
+                panel: Some(first.clone()),
             }]
         };
         watch_workspace(&dock_area, window, cx);
@@ -595,25 +618,46 @@ impl MainWindow {
         self.open_target(NavTarget::Logs, window, cx);
     }
 
-    /// The single entry point for "show me this pod's detail": emitted by a
-    /// Pods panel's `DescribePod`/`ShowPodYaml` handlers and by its row
-    /// context menu's "Open". The pod itself travels in the app-scoped
-    /// `SelectedPod` global, the same one `ShowLogs` reads, rather than in the
-    /// action - `gpui_kit::actions!` generates unit-only structs.
+    /// Opens the selected pod's detail panel on the field list. Emitted by a
+    /// Pods panel's `DescribePod` handler and by its row context menu's
+    /// "Open".
     fn on_action_show_pod_detail(
         &mut self,
         _: &ShowPodDetail,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.open_pod_detail(DetailView::Structured, window, cx);
+    }
+
+    /// Opens the selected pod's detail panel *on the YAML*. The same panel as
+    /// `ShowPodDetail` opens - same target, same dock slot, same dedup - just
+    /// landing on the other view, because `y` is bound to "the YAML, now" and
+    /// would be pointless if it only focused a panel showing fields.
+    fn on_action_show_pod_detail_yaml(
+        &mut self,
+        _: &ShowPodDetailYaml,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_pod_detail(DetailView::Yaml, window, cx);
+    }
+
+    /// The single entry point for "show me this pod's detail". The pod itself
+    /// travels in the app-scoped `SelectedPod` global, the same one `ShowLogs`
+    /// reads, rather than in the action - `gpui_kit::actions!` generates
+    /// unit-only structs, so a `ShowPodYaml` action cannot carry the pod or
+    /// the view alongside it.
+    fn open_pod_detail(&mut self, view: DetailView, window: &mut Window, cx: &mut Context<Self>) {
         let Some(selection) = cx
             .try_global::<SelectedPod>()
             .and_then(|selected| selected.0.clone())
         else {
             return;
         };
-        self.open_target(
+        self.open_target_with_view(
             NavTarget::pod(selection.namespace, selection.name),
+            Some(view),
             window,
             cx,
         );
@@ -631,6 +675,24 @@ impl MainWindow {
     /// Panels are built against the window's existing `context_name`, so
     /// opening one never reconnects.
     fn open_target(&mut self, target: NavTarget, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_target_with_view(target, None, window, cx);
+    }
+
+    /// `open_target` for a request that also says which view the panel should
+    /// be showing. `initial_view` is `None` for every panel that has one view,
+    /// and for a pod's detail panel opened by describing it.
+    ///
+    /// It applies to an already-open panel as well as a new one: focusing an
+    /// existing pod panel and switching it to the requested view is what makes
+    /// `y` work on a pod whose detail is already up, which is the common case
+    /// rather than the exception.
+    fn open_target_with_view(
+        &mut self,
+        target: NavTarget,
+        initial_view: Option<DetailView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let WindowMode::Workspace {
             dock_area,
             context_name,
@@ -655,12 +717,22 @@ impl MainWindow {
         match open_panels.iter().find(|open| open.key == key) {
             Some(open) => {
                 let id = open.id;
+                if let (Some(OpenedPanel::PodDetail(panel)), Some(view)) =
+                    (open.panel.as_ref(), initial_view)
+                {
+                    panel.update(cx, |panel, cx| panel.set_view(view, cx));
+                }
                 dock_area.update(cx, |area, cx| area.select_panel(id, window, cx));
             }
             None => {
-                let (id, opened) =
-                    dock_area.update(cx, |area, cx| nav::add_panel(area, &scope, window, cx));
-                open_panels.push(OpenPanel { key, id });
+                let (id, opened) = dock_area.update(cx, |area, cx| {
+                    nav::add_panel(area, &scope, initial_view, window, cx)
+                });
+                open_panels.push(OpenPanel {
+                    key,
+                    id,
+                    panel: Some(opened.clone()),
+                });
                 watch_scope = Some(opened);
             }
         }
@@ -744,6 +816,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_pods))
             .on_action(cx.listener(Self::on_action_show_logs))
             .on_action(cx.listener(Self::on_action_show_pod_detail))
+            .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
             .child(body)
     }
 }
@@ -790,10 +863,10 @@ mod tests {
     // macro, which would shadow `core::prelude::v1::test` for the plain
     // synchronous test below.
     use super::{
-        ClosedWindowLayouts, MainWindow, NavTarget, PanelDescriptor, PanelKey, ShowPodDetail,
-        ToggleCommandPalette, WindowLayout, WindowMode, WorkspaceConfig, config, init,
-        open_saved_or_default, open_window, register_commands, restorable_panels, save,
-        watch_picker,
+        ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor,
+        PanelKey, ShowPodDetail, ToggleCommandPalette, WindowLayout, WindowMode, WorkspaceConfig,
+        config, init, open_saved_or_default, open_window, register_commands, restorable_panels,
+        save, watch_picker,
     };
     use crate::command::CommandRegistry;
     use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -1073,6 +1146,94 @@ mod tests {
             .unwrap();
     }
 
+    /// `y` is bound to "the YAML, now", so it has to land on the YAML - and it
+    /// has to do so whether the panel is opened by the shortcut or already
+    /// sitting there showing fields, which is the case that actually comes up.
+    ///
+    /// Both halves matter and they fail differently: a fresh open needs the
+    /// view threaded into construction, and an existing panel needs the window
+    /// to hold on to the entity so it can switch a panel it only has a
+    /// `PanelId` for.
+    #[gpui_kit::test]
+    async fn asking_for_yaml_opens_and_switches_the_pod_panel_to_yaml(cx: &mut TestAppContext) {
+        use crate::k8s::resource::pod_detail::DetailView;
+        use crate::k8s::resource::pods::{PodSelection, SelectedPod};
+        use crate::ui::nav::ShowPodDetailYaml;
+
+        type Window = gpui_kit::WindowHandle<MainWindow>;
+
+        /// Dispatches an app-level detail request the way a keybinding would.
+        fn request_detail(cx: &mut TestAppContext, window: &Window, yaml: bool) {
+            window
+                .update(cx, |main_window, window, cx| {
+                    main_window.focus_handle.clone().focus(window, cx);
+                    if yaml {
+                        window.dispatch_action(Box::new(ShowPodDetailYaml), cx);
+                    } else {
+                        window.dispatch_action(Box::new(ShowPodDetail), cx);
+                    }
+                })
+                .unwrap();
+            cx.run_until_parked();
+        }
+
+        /// The view showing in the window's one pod detail panel.
+        fn open_panel_view(cx: &mut TestAppContext, window: &Window) -> DetailView {
+            window
+                .update(cx, |main_window, _window, cx| {
+                    let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                        panic!("a connected window is in workspace mode")
+                    };
+                    let detail: Vec<&OpenPanel> = open_panels
+                        .iter()
+                        .filter(|open| matches!(open.panel, Some(OpenedPanel::PodDetail(_))))
+                        .collect();
+                    assert_eq!(
+                        detail.len(),
+                        1,
+                        "one detail panel, whichever shortcut asked for it"
+                    );
+                    let Some(OpenedPanel::PodDetail(panel)) = &detail[0].panel else {
+                        unreachable!("filtered to detail panels")
+                    };
+                    panel.read(cx).view()
+                })
+                .unwrap()
+        }
+
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+        cx.update(|cx| {
+            cx.set_global(SelectedPod(Some(PodSelection {
+                namespace: "prod".into(),
+                name: "web-1".into(),
+                containers: vec!["web".into()],
+            })));
+        });
+
+        request_detail(cx, &window, true);
+        assert_eq!(
+            open_panel_view(cx, &window),
+            DetailView::Yaml,
+            "a fresh panel opens on the YAML, not on its default view"
+        );
+
+        request_detail(cx, &window, true);
+        assert_eq!(
+            open_panel_view(cx, &window),
+            DetailView::Yaml,
+            "asking again is still one panel, and still on the YAML"
+        );
+
+        request_detail(cx, &window, false);
+        assert_eq!(
+            open_panel_view(cx, &window),
+            DetailView::Structured,
+            "`d` switches the open panel back to the field list rather than \
+             adding a second panel for the same pod"
+        );
+    }
+
     /// Closing a panel frees its key, so re-selecting the kind afterwards opens
     /// a fresh panel instead of focusing a dock id the area no longer holds.
     /// The dock has no id-keyed removal, so the centre is emptied the way the
@@ -1162,8 +1323,9 @@ mod tests {
                 };
                 for (target, namespaced) in cases {
                     let scope = PanelScope::new(target.clone(), "kind-dev".to_string());
-                    let (_id, opened) =
-                        dock_area.update(cx, |area, cx| nav::add_panel(area, &scope, window, cx));
+                    let (_id, opened) = dock_area.update(cx, |area, cx| {
+                        nav::add_panel(area, &scope, None, window, cx)
+                    });
                     let (name, picker, controls) = match opened {
                         nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
                         nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),

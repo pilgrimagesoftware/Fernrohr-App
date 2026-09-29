@@ -53,6 +53,25 @@ impl PlaceholderPanel {
     pub fn new(kind: DiscoveredKind, scope: PanelScope, cx: &mut Context<Self>) -> Self {
         let namespaces =
             crate::k8s::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
+        Self::with_namespaces(kind, scope, namespaces, cx)
+    }
+
+    /// Construction from an explicit namespace list, so a test can hand in a
+    /// list that never syncs instead of the registry's - the same seam
+    /// `PodsPanel` and `PodDetailPanel` use.
+    ///
+    /// It exists because `NamespaceRegistry::list` reaches
+    /// `ClusterRegistry::connection`, which starts a real connect on a tokio
+    /// worker. gpui's test harness runs the assertion on its own thread and
+    /// fails the test on any cross-thread activity it can see, so a test that
+    /// only wants to know which kind a panel holds would otherwise be testing
+    /// the tokio runtime as well.
+    fn with_namespaces(
+        kind: DiscoveredKind,
+        scope: PanelScope,
+        namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
         Self {
             kind,
@@ -191,8 +210,10 @@ impl Panel for PlaceholderPanel {
 mod tests {
     use super::PlaceholderPanel;
     use crate::k8s::cluster::discovery::DiscoveredKind;
+    use crate::k8s::cluster::namespaces::NamespaceList;
     use crate::ui::nav::NavTarget;
     use crate::ui::panel_title::PanelScope;
+    use gpui_kit::AppContext as _;
     use gpui_kit::TestAppContext;
     use kube::core::GroupVersionKind;
 
@@ -214,12 +235,13 @@ mod tests {
             crate::runtime::init(cx);
         });
         let window = cx.add_window(|_window, cx| {
-            PlaceholderPanel::new(
+            PlaceholderPanel::with_namespaces(
                 kind("ferns.example.com", "Fern"),
                 PanelScope::new(
                     NavTarget::Kind(kind("ferns.example.com", "Fern")),
                     "kind-dev".into(),
                 ),
+                cx.new(|_| NamespaceList::empty()),
                 cx,
             )
         });

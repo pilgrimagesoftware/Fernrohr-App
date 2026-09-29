@@ -532,10 +532,7 @@ impl PodsPanel {
     }
 
     /// `DescribePod` (`d`) and the row context menu's "Open" both ask for the
-    /// pod's detail panel. The panel defaults to the structured field view;
-    /// its toolbar switches to the raw YAML, so `ShowPodYaml` (`y`) is the
-    /// same request - the one entry point `MainWindow` maps to
-    /// `NavTarget::pod(..)`.
+    /// pod's detail panel on the structured field view.
     fn on_action_describe_pod(
         &mut self,
         _: &DescribePod,
@@ -558,6 +555,10 @@ impl PodsPanel {
         }
     }
 
+    /// `ShowPodYaml` (`y`) asks for the same panel as `d`, on the other view.
+    /// It is a distinct app-level action rather than the same one, because `y`
+    /// means "the YAML, now": routing it through `ShowPodDetail` would open
+    /// the field list and leave the shortcut's second half to the user.
     fn on_action_show_pod_yaml(
         &mut self,
         _: &ShowPodYaml,
@@ -565,7 +566,7 @@ impl PodsPanel {
         cx: &mut Context<Self>,
     ) {
         if Self::selected(cx).is_some() {
-            window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
+            window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetailYaml), cx);
         }
     }
 
@@ -831,9 +832,11 @@ mod tests {
     // re-exports its own `test` attribute macro, which would shadow
     // `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
-        NamespaceScope, PanelScope, Pod, PodSelection, PodsPanel, PodsTable, SelectedPod,
-        ShowPodYaml, SortState, is_unauthorized, matches_namespaces, pod_row, view_rows, watcher,
+        DescribePod, NamespaceScope, PanelScope, Pod, PodSelection, PodsPanel, PodsTable,
+        SelectedPod, ShowPodYaml, SortState, is_unauthorized, matches_namespaces, pod_row,
+        view_rows, watcher,
     };
+    use crate::k8s::resource::pod_detail::DetailView;
     use crate::ui::nav::NavTarget;
     use gpui_kit::{AppContext as _, InteractiveElement as _, ParentElement as _, Styled as _};
     use jiff::Timestamp;
@@ -844,9 +847,10 @@ mod tests {
     struct PanelHarness {
         first: gpui_kit::Entity<PodsPanel>,
         second: gpui_kit::Entity<PodsPanel>,
-        /// Counts `ShowPodDetail` actions that bubble past both panels to the
-        /// window root - i.e. the requests the panels actually emitted.
-        dispatches: std::rc::Rc<std::cell::RefCell<usize>>,
+        /// Counts the app-level detail requests that bubble past both panels
+        /// to the window root - i.e. the requests the panels actually emitted,
+        /// kept apart by view so a test can tell `d` from `y`.
+        dispatches: std::rc::Rc<std::cell::RefCell<Vec<DetailView>>>,
     }
 
     impl gpui_kit::Render for PanelHarness {
@@ -856,10 +860,15 @@ mod tests {
             _cx: &mut gpui_kit::Context<Self>,
         ) -> impl gpui_kit::IntoElement {
             let dispatches = self.dispatches.clone();
+            let structured = dispatches.clone();
+            let yaml = dispatches.clone();
             gpui_kit::div()
                 .size_full()
                 .on_action(move |_: &crate::ui::nav::ShowPodDetail, _window, _cx| {
-                    *dispatches.borrow_mut() += 1;
+                    structured.borrow_mut().push(DetailView::Structured);
+                })
+                .on_action(move |_: &crate::ui::nav::ShowPodDetailYaml, _window, _cx| {
+                    yaml.borrow_mut().push(DetailView::Yaml);
                 })
                 .child(self.first.clone())
                 .child(self.second.clone())
@@ -1111,14 +1120,16 @@ mod tests {
     }
 
     /// `d`/`y` are panel-scoped: only the focused panel's handler runs, and it
-    /// forwards a `ShowPodDetail` request to the window. This pins both halves
-    /// - the focused panel asks once, and asks only when a pod is selected.
+    /// forwards an app-level detail request to the window. This pins all three
+    /// halves - the focused panel asks once, it asks only when a pod is
+    /// selected, and each shortcut asks for its own view rather than both
+    /// asking for the same one.
     #[gpui_kit::test]
     async fn pod_shortcut_dispatches_only_to_the_focused_panel(cx: &mut gpui_kit::TestAppContext) {
         use std::cell::RefCell;
         use std::rc::Rc;
 
-        let dispatches = Rc::new(RefCell::new(0usize));
+        let dispatches = Rc::new(RefCell::new(Vec::new()));
         let (first, second) = cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
@@ -1157,20 +1168,42 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             *dispatches.borrow(),
-            1,
-            "only the focused panel forwards the request"
+            vec![DetailView::Yaml],
+            "only the focused panel forwards the request, and `y` asks for the \
+             YAML rather than the panel's default view"
+        );
+
+        // `d` is the same panel by a different route, so it asks for the field
+        // list. If both shortcuts emitted one action there would be nothing
+        // left to distinguish them at the far end.
+        dispatches.borrow_mut().clear();
+        window
+            .update(cx, |_, window, cx| {
+                let focus_handle = first.read(cx).focus_handle.clone();
+                focus_handle.focus(window, cx);
+                window.dispatch_action(Box::new(DescribePod), cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            *dispatches.borrow(),
+            vec![DetailView::Structured],
+            "`d` asks for the structured view"
         );
 
         // No selection means nothing to open, so the shortcut is inert rather
         // than opening a detail panel for whatever was selected last.
         cx.update(|cx| cx.set_global(SelectedPod(None)));
-        *dispatches.borrow_mut() = 0;
+        dispatches.borrow_mut().clear();
         window
             .update(cx, |_, window, cx| {
                 window.dispatch_action(Box::new(ShowPodYaml), cx);
             })
             .unwrap();
         cx.run_until_parked();
-        assert_eq!(*dispatches.borrow(), 0, "an unselected pod opens nothing");
+        assert!(
+            dispatches.borrow().is_empty(),
+            "an unselected pod opens nothing"
+        );
     }
 }
