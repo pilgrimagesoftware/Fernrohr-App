@@ -36,7 +36,7 @@ pub struct ClusterPicker {
     /// as cross-thread nondeterminism - so tests substitute a stub instead of
     /// driving a real connect.
     #[cfg(test)]
-    connection_factory: Option<fn(&mut App, &str) -> Entity<ClusterConnection>>,
+    pub(crate) connection_factory: Option<fn(&mut App, &str) -> Entity<ClusterConnection>>,
 }
 
 impl ClusterPicker {
@@ -65,7 +65,7 @@ impl ClusterPicker {
         ClusterRegistry::connection(cx, context_name)
     }
 
-    fn select(&mut self, context_name: String, cx: &mut Context<Self>) {
+    pub(crate) fn select(&mut self, context_name: String, cx: &mut Context<Self>) {
         let connection = self.new_connection(&context_name, cx);
         cx.observe(&connection, {
             move |this: &mut Self, _connection, cx| {

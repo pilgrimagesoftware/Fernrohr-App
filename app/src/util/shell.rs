@@ -755,6 +755,7 @@ mod tests {
         ClosedWindowLayouts, MainWindow, NavTarget, PanelDescriptor, PanelKey,
         ToggleCommandPalette, WindowLayout, WindowMode, WorkspaceConfig, config, init,
         open_saved_or_default, open_window, register_commands, restorable_panels, save,
+        watch_picker,
     };
     use crate::command::CommandRegistry;
     use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -1163,6 +1164,177 @@ mod tests {
         window
             .update(cx, |main_window, _window, _cx| {
                 assert!(matches!(main_window.mode, WindowMode::Picker(_)));
+            })
+            .unwrap();
+    }
+
+    /// Regression test for the HANDOFF.md report: opening a second window and
+    /// selecting a context that a *first* window already connected said "connected"
+    /// but never switched the second window out of picker mode. Drives both windows
+    /// through the real `ClusterPicker::select` -> `PickerEvent::Connected` ->
+    /// `watch_picker` path (unlike `connected_window`, which shortcuts straight to
+    /// `enter_workspace` and so never exercised this path at all) - the same shared
+    /// connection entity stands in for `ClusterRegistry` returning the first window's
+    /// already-`Connected` entity to the second window's picker.
+    #[gpui_kit::test]
+    async fn second_window_connecting_to_an_already_connected_context_shows_workspace(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+        use crate::ui::picker::ClusterPicker;
+        use kube::{Client, Config};
+        use std::cell::RefCell;
+
+        thread_local! {
+            static SHARED: RefCell<Option<Entity<ClusterConnection>>> = const { RefCell::new(None) };
+        }
+
+        fn shared_connected_stub(cx: &mut App, _context_name: &str) -> Entity<ClusterConnection> {
+            SHARED.with(|cell| {
+                if let Some(entity) = cell.borrow().as_ref() {
+                    return entity.clone();
+                }
+                let handle = crate::runtime::handle(cx);
+                let _guard = handle.enter();
+                let client =
+                    Client::try_from(Config::new("http://127.0.0.1:0".parse().unwrap())).unwrap();
+                let entity = cx.new(|_| {
+                    ClusterConnection::test_with_state(ConnectionState::Connected(client))
+                });
+                *cell.borrow_mut() = Some(entity.clone());
+                entity
+            })
+        }
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+
+        fn picker_window(cx: &mut TestAppContext) -> gpui_kit::WindowHandle<MainWindow> {
+            cx.add_window(|window, cx| {
+                let picker = cx.new(|cx| {
+                    let mut picker = ClusterPicker::new(window, cx);
+                    picker.connection_factory = Some(shared_connected_stub);
+                    picker
+                });
+                let main_window = MainWindow {
+                    mode: WindowMode::Picker(picker.clone()),
+                    focus_handle: cx.focus_handle(),
+                };
+                watch_picker(&picker, window, cx);
+                main_window
+            })
+        }
+
+        let first = picker_window(cx);
+        first
+            .update(cx, |main_window, _window, cx| {
+                let WindowMode::Picker(picker) = &main_window.mode else {
+                    unreachable!("just constructed in Picker mode");
+                };
+                picker.update(cx, |picker, cx| {
+                    picker.select("kind-dev".to_string(), cx);
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+        first
+            .update(cx, |main_window, _window, _cx| {
+                assert!(
+                    matches!(main_window.mode, WindowMode::Workspace { .. }),
+                    "first window connects normally"
+                );
+            })
+            .unwrap();
+
+        let second = picker_window(cx);
+        second
+            .update(cx, |main_window, _window, cx| {
+                let WindowMode::Picker(picker) = &main_window.mode else {
+                    unreachable!("just constructed in Picker mode");
+                };
+                picker.update(cx, |picker, cx| {
+                    picker.select("kind-dev".to_string(), cx);
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+        second
+            .update(cx, |main_window, _window, _cx| {
+                assert!(
+                    matches!(main_window.mode, WindowMode::Workspace { .. }),
+                    "second window selecting an already-connected context must also \
+                     switch to the workspace, not stay stuck showing the picker"
+                );
+            })
+            .unwrap();
+
+        SHARED.with(|cell| *cell.borrow_mut() = None);
+    }
+
+    /// Hypothesis two from `second-window-connect-fix/design.md`: a second window
+    /// connecting to a context that is *not* already connected (so it goes through
+    /// `cx.observe`'s callback, not `select`'s synchronous `emit_connected` call).
+    #[gpui_kit::test]
+    async fn second_window_connecting_to_a_fresh_context_shows_workspace(cx: &mut TestAppContext) {
+        use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+        use crate::ui::picker::ClusterPicker;
+        use kube::{Client, Config};
+
+        fn connecting_then_connected_stub(
+            cx: &mut App,
+            _context_name: &str,
+        ) -> Entity<ClusterConnection> {
+            let handle = crate::runtime::handle(cx);
+            let _guard = handle.enter();
+            let client =
+                Client::try_from(Config::new("http://127.0.0.1:0".parse().unwrap())).unwrap();
+            let entity =
+                cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting));
+            entity.update(cx, |connection, cx| {
+                connection.state = ConnectionState::Connected(client);
+                cx.notify();
+            });
+            entity
+        }
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+
+        let second = cx.add_window(|window, cx| {
+            let picker = cx.new(|cx| {
+                let mut picker = ClusterPicker::new(window, cx);
+                picker.connection_factory = Some(connecting_then_connected_stub);
+                picker
+            });
+            let main_window = MainWindow {
+                mode: WindowMode::Picker(picker.clone()),
+                focus_handle: cx.focus_handle(),
+            };
+            watch_picker(&picker, window, cx);
+            main_window
+        });
+        second
+            .update(cx, |main_window, _window, cx| {
+                let WindowMode::Picker(picker) = &main_window.mode else {
+                    unreachable!("just constructed in Picker mode");
+                };
+                picker.update(cx, |picker, cx| {
+                    picker.select("fresh-dev".to_string(), cx);
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+        second
+            .update(cx, |main_window, _window, _cx| {
+                assert!(
+                    matches!(main_window.mode, WindowMode::Workspace { .. }),
+                    "a fresh connect completing after select must still flip this \
+                     window to the workspace"
+                );
             })
             .unwrap();
     }
