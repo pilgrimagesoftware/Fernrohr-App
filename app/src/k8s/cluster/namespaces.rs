@@ -32,6 +32,17 @@ pub struct NamespaceList {
 }
 
 impl NamespaceList {
+    /// A list that never syncs: no connection is observed, so nothing is
+    /// fetched. For tests that only need the entity to exist.
+    #[cfg(test)]
+    pub(crate) fn empty() -> Self {
+        Self {
+            names: Vec::new(),
+            loading: false,
+            loaded: false,
+        }
+    }
+
     fn new(context_name: String, cx: &mut Context<Self>) -> Self {
         let connection = ClusterRegistry::connection(cx, &context_name);
         cx.observe(&connection, |this: &mut Self, connection, cx| {

@@ -29,7 +29,7 @@ fn uid(pod: &Pod) -> String {
 
 /// Formats an age the way `kubectl get pods` does: the single largest unit,
 /// seconds up to a minute, then minutes, hours, days.
-fn format_age(age_secs: i64) -> String {
+pub(crate) fn format_age(age_secs: i64) -> String {
     let age_secs = age_secs.max(0);
     if age_secs < 60 {
         format!("{age_secs}s")
@@ -290,7 +290,7 @@ use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
 use gpui_kit::component::kbd::Kbd;
-use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::{Column, DataTable, TableDelegate, TableEvent, TableState};
 use gpui_kit::*;
 
@@ -356,6 +356,29 @@ impl TableDelegate for PodTableDelegate {
         Column::new(id, title).width(px(width))
     }
 
+    /// Section 5.2: a row's "Open" is the mouse-reachable twin of the `d`
+    /// keybinding - both select the pod and emit `ShowPodDetail`, so they land
+    /// on the same `open_target` call. Selecting here (not only dispatching)
+    /// is what lets the menu act on the row under the pointer rather than
+    /// whatever was selected last.
+    fn context_menu(
+        &mut self,
+        row_ix: usize,
+        menu: PopupMenu,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) -> PopupMenu {
+        let Some(selection) = self.rows.get(row_ix).map(|row| row.selection.clone()) else {
+            return menu;
+        };
+        menu.item(
+            PopupMenuItem::new("Open").on_click(move |_event, window, cx| {
+                cx.set_global(SelectedPod(Some(selection.clone())));
+                window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
+            }),
+        )
+    }
+
     fn render_td(
         &mut self,
         row_ix: usize,
@@ -378,11 +401,6 @@ impl TableDelegate for PodTableDelegate {
     }
 }
 
-enum PodDetail {
-    Description(String),
-    Yaml(String),
-}
-
 #[derive(Default)]
 pub struct SelectedPod(pub Option<PodSelection>);
 
@@ -397,8 +415,6 @@ pub struct PodsPanel {
     namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
     subscribed: bool,
     focus_handle: FocusHandle,
-    selected: Option<Pod>,
-    detail: Option<PodDetail>,
     pod_table: Option<Entity<TableState<PodTableDelegate>>>,
 }
 
@@ -410,6 +426,24 @@ impl PodsPanel {
         let connection = ClusterRegistry::connection(cx, &context_name);
         let namespaces =
             crate::k8s::cluster::namespaces::NamespaceRegistry::list(cx, &context_name);
+        Self::with_connection(scope, connection, namespaces, cx)
+    }
+
+    /// Construction from an explicit connection and namespace list, so tests
+    /// can hand in stubs. [`Self::new`] has to source both from their
+    /// registries, which starts a *real* connect - a tokio task gpui's test
+    /// scheduler reports as cross-thread nondeterminism if it is still in
+    /// flight when the test ends. The handler tests never need that, so they
+    /// pass a connection that stays in a non-`Connected` state.
+    fn with_connection(
+        scope: PanelScope,
+        connection: Entity<crate::k8s::cluster::connection::ClusterConnection>,
+        namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        use crate::k8s::cluster::session::ClusterRegistry;
+
+        let context_name = scope.context_name.clone();
         cx.observe(&connection, |this: &mut Self, connection, cx| {
             this.start_watch_if_connected(&connection, cx);
             cx.notify();
@@ -433,12 +467,25 @@ impl PodsPanel {
             namespaces,
             subscribed: false,
             focus_handle: cx.focus_handle(),
-            selected: None,
-            detail: None,
             pod_table: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
+    }
+
+    /// A panel over stub cluster state: the connection never leaves
+    /// `Connecting`, so no watch, discovery, or namespace list is started.
+    /// For tests that exercise the panel's own behaviour rather than a live
+    /// cluster.
+    #[cfg(test)]
+    fn with_stubs(scope: PanelScope, cx: &mut Context<Self>) -> Self {
+        use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+        use crate::k8s::cluster::namespaces::NamespaceList;
+
+        let connection =
+            cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting));
+        let namespaces = cx.new(|_| NamespaceList::empty());
+        Self::with_connection(scope, connection, namespaces, cx)
     }
 
     fn start_watch_if_connected(
@@ -462,8 +509,13 @@ impl PodsPanel {
         self.subscribed = true;
     }
 
-    fn selected_pod(&self) -> Option<&Pod> {
-        self.selected.as_ref()
+    /// The pod the table's last row-selection chose, from the app-scoped
+    /// global `ShowLogs` also reads. The panel keeps no copy of its own: the
+    /// selection is a window-wide fact, and the rows it indexes come and go
+    /// with the watch.
+    fn selected(cx: &App) -> Option<PodSelection> {
+        cx.try_global::<SelectedPod>()
+            .and_then(|selected| selected.0.clone())
     }
 
     fn on_action_warp_namespace(
@@ -472,42 +524,27 @@ impl PodsPanel {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(namespace) = self
-            .selected_pod()
-            .and_then(|pod| pod.metadata.namespace.clone())
-        else {
+        let Some(namespace) = Self::selected(cx).map(|selection| selection.namespace) else {
             return;
         };
         self.scope = self.scope.scoped_to(vec![namespace.clone()]);
         cx.emit(ScopeEvent::NamespacesChanged(vec![namespace]));
     }
 
+    /// `DescribePod` (`d`) and the row context menu's "Open" both ask for the
+    /// pod's detail panel. The panel defaults to the structured field view;
+    /// its toolbar switches to the raw YAML, so `ShowPodYaml` (`y`) is the
+    /// same request - the one entry point `MainWindow` maps to
+    /// `NavTarget::pod(..)`.
     fn on_action_describe_pod(
         &mut self,
         _: &DescribePod,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.detail = self.selected_pod().map(|pod| {
-            PodDetail::Description(format!(
-                "Name: {}\nNamespace: {}\nStatus: {}\nNode: {}\nPod IP: {}",
-                pod.metadata.name.as_deref().unwrap_or("Pod"),
-                pod.metadata.namespace.as_deref().unwrap_or("default"),
-                pod.status
-                    .as_ref()
-                    .and_then(|status| status.phase.as_deref())
-                    .unwrap_or("Unknown"),
-                pod.spec
-                    .as_ref()
-                    .and_then(|spec| spec.node_name.as_deref())
-                    .unwrap_or("Unscheduled"),
-                pod.status
-                    .as_ref()
-                    .and_then(|status| status.pod_ip.as_deref())
-                    .unwrap_or("Unassigned"),
-            ))
-        });
-        cx.notify();
+        if Self::selected(cx).is_some() {
+            window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
+        }
     }
 
     fn on_action_show_pod_logs(
@@ -516,7 +553,7 @@ impl PodsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.selected_pod().is_some() {
+        if Self::selected(cx).is_some() {
             window.dispatch_action(Box::new(crate::ui::nav::ShowLogs), cx);
         }
     }
@@ -524,13 +561,12 @@ impl PodsPanel {
     fn on_action_show_pod_yaml(
         &mut self,
         _: &ShowPodYaml,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.detail = self
-            .selected_pod()
-            .and_then(|pod| serde_yaml_ng::to_string(pod).ok().map(PodDetail::Yaml));
-        cx.notify();
+        if Self::selected(cx).is_some() {
+            window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
+        }
     }
 
     fn sync_table(
@@ -548,7 +584,7 @@ impl PodsPanel {
                     .col_movable(false)
                     .col_resizable(false)
             });
-            cx.subscribe(&table, |this, table, event, cx| {
+            cx.subscribe(&table, |_this, table, event, cx| {
                 let TableEvent::SelectRow(row_ix) = event else {
                     return;
                 };
@@ -562,16 +598,6 @@ impl PodsPanel {
                     return;
                 };
                 cx.set_global(SelectedPod(Some(selection.clone())));
-                this.selected = this
-                    .table
-                    .read(cx)
-                    .pods()
-                    .iter()
-                    .find(|pod| {
-                        pod.metadata.name.as_deref() == Some(&selection.name)
-                            && pod.metadata.namespace.as_deref() == Some(&selection.namespace)
-                    })
-                    .cloned();
                 cx.notify();
             })
             .detach();
@@ -714,21 +740,6 @@ impl Render for PodsPanel {
                     .flex_col()
                     .p_3()
                     .children(pause_banner)
-                    .children(self.detail.as_ref().map(|detail| {
-                        match detail {
-                            PodDetail::Description(detail) => {
-                                div().mb_3().child(detail.clone()).into_any_element()
-                            }
-                            PodDetail::Yaml(yaml) => div()
-                                .mb_3()
-                                .max_h(px(240.))
-                                .font_family(cx.theme().mono_font_family.clone())
-                                .whitespace_nowrap()
-                                .child(yaml.clone())
-                                .overflow_scrollbar()
-                                .into_any_element(),
-                        }
-                    }))
                     .child(
                         div().flex_1().min_h_0().child(
                             DataTable::new(&table)
@@ -820,11 +831,11 @@ mod tests {
     // re-exports its own `test` attribute macro, which would shadow
     // `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
-        NamespaceScope, PanelScope, Pod, PodsPanel, PodsTable, ShowPodYaml, SortState,
-        is_unauthorized, matches_namespaces, pod_row, view_rows, watcher,
+        NamespaceScope, PanelScope, Pod, PodSelection, PodsPanel, PodsTable, SelectedPod,
+        ShowPodYaml, SortState, is_unauthorized, matches_namespaces, pod_row, view_rows, watcher,
     };
     use crate::ui::nav::NavTarget;
-    use gpui_kit::{AppContext as _, ParentElement as _, Styled as _};
+    use gpui_kit::{AppContext as _, InteractiveElement as _, ParentElement as _, Styled as _};
     use jiff::Timestamp;
     use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
@@ -833,6 +844,9 @@ mod tests {
     struct PanelHarness {
         first: gpui_kit::Entity<PodsPanel>,
         second: gpui_kit::Entity<PodsPanel>,
+        /// Counts `ShowPodDetail` actions that bubble past both panels to the
+        /// window root - i.e. the requests the panels actually emitted.
+        dispatches: std::rc::Rc<std::cell::RefCell<usize>>,
     }
 
     impl gpui_kit::Render for PanelHarness {
@@ -841,8 +855,12 @@ mod tests {
             _window: &mut gpui_kit::Window,
             _cx: &mut gpui_kit::Context<Self>,
         ) -> impl gpui_kit::IntoElement {
+            let dispatches = self.dispatches.clone();
             gpui_kit::div()
                 .size_full()
+                .on_action(move |_: &crate::ui::nav::ShowPodDetail, _window, _cx| {
+                    *dispatches.borrow_mut() += 1;
+                })
                 .child(self.first.clone())
                 .child(self.second.clone())
         }
@@ -1092,22 +1110,40 @@ mod tests {
         assert_eq!(names, vec!["web-2", "web-3", "web-4"]);
     }
 
+    /// `d`/`y` are panel-scoped: only the focused panel's handler runs, and it
+    /// forwards a `ShowPodDetail` request to the window. This pins both halves
+    /// - the focused panel asks once, and asks only when a pod is selected.
     #[gpui_kit::test]
     async fn pod_shortcut_dispatches_only_to_the_focused_panel(cx: &mut gpui_kit::TestAppContext) {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let dispatches = Rc::new(RefCell::new(0usize));
         let (first, second) = cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
-            let first =
-                cx.new(|cx| PodsPanel::new(PanelScope::new(NavTarget::pods(), "dev".into()), cx));
-            let second =
-                cx.new(|cx| PodsPanel::new(PanelScope::new(NavTarget::pods(), "prod".into()), cx));
-            first.update(cx, |panel, _| panel.selected = Some(Pod::default()));
-            second.update(cx, |panel, _| panel.selected = Some(Pod::default()));
+            cx.set_global(SelectedPod(Some(PodSelection {
+                namespace: "default".into(),
+                name: "web-1".into(),
+                containers: vec!["web".into()],
+            })));
+            let first = cx.new(|cx| {
+                PodsPanel::with_stubs(PanelScope::new(NavTarget::pods(), "dev".into()), cx)
+            });
+            let second = cx.new(|cx| {
+                PodsPanel::with_stubs(PanelScope::new(NavTarget::pods(), "prod".into()), cx)
+            });
             (first, second)
         });
-        let window = cx.add_window(|_, _| PanelHarness {
-            first: first.clone(),
-            second: second.clone(),
+        let window = cx.add_window({
+            let dispatches = dispatches.clone();
+            let harness_first = first.clone();
+            let harness_second = second.clone();
+            move |_, _| PanelHarness {
+                first: harness_first.clone(),
+                second: harness_second.clone(),
+                dispatches: dispatches.clone(),
+            }
         });
         cx.run_until_parked();
 
@@ -1119,8 +1155,22 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
+        assert_eq!(
+            *dispatches.borrow(),
+            1,
+            "only the focused panel forwards the request"
+        );
 
-        assert!(first.read_with(cx, |panel, _| panel.detail.is_some()));
-        assert!(second.read_with(cx, |panel, _| panel.detail.is_none()));
+        // No selection means nothing to open, so the shortcut is inert rather
+        // than opening a detail panel for whatever was selected last.
+        cx.update(|cx| cx.set_global(SelectedPod(None)));
+        *dispatches.borrow_mut() = 0;
+        window
+            .update(cx, |_, window, cx| {
+                window.dispatch_action(Box::new(ShowPodYaml), cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert_eq!(*dispatches.borrow(), 0, "an unselected pod opens nothing");
     }
 }

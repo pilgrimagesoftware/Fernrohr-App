@@ -94,26 +94,33 @@ impl PanelScope {
     /// Whether the kind is scoped to a namespace, which is what decides if the
     /// title bar carries a namespace picker. `NavTarget::Logs` is a view onto a
     /// single pod rather than a kind, so it follows the pod's kind and is
-    /// treated as namespaced - a pod always is.
+    /// treated as namespaced - a pod always is. So is a pod's detail panel,
+    /// though a panel over one pod has no namespace scope for a picker to
+    /// change and so does not ask for one.
     pub fn is_namespaced(&self) -> bool {
         match &self.target {
             NavTarget::Kind(kind) => kind.namespaced,
-            NavTarget::Logs => true,
+            NavTarget::Logs | NavTarget::Pod(_) => true,
         }
     }
 }
 
 /// The title bar's name for the panel.
 ///
+/// Plural for a list, singular-plus-name for a panel over one item - both read
+/// off the target, so a caller cannot label a list "Pod" or a detail panel
+/// "Pods" by forgetting to pass a flag.
+///
 /// The cluster is named only when the window has more than one connection open.
 /// With one connection it is the only cluster there is, so repeating its name
 /// in every panel's title is noise - and the resource panel's own header already
 /// says which cluster the window is on.
 pub fn title(scope: &PanelScope) -> String {
+    let label = scope.target.item_label();
     if scope.connection_count > 1 {
-        format!("{} · {}", scope.target.list_label(), scope.context_name)
+        format!("{label} · {}", scope.context_name)
     } else {
-        scope.target.list_label()
+        label
     }
 }
 
@@ -317,6 +324,28 @@ mod tests {
     fn the_logs_view_titles_by_the_same_rule() {
         assert_eq!(title(&scope(NavTarget::Logs, 1)), "Logs");
         assert_eq!(title(&scope(NavTarget::Logs, 2)), "Logs · kind-dev");
+    }
+
+    /// Section 2.2: a panel over one pod names the pod, so two pods' detail
+    /// panels are told apart in the dock's tabs rather than both reading "Pod".
+    /// The plural-for-a-list rule still holds next to it.
+    #[test]
+    fn a_pods_detail_panel_names_its_pod() {
+        let pod_scope = scope(NavTarget::pod("default", "api-7d9f-ftg5t"), 1);
+        assert_eq!(title(&pod_scope), "Pod: api-7d9f-ftg5t");
+
+        let other = scope(NavTarget::pod("default", "web-1"), 1);
+        assert_ne!(title(&pod_scope), title(&other), "two pods, two names");
+
+        let with_cluster = scope(NavTarget::pod("default", "api-7d9f-ftg5t"), 2);
+        assert_eq!(title(&with_cluster), "Pod: api-7d9f-ftg5t · kind-dev");
+    }
+
+    /// A pod is namespaced whatever discovery said about any kind, so a panel
+    /// over one is namespaced rather than silently scoping itself out of one.
+    #[test]
+    fn a_pod_detail_panel_is_namespaced() {
+        assert!(scope(NavTarget::pod("kube-system", "coredns-1"), 1).is_namespaced());
     }
 
     /// Section 10.2: a namespaced kind gets a picker, a cluster-scoped kind

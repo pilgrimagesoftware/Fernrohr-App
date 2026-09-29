@@ -10,7 +10,10 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
 use gpui_kit::*;
 
-actions!(nav, [ShowPods, ShowLogs]);
+// `ShowPodDetail` is deliberately not a registered command: unlike the two
+// above it needs a pod already selected (`SelectedPod`), so it is dispatched
+// from within a Pods panel rather than offered as a palette entry.
+actions!(nav, [ShowPods, ShowLogs, ShowPodDetail]);
 
 pub const SHOW_PODS_COMMAND_ID: &str = "nav.show_pods";
 pub const SHOW_PODS_DEFAULT_BINDING: &str = "cmd-1";
@@ -28,6 +31,26 @@ pub enum NavTarget {
     /// a view onto one, so it stays a target of its own rather than being
     /// forced into the `Kind` shape.
     Logs,
+    /// One specific pod, rather than the list of pods its kind would be.
+    ///
+    /// `PanelKey` is built from the target, so this variant is what separates
+    /// two pods' detail panels in one dock the same way `Kind` separates two
+    /// different kinds: by being a different key, with no dedup logic of its
+    /// own. `Kind(DiscoveredKind::pods())` and this are never the same panel,
+    /// which is the point - one is the list, the other a row of it.
+    Pod(PodRef),
+}
+
+/// A pod's identity, at the granularity a panel keyed on it needs: which pod
+/// in which namespace. Deliberately not the whole [`PodSelection`] - that
+/// carries the container list the Logs view streams, which no detail panel
+/// needs and which would make a pod's panel key change as its containers do.
+///
+/// [`PodSelection`]: crate::k8s::resource::pods::PodSelection
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PodRef {
+    pub namespace: String,
+    pub name: String,
 }
 
 impl NavTarget {
@@ -37,10 +60,26 @@ impl NavTarget {
         NavTarget::Kind(DiscoveredKind::pods())
     }
 
+    /// The detail view over one pod.
+    pub fn pod(namespace: impl Into<String>, name: impl Into<String>) -> Self {
+        NavTarget::Pod(PodRef {
+            namespace: namespace.into(),
+            name: name.into(),
+        })
+    }
+
+    /// The kind this target shows, for the cases that read it as one. A pod's
+    /// detail panel is over the core `Pod` kind, pinned the same way
+    /// [`Self::pods`] pins the list's.
+    fn pod_kind() -> DiscoveredKind {
+        DiscoveredKind::pods()
+    }
+
     pub fn label(&self) -> String {
         match self {
             NavTarget::Kind(kind) => kind.label(),
             NavTarget::Logs => "Logs".to_string(),
+            NavTarget::Pod(_) => Self::pod_kind().label(),
         }
     }
 
@@ -50,13 +89,23 @@ impl NavTarget {
     pub fn list_label(&self) -> String {
         match self {
             NavTarget::Kind(kind) => kind.plural_label(),
-            NavTarget::Logs => self.label(),
+            NavTarget::Logs | NavTarget::Pod(_) => self.label(),
+        }
+    }
+
+    /// What a panel titles itself when it shows *one* item rather than a list of
+    /// them: the kind's singular name, plus the item's own name so two panels
+    /// over different pods are told apart in the dock's tabs.
+    pub fn item_label(&self) -> String {
+        match self {
+            NavTarget::Pod(pod) => format!("{}: {}", self.label(), pod.name),
+            _ => self.list_label(),
         }
     }
 
     pub fn icon(&self) -> IconName {
         match self {
-            NavTarget::Kind(_) => IconName::Box,
+            NavTarget::Kind(_) | NavTarget::Pod(_) => IconName::Box,
             NavTarget::Logs => IconName::ScrollText,
         }
     }
@@ -105,6 +154,7 @@ pub enum OpenedPanel {
     Pods(Entity<crate::k8s::resource::pods::PodsPanel>),
     Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
     Logs(Entity<crate::util::logs::LogsPanel>),
+    PodDetail(Entity<crate::k8s::resource::pod_detail::PodDetailPanel>),
 }
 
 impl OpenedPanel {
@@ -115,6 +165,7 @@ impl OpenedPanel {
             OpenedPanel::Pods(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Placeholder(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::PodDetail(panel) => PanelId::from(panel.entity_id()),
         }
     }
 }
@@ -174,6 +225,26 @@ pub fn add_panel(
             );
             (id, OpenedPanel::Placeholder(panel))
         }
+        // A pod's detail panel. Reads one pod through the cluster's existing
+        // session, so it fetches that pod itself rather than joining a watch.
+        NavTarget::Pod(pod) => {
+            let panel = cx.new(|cx| {
+                crate::k8s::resource::pod_detail::PodDetailPanel::new(
+                    pod.clone(),
+                    scope.clone(),
+                    cx,
+                )
+            });
+            let id = PanelId::from(panel.entity_id());
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
+            (id, OpenedPanel::PodDetail(panel))
+        }
     }
 }
 
@@ -191,6 +262,51 @@ mod tests {
             plural: format!("{}s", kind.to_lowercase()),
             namespaced: true,
         }
+    }
+
+    /// Section 1.1: a pod's detail panel is keyed on *which* pod, so two
+    /// different pods are two different targets and the same pod is one. The
+    /// equality is what `PanelKey`'s dedup reads - same key focuses, different
+    /// key opens a second panel - so it has to be exactly this.
+    #[test]
+    fn two_pods_are_different_targets_and_one_pod_is_one_target() {
+        let first = NavTarget::pod("default", "web-1");
+        let second = NavTarget::pod("default", "web-2");
+        let same = NavTarget::pod("default", "web-1");
+
+        assert_ne!(first, second, "different pods are different panels");
+        assert_eq!(first, same, "the same pod is the same panel");
+    }
+
+    /// A pod's namespace is part of its identity: the same name in two
+    /// namespaces is two pods, and collapsing them would make a second cluster
+    /// namespace's panel unreachable behind the first one's.
+    #[test]
+    fn a_pods_namespace_is_part_of_its_identity() {
+        assert_ne!(
+            NavTarget::pod("default", "web-1"),
+            NavTarget::pod("staging", "web-1")
+        );
+    }
+
+    /// The list of pods and one pod are not the same panel, whichever way round
+    /// they are compared - a detail request must never focus the Pods table.
+    #[test]
+    fn a_pod_is_not_the_list_of_pods() {
+        assert_ne!(NavTarget::pods(), NavTarget::pod("default", "web-1"));
+        assert_ne!(NavTarget::pod("default", "web-1"), NavTarget::pods());
+    }
+
+    /// Section 2.1/2.2, read off the target itself: a list titles itself
+    /// plural, a single item titles itself with the item's name.
+    #[test]
+    fn a_target_says_which_way_it_should_be_titled() {
+        assert_eq!(NavTarget::pods().list_label(), "Pods");
+        assert_eq!(NavTarget::pods().item_label(), "Pods");
+
+        let pod = NavTarget::pod("default", "api-7d9f-ftg5t");
+        assert_eq!(pod.label(), "Pod");
+        assert_eq!(pod.item_label(), "Pod: api-7d9f-ftg5t");
     }
 
     /// Section 8.2: Pods is the one kind with a concrete panel, so it is the

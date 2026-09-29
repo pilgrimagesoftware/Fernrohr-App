@@ -3,8 +3,9 @@ use crate::config::{
     self,
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
+use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
-use crate::ui::nav::{self, NavTarget, ShowLogs, ShowPods};
+use crate::ui::nav::{self, NavTarget, ShowLogs, ShowPodDetail, ShowPods};
 use crate::ui::panel_title::{self, PanelScope};
 use crate::util::paths;
 use gpui_kit::component::Root;
@@ -106,6 +107,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
 
     cx.set_global(registry);
     crate::k8s::resource::pods::register_restore(cx);
+    crate::k8s::resource::pod_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
@@ -257,6 +259,13 @@ fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
     let target = match state.panel_name.as_str() {
         "Pods" => NavTarget::pods(),
         "Logs" => NavTarget::Logs,
+        "PodDetail" => NavTarget::pod(
+            data["pod_namespace"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            data["pod_name"].as_str().unwrap_or_default().to_string(),
+        ),
         "Resource" => NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind {
             gvk: GroupVersionKind::gvk(
                 data["group"].as_str().unwrap_or_default(),
@@ -553,6 +562,10 @@ impl MainWindow {
                 )
                 .detach();
             }
+            // A pod's detail panel shows one pod rather than a namespace-
+            // filterable list of many, so it carries no picker and never
+            // re-scopes.
+            nav::OpenedPanel::PodDetail(_) => {}
         }
     }
 
@@ -580,6 +593,30 @@ impl MainWindow {
 
     fn on_action_show_logs(&mut self, _: &ShowLogs, window: &mut Window, cx: &mut Context<Self>) {
         self.open_target(NavTarget::Logs, window, cx);
+    }
+
+    /// The single entry point for "show me this pod's detail": emitted by a
+    /// Pods panel's `DescribePod`/`ShowPodYaml` handlers and by its row
+    /// context menu's "Open". The pod itself travels in the app-scoped
+    /// `SelectedPod` global, the same one `ShowLogs` reads, rather than in the
+    /// action - `gpui_kit::actions!` generates unit-only structs.
+    fn on_action_show_pod_detail(
+        &mut self,
+        _: &ShowPodDetail,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(selection) = cx
+            .try_global::<SelectedPod>()
+            .and_then(|selected| selected.0.clone())
+        else {
+            return;
+        };
+        self.open_target(
+            NavTarget::pod(selection.namespace, selection.name),
+            window,
+            cx,
+        );
     }
 
     /// Shows `target`: a new panel in the dock if that kind is not already
@@ -706,6 +743,7 @@ impl Render for MainWindow {
             })
             .on_action(cx.listener(Self::on_action_show_pods))
             .on_action(cx.listener(Self::on_action_show_logs))
+            .on_action(cx.listener(Self::on_action_show_pod_detail))
             .child(body)
     }
 }
@@ -752,7 +790,7 @@ mod tests {
     // macro, which would shadow `core::prelude::v1::test` for the plain
     // synchronous test below.
     use super::{
-        ClosedWindowLayouts, MainWindow, NavTarget, PanelDescriptor, PanelKey,
+        ClosedWindowLayouts, MainWindow, NavTarget, PanelDescriptor, PanelKey, ShowPodDetail,
         ToggleCommandPalette, WindowLayout, WindowMode, WorkspaceConfig, config, init,
         open_saved_or_default, open_window, register_commands, restorable_panels, save,
         watch_picker,
@@ -946,6 +984,95 @@ mod tests {
         cx.run_until_parked();
     }
 
+    /// Section 5.1/5.4: the pod-detail request lands on the same `open_target`
+    /// every other panel uses, so a pod gets a panel of its own and
+    /// re-requesting it focuses rather than duplicates. What makes two pods
+    /// two panels is the pod identity now inside the key, not a second dedup
+    /// rule.
+    #[gpui_kit::test]
+    async fn a_pod_detail_panel_is_keyed_by_which_pod(cx: &mut TestAppContext) {
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+
+        let session_before =
+            cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
+
+        window
+            .update(cx, |main_window, window, cx| {
+                main_window.open_target(NavTarget::pod("prod", "web-1"), window, cx);
+                // The same pod again: focused, not opened twice.
+                main_window.open_target(NavTarget::pod("prod", "web-1"), window, cx);
+                // A different pod is a genuinely new panel.
+                main_window.open_target(NavTarget::pod("prod", "web-2"), window, cx);
+
+                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                    panic!("a connected window is in workspace mode")
+                };
+                let pods: Vec<_> = open_panels
+                    .iter()
+                    .filter(|open| matches!(open.key.target, NavTarget::Pod(_)))
+                    .map(|open| open.key.target.clone())
+                    .collect();
+                assert_eq!(
+                    pods,
+                    vec![
+                        NavTarget::pod("prod", "web-1"),
+                        NavTarget::pod("prod", "web-2"),
+                    ],
+                    "one panel per pod, however many times each is requested"
+                );
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        let session_after = cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
+        assert_eq!(
+            session_before, session_after,
+            "the detail panel reads the window's existing connection"
+        );
+    }
+
+    /// Section 5.1: the `ShowPodDetail` a Pods panel emits (for `d`, `y`, or
+    /// the row menu's "Open") resolves the pod from the app-scoped
+    /// `SelectedPod` and opens its detail panel - the same `open_target` the
+    /// keybinding-free path above uses.
+    #[gpui_kit::test]
+    async fn a_requested_pod_detail_opens_its_panel(cx: &mut TestAppContext) {
+        use crate::k8s::resource::pods::{PodSelection, SelectedPod};
+
+        let window = connected_window(cx, "kind-dev").await;
+        cx.run_until_parked();
+
+        cx.update(|cx| {
+            cx.set_global(SelectedPod(Some(PodSelection {
+                namespace: "prod".into(),
+                name: "web-1".into(),
+                containers: vec!["web".into()],
+            })));
+        });
+        window
+            .update(cx, |main_window, window, cx| {
+                main_window.focus_handle.clone().focus(window, cx);
+                window.dispatch_action(Box::new(ShowPodDetail), cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, _window, _cx| {
+                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                    panic!("a connected window is in workspace mode")
+                };
+                assert!(
+                    open_panels
+                        .iter()
+                        .any(|open| open.key.target == NavTarget::pod("prod", "web-1")),
+                    "the selected pod's detail panel is open"
+                );
+            })
+            .unwrap();
+    }
+
     /// Closing a panel frees its key, so re-selecting the kind afterwards opens
     /// a fresh panel instead of focusing a dock id the area no longer holds.
     /// The dock has no id-keyed removal, so the centre is emptied the way the
@@ -1041,6 +1168,7 @@ mod tests {
                         nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
                         nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
                         nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
+                        nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
                     };
                     assert_eq!(
                         name.as_deref(),
