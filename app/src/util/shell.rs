@@ -893,10 +893,22 @@ mod tests {
     }
 
     /// A connected window on `context_name`, for the panel-opening tests.
+    ///
+    /// `enter_workspace` opens a real Pods panel (`nav::add_panel` always
+    /// builds one via `PodsPanel::new`, not the `with_stubs` seam
+    /// `pods::tests` uses), which starts a genuine `ClusterConnection::connect`,
+    /// a tokio task that resolves a kubeconfig and probes a server, then
+    /// wakes its GPUI observer from that tokio thread. `allow_parking` is the
+    /// same seam `cluster::session`'s and `cluster::connection`'s own tests
+    /// use for this exact reason: without it, the wakeup races the test
+    /// scheduler's thread-confinement check non-deterministically, since it
+    /// depends on real wall-clock I/O timing rather than anything these tests
+    /// control.
     async fn connected_window(
         cx: &mut TestAppContext,
         context_name: &str,
     ) -> gpui_kit::WindowHandle<MainWindow> {
+        cx.executor().allow_parking();
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
@@ -1419,6 +1431,9 @@ mod tests {
     /// with an empty layout rather than a real interactive panel close.
     #[gpui_kit::test]
     async fn closing_the_last_panel_returns_to_the_picker(cx: &mut TestAppContext) {
+        // See `connected_window`'s doc comment: `enter_workspace` starts a real
+        // connect whose completion wakes GPUI from a tokio thread.
+        cx.executor().allow_parking();
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
@@ -1482,6 +1497,12 @@ mod tests {
         thread_local! {
             static SHARED: RefCell<Option<Entity<ClusterConnection>>> = const { RefCell::new(None) };
         }
+
+        // `connection_factory` only stubs the picker's own connection entity;
+        // `watch_picker` still drives `enter_workspace`, which starts a real
+        // `ClusterRegistry` connect for the panel it builds. See
+        // `connected_window`'s doc comment for why that needs `allow_parking`.
+        cx.executor().allow_parking();
 
         fn shared_connected_stub(cx: &mut App, _context_name: &str) -> Entity<ClusterConnection> {
             SHARED.with(|cell| {
@@ -1575,6 +1596,10 @@ mod tests {
         use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
         use crate::ui::picker::ClusterPicker;
         use kube::{Client, Config};
+
+        // See the previous test: `connection_factory` stubs only the picker's
+        // own entity, not the real connect `enter_workspace` starts.
+        cx.executor().allow_parking();
 
         fn connecting_then_connected_stub(
             cx: &mut App,
@@ -1816,6 +1841,9 @@ mod tests {
 
         let workspace = temp_workspace_path();
         let keymap = temp_workspace_path();
+        // See `connected_window`'s doc comment: `enter_workspace` starts a real
+        // connect whose completion wakes GPUI from a tokio thread.
+        cx.executor().allow_parking();
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
