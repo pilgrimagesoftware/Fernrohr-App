@@ -361,7 +361,7 @@ impl TableDelegate for PodTableDelegate {
         row_ix: usize,
         col_ix: usize,
         _: &mut Window,
-        cx: &mut Context<TableState<Self>>,
+        _: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let row = &self.rows[row_ix].row;
         let value = match col_ix {
@@ -374,10 +374,7 @@ impl TableDelegate for PodTableDelegate {
             6 => row.pod_ip.clone(),
             _ => row.node.clone(),
         };
-        div()
-            .whitespace_nowrap()
-            .font_family(cx.theme().mono_font_family.clone())
-            .child(value)
+        div().whitespace_nowrap().child(value)
     }
 }
 

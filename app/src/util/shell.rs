@@ -1044,7 +1044,7 @@ mod tests {
                     };
                     assert_eq!(
                         name.as_deref(),
-                        Some(target.label()).as_deref(),
+                        Some(target.list_label()).as_deref(),
                         "the title bar names the kind, and adds the cluster only \
                          when the window holds more than one connection"
                     );

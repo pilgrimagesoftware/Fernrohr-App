@@ -44,6 +44,16 @@ impl NavTarget {
         }
     }
 
+    /// What a panel *listing* this target titles itself: the plural form for
+    /// a resource kind (`"Pods"`), same as [`Self::label`] for anything that
+    /// isn't a list of many items.
+    pub fn list_label(&self) -> String {
+        match self {
+            NavTarget::Kind(kind) => kind.plural_label(),
+            NavTarget::Logs => self.label(),
+        }
+    }
+
     pub fn icon(&self) -> IconName {
         match self {
             NavTarget::Kind(_) => IconName::Box,

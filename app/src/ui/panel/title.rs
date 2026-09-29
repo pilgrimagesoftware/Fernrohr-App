@@ -30,11 +30,17 @@ pub fn focus_frame(
     let theme = cx.theme();
     let border = focus_border(focus_handle.is_focused(window), theme.primary, theme.border);
 
-    div()
-        .size_full()
-        .border_1()
-        .border_color(border)
-        .child(content)
+    // Inset rather than flush with the outer edge: a panel at the window's
+    // bottom edge would otherwise have this border's square corners clipped
+    // by macOS's rounded window mask.
+    div().size_full().child(
+        div()
+            .size_full()
+            .m(px(2.))
+            .border_1()
+            .border_color(border)
+            .child(content),
+    )
 }
 
 fn focus_border(focused: bool, primary: Hsla, border: Hsla) -> Hsla {
@@ -105,9 +111,9 @@ impl PanelScope {
 /// says which cluster the window is on.
 pub fn title(scope: &PanelScope) -> String {
     if scope.connection_count > 1 {
-        format!("{} · {}", scope.target.label(), scope.context_name)
+        format!("{} · {}", scope.target.list_label(), scope.context_name)
     } else {
-        scope.target.label()
+        scope.target.list_label()
     }
 }
 
@@ -292,17 +298,17 @@ mod tests {
     /// panel in the window would repeat the only cluster there is.
     #[test]
     fn a_single_connection_leaves_the_cluster_out_of_the_title() {
-        assert_eq!(title(&scope(kind("Pod", true), 1)), "Pod");
+        assert_eq!(title(&scope(kind("Pod", true), 1)), "Pods");
     }
 
     /// Section 10.1: with more than one connection the panels stop being
     /// interchangeable, so each says which cluster it reads.
     #[test]
     fn several_connections_name_the_cluster() {
-        assert_eq!(title(&scope(kind("Pod", true), 2)), "Pod · kind-dev");
+        assert_eq!(title(&scope(kind("Pod", true), 2)), "Pods · kind-dev");
         assert_eq!(
             title(&scope(kind("Deployment", true), 3)),
-            "Deployment · kind-dev"
+            "Deployments · kind-dev"
         );
     }
 

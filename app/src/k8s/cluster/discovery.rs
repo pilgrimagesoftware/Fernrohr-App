@@ -65,6 +65,22 @@ impl DiscoveredKind {
         }
     }
 
+    /// What a *list* panel of this kind titles itself - the plural form
+    /// (`"Pods"`), as opposed to [`label`]'s singular Kind name (`"Pod"`),
+    /// which is right for a single item but wrong for a panel showing many.
+    pub fn plural_label(&self) -> String {
+        let mut chars = self.plural.chars();
+        let plural = match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        };
+        if self.gvk.group.is_empty() {
+            plural
+        } else {
+            format!("{} · {}", plural, self.gvk.group)
+        }
+    }
+
     /// The core `v1` `Pod` kind, for the callers that mean "Pods" without
     /// having run discovery: the `nav.show_pods` command, and the panel a
     /// freshly connected window lands on.
@@ -354,5 +370,22 @@ mod tests {
 
         let labels: Vec<String> = sorted.iter().map(DiscoveredKind::label).collect();
         assert_eq!(labels, vec!["Pod", "Service", "Deployment · apps"]);
+    }
+
+    #[test]
+    fn plural_label_capitalizes_the_plural_and_keeps_the_group_qualifier() {
+        let pod = DiscoveredKind {
+            gvk: GroupVersionKind::gvk("", "v1", "Pod"),
+            plural: "pods".into(),
+            namespaced: true,
+        };
+        assert_eq!(pod.plural_label(), "Pods");
+
+        let widget = DiscoveredKind {
+            gvk: GroupVersionKind::gvk("example.com", "v1", "Widget"),
+            plural: "widgets".into(),
+            namespaced: true,
+        };
+        assert_eq!(widget.plural_label(), "Widgets · example.com");
     }
 }
