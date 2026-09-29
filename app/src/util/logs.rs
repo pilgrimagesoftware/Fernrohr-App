@@ -212,6 +212,7 @@ use gpui_kit::component::dock::{
 };
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::*;
+use std::rc::Rc;
 
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Logs", |context, _window, cx| {
@@ -339,18 +340,31 @@ impl Render for LogsPanel {
             )
             .into_any_element();
         }
+        let lines = Rc::new(view.lines().to_vec());
+        let line_count = lines.len();
         panel_title::focus_frame(
             div()
                 .size_full()
                 .p_3()
                 .font_family(cx.theme().mono_font_family.clone())
-                .children(
-                    view.lines()
-                        .iter()
-                        .cloned()
-                        .map(|line| div().whitespace_nowrap().child(line)),
-                )
-                .overflow_scrollbar(),
+                .overflow_x_scrollbar()
+                .child(
+                    uniform_list(
+                        "logs-panel-lines",
+                        line_count,
+                        move |range, _window, _cx| {
+                            range
+                                .map(|ix| {
+                                    div()
+                                        .whitespace_nowrap()
+                                        .child(lines[ix].clone())
+                                        .into_any_element()
+                                })
+                                .collect()
+                        },
+                    )
+                    .size_full(),
+                ),
             &self.focus_handle,
             window,
             cx,
@@ -377,13 +391,32 @@ impl BasePanel for LogsPanel {
 }
 
 /// Section 10: the title bar, supplied to the dock rather than drawn here.
+/// What a Logs panel's title/tab reads for `current` (namespace, pod,
+/// container), once a pod has been selected. `fallback` is whatever the
+/// panel shows before that - the generic scope-derived label.
+fn streaming_title(
+    current: Option<&(String, String, String)>,
+    fallback: impl Fn() -> String,
+) -> String {
+    match current {
+        Some((_, pod, container)) => format!("Logs: {pod} · {container}"),
+        None => fallback(),
+    }
+}
+
+impl LogsPanel {
+    fn streaming_title(&self) -> String {
+        streaming_title(self.current.as_ref(), || panel_title::title(&self.scope))
+    }
+}
+
 impl Panel for LogsPanel {
     fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title(&self.scope)
+        self.streaming_title()
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
-        panel_title::tab_name(&self.scope)
+        Some(self.streaming_title().into())
     }
 
     fn title_suffix(
@@ -416,8 +449,26 @@ impl Panel for LogsPanel {
 
 #[cfg(test)]
 mod tests {
-    use super::{FollowState, LogEvent, LogsView, start_stream};
+    use super::{FollowState, LogEvent, LogsView, start_stream, streaming_title};
     use gpui_kit::{AppContext as _, TestAppContext};
+
+    #[test]
+    fn streaming_title_names_the_pod_and_container() {
+        let current = (
+            "default".to_string(),
+            "web-1".to_string(),
+            "app".to_string(),
+        );
+        assert_eq!(
+            streaming_title(Some(&current), || "unreachable".to_string()),
+            "Logs: web-1 · app"
+        );
+    }
+
+    #[test]
+    fn streaming_title_falls_back_before_a_pod_is_selected() {
+        assert_eq!(streaming_title(None, || "Logs".to_string()), "Logs");
+    }
 
     #[test]
     fn history_renders_and_new_lines_append() {
