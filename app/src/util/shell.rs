@@ -108,6 +108,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // key in its hint bar has not bound that key: without this the hint bar
     // prints letters no keystroke resolves to, and the shortcut does nothing.
     cx.bind_keys(crate::k8s::resource::pods::panel_bindings());
+    cx.bind_keys(crate::k8s::resource::pod_detail::panel_bindings());
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });

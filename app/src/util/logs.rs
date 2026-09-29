@@ -17,10 +17,6 @@ pub enum FollowState {
     Following,
     /// The user scrolled up to read history; new lines still arrive but the
     /// view doesn't jump to them until they scroll back to the bottom.
-    // UNWIRED: `LogsPanel::render` has no scroll handler that calls
-    // `LogsView::scroll_up` yet, so nothing ever constructs this variant
-    // outside tests.
-    #[allow(dead_code)]
     Paused,
 }
 
@@ -28,12 +24,7 @@ pub enum FollowState {
 /// container selection. GPUI-free so it's directly unit-testable.
 pub struct LogsView {
     lines: Vec<String>,
-    // UNWIRED: read by `follow_state`/written by `scroll_up`/`scroll_to_bottom`, none of
-    // which `LogsPanel::render` calls yet - there's no scroll or container-picker UI, just
-    // an unconditional line dump. First real caller is that panel UI.
-    #[allow(dead_code)]
     follow: FollowState,
-    #[allow(dead_code)]
     containers: Vec<String>,
     #[allow(dead_code)]
     selected_container: String,
@@ -57,16 +48,16 @@ impl LogsView {
         &self.lines
     }
 
-    // UNWIRED: no scroll or container-picker UI reads/drives this yet - `LogsPanel::render`
-    // unconditionally dumps every line. First real caller is that panel UI.
-    #[allow(dead_code)]
     pub fn follow_state(&self) -> FollowState {
         self.follow
     }
 
-    #[allow(dead_code)]
     pub fn selected_container(&self) -> &str {
         &self.selected_container
+    }
+
+    pub fn containers(&self) -> &[String] {
+        &self.containers
     }
 
     pub fn terminal_message(&self) -> Option<&str> {
@@ -75,7 +66,6 @@ impl LogsView {
 
     /// Whether a container picker needs to be shown at all - a single
     /// container needs no pick.
-    #[allow(dead_code)]
     pub fn needs_container_picker(&self) -> bool {
         self.containers.len() > 1
     }
@@ -84,19 +74,20 @@ impl LogsView {
         self.lines.push(line);
     }
 
-    #[allow(dead_code)]
     pub fn scroll_up(&mut self) {
         self.follow = FollowState::Paused;
     }
 
-    #[allow(dead_code)]
     pub fn scroll_to_bottom(&mut self) {
         self.follow = FollowState::Following;
     }
 
     /// Selects `container`. Returns whether the selection actually changed -
     /// the caller restarts the stream only then, and this clears the history
-    /// and terminal state from the previous container's stream.
+    /// and terminal state from the previous container's stream. Unused now
+    /// that `LogsPanel::switch_container` rebuilds a fresh `LogsView` instead
+    /// (matching `sync`'s own pattern) - kept for the unit tests exercising
+    /// the view model directly, and as the natural API if that changes.
     #[allow(dead_code)]
     pub fn select_container(&mut self, container: &str) -> bool {
         if container == self.selected_container {
@@ -206,10 +197,12 @@ use crate::k8s::resource::pods::{PodSelection, SelectedPod};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::Sizable as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
+use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::*;
 use std::rc::Rc;
@@ -237,7 +230,7 @@ pub struct LogsPanel {
     view: Entity<LogsView>,
     stream: Option<Task<()>>,
     current: Option<(String, String, String)>,
-    namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
+    scroll_handle: UniformListScrollHandle,
     focus_handle: FocusHandle,
 }
 
@@ -246,13 +239,10 @@ impl LogsPanel {
         use crate::k8s::cluster::session::ClusterRegistry;
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
-        let namespaces =
-            crate::k8s::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
         cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
             .detach();
-        cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
 
         let mut this = Self {
             scope,
@@ -260,7 +250,7 @@ impl LogsPanel {
             view: cx.new(|_| LogsView::new(vec![String::new()])),
             stream: None,
             current: None,
-            namespaces,
+            scroll_handle: UniformListScrollHandle::default(),
             focus_handle: cx.focus_handle(),
         };
         this.sync(cx);
@@ -294,7 +284,55 @@ impl LogsPanel {
 
         let client = client.clone();
         let view = cx.new(|_| LogsView::new(containers));
-        cx.observe(&view, |_, _, cx| cx.notify()).detach();
+        cx.observe(&view, |this: &mut Self, view, cx| {
+            if view.read(cx).follow_state() == FollowState::Following {
+                let last = view.read(cx).lines().len().saturating_sub(1);
+                this.scroll_handle
+                    .scroll_to_item(last, gpui_kit::ScrollStrategy::Bottom);
+            }
+            cx.notify();
+        })
+        .detach();
+        self.stream = Some(stream_container_logs(
+            client,
+            namespace,
+            name,
+            container,
+            view.clone(),
+            cx,
+        ));
+        self.view = view;
+    }
+
+    /// Restarts the stream on `container`, reusing the current pod/namespace -
+    /// the container picker's only job, since `LogsView::select_container`
+    /// already reports whether the selection actually changed.
+    fn switch_container(&mut self, container: String, cx: &mut Context<Self>) {
+        let Some((namespace, name, current_container)) = self.current.clone() else {
+            return;
+        };
+        if container == current_container {
+            return;
+        }
+        let crate::k8s::cluster::connection::ConnectionState::Connected(client) =
+            &self.connection.read(cx).state
+        else {
+            return;
+        };
+        let containers = self.view.read(cx).containers().to_vec();
+        self.current = Some((namespace.clone(), name.clone(), container.clone()));
+
+        let client = client.clone();
+        let view = cx.new(|_| LogsView::new(containers));
+        cx.observe(&view, |this: &mut Self, view, cx| {
+            if view.read(cx).follow_state() == FollowState::Following {
+                let last = view.read(cx).lines().len().saturating_sub(1);
+                this.scroll_handle
+                    .scroll_to_item(last, gpui_kit::ScrollStrategy::Bottom);
+            }
+            cx.notify();
+        })
+        .detach();
         self.stream = Some(stream_container_logs(
             client,
             namespace,
@@ -319,6 +357,7 @@ impl EventEmitter<ScopeEvent> for LogsPanel {}
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = self.view.read(cx);
+        let following = view.follow_state() == FollowState::Following;
         let content = if let Some(message) = view.terminal_message() {
             div()
                 .size_full()
@@ -354,28 +393,113 @@ impl Render for LogsPanel {
                                 .collect()
                         },
                     )
+                    .track_scroll(&self.scroll_handle)
                     .size_full(),
                 )
                 .into_any_element()
         };
 
-        let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        let namespace_bar =
-            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
-                let _ = this.update(cx, |this: &mut Self, cx| {
-                    this.scope = this.scope.scoped_to(namespaces.clone());
-                    cx.emit(ScopeEvent::NamespacesChanged(namespaces));
-                });
-            })
-            .map(|picker| {
+        // A container picker, not a namespace one: this panel streams one
+        // pod's logs, already chosen by clicking that pod - there is no
+        // namespace left to scope, only which of its containers to read.
+        let container_picker = view.needs_container_picker().then(|| {
+            let containers = view.containers().to_vec();
+            let selected = view.selected_container().to_string();
+            let this = cx.weak_entity();
+            Button::new("logs-container")
+                .label(selected.clone())
+                .icon(gpui_kit::assets::IconName::ChevronDown)
+                .xsmall()
+                .ghost()
+                .tab_stop(false)
+                .tooltip("Container")
+                .dropdown_menu(move |menu, _window, _cx| {
+                    let mut menu = menu;
+                    for container in &containers {
+                        let this = this.clone();
+                        let container = container.clone();
+                        let checked = container == selected;
+                        menu = menu.item(
+                            gpui_kit::component::menu::PopupMenuItem::new(container.clone())
+                                .checked(checked)
+                                .on_click(move |_event, _window, cx| {
+                                    let _ = this.update(cx, |this: &mut Self, cx| {
+                                        this.switch_container(container.clone(), cx);
+                                    });
+                                }),
+                        );
+                    }
+                    menu
+                })
+        });
+
+        let control_bar =
+            (self.current.is_some() && view.terminal_message().is_none()).then(|| {
+                let line_count = view.lines().len();
+                let this_top = cx.weak_entity();
+                let this_bottom = cx.weak_entity();
+                let this_follow = cx.weak_entity();
                 div()
                     .flex()
+                    .items_center()
                     .justify_end()
+                    .gap_1()
                     .p_2()
                     .border_b_1()
                     .border_color(cx.theme().border)
-                    .child(picker)
+                    .children(container_picker)
+                    .child(
+                        Button::new("logs-jump-top")
+                            .icon(gpui_kit::assets::IconName::ArrowUp)
+                            .xsmall()
+                            .ghost()
+                            .tab_stop(false)
+                            .tooltip("Jump to top")
+                            .on_click(move |_event, _window, cx| {
+                                let _ = this_top.update(cx, |this: &mut Self, cx| {
+                                    this.view.update(cx, |view, _| view.scroll_up());
+                                    this.scroll_handle
+                                        .scroll_to_item(0, gpui_kit::ScrollStrategy::Top);
+                                    cx.notify();
+                                });
+                            }),
+                    )
+                    .child(
+                        Button::new("logs-jump-bottom")
+                            .icon(gpui_kit::assets::IconName::ArrowDown)
+                            .xsmall()
+                            .ghost()
+                            .tab_stop(false)
+                            .tooltip("Jump to bottom")
+                            .on_click(move |_event, _window, cx| {
+                                let _ = this_bottom.update(cx, |this: &mut Self, cx| {
+                                    this.view.update(cx, |view, _| view.scroll_to_bottom());
+                                    this.scroll_handle.scroll_to_item(
+                                        line_count.saturating_sub(1),
+                                        gpui_kit::ScrollStrategy::Bottom,
+                                    );
+                                    cx.notify();
+                                });
+                            }),
+                    )
+                    .child(
+                        Button::new("logs-follow")
+                            .label("Follow")
+                            .xsmall()
+                            .ghost()
+                            .tab_stop(false)
+                            .toggled(following)
+                            .tooltip("Follow new lines as they arrive")
+                            .on_click(move |_event, _window, cx| {
+                                let _ = this_follow.update(cx, |this: &mut Self, cx| {
+                                    this.view.update(cx, |view, _| match view.follow_state() {
+                                        FollowState::Following => view.scroll_up(),
+                                        FollowState::Paused => view.scroll_to_bottom(),
+                                    });
+                                    cx.notify();
+                                });
+                            }),
+                    )
             });
 
         panel_title::focus_frame(
@@ -383,7 +507,7 @@ impl Render for LogsPanel {
                 .size_full()
                 .flex()
                 .flex_col()
-                .children(namespace_bar)
+                .children(control_bar)
                 .child(div().flex_1().min_h_0().child(content)),
             &self.focus_handle,
             window,

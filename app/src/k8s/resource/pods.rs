@@ -611,20 +611,39 @@ impl PodsPanel {
                     .col_movable(false)
                     .col_resizable(false)
             });
-            cx.subscribe(&table, |_this, table, event, cx| {
-                let TableEvent::SelectRow(row_ix) = event else {
-                    return;
+            cx.subscribe_in(&table, window, |_this, table, event, window, cx| {
+                let row_ix = match event {
+                    TableEvent::SelectRow(row_ix) => *row_ix,
+                    // A single click only selects (drives WarpNamespace/
+                    // ShowPodLogs, which read SelectedPod); opening the
+                    // detail panel is the double-click, matching the
+                    // resource panel's own row convention (section 9.1).
+                    TableEvent::DoubleClickedRow(row_ix) => {
+                        let Some(selection) = table
+                            .read(cx)
+                            .delegate()
+                            .rows
+                            .get(*row_ix)
+                            .map(|row| row.selection.clone())
+                        else {
+                            return;
+                        };
+                        cx.set_global(SelectedPod(Some(selection)));
+                        window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
+                        return;
+                    }
+                    _ => return,
                 };
                 let Some(selection) = table
                     .read(cx)
                     .delegate()
                     .rows
-                    .get(*row_ix)
+                    .get(row_ix)
                     .map(|row| row.selection.clone())
                 else {
                     return;
                 };
-                cx.set_global(SelectedPod(Some(selection.clone())));
+                cx.set_global(SelectedPod(Some(selection)));
                 cx.notify();
             })
             .detach();

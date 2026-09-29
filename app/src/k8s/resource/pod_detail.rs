@@ -11,7 +11,6 @@ use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::resource::pods::format_age;
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::{self, PanelScope};
-use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -19,12 +18,33 @@ use gpui_kit::component::collapsible::Collapsible;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
+
+actions!(pod_detail, [ToggleDetailView]);
+
+/// This panel's own key context - distinct from `PodsPanel`'s, so the two
+/// panels can each bind `y` to a different meaning without conflict (there
+/// "open this pod's detail on YAML," here "toggle this already-open panel's
+/// view").
+pub const PANEL_KEY_CONTEXT: &str = "PodDetailPanel";
+const TOGGLE_VIEW_KEY: &str = "y";
+
+/// The panel's own keybinding. Registered with the window's keymap the same
+/// way `pods::panel_bindings` is - printing a key in a hint bar does not
+/// bind it.
+pub fn panel_bindings() -> [KeyBinding; 1] {
+    [KeyBinding::new(
+        TOGGLE_VIEW_KEY,
+        ToggleDetailView,
+        Some(PANEL_KEY_CONTEXT),
+    )]
+}
 
 /// The label of a field row, and a value shaped so the renderer knows how to
 /// draw it without re-deriving that from the string.
@@ -905,9 +925,24 @@ impl Focusable for PodDetailPanel {
 
 impl EventEmitter<PanelEvent> for PodDetailPanel {}
 
+impl PodDetailPanel {
+    fn on_action_toggle_view(
+        &mut self,
+        _: &ToggleDetailView,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let next = match self.viewing {
+            DetailView::Structured => DetailView::Yaml,
+            DetailView::Yaml => DetailView::Structured,
+        };
+        self.set_view(next, cx);
+    }
+}
+
 impl Render for PodDetailPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let body = match &self.state {
+        let content = match &self.state {
             PodDetailState::Loading => div()
                 .size_full()
                 .p_3()
@@ -943,6 +978,45 @@ impl Render for PodDetailPanel {
                     .into_any_element(),
             },
         };
+
+        // The structured/YAML toggle, with the same visible-shortcut-hint
+        // convention `PodsPanel` uses - inside the panel's own body, not the
+        // dock's shared per-tab-group toolbar, which only reflects whichever
+        // tab happens to be active.
+        let yaml = self.viewing == DetailView::Yaml;
+        let toggle_key =
+            Kbd::binding_for_action(&ToggleDetailView, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| {
+                    Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
+                });
+        let header = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .p_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(div().text_sm().child(if yaml { "YAML" } else { "Fields" }))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(toggle_key)
+                    .child(if yaml { "Show fields" } else { "Show YAML" }),
+            );
+
+        let body = div()
+            .size_full()
+            .key_context(PANEL_KEY_CONTEXT)
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::on_action_toggle_view))
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(div().flex_1().min_h_0().child(content));
 
         panel_title::focus_frame(body, &self.focus_handle, window, cx)
     }
@@ -984,31 +1058,9 @@ impl Panel for PodDetailPanel {
     fn toolbar_buttons(
         &mut self,
         _window: &mut Window,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> Option<Vec<Button>> {
-        let yaml = self.viewing == DetailView::Yaml;
-        let this = cx.weak_entity();
-        let mut buttons = vec![
-            Button::new("pod-detail-view")
-                .label(if yaml { "Fields" } else { "YAML" })
-                .icon(if yaml { IconName::List } else { IconName::Code })
-                .xsmall()
-                .ghost()
-                .tab_stop(false)
-                .toggled(yaml)
-                .tooltip("Switch between the field list and raw YAML")
-                .on_click(move |_event, _window, cx| {
-                    let _ = this.update(cx, |this: &mut Self, cx| {
-                        let next = match this.viewing {
-                            DetailView::Structured => DetailView::Yaml,
-                            DetailView::Yaml => DetailView::Structured,
-                        };
-                        this.set_view(next, cx);
-                    });
-                }),
-        ];
-        buttons.extend(panel_title::toolbar_buttons().unwrap_or_default());
-        Some(buttons)
+        panel_title::toolbar_buttons()
     }
 
     fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {
