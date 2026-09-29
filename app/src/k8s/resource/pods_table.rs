@@ -147,6 +147,11 @@ pub(super) struct PodTableDelegate {
     rows: Vec<PodTableRow>,
     columns: Vec<PodColumn>,
     sort: Option<(PodColumn, ColumnSort)>,
+    /// The pod this table last had selected, by identity. [`TableState`]
+    /// only keeps the selected row's index, and the app-wide `SelectedPod`
+    /// global is shared by every Pods panel, so each table remembers its own
+    /// pick to re-point its highlight after a sort or row update.
+    selected: Option<PodSelection>,
 }
 
 impl Default for PodTableDelegate {
@@ -156,6 +161,7 @@ impl Default for PodTableDelegate {
             rows: Vec::new(),
             columns: PodColumn::DEFAULT_ORDER.to_vec(),
             sort: None,
+            selected: None,
         }
     }
 }
@@ -171,6 +177,20 @@ impl PodTableDelegate {
     /// The rows in their currently displayed order.
     pub(super) fn rows(&self) -> &[PodTableRow] {
         &self.rows
+    }
+
+    /// Records the pod the user selected in this table (see `selected`).
+    pub(super) fn remember_selection(&mut self, selection: Option<PodSelection>) {
+        self.selected = selection;
+    }
+
+    /// The displayed row (if any) that identifies as `selection` - matched by
+    /// namespace and name, not position. A pure query so tests can exercise
+    /// the lookup [`reselect`] drives without a GPUI `Window`/`Context`.
+    pub(super) fn index_of(&self, selection: &PodSelection) -> Option<usize> {
+        self.rows.iter().position(|row| {
+            row.selection.namespace == selection.namespace && row.selection.name == selection.name
+        })
     }
 
     /// The text `render_td` shows at `(row_ix, col_ix)` - a pure query so
@@ -285,9 +305,38 @@ impl TableDelegate for PodTableDelegate {
         &mut self,
         col_ix: usize,
         sort: ColumnSort,
-        _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
     ) {
         self.resort(col_ix, sort);
+        // `TableState::perform_sort` (the caller) is already mid-update on
+        // itself to reach this method, so `cx` here is only
+        // `Context<TableState<Self>>` - there's no `&mut TableState<Self>` to
+        // call `set_selected_row`/`clear_selection` on. Defer to the end of
+        // this update cycle, when the entity is free again, to re-point the
+        // selection at the pod this table selected instead of whatever pod
+        // the sort left at the previously selected index.
+        cx.defer_in(window, |table, _window, cx| reselect(table, cx));
+    }
+}
+
+/// Re-points a Pods table's row *selection* - which [`TableState`] tracks as
+/// a bare index - at the pod this table last selected, after something
+/// (a sort, a watch-driven row replacement) has changed what occupies each
+/// index. Moves the highlight if the pod moved, clears it if the pod is no
+/// longer present, and leaves it alone if nothing is selected or the pod's
+/// row didn't move.
+pub(super) fn reselect(
+    table: &mut TableState<PodTableDelegate>,
+    cx: &mut Context<TableState<PodTableDelegate>>,
+) {
+    let Some(selection) = table.delegate().selected.clone() else {
+        return;
+    };
+    match table.delegate().index_of(&selection) {
+        Some(row_ix) if table.selected_row() != Some(row_ix) => table.set_selected_row(row_ix, cx),
+        Some(_) => {}
+        None if table.selected_row().is_some() => table.clear_selection(cx),
+        None => {}
     }
 }
