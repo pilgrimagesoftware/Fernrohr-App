@@ -21,3 +21,9 @@ pub(crate) const SSH_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(5
 /// service from `keychain.rs`'s smoke-test constant so a spike credential never
 /// collides with a real tunnel's stored key.
 pub(crate) const TUNNEL_KEYCHAIN_SERVICE: &str = "com.pilgrimagesoftware.fernrohr.tunnels";
+
+/// `connection-status-bar` design.md decision 2: a paused connection's status bar item
+/// escalates from its reason's usual color to danger once it has been paused this long.
+/// A single named constant so the "arbitrary" 30 seconds (design.md's own word) is easy
+/// to find and retune after real use, rather than a literal buried in `severity`.
+pub(crate) const STATUS_ESCALATE_AFTER: Duration = Duration::from_secs(30);

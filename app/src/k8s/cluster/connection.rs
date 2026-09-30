@@ -6,6 +6,7 @@ use gpui_kit::{App, AppContext as _, Context, Entity};
 use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Client, Config};
 use std::net::SocketAddr;
+use std::time::Instant;
 use tokio::sync::{mpsc, watch};
 
 #[derive(Clone)]
@@ -145,6 +146,11 @@ pub(in crate::k8s::cluster) async fn connect_and_probe(
 /// view can observe it and re-render as the connection progresses.
 pub struct ClusterConnection {
     pub state: ConnectionState,
+    /// When `state` last changed - `connection-status-bar` design.md decision 1's source
+    /// for the status bar's "waiting for tunnel" and "failed" elapsed times (`Paused`'s own
+    /// elapsed comes from `WatchRegistry::first_paused` instead, since that state lives
+    /// beside the watch it paused rather than here).
+    since: Instant,
     /// Kept alive for as long as this connection exists - section 6.2's "release the
     /// forward when the last session using it disconnects" is just this field's own
     /// `Drop` (via `RegistryHandle`/`SshTunnel`'s), since there is one `ClusterSession`
@@ -162,8 +168,14 @@ impl ClusterConnection {
     pub(crate) fn test_with_state(state: ConnectionState) -> Self {
         Self {
             state,
+            since: Instant::now(),
             _forward: None,
         }
+    }
+
+    /// When [`Self::state`] last changed, for the status bar's elapsed-time display.
+    pub fn since(&self) -> Instant {
+        self.since
     }
 
     /// The bound forward's state receiver, for section 7.2's `ConnectionHealth` to watch -
@@ -218,6 +230,7 @@ impl ClusterConnection {
                 crate::runtime::drain(rx, |state| {
                     let _ = this.update(cx, |this, cx| {
                         this.state = state;
+                        this.since = Instant::now();
                         cx.notify();
                     });
                 })
@@ -226,6 +239,7 @@ impl ClusterConnection {
             .detach();
             Self {
                 state: ConnectionState::Connecting,
+                since: Instant::now(),
                 _forward: forward,
             }
         })

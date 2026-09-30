@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod context_health;
 pub mod discovery;
 pub mod health;
 pub mod kubeconfig;
