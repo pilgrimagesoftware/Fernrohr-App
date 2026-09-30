@@ -19,6 +19,37 @@ pub enum ConnectionState {
     Failed(String),
 }
 
+/// Renders `error` together with its whole `source()` chain, outermost first,
+/// joined with `": "`.
+///
+/// `kube::Error`'s own `Display` is only the outer variant label - a connect
+/// failure renders as `ServiceError: client error (Connect)`, which names the
+/// phase but discards the `io::Error` underneath it (refused, unreachable, the
+/// address actually dialled). `#[source]` chains are how `kube` carries that
+/// detail, so every user-facing failure reason goes through here rather than a
+/// bare `to_string()`.
+///
+/// Cyclic chains are tolerated: a `HashSet` of the pointers already rendered
+/// stops a self-referential `source()` from looping forever.
+pub(crate) fn error_chain(error: &dyn std::error::Error) -> String {
+    use std::collections::HashSet;
+
+    let mut parts = vec![error.to_string()];
+    let mut seen: HashSet<*const ()> = HashSet::new();
+    seen.insert(error as *const dyn std::error::Error as *const ());
+
+    let mut source = error.source();
+    while let Some(current) = source {
+        let key = current as *const dyn std::error::Error as *const ();
+        if !seen.insert(key) {
+            break;
+        }
+        parts.push(current.to_string());
+        source = current.source();
+    }
+    parts.join(": ")
+}
+
 /// Builds a client from `config` and runs one probe request (the server
 /// version endpoint). Every failure mode — an unreachable server, a TLS
 /// error, or an exec credential plugin that fails to produce a token — maps
@@ -26,11 +57,11 @@ pub enum ConnectionState {
 pub async fn probe(config: Config) -> ConnectionState {
     let client = match Client::try_from(config) {
         Ok(client) => client,
-        Err(error) => return ConnectionState::Failed(error.to_string()),
+        Err(error) => return ConnectionState::Failed(error_chain(&error)),
     };
     match client.apiserver_version().await {
         Ok(_) => ConnectionState::Connected(client),
-        Err(error) => ConnectionState::Failed(error.to_string()),
+        Err(error) => ConnectionState::Failed(error_chain(&error)),
     }
 }
 
@@ -43,10 +74,10 @@ pub(in crate::k8s::cluster) async fn resolve_config(
 ) -> Result<Config, String> {
     match context_name {
         Some(name) => {
-            let kubeconfig = Kubeconfig::read().map_err(|error| error.to_string())?;
+            let kubeconfig = Kubeconfig::read().map_err(|error| error_chain(&error))?;
             resolve_named_context(kubeconfig, name).await
         }
-        None => Config::infer().await.map_err(|error| error.to_string()),
+        None => Config::infer().await.map_err(|error| error_chain(&error)),
     }
 }
 
@@ -65,7 +96,7 @@ async fn resolve_named_context(
         },
     )
     .await
-    .map_err(|error| error.to_string())
+    .map_err(|error| error_chain(&error))
 }
 
 /// The context name whose tunnel binding decides `connect`'s forward, per section 1.2:
@@ -239,6 +270,68 @@ mod tests {
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    /// A real `Display` + `source()` pair, shaped like the kube errors this
+    /// exists for: a generic outer label over a specific inner cause.
+    #[derive(Debug)]
+    struct FakeOuter(std::io::Error);
+
+    impl std::fmt::Display for FakeOuter {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "ServiceError: {}", self.0)
+        }
+    }
+
+    impl std::error::Error for FakeOuter {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    #[test]
+    fn error_chain_includes_the_underlying_cause_not_just_the_outer_label() {
+        let error = FakeOuter(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused",
+        ));
+        let rendered = error_chain(&error);
+        assert!(
+            rendered.contains("connection refused"),
+            "the source chain must reach the io::Error; got {rendered:?}"
+        );
+        assert!(
+            rendered.starts_with("ServiceError:"),
+            "the outer label must still lead; got {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn error_chain_of_a_sourceless_error_is_just_its_own_message() {
+        let error = FakeOuter(std::io::Error::other("boom"));
+        // A single-link chain: outer label, then the io error's own message,
+        // with no trailing separator or empty segment.
+        assert_eq!(error_chain(&error), "ServiceError: boom");
+    }
+
+    #[test]
+    fn error_chain_terminates_on_a_self_referential_source() {
+        #[derive(Debug)]
+        struct Cyclic;
+        impl std::fmt::Display for Cyclic {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("cyclic")
+            }
+        }
+        impl std::error::Error for Cyclic {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(self)
+            }
+        }
+        let rendered = error_chain(&Cyclic);
+        // The root is seeded into `seen` before the walk, so a `source()` that
+        // hands back the root is recognised immediately: one segment, no hang.
+        assert_eq!(rendered, "cyclic");
+    }
 
     /// A minimal HTTP/1.1 responder: reads one request off `stream` and
     /// writes back a fixed response, no framework required.
