@@ -160,6 +160,9 @@ async fn g_opens_the_picker_on_a_pod_and_enter_follows_its_namespace(cx: &mut Te
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
+        // Settle the picker dialog's entrance on its first frame - see
+        // `ui::link::tests::harness`.
+        cx.set_reduce_motion(true);
         let mut registry = CommandRegistry::new();
         crate::ui::link::register_commands(&mut registry);
         let bindings = keymap::bindings(
