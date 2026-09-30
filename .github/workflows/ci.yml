@@ -39,21 +39,13 @@ jobs:
       # macOS is the only runner with a real keychain daemon to test against.
       - name: Test
         if: runner.os != 'Linux'
+        timeout-minutes: 15
         run: cargo test --workspace --locked -- --include-ignored
 
-      # The ubuntu-latest runner has repeatedly died mid-test-run ("lost communication
-      # with the server") on this branch specifically, long before the base suite's own
-      # pre-existing failures (keychain/pidfile, tracked separately) would surface. Bound
-      # it with `timeout` so a future recurrence fails fast with output instead of burning
-      # a 50-minute runner slot with no uploaded log.
+      # No keychain daemon here, so the `#[ignore]`d real-keychain tests stay skipped.
+      # Both Test steps are bounded so a hung test fails fast instead of holding the
+      # runner for the 6-hour job default.
       - name: Test
         if: runner.os == 'Linux'
-        run: |
-          set -o pipefail
-          stdbuf -oL -eL timeout 300 cargo test --workspace --locked -- --test-threads=1 --nocapture 2>&1 | tee test-output.log
-          code=$?
-          if [ "$code" = "124" ]; then
-            echo "::error::cargo test timed out after 300s; last lines of output:"
-            tail -n 40 test-output.log
-          fi
-          exit "$code"
+        timeout-minutes: 15
+        run: cargo test --workspace --locked

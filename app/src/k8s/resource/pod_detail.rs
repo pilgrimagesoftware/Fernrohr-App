@@ -1619,6 +1619,11 @@ impl Render for PodDetailPanel {
         };
         // The pod's name (and, in a multi-context window, its context) on the left;
         // the tab and view-toggle hints on the right.
+        //
+        // As the panel narrows, the name gives way first: it takes only the
+        // space the hints leave, ellipsizing, down to a floor that keeps a few
+        // characters readable. Past that floor the hints shrink instead and
+        // wrap onto further rows, each hint kept whole.
         let header = div()
             .flex()
             .items_center()
@@ -1627,28 +1632,39 @@ impl Render for PodDetailPanel {
             .p_2()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(div().flex_1().min_w_0().child(panel_title::item_heading(
-                self.pod.name.clone(),
-                panel_title::heading_context(&self.scope, window_contexts),
-                cx.theme().muted_foreground,
-            )))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(rems(8.))
+                    .child(panel_title::item_heading(
+                        self.pod.name.clone(),
+                        panel_title::heading_context(&self.scope, window_contexts),
+                        cx.theme().muted_foreground,
+                    )),
+            )
             .child(
                 div()
                     .flex()
-                    .gap_3()
+                    .flex_wrap()
+                    .justify_end()
+                    .min_w_0()
+                    .gap_x_3()
+                    .gap_y_1()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .when(!yaml, |this| {
                         this.children(DetailSection::ALL.iter().map(|section| {
                             div()
                                 .flex()
+                                .flex_shrink_0()
                                 .items_center()
                                 .gap_1()
+                                .whitespace_nowrap()
                                 .child(tab_key(*section))
                                 .child(section.label())
                         }))
                     })
-                    .child(toggle_hint),
+                    .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
         let body = div()

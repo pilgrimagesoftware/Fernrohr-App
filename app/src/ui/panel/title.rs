@@ -117,22 +117,25 @@ pub fn title(scope: &PanelScope) -> String {
 /// title font, then "(<context>)" in a subtitle font when `context` is given - the
 /// caller passes it only while the window uses more than one context
 /// (`util::shell::window_context_count`). Tab titles never carry the context.
+///
+/// The name ellipsizes when the panel is too narrow for it, and then - only
+/// then - carries the full name in a tooltip.
 pub fn item_heading(name: String, context: Option<String>, muted: Hsla) -> impl IntoElement {
+    let text = StyledText::new(name.clone());
+    // Shares its state with the element's own layout, so by the time a hover
+    // asks for a tooltip it holds the text as drawn: the full name, or the
+    // ellipsized one.
+    let layout = text.layout().clone();
+    let name_text = InteractiveText::new(SharedString::from(format!("item-heading-{name}")), text)
+        .tooltip(move |_index, window, cx| {
+            is_truncated(&layout, &name).then(|| Tooltip::new(name.clone()).build(window, cx))
+        });
     div()
         .flex()
         .items_baseline()
         .gap_2()
         .min_w_0()
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_lg()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(name),
-        )
+        .child(heading_name_box().child(name_text))
         .children(context.map(|context| {
             div()
                 .flex_shrink_0()
@@ -140,6 +143,24 @@ pub fn item_heading(name: String, context: Option<String>, muted: Hsla) -> impl 
                 .text_color(muted)
                 .child(format!("({context})"))
         }))
+}
+
+/// The box an item heading's name sits in: one line, in the title font,
+/// ellipsized once it is narrower than the name.
+fn heading_name_box() -> Div {
+    div()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_ellipsis()
+        .text_lg()
+        .font_weight(FontWeight::SEMIBOLD)
+}
+
+/// Whether `layout`, once drawn, shows less than `full` - that is, the text
+/// was ellipsized to fit.
+fn is_truncated(layout: &TextLayout, full: &str) -> bool {
+    layout.text() != full
 }
 
 /// The context to show beside an item heading: the scope's context while the window
@@ -365,10 +386,41 @@ pub enum ScopeEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::{PanelScope, label_for, namespaces_offered, title};
+    use super::{PanelScope, heading_name_box, is_truncated, label_for, namespaces_offered, title};
     use crate::k8s::cluster::discovery::DiscoveredKind;
     use crate::ui::nav::NavTarget;
+    use gpui_kit::{
+        AvailableSpace, Pixels, StyledText, TestAppContext, TextLayout, point, px, size,
+    };
+    use gpui_kit::{ParentElement as _, Styled as _};
     use kube::core::GroupVersionKind;
+
+    /// Draws `name` in the heading's name box at `width`, returning the
+    /// layout the heading's tooltip consults.
+    fn draw_heading_name(cx: &mut TestAppContext, name: &str, width: Pixels) -> TextLayout {
+        let cx = cx.add_empty_window();
+        let text = StyledText::new(name.to_string());
+        let layout = text.layout().clone();
+        cx.draw(
+            point(px(0.), px(0.)),
+            size(AvailableSpace::Definite(width), AvailableSpace::MinContent),
+            |_window, _cx| heading_name_box().w(width).child(text),
+        );
+        layout
+    }
+
+    /// The heading's tooltip appears only when the name did not fit: a narrow
+    /// box ellipsizes it, a wide one draws it whole.
+    #[gpui_kit::test]
+    fn heading_name_reports_truncation_only_when_ellipsized(cx: &mut TestAppContext) {
+        let name = "gke-metrics-agent-bl7vc";
+
+        let narrow = draw_heading_name(cx, name, px(40.));
+        assert!(is_truncated(&narrow, name), "drawn as {:?}", narrow.text());
+
+        let wide = draw_heading_name(cx, name, px(2000.));
+        assert!(!is_truncated(&wide, name), "drawn as {:?}", wide.text());
+    }
 
     fn kind(kind: &str, namespaced: bool) -> NavTarget {
         NavTarget::Kind(DiscoveredKind {
