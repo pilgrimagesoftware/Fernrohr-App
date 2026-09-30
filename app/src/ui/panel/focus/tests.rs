@@ -219,3 +219,43 @@ fn a_zoomed_group_is_the_only_dock_stop(cx: &mut TestAppContext) {
     assert!(cx.update(|_window, cx| area.read(cx).is_zoomed()));
     assert_eq!(stops(&area, cx), vec![shown]);
 }
+
+/// Both commands take their keys from `keymap.toml` by id like any other
+/// command: an override replaces the default rather than adding to it.
+#[test]
+fn keymap_overrides_rebind_both_commands() {
+    use super::{FocusNextPanel, FocusPreviousPanel, register_commands};
+    use crate::command::CommandRegistry;
+    use crate::keymap::{self, KeymapConfig};
+    use gpui_kit::{Action, Keymap, Keystroke};
+
+    let mut registry = CommandRegistry::new();
+    register_commands(&mut registry);
+    let mut config = KeymapConfig::default();
+    config
+        .bindings
+        .insert("panel.focus_next".into(), "ctrl-j".into());
+    config
+        .bindings
+        .insert("panel.focus_previous".into(), "ctrl-k".into());
+    let keymap = Keymap::new(keymap::bindings(
+        &registry,
+        &config,
+        &gpui_kit::DummyKeyboardMapper,
+    ));
+    let bound = |key: &str, action: &dyn Action| {
+        let keystroke = Keystroke::parse(key).expect("a valid keystroke");
+        let (matched, _) = keymap.bindings_for_input(std::slice::from_ref(&keystroke), &[]);
+        matched
+            .iter()
+            .any(|binding| binding.action().partial_eq(action))
+    };
+
+    assert!(bound("ctrl-j", &FocusNextPanel), "the override binds next");
+    assert!(
+        bound("ctrl-k", &FocusPreviousPanel),
+        "the override binds previous"
+    );
+    assert!(!bound("cmd-]", &FocusNextPanel), "and replaces the default");
+    assert!(!bound("cmd-[", &FocusPreviousPanel), "for both commands");
+}
