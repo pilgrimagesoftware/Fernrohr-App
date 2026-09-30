@@ -23,7 +23,7 @@ fn registered_bindings(keymap: &KeymapConfig, cx: &gpui_kit::App) -> Vec<gpui_ki
     crate::keymap::bindings(&registry, keymap, cx.keyboard_mapper().as_ref())
 }
 
-fn stub_panel(
+pub(super) fn stub_panel(
     cx: &mut TestAppContext,
     state: ConnectionState,
 ) -> gpui_kit::WindowHandle<PodDetailPanel> {

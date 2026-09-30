@@ -99,6 +99,7 @@ pub(super) fn format_events(events: &[K8sEvent], now: Timestamp) -> Vec<PodEvent
 pub(super) fn summarize_containers(
     containers: &[k8s_openapi::api::core::v1::Container],
     status: Option<&k8s_openapi::api::core::v1::PodStatus>,
+    namespace: &str,
 ) -> Vec<ContainerSummary> {
     let statuses = status
         .and_then(|status| status.container_statuses.as_ref())
@@ -140,6 +141,7 @@ pub(super) fn summarize_containers(
                 ports,
                 requests,
                 limits,
+                env_sources: super::references::env_sources(container, namespace),
             }
         })
         .collect()
@@ -178,26 +180,6 @@ pub(super) fn format_container_state(state: &k8s_openapi::api::core::v1::Contain
         };
     }
     "Unknown".to_string()
-}
-
-/// One volume, named and typed - `ConfigMap: my-config`, `EmptyDir`,
-/// `PersistentVolumeClaim: pvc-name` - covering the sources a pod actually
-/// uses in practice rather than every `VolumeSource` variant the API defines.
-pub(super) fn format_volume(volume: &k8s_openapi::api::core::v1::Volume) -> String {
-    let kind = if let Some(config_map) = &volume.config_map {
-        format!("ConfigMap: {}", config_map.name.clone())
-    } else if let Some(secret) = &volume.secret {
-        format!("Secret: {}", secret.secret_name.clone().unwrap_or_default())
-    } else if let Some(pvc) = &volume.persistent_volume_claim {
-        format!("PersistentVolumeClaim: {}", pvc.claim_name)
-    } else if let Some(host_path) = &volume.host_path {
-        format!("HostPath: {}", host_path.path)
-    } else if volume.empty_dir.is_some() {
-        "EmptyDir".to_string()
-    } else {
-        "Other".to_string()
-    };
-    format!("{}: {kind}", volume.name)
 }
 
 /// One toleration, in kubectl's key/operator/value/effect shape. Absent pieces

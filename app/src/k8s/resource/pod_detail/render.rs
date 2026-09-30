@@ -11,6 +11,7 @@ use super::format::format_events;
 use super::model::{BadgeTone, DetailSection, DetailView};
 use super::panel::PodDetailPanel;
 use crate::ui::panel_title;
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::scroll::ScrollableElement as _;
@@ -187,6 +188,7 @@ impl Render for PodDetailPanel {
         // dock's shared per-tab-group toolbar, which only reflects whichever
         // tab happens to be active.
         let window_contexts = crate::util::shell::window_context_count(window, cx);
+        let has_links = !self.followable().is_empty();
         let yaml = self.viewing == DetailView::Yaml;
         let toggle_key =
             Kbd::binding_for_action(&ToggleDetailView, Some(PANEL_KEY_CONTEXT), window)
@@ -262,12 +264,27 @@ impl Render for PodDetailPanel {
                                 .child(section.label())
                         }))
                     })
+                    .when(has_links, |this| {
+                        this.child(
+                            div()
+                                .id("go-to-hint")
+                                .flex()
+                                .flex_shrink_0()
+                                .items_center()
+                                .gap_1()
+                                .whitespace_nowrap()
+                                .child(crate::ui::link::go_to_key(window))
+                                .child("Go to…")
+                                .test_support(),
+                        )
+                    })
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
         div()
             .size_full()
-            .key_context(PANEL_KEY_CONTEXT)
+            .key_context(key_context())
+            .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
@@ -280,4 +297,13 @@ impl Render for PodDetailPanel {
             .child(header)
             .child(div().flex_1().min_h_0().child(content))
     }
+}
+
+/// The panel's own key context plus the shared one `links.go_to` is gated to,
+/// so `g` reaches this panel without the link module knowing it exists.
+fn key_context() -> KeyContext {
+    let mut context = KeyContext::default();
+    context.add(PANEL_KEY_CONTEXT);
+    context.add(crate::ui::link::LINKS_KEY_CONTEXT);
+    context
 }

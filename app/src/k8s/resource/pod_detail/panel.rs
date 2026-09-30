@@ -10,6 +10,7 @@ use super::fetch::{PodDetailState, PodEvents, PodFetch, fetch_pod};
 use super::fields::pod_fields;
 use super::model::{DetailSection, DetailView, PodField};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+use crate::ui::link::{self, GoToEntry, GoToReference};
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::button::Button;
@@ -172,6 +173,14 @@ impl PodDetailPanel {
         self.viewing
     }
 
+    /// Lands `pod` as if a fetch had returned it, for tests outside this module
+    /// that need a loaded panel without a cluster (the window's link tests).
+    #[cfg(test)]
+    pub(crate) fn test_set_loaded(&mut self, pod: Pod, cx: &mut Context<Self>) {
+        self.state = PodDetailState::Loaded(Box::new(pod), Ok(Vec::new()));
+        cx.notify();
+    }
+
     /// Switches the active tab of the structured view.
     pub(super) fn set_active_tab(&mut self, section: DetailSection, cx: &mut Context<Self>) {
         self.active_tab = section;
@@ -210,6 +219,15 @@ impl PodDetailPanel {
             .unwrap_or_default()
     }
 
+    /// The references the "Go to…" picker offers: every followable one the
+    /// structured view shows. Empty while nothing has loaded, which is also
+    /// what hides the `g` hint.
+    pub(super) fn followable(&self) -> Vec<GoToEntry> {
+        link::followable(super::references::go_to_entries(
+            &self.fields(Timestamp::now()),
+        ))
+    }
+
     /// The raw manifest, or nothing while there is no pod to render. Shared by
     /// the YAML view and its test, so the test reads exactly what the view
     /// draws rather than a second serialization that could drift from it.
@@ -228,6 +246,25 @@ impl Focusable for PodDetailPanel {
 impl EventEmitter<PanelEvent> for PodDetailPanel {}
 
 impl PodDetailPanel {
+    pub(super) fn on_action_go_to(
+        &mut self,
+        _: &GoToReference,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let entries = self.followable();
+        if entries.is_empty() {
+            return;
+        }
+        link::open_go_to(
+            entries,
+            self.scope.context_name.clone(),
+            self.focus_handle.clone(),
+            window,
+            cx,
+        );
+    }
+
     pub(super) fn on_action_toggle_view(
         &mut self,
         _: &ToggleDetailView,

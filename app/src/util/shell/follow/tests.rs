@@ -1,0 +1,237 @@
+//! Following references through the window: `resource-links` 3.1-3.3.
+
+use super::super::tests::connected_window;
+use super::super::{MainWindow, OpenPanel, WindowMode};
+use crate::k8s::object_ref::ObjectRef;
+use crate::ui::link::FollowReference;
+use crate::ui::nav::{NavTarget, OpenedPanel};
+use gpui_kit::component::dock::{DockPlacement, PaneRef, PanelId};
+use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::{AppContext as _, ElementId, TestAppContext, WindowHandle};
+use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+fn follow(
+    cx: &mut TestAppContext,
+    window: &WindowHandle<MainWindow>,
+    context: &str,
+    target: ObjectRef,
+) {
+    window
+        .update(cx, |main_window, window, cx| {
+            main_window.focus_handle.clone().focus(window, cx);
+            window.dispatch_action(
+                Box::new(FollowReference {
+                    context_name: context.into(),
+                    target,
+                }),
+                cx,
+            );
+        })
+        .unwrap();
+    cx.run_until_parked();
+}
+
+/// The panels this window has open whose key matches `predicate`.
+fn open_matching(
+    cx: &mut TestAppContext,
+    window: &WindowHandle<MainWindow>,
+    predicate: impl Fn(&OpenPanel) -> bool,
+) -> Vec<(PanelId, String, Vec<String>)> {
+    window
+        .update(cx, |main_window, _window, _cx| {
+            let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            open_panels
+                .iter()
+                .filter(|open| predicate(open))
+                .map(|open| {
+                    (
+                        open.id,
+                        open.key.context_name.clone(),
+                        open.key.namespaces.clone(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap()
+}
+
+/// Whether `id` is the showing tab of its tab group - what "focused" means for
+/// a panel that was already open.
+fn is_showing(cx: &mut TestAppContext, window: &WindowHandle<MainWindow>, id: PanelId) -> bool {
+    window
+        .update(cx, |main_window, _window, cx| {
+            let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            let area = dock_area.read(cx);
+            let tree = area.layout(DockPlacement::Center).expect("a centre");
+            let node = tree.find_panel_node(id).expect("the panel is docked");
+            match tree.find_node(node).expect("its node exists").kind() {
+                PaneRef::Tabs { panels, active_ix } => panels.get(active_ix) == Some(&id),
+                PaneRef::Split { .. } => false,
+            }
+        })
+        .unwrap()
+}
+
+fn is_pod(open: &OpenPanel, namespace: &str, name: &str) -> bool {
+    open.key.target == NavTarget::pod(namespace, name)
+}
+
+fn is_scoped_pods_list(open: &OpenPanel, namespace: &str) -> bool {
+    open.key.target == NavTarget::pods() && open.key.namespaces == [namespace.to_string()]
+}
+
+/// 3.1: following a Pod reference opens its detail panel; following it again,
+/// after something else took focus, focuses that same panel instead of adding a
+/// second.
+#[gpui_kit::test]
+async fn following_a_pod_opens_it_and_following_again_focuses_it(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    let pod = ObjectRef::core("Pod", "staging", "web-1");
+
+    follow(cx, &window, "kind-dev", pod.clone());
+    let opened = open_matching(cx, &window, |open| is_pod(open, "staging", "web-1"));
+    assert_eq!(opened.len(), 1, "the pod's detail panel opened");
+    let (pod_panel, context, _) = opened[0].clone();
+    assert_eq!(context, "kind-dev");
+    assert!(is_showing(cx, &window, pod_panel), "and took focus");
+
+    // Something else takes focus...
+    follow(
+        cx,
+        &window,
+        "kind-dev",
+        ObjectRef::cluster_scoped("", "Namespace", "staging"),
+    );
+    assert!(!is_showing(cx, &window, pod_panel));
+
+    // ...and following the pod again brings its one panel back.
+    follow(cx, &window, "kind-dev", pod);
+    let opened = open_matching(cx, &window, |open| is_pod(open, "staging", "web-1"));
+    assert_eq!(opened.len(), 1, "no second panel for the same pod");
+    assert!(
+        is_showing(cx, &window, pod_panel),
+        "the existing panel is focused"
+    );
+}
+
+/// 3.1: a reference is followed in the context of the panel it was shown in,
+/// not the window's active one - and a context the window doesn't hold is
+/// refused rather than swapped for the active one.
+#[gpui_kit::test]
+async fn following_uses_the_source_panels_context(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    window
+        .update(cx, |main_window, window, cx| {
+            main_window.add_context("staging".to_string(), window, cx);
+        })
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        window
+            .update(cx, |main_window, _, _| main_window
+                .test_active_context_name())
+            .unwrap()
+            .as_deref(),
+        Some("staging"),
+        "the second context is the active one"
+    );
+
+    follow(
+        cx,
+        &window,
+        "kind-dev",
+        ObjectRef::core("Pod", "prod", "web-1"),
+    );
+    let opened = open_matching(cx, &window, |open| is_pod(open, "prod", "web-1"));
+    assert_eq!(opened.len(), 1);
+    assert_eq!(
+        opened[0].1, "kind-dev",
+        "the source panel's context, not the active one"
+    );
+
+    follow(
+        cx,
+        &window,
+        "elsewhere",
+        ObjectRef::core("Pod", "prod", "api-1"),
+    );
+    assert!(
+        open_matching(cx, &window, |open| is_pod(open, "prod", "api-1")).is_empty(),
+        "a context this window doesn't hold opens nothing"
+    );
+}
+
+/// 3.3: a Namespace reference opens the Pods list scoped to that namespace -
+/// a panel of its own, beside the unscoped list - and following it again
+/// focuses that scoped list.
+#[gpui_kit::test]
+async fn following_a_namespace_opens_the_pods_list_scoped_to_it(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    let namespace = ObjectRef::cluster_scoped("", "Namespace", "staging");
+
+    follow(cx, &window, "kind-dev", namespace.clone());
+    follow(cx, &window, "kind-dev", namespace);
+
+    let scoped = open_matching(cx, &window, |open| is_scoped_pods_list(open, "staging"));
+    assert_eq!(scoped.len(), 1, "one Pods list scoped to staging");
+    assert_eq!(scoped[0].2, vec!["staging".to_string()]);
+    assert!(is_showing(cx, &window, scoped[0].0));
+}
+
+/// 3.2: clicking a reference in a pod's detail panel opens (and focuses) its
+/// target, through the real click path.
+#[gpui_kit::test]
+async fn clicking_a_reference_in_a_pod_panel_opens_its_target(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    follow(
+        cx,
+        &window,
+        "kind-dev",
+        ObjectRef::core("Pod", "staging", "web-1"),
+    );
+
+    let pod = Pod {
+        metadata: ObjectMeta {
+            name: Some("web-1".into()),
+            namespace: Some("staging".into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    window
+        .update(cx, |main_window, _window, cx| {
+            let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            let panel = open_panels
+                .iter()
+                .find_map(|open| match &open.panel {
+                    Some(OpenedPanel::PodDetail(panel)) => Some(panel.clone()),
+                    _ => None,
+                })
+                .expect("the pod's detail panel is open");
+            panel.update(cx, |panel, cx| panel.test_set_loaded(pod, cx));
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    cx.update_window(window.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(ElementId::NamedInteger("Namespace".into(), 0), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+
+    let scoped = open_matching(cx, &window, |open| is_scoped_pods_list(open, "staging"));
+    assert_eq!(scoped.len(), 1, "the namespace's Pods list opened");
+    assert!(is_showing(cx, &window, scoped[0].0), "and took focus");
+}
