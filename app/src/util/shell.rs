@@ -196,6 +196,12 @@ fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
         height: f32::from(bounds.size.height),
         x: Some(f32::from(bounds.origin.x)),
         y: Some(f32::from(bounds.origin.y)),
+        // Like `panels` below: this only ever captures geometry today, not a live
+        // window's actual contexts or panels - that write side is a later change's
+        // job (see the module doc comment on `save`). `restored_contexts` still
+        // derives a sensible list from `panels` for a file that *does* carry them
+        // (e.g. hand-edited, or written by that later change).
+        contexts: Vec::new(),
         panels: Vec::new(),
     }
 }
@@ -231,21 +237,31 @@ fn build_workspace(
     (dock_area, dock_skin, scope, first)
 }
 
-/// The first restorable panel's `cluster_context`, if any - used to pick which context
-/// a restored (non-empty) layout's workspace connects to, since full per-panel
-/// reconstruction from `PanelDescriptor` is future work.
-fn first_restored_context(layout: &WindowLayout) -> Option<String> {
-    restorable_panels(layout)
-        .into_iter()
-        .find_map(|descriptor| match descriptor {
+/// Every context a restored (non-empty) layout's workspace should reconnect, in the
+/// order the window used them: `layout.contexts` when it says anything, otherwise
+/// (`window-context-bar` design.md decision 3, an older file with no `contexts` at
+/// all) the distinct `cluster_context`s named by its saved panels, first-seen order.
+/// Empty for a layout with no restorable panels - that window opens in `Picker` mode.
+fn restored_contexts(layout: &WindowLayout) -> Vec<String> {
+    if !layout.contexts.is_empty() {
+        return layout.contexts.clone();
+    }
+    let mut contexts = Vec::new();
+    for descriptor in restorable_panels(layout) {
+        let context_name = match descriptor {
             PanelDescriptor::Pods {
                 cluster_context, ..
             }
             | PanelDescriptor::Logs {
                 cluster_context, ..
-            } => Some(cluster_context.clone()),
-            PanelDescriptor::Unknown => None,
-        })
+            } => cluster_context,
+            PanelDescriptor::Unknown => continue,
+        };
+        if !contexts.contains(context_name) {
+            contexts.push(context_name.clone());
+        }
+    }
+    contexts
 }
 
 /// Enough to recognise a panel the dock already holds: which kind, in which
@@ -346,8 +362,9 @@ enum WindowMode {
         /// state for active panel chrome and provides its zoom control.
         _dock_skin: Rc<DockSkin>,
         /// Every context this window uses, in the order they were added
-        /// (`window-context-bar` design.md decision 1). One entry today -
-        /// adding a second is that change's own later sections' job - but
+        /// (`window-context-bar` design.md decision 1). A restored window can
+        /// already carry more than one; adding a second interactively (the "+"
+        /// control, section 3) is still that change's own later sections' job.
         /// `connection_count` (how many cluster connections the window holds,
         /// which section 10.1's title bar reads) is always `contexts.len()`
         /// rather than a field of its own, so the two can never disagree.
@@ -377,11 +394,12 @@ enum WindowMode {
     },
 }
 
-/// Opens one window, in `Picker` mode if `layout` has no restorable panels, or directly
-/// into a connected workspace (seeded from the restored layout's context) otherwise.
+/// Opens one window, in `Picker` mode if `layout` has no restorable contexts, or
+/// directly into a connected workspace (seeded from the restored layout's contexts)
+/// otherwise.
 pub fn open_window(cx: &mut App, layout: WindowLayout) {
     let bounds = window_bounds(&layout, cx);
-    let restored_context = first_restored_context(&layout);
+    let contexts = restored_contexts(&layout);
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -418,8 +436,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                     unreachable!("just constructed a picker-mode window")
                 };
                 watch_picker(picker, window, cx);
-                if let Some(context_name) = restored_context {
-                    view.enter_workspace(context_name, window, cx);
+                if !contexts.is_empty() {
+                    view.enter_workspace(contexts, window, cx);
                 }
                 view
             });
@@ -442,7 +460,7 @@ fn watch_picker(
         window,
         |this: &mut MainWindow, _picker, event, window, cx| {
             let crate::ui::picker::PickerEvent::Connected { context_name, .. } = event;
-            this.enter_workspace(context_name.clone(), window, cx);
+            this.enter_workspace(vec![context_name.clone()], window, cx);
         },
     )
     .detach();
@@ -463,13 +481,18 @@ fn watch_workspace(
             if !matches!(event, DockEvent::LayoutChanged) {
                 return;
             }
+            // `window-context-bar` design.md decision 3: a per-context dock layout
+            // is only ever saved (and later loaded) for a single-context window - a
+            // multi-context window's arrangement is its own saved panels' job, not
+            // yet wired here (section 3 territory).
             if let WindowMode::Workspace { contexts, .. } = &this.mode
+                && let [context_name] = contexts.as_slice()
                 && cx.has_global::<SavedDockLayouts>()
             {
                 let state = dock_area.read(cx).dump(cx);
                 cx.global_mut::<SavedDockLayouts>()
                     .0
-                    .insert(contexts[0].clone(), state);
+                    .insert(context_name.clone(), state);
             }
             this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
@@ -559,26 +582,38 @@ impl MainWindow {
         }
     }
 
-    /// Swaps this window to a connected workspace on `context_name`: the dock
-    /// (defaulting to Pods), the Resource panel listing that cluster's
-    /// discovered kinds, and the subscription that opens whatever is picked.
-    /// Both windows-enter-workspace sites go through here so the Resource
-    /// panel cannot be wired up in one of them and forgotten in the other.
+    /// Swaps this window to a connected workspace on `contexts`: the dock (defaulting
+    /// to a Pods panel on `contexts[0]`), the Resource panel listing that cluster's
+    /// discovered kinds, and the subscription that opens whatever is picked. Both
+    /// windows-enter-workspace sites go through here so the Resource panel cannot be
+    /// wired up in one of them and forgotten in the other.
     ///
-    /// Takes this window's hold on `context_name` (`window-context-bar` design.md
-    /// decision 2) before building anything else, so a session already exists (or is
-    /// connected here) for every step below to read.
+    /// Takes this window's hold on every one of `contexts` (`window-context-bar`
+    /// design.md decision 2) before building anything else, so a session already
+    /// exists (or is connected here) for every step below to read - including a
+    /// context past `contexts[0]`, which a restored multi-context window holds but,
+    /// absent the "+" control and its panel (section 3), opens no panel for yet.
+    ///
+    /// `contexts` must not be empty.
     fn enter_workspace(
         &mut self,
-        context_name: String,
+        contexts: Vec<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // One connection per connected window in this change; see
-        // `WindowMode::Workspace::contexts`.
-        const CONNECTIONS: usize = 1;
-        ClusterRegistry::hold(cx, &context_name, window.window_handle().window_id());
-        let saved_layout = if cx.has_global::<SavedDockLayouts>() {
+        debug_assert!(
+            !contexts.is_empty(),
+            "a workspace always has at least one context"
+        );
+        let window_id = window.window_handle().window_id();
+        for context_name in &contexts {
+            ClusterRegistry::hold(cx, context_name, window_id);
+        }
+        let context_name = contexts[0].clone();
+        // `window-context-bar` design.md decision 3: a saved per-context dock layout
+        // is only ever loaded for a single-context window - see `watch_workspace`'s
+        // matching save-side gate.
+        let saved_layout = if contexts.len() == 1 && cx.has_global::<SavedDockLayouts>() {
             cx.global::<SavedDockLayouts>()
                 .0
                 .get(&context_name)
@@ -586,8 +621,10 @@ impl MainWindow {
         } else {
             None
         };
+        // One connection per context in `contexts`; see `WindowMode::Workspace::contexts`.
+        let connection_count = contexts.len();
         let (dock_area, dock_skin, scope, (first_id, first)) =
-            build_workspace(context_name.clone(), CONNECTIONS, window, cx);
+            build_workspace(context_name.clone(), connection_count, window, cx);
         let restored = saved_layout.is_some();
         let restored_keys = saved_layout
             .as_ref()
@@ -637,11 +674,11 @@ impl MainWindow {
         )
         .detach();
         let status_bar =
-            cx.new(|cx| crate::ui::status_bar::StatusBarView::new(vec![context_name.clone()], cx));
+            cx.new(|cx| crate::ui::status_bar::StatusBarView::new(contexts.clone(), cx));
         self.mode = WindowMode::Workspace {
             dock_area,
             _dock_skin: dock_skin,
-            contexts: vec![context_name],
+            contexts,
             active: 0,
             resource_panel,
             open_panels,
@@ -1049,9 +1086,10 @@ mod tests {
     // synchronous test below.
     use super::{
         ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor,
-        PanelKey, SET_CONTEXT_TUNNEL_COMMAND_ID, ShowPodDetail, ToggleCommandPalette, WindowLayout,
-        WindowMode, WorkspaceConfig, config, init, open_saved_or_default, open_window,
-        register_commands, restorable_panels, save, watch_picker, write_context_tunnel,
+        PanelKey, SET_CONTEXT_TUNNEL_COMMAND_ID, SavedDockLayouts, ShowPodDetail,
+        ToggleCommandPalette, WindowLayout, WindowMode, WorkspaceConfig, config, init,
+        open_saved_or_default, open_window, register_commands, restorable_panels,
+        restored_contexts, save, watch_picker, write_context_tunnel,
     };
     use crate::command::CommandRegistry;
     use crate::config::tunnels::{TunnelAuth, TunnelConfig};
@@ -1153,7 +1191,7 @@ mod tests {
                 ),
                 focus_handle: cx.focus_handle(),
             };
-            main_window.enter_workspace(context_name.to_string(), window, cx);
+            main_window.enter_workspace(vec![context_name.to_string()], window, cx);
             main_window
         })
     }
@@ -1548,6 +1586,63 @@ mod tests {
         assert!(matches!(kept[0], PanelDescriptor::Pods { .. }));
     }
 
+    fn pods_panel_descriptor(cluster_context: &str) -> PanelDescriptor {
+        PanelDescriptor::Pods {
+            cluster_context: cluster_context.to_string(),
+            namespace: crate::config::workspace::NamespaceScope::All,
+            filter: String::new(),
+            sort: crate::config::workspace::SortState {
+                column: "name".into(),
+                ascending: true,
+            },
+        }
+    }
+
+    /// Tasks.md 2.1: an explicit `contexts` list wins outright, whatever the saved
+    /// panels say - a window that explicitly holds a context with no panels (yet)
+    /// must not lose it to derivation.
+    #[test]
+    fn restored_contexts_prefers_the_explicit_list_over_derivation() {
+        let layout = WindowLayout {
+            contexts: vec!["kind-dev".to_string(), "staging".to_string()],
+            panels: vec![pods_panel_descriptor("kind-dev")],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            restored_contexts(&layout),
+            vec!["kind-dev".to_string(), "staging".to_string()]
+        );
+    }
+
+    /// Tasks.md 2.1 / design.md decision 3: a legacy file with no `contexts` derives
+    /// the list from its saved panels' `cluster_context`s, first-seen order, with no
+    /// duplicates for two panels on the same context.
+    #[test]
+    fn restored_contexts_derives_from_panels_in_first_seen_order_when_absent() {
+        let layout = WindowLayout {
+            contexts: Vec::new(),
+            panels: vec![
+                pods_panel_descriptor("staging"),
+                pods_panel_descriptor("kind-dev"),
+                pods_panel_descriptor("staging"),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            restored_contexts(&layout),
+            vec!["staging".to_string(), "kind-dev".to_string()]
+        );
+    }
+
+    /// A layout with neither an explicit list nor any restorable panel derives to
+    /// nothing - that window opens in `Picker` mode, not a workspace with no context.
+    #[test]
+    fn restored_contexts_is_empty_for_a_layout_with_no_panels() {
+        assert!(restored_contexts(&WindowLayout::default()).is_empty());
+    }
+
     /// Section 10.1-10.3, checked on every panel type the dock holds rather than
     /// on the title-bar helpers alone: each panel's tab names its kind, a
     /// namespace picker is on the bar exactly when the kind is namespaced, and
@@ -1681,7 +1776,7 @@ mod tests {
                 ),
                 focus_handle: cx.focus_handle(),
             };
-            main_window.enter_workspace("kind-dev".to_string(), window, cx);
+            main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
             main_window
         });
 
@@ -1736,7 +1831,7 @@ mod tests {
                     ),
                     focus_handle: cx.focus_handle(),
                 };
-                main_window.enter_workspace("kind-dev".to_string(), window, cx);
+                main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
                 main_window
             })
         }
@@ -1773,6 +1868,125 @@ mod tests {
 
         let _ = std::fs::remove_file(&workspace);
         let _ = std::fs::remove_file(&keymap);
+    }
+
+    /// Tasks.md 2.1: `open_window` restores every context a saved layout names, not
+    /// just the one it builds a dock around - a hold on each (so its session, and
+    /// the Resource panel's future "already connected" reuse, exist) even though
+    /// this narrow slice opens no panel at all for a context past the first.
+    #[gpui_kit::test]
+    async fn open_window_restores_every_context_even_one_with_no_panels(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+
+        let layout = WindowLayout {
+            contexts: vec!["kind-dev".to_string(), "staging".to_string()],
+            panels: vec![pods_panel_descriptor("kind-dev")],
+            ..Default::default()
+        };
+        cx.update(|cx| open_window(cx, layout));
+        cx.run_until_parked();
+
+        let windows = cx.update(|cx| cx.windows());
+        assert_eq!(windows.len(), 1);
+        // `open_window` wraps its `MainWindow` in a `gpui_kit::component::Root`
+        // (for dialogs/menus), so reaching it back from the window handle goes
+        // through the root's own view rather than a direct downcast of the handle.
+        let main_window: Entity<MainWindow> = windows[0]
+            .update(cx, |_, window, cx| {
+                let root = window
+                    .root::<gpui_kit::component::Root>()
+                    .flatten()
+                    .expect("open_window always mounts a Root");
+                root.read(cx)
+                    .view()
+                    .clone()
+                    .downcast::<MainWindow>()
+                    .expect("the Root wraps a MainWindow")
+            })
+            .unwrap();
+
+        main_window.read_with(cx, |main_window, _cx| {
+            let WindowMode::Workspace { contexts, .. } = &main_window.mode else {
+                panic!("a restored layout with contexts opens straight into a workspace")
+            };
+            assert_eq!(
+                contexts,
+                &vec!["kind-dev".to_string(), "staging".to_string()],
+                "both restored contexts are on the window, in order"
+            );
+        });
+        assert_eq!(
+            cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+            1
+        );
+        assert_eq!(
+            cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+            1,
+            "the second context is held even though it has no panel open yet"
+        );
+    }
+
+    /// `window-context-bar` design.md decision 3: the per-context saved dock layout
+    /// is written, and loaded, only for a single-context window - a multi-context
+    /// window's `LayoutChanged` must not clobber `SavedDockLayouts` under either of
+    /// its own contexts' names.
+    #[gpui_kit::test]
+    async fn per_context_dock_layout_is_only_saved_for_single_context_windows(
+        cx: &mut TestAppContext,
+    ) {
+        let solo = connected_window(cx, "kind-dev").await;
+        cx.update(|cx| {
+            cx.set_global(SavedDockLayouts(
+                crate::config::dock_layouts::DockLayouts::default(),
+            ));
+        });
+        cx.run_until_parked();
+
+        let multi = cx.add_window(|window, cx| {
+            let mut main_window = MainWindow {
+                mode: WindowMode::Picker(
+                    cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
+                ),
+                focus_handle: cx.focus_handle(),
+            };
+            main_window.enter_workspace(
+                vec!["staging".to_string(), "other".to_string()],
+                window,
+                cx,
+            );
+            main_window
+        });
+        cx.run_until_parked();
+
+        for window in [solo, multi] {
+            window
+                .update(cx, |main_window, window, cx| {
+                    let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                        panic!("a connected window is in workspace mode")
+                    };
+                    dock_area.update(cx, |area, cx| {
+                        area.set_center(DockLayout::tabs(), window, cx);
+                    });
+                })
+                .unwrap();
+        }
+        cx.run_until_parked();
+
+        cx.update(|cx| {
+            assert!(
+                cx.global::<SavedDockLayouts>().0.get("kind-dev").is_some(),
+                "the single-context window saves its layout"
+            );
+            assert!(
+                cx.global::<SavedDockLayouts>().0.get("staging").is_none(),
+                "a multi-context window must not save a per-context layout"
+            );
+            assert!(cx.global::<SavedDockLayouts>().0.get("other").is_none());
+        });
     }
 
     /// Regression test for the HANDOFF.md report: opening a second window and
@@ -1972,6 +2186,7 @@ mod tests {
                     height: 700.0,
                     x: Some(10.0),
                     y: Some(20.0),
+                    contexts: Vec::new(),
                     panels: Vec::new(),
                 },
             );
@@ -2007,6 +2222,7 @@ mod tests {
                     height: 700.0,
                     x: Some(10.0),
                     y: Some(20.0),
+                    contexts: Vec::new(),
                     panels: Vec::new(),
                 },
             )])));
@@ -2154,7 +2370,7 @@ mod tests {
                 ),
                 focus_handle: cx.focus_handle(),
             };
-            main_window.enter_workspace("kind-dev".to_string(), window, cx);
+            main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
             main_window
         });
         cx.run_until_parked();
@@ -2249,7 +2465,7 @@ mod tests {
 
         window
             .update(cx, |main_window, window, cx| {
-                main_window.enter_workspace("kind-dev".to_string(), window, cx);
+                main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
             })
             .unwrap();
         cx.run_until_parked();
