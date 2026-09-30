@@ -32,22 +32,19 @@ pub(super) const PANEL_KEY_CONTEXT: &str = "ResourcePanel";
 
 const DOWN_KEY: &str = "down";
 const UP_KEY: &str = "up";
-const ENTER_KEY: &str = "enter";
-const LEFT_KEY: &str = "left";
-const RIGHT_KEY: &str = "right";
+pub(super) const ENTER_KEY: &str = "enter";
+pub(super) const LEFT_KEY: &str = "left";
+pub(super) const RIGHT_KEY: &str = "right";
 
-/// The panel's own bindings, in its own key context - registered directly
-/// with `cx.bind_keys` (see `util/shell.rs::init`) rather than through the
-/// command registry: unlike `/`, these have no palette or menu presence, the
-/// same reasoning `pods::panel_bindings` documents for its own arrow-adjacent
-/// shortcuts.
-pub(super) fn panel_bindings() -> [KeyBinding; 5] {
+/// The cursor keys, bound directly in the panel's key context. Moving a selection
+/// one row isn't something anyone picks from a palette, so these are the one kind
+/// of key `keyboard-first.md` exempts from the command registry. Every real action -
+/// open, collapse, expand, focus the filter - is a registered command instead (see
+/// `actions::register_commands`), so it's in the palette too.
+pub(super) fn panel_bindings() -> [KeyBinding; 2] {
     [
         KeyBinding::new(DOWN_KEY, SelectNext, Some(PANEL_KEY_CONTEXT)),
         KeyBinding::new(UP_KEY, SelectPrevious, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(ENTER_KEY, OpenSelected, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(LEFT_KEY, CollapseSection, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(RIGHT_KEY, ExpandSection, Some(PANEL_KEY_CONTEXT)),
     ]
 }
 

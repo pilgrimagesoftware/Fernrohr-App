@@ -41,6 +41,35 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(FocusFilter),
         menu: None,
     });
+    for (id, title, key, action) in [
+        (
+            "resource.open_selected",
+            "Open Selected Resource",
+            keyboard::ENTER_KEY,
+            Box::new(OpenSelected) as Box<dyn gpui_kit::Action>,
+        ),
+        (
+            "resource.collapse_section",
+            "Collapse Resource Section",
+            keyboard::LEFT_KEY,
+            Box::new(CollapseSection),
+        ),
+        (
+            "resource.expand_section",
+            "Expand Resource Section",
+            keyboard::RIGHT_KEY,
+            Box::new(ExpandSection),
+        ),
+    ] {
+        registry.register(Command {
+            id,
+            title,
+            default_binding: key,
+            context: Some(PANEL_KEY_CONTEXT),
+            action,
+            menu: None,
+        });
+    }
     // The keyboard's way *into* the panel: without it, reaching the list took a
     // click, which keyboard-first.md rules out. Global, so it works from any panel.
     registry.register(Command {

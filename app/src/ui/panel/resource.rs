@@ -31,7 +31,7 @@ pub(crate) use actions::{FocusResources, register_commands};
 
 /// The panel's own keybindings (Up/Down/Enter/Left/Right), in its own key
 /// context - `/` is not here, see `actions::register_commands`'s doc comment.
-pub fn panel_bindings() -> [KeyBinding; 5] {
+pub fn panel_bindings() -> [KeyBinding; 2] {
     keyboard::panel_bindings()
 }
 
