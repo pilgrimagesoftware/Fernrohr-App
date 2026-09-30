@@ -181,7 +181,10 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn temp_config_path() -> PathBuf {
-        std::env::temp_dir().join(format!("fernrohr-tunnel-store-test-{}.toml", next_id()))
+        let path =
+            std::env::temp_dir().join(format!("fernrohr-tunnel-store-test-{}.toml", next_id()));
+        let _ = std::fs::remove_file(&path);
+        path
     }
 
     /// A counter-derived id, unique per test run within this process. Tests
