@@ -201,6 +201,16 @@ mod tests {
             })
             .expect("tunnels.manage is bound");
         let keys: Vec<String> = manage.keystrokes().iter().map(|k| k.unparse()).collect();
-        assert_eq!(keys, vec!["cmd-shift-t".to_string()]);
+        // Compared through the same parse/unparse, not as a literal: `cmd` is the
+        // platform modifier, written back as `super` on Linux.
+        let expected = gpui_kit::Keystroke::parse(
+            registry
+                .get("tunnels.manage")
+                .expect("registered")
+                .default_binding,
+        )
+        .expect("the default parses")
+        .unparse();
+        assert_eq!(keys, vec![expected]);
     }
 }
