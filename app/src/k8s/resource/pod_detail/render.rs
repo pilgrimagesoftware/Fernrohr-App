@@ -2,9 +2,10 @@
 //! structured view, the Events tab and the YAML view.
 
 use super::commands::{
-    CONTAINERS_TAB_KEY, EVENTS_TAB_KEY, MANAGED_FIELDS_TAB_KEY, OVERVIEW_TAB_KEY,
-    PANEL_KEY_CONTEXT, SelectContainersTab, SelectEventsTab, SelectManagedFieldsTab,
-    SelectOverviewTab, SelectVolumesTab, TOGGLE_VIEW_KEY, ToggleDetailView, VOLUMES_TAB_KEY,
+    CONFIGURATION_TAB_KEY, CONTAINERS_TAB_KEY, EVENTS_TAB_KEY, MANAGED_FIELDS_TAB_KEY,
+    OVERVIEW_TAB_KEY, PANEL_KEY_CONTEXT, SelectConfigurationTab, SelectContainersTab,
+    SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab, SelectVolumesTab, TOGGLE_VIEW_KEY,
+    ToggleDetailView, VOLUMES_TAB_KEY,
 };
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
@@ -43,7 +44,9 @@ impl PodDetailPanel {
                     .iter()
                     .map(|section| Tab::new().label(section.label())),
             );
-        let content = if active_tab == DetailSection::Events {
+        let content = if active_tab == DetailSection::Configuration {
+            self.render_configuration(cx)
+        } else if active_tab == DetailSection::Events {
             self.render_events(cx)
         } else {
             div()
@@ -154,6 +157,10 @@ impl Render for PodDetailPanel {
                 DetailSection::Containers => {
                     (&SelectContainersTab as &dyn Action, CONTAINERS_TAB_KEY)
                 }
+                DetailSection::Configuration => (
+                    &SelectConfigurationTab as &dyn Action,
+                    CONFIGURATION_TAB_KEY,
+                ),
                 DetailSection::Volumes => (&SelectVolumesTab as &dyn Action, VOLUMES_TAB_KEY),
                 DetailSection::Events => (&SelectEventsTab as &dyn Action, EVENTS_TAB_KEY),
                 DetailSection::ManagedFields => (
@@ -236,6 +243,8 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
             .on_action(cx.listener(Self::on_action_select_containers_tab))
+            .on_action(cx.listener(Self::on_action_select_configuration_tab))
+            .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_select_volumes_tab))
             .on_action(cx.listener(Self::on_action_select_events_tab))
             .on_action(cx.listener(Self::on_action_select_managed_fields_tab))

@@ -16,15 +16,20 @@ use crate::k8s::object_ref::ObjectRef;
 pub enum DetailSection {
     Overview,
     Containers,
+    /// The ConfigMaps and Secrets the pod uses, expanded - see
+    /// `configuration`. Not a field list: its cards are fetched when the tab
+    /// is first shown.
+    Configuration,
     Volumes,
     Events,
     ManagedFields,
 }
 
 impl DetailSection {
-    pub const ALL: [DetailSection; 5] = [
+    pub const ALL: [DetailSection; 6] = [
         Self::Overview,
         Self::Containers,
+        Self::Configuration,
         Self::Volumes,
         Self::Events,
         Self::ManagedFields,
@@ -34,6 +39,7 @@ impl DetailSection {
         match self {
             DetailSection::Overview => "Overview",
             DetailSection::Containers => "Containers",
+            DetailSection::Configuration => "Configuration",
             DetailSection::Volumes => "Volumes",
             DetailSection::Events => "Events",
             DetailSection::ManagedFields => "Managed Fields",
