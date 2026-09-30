@@ -49,7 +49,16 @@ cargo run                      # Run application
 ```bash
 cargo test                     # Run all tests
 cargo test --lib             # Run library tests only
+cargo test -- --ignored       # Also run the real-keychain tests (expect a macOS
+                               # Keychain access prompt on each freshly built binary)
 ```
+
+A plain `cargo test` never touches the real OS keychain: tests that exercise it for
+real (`tunnel::secrets`, `util::keychain`) are `#[ignore]`d, since every freshly built
+test binary triggers a macOS Keychain permission prompt on first access. Everything
+else that only uses a secret store incidentally (`TunnelStore` CRUD/bind, the tunnel
+editor, the connect path) gets an in-memory-only secret store under `cfg(test)`
+instead, so it never reaches the keychain at all.
 
 ### Linting and Formatting
 ```bash

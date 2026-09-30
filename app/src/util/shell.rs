@@ -6,12 +6,16 @@ use crate::config::{
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
+use crate::tunnel::store::TunnelStore;
 use crate::ui::nav::{
     self, NavTarget, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
 };
 use crate::ui::panel_title::{self, PanelScope};
+use crate::ui::picker_tunnel;
+use crate::ui::tunnels;
 use crate::util::paths;
 use gpui_kit::component::Root;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::{
     DockArea, DockEvent, DockPlacement, DockSkin, PanelId, PanelInfo, PanelState,
 };
@@ -21,7 +25,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-actions!(shell, [NewWindow, ToggleCommandPalette]);
+actions!(shell, [NewWindow, ToggleCommandPalette, SetContextTunnel]);
 
 /// Last known geometry of every window that has closed this run, keyed by
 /// `WindowId`. Populated from each window's `on_window_should_close` hook,
@@ -41,6 +45,8 @@ pub const NEW_WINDOW_COMMAND_ID: &str = "shell.new_window";
 pub const NEW_WINDOW_DEFAULT_BINDING: &str = "cmd-n";
 pub const TOGGLE_PALETTE_COMMAND_ID: &str = "shell.toggle_command_palette";
 pub const TOGGLE_PALETTE_DEFAULT_BINDING: &str = "cmd-shift-p";
+pub const SET_CONTEXT_TUNNEL_COMMAND_ID: &str = "context.set_tunnel";
+pub const SET_CONTEXT_TUNNEL_DEFAULT_BINDING: &str = "cmd-shift-b";
 
 pub fn default_workspace_path() -> PathBuf {
     paths::state_dir().join("workspace.toml")
@@ -70,7 +76,16 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ToggleCommandPalette),
         menu: Some(crate::command::MenuSlot::View),
     });
+    registry.register(Command {
+        id: SET_CONTEXT_TUNNEL_COMMAND_ID,
+        title: "Set Tunnel for Context",
+        default_binding: SET_CONTEXT_TUNNEL_DEFAULT_BINDING,
+        context: None,
+        action: Box::new(SetContextTunnel),
+        menu: Some(crate::command::MenuSlot::Context),
+    });
     nav::register_commands(registry);
+    tunnels::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -100,17 +115,26 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         nav::SHOW_LOGS_DEFAULT_BINDING,
         &keymap,
     );
+    let set_context_tunnel_binding = keymap::resolve(
+        SET_CONTEXT_TUNNEL_COMMAND_ID,
+        SET_CONTEXT_TUNNEL_DEFAULT_BINDING,
+        &keymap,
+    );
     cx.bind_keys([
         KeyBinding::new(&new_window_binding, NewWindow, None),
         KeyBinding::new(&palette_binding, ToggleCommandPalette, None),
         KeyBinding::new(&show_pods_binding, ShowPods, None),
         KeyBinding::new(&show_logs_binding, ShowLogs, None),
+        KeyBinding::new(&set_context_tunnel_binding, SetContextTunnel, None),
     ]);
     // The panels' own shortcuts, each in its own key context. A panel naming a
     // key in its hint bar has not bound that key: without this the hint bar
     // prints letters no keystroke resolves to, and the shortcut does nothing.
     cx.bind_keys(crate::k8s::resource::pods::panel_bindings());
     cx.bind_keys(crate::k8s::resource::pod_detail::panel_bindings());
+    cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
+        tunnels::open_or_focus(cx);
+    });
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });
@@ -448,6 +472,68 @@ fn watch_workspace(
     .detach();
 }
 
+/// Section 3.2: one row of `on_action_set_tunnel`'s dialog - writes the binding (or,
+/// for `tunnel_id: None`, removes it) and closes the dialog. A plain `Button` rather
+/// than a `PopupMenuItem`: this is a dialog's own content, not a popover menu.
+fn tunnel_dialog_option(
+    label: String,
+    checked: bool,
+    tunnels_path: PathBuf,
+    context_name: String,
+    tunnel_id: Option<String>,
+) -> AnyElement {
+    let label = if checked {
+        format!("\u{2713} {label}")
+    } else {
+        label
+    };
+    Button::new(SharedString::from(format!(
+        "set-tunnel-{}",
+        tunnel_id.as_deref().unwrap_or("direct")
+    )))
+    .label(label)
+    .ghost()
+    .w_full()
+    .on_click(move |_event, window, cx| {
+        set_context_tunnel_and_close(&tunnels_path, &context_name, tunnel_id.clone(), window, cx);
+    })
+    .into_any_element()
+}
+
+/// Section 3.2's actual write: binds (`Some`) or unbinds (`None`) `context_name`
+/// through the same `TunnelStore` `ui/picker_tunnel.rs`'s row selector uses. Free of
+/// any GPUI context, so it's testable without a `Root` (which `open_dialog`/
+/// `close_dialog` require) at all - this is `context.set_tunnel`'s handler binding,
+/// in the sense tasks.md 3.2 asks for.
+fn write_context_tunnel(
+    tunnels_path: &Path,
+    context_name: &str,
+    tunnel_id: Option<&str>,
+) -> Result<(), crate::tunnel::store::TunnelStoreError> {
+    let store = TunnelStore::new(tunnels_path.to_path_buf());
+    match tunnel_id {
+        Some(id) => store.bind(context_name, id),
+        None => store.unbind(context_name),
+    }
+}
+
+/// Writes `context_name`'s tunnel binding and closes the dialog the option came from.
+fn set_context_tunnel_and_close(
+    tunnels_path: &Path,
+    context_name: &str,
+    tunnel_id: Option<String>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    match write_context_tunnel(tunnels_path, context_name, tunnel_id.as_deref()) {
+        Ok(()) => crate::ui::tunnels::notify_tunnels_changed(cx),
+        Err(error) => log::warn!("failed to set {context_name}'s tunnel binding: {error:?}"),
+    }
+    Root::update(window, cx, |root, window, cx| {
+        root.close_dialog(window, cx);
+    });
+}
+
 pub struct MainWindow {
     mode: WindowMode,
     focus_handle: FocusHandle,
@@ -631,6 +717,58 @@ impl MainWindow {
 
     fn on_action_show_logs(&mut self, _: &ShowLogs, window: &mut Window, cx: &mut Context<Self>) {
         self.open_target(NavTarget::Logs, window, cx);
+    }
+
+    /// Section 3.2: opens a small dialog offering Direct plus every configured
+    /// tunnel for this window's connected context, writing through the same
+    /// `TunnelStore::bind`/`unbind` the picker's own row selector uses. A no-op in
+    /// `Picker` mode - there is no connected context to set a tunnel for yet, and
+    /// the picker's own per-row selector already covers that case.
+    fn on_action_set_tunnel(
+        &mut self,
+        _: &SetContextTunnel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let WindowMode::Workspace { context_name, .. } = &self.mode else {
+            return;
+        };
+        let context_name = context_name.clone();
+        let tunnels_path = paths::preference_dir().join("tunnels.toml");
+        let store = TunnelStore::new(tunnels_path.clone());
+        let choices = picker_tunnel::tunnel_choices(&store);
+        let current = store.binding_for(&context_name);
+
+        Root::update(window, cx, |root, window, cx| {
+            root.open_dialog(
+                move |dialog, _window, _cx| {
+                    let mut options: Vec<AnyElement> = Vec::new();
+                    options.push(tunnel_dialog_option(
+                        "Direct".to_string(),
+                        current.is_none(),
+                        tunnels_path.clone(),
+                        context_name.clone(),
+                        None,
+                    ));
+                    for choice in &choices {
+                        let checked = current.as_deref() == Some(choice.id.as_str());
+                        options.push(tunnel_dialog_option(
+                            choice.name.clone(),
+                            checked,
+                            tunnels_path.clone(),
+                            context_name.clone(),
+                            Some(choice.id.clone()),
+                        ));
+                    }
+                    dialog
+                        .title(format!("Set tunnel for {context_name}"))
+                        .w(px(360.))
+                        .child(div().flex().flex_col().gap_1().children(options))
+                },
+                window,
+                cx,
+            );
+        });
     }
 
     /// Opens the selected pod's detail panel on the field list. Emitted by a
@@ -845,6 +983,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_logs))
             .on_action(cx.listener(Self::on_action_show_pod_detail))
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
+            .on_action(cx.listener(Self::on_action_set_tunnel))
             .child(body)
     }
 }
@@ -892,11 +1031,12 @@ mod tests {
     // synchronous test below.
     use super::{
         ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor,
-        PanelKey, ShowPodDetail, ToggleCommandPalette, WindowLayout, WindowMode, WorkspaceConfig,
-        config, init, open_saved_or_default, open_window, register_commands, restorable_panels,
-        save, watch_picker,
+        PanelKey, SET_CONTEXT_TUNNEL_COMMAND_ID, ShowPodDetail, ToggleCommandPalette, WindowLayout,
+        WindowMode, WorkspaceConfig, config, init, open_saved_or_default, open_window,
+        register_commands, restorable_panels, save, watch_picker, write_context_tunnel,
     };
     use crate::command::CommandRegistry;
+    use crate::config::tunnels::{TunnelAuth, TunnelConfig};
     use crate::k8s::cluster::discovery::DiscoveredKind;
     use crate::k8s::cluster::session::ClusterRegistry;
     use crate::ui::nav;
@@ -913,6 +1053,58 @@ mod tests {
     fn temp_workspace_path() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("fernrohr-shell-test-{n}.toml"))
+    }
+
+    fn temp_tunnels_path() -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("fernrohr-shell-set-tunnel-test-{n}.toml"));
+        let _ = std::fs::remove_file(&path);
+        path
+    }
+
+    /// Tasks.md 3.2: `context.set_tunnel` is registered with a title, alongside every
+    /// other palette command.
+    #[test]
+    fn set_context_tunnel_is_a_registered_command() {
+        let mut registry = CommandRegistry::new();
+        register_commands(&mut registry);
+
+        let command = registry
+            .get(SET_CONTEXT_TUNNEL_COMMAND_ID)
+            .expect("context.set_tunnel must be registered");
+        assert_eq!(command.title, "Set Tunnel for Context");
+    }
+
+    /// Tasks.md 3.2: the command's handler binds - `write_context_tunnel` is the
+    /// write `on_action_set_tunnel`'s dialog options call, factored out so it's
+    /// testable without a `Root` (which its `open_dialog`/`close_dialog` calls
+    /// require).
+    #[test]
+    fn set_context_tunnels_handler_binds_and_unbinds() {
+        let path = temp_tunnels_path();
+        let store = crate::tunnel::store::TunnelStore::new(path.clone());
+        store
+            .create(
+                "qa-bastion",
+                TunnelConfig {
+                    name: "QA".into(),
+                    bastion_user: "ops".into(),
+                    bastion_host: "bastion.example.com".into(),
+                    bastion_port: 22,
+                    jump_hosts: Vec::new(),
+                    auth: TunnelAuth::default(),
+                },
+                None,
+            )
+            .unwrap();
+
+        write_context_tunnel(&path, "qa-1", Some("qa-bastion")).unwrap();
+        assert_eq!(store.binding_for("qa-1"), Some("qa-bastion".to_string()));
+
+        write_context_tunnel(&path, "qa-1", None).unwrap();
+        assert_eq!(store.binding_for("qa-1"), None);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     /// A connected window on `context_name`, for the panel-opening tests.

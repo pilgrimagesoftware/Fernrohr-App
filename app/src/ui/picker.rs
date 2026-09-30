@@ -7,15 +7,31 @@
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::kubeconfig;
 use crate::k8s::cluster::session::ClusterRegistry;
+use crate::tunnel::store::TunnelStore;
+use crate::ui::picker_tunnel::{self, TunnelChoice};
+use crate::ui::tunnels::TunnelsRevision;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
-use gpui_kit::component::{ActiveTheme as _, Icon};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _};
 use gpui_kit::*;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
 pub enum PickerEvent {
     Connected { context_name: String },
+}
+
+/// One read of `tunnels.toml`'s choices and bindings, for [`ClusterPicker::new`] and
+/// every [`ClusterPicker::set_tunnel`] afterward - kept as one function so the two
+/// call sites can't drift into reading it two different ways.
+fn load_tunnels(tunnels_path: &std::path::Path) -> (Vec<TunnelChoice>, BTreeMap<String, String>) {
+    let store = TunnelStore::new(tunnels_path.to_path_buf());
+    let choices = picker_tunnel::tunnel_choices(&store);
+    let bindings = store.bindings().into_iter().collect();
+    (choices, bindings)
 }
 
 /// One attempt in flight: which context was picked and its connection entity, so the
@@ -31,6 +47,19 @@ pub struct ClusterPicker {
     command_state: Entity<CommandState>,
     attempt: Option<Attempt>,
     focus_handle: FocusHandle,
+    /// Where `tunnels.toml` lives - the real preference-dir path in production, a
+    /// scratch file in tests (see section 3.1's tests below).
+    tunnels_path: PathBuf,
+    /// Every configured tunnel, for each row's selector dropdown. Loaded once at
+    /// construction and refreshed only right after this picker's own bind/unbind
+    /// (see [`Self::set_tunnel`]) rather than on every render - `render` is a hot
+    /// path and must not read `tunnels.toml` on every frame.
+    tunnel_choices: Vec<TunnelChoice>,
+    /// Context name -> bound tunnel id, for each row's selector label and current
+    /// choice. Same caching rule as `tunnel_choices`.
+    tunnel_bindings: BTreeMap<String, String>,
+    /// Reloads the two caches above whenever any view writes `tunnels.toml`.
+    _tunnels_observation: Subscription,
     /// Test-only stand-in for `ClusterRegistry::connection`. Real connections spawn
     /// tokio work on a runtime worker thread, which gpui's test scheduler rejects
     /// as cross-thread nondeterminism - so tests substitute a stub instead of
@@ -41,14 +70,49 @@ pub struct ClusterPicker {
 
 impl ClusterPicker {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
+        let (tunnel_choices, tunnel_bindings) = load_tunnels(&tunnels_path);
+        let tunnels_observation = cx.observe_global::<TunnelsRevision>(|this, cx| {
+            let (choices, bindings) = load_tunnels(&this.tunnels_path);
+            this.tunnel_choices = choices;
+            this.tunnel_bindings = bindings;
+            cx.notify();
+        });
         Self {
             contexts: kubeconfig::list_context_names(None).map_err(|error| error.to_string()),
             command_state: cx.new(|cx| CommandState::new(window, cx)),
             attempt: None,
             focus_handle: cx.focus_handle(),
+            tunnels_path,
+            tunnel_choices,
+            tunnel_bindings,
+            _tunnels_observation: tunnels_observation,
             #[cfg(test)]
             connection_factory: None,
         }
+    }
+
+    /// Section 3.1: binds (or, for `None`, unbinds) `context_name` and refreshes the
+    /// cached choices/bindings the next render reads - the write itself is the only
+    /// I/O; `render` never touches `tunnels.toml`.
+    fn set_tunnel(
+        &mut self,
+        context_name: &str,
+        tunnel_id: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let store = TunnelStore::new(self.tunnels_path.clone());
+        let result = match &tunnel_id {
+            Some(id) => store.bind(context_name, id),
+            None => store.unbind(context_name),
+        };
+        if let Err(error) = result {
+            log::warn!("failed to update {context_name}'s tunnel binding: {error:?}");
+            return;
+        }
+        // The `TunnelsRevision` observer reloads this picker's caches along with every
+        // other open picker's.
+        crate::ui::tunnels::notify_tunnels_changed(cx);
     }
 
     /// The connection a [`Self::select`] attempt should observe. Production always
@@ -247,6 +311,66 @@ fn header(cx: &App) -> impl IntoElement {
         )
 }
 
+/// Section 3.1: one context row's content - icon, name, and its tunnel selector at
+/// the trailing end. Built fresh on every `Command` render (a `Fn`, not `FnMut`, per
+/// `CommandItem::child`'s contract), so everything it needs is captured by value here
+/// rather than borrowed from `ClusterPicker`.
+fn context_row(
+    context_name: String,
+    bound_id: Option<String>,
+    choices: Vec<TunnelChoice>,
+    picker: WeakEntity<ClusterPicker>,
+) -> impl Fn(&mut Window, &mut App) -> AnyElement + 'static {
+    move |_window, cx| {
+        let theme = cx.theme();
+        let row_id = format!("picker-tunnel-{context_name}");
+        let picker_for_pick = picker.clone();
+        let context_for_pick = context_name.clone();
+        let selector = picker_tunnel::selector(
+            row_id,
+            &choices,
+            bound_id.as_deref(),
+            move |tunnel_id, cx| {
+                let _ = picker_for_pick.update(cx, |this, cx| {
+                    this.set_tunnel(&context_for_pick, tunnel_id, cx)
+                });
+            },
+        );
+        div()
+            .flex()
+            .flex_1()
+            .items_center()
+            .justify_between()
+            .gap_2()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        Icon::new(IconName::Server)
+                            .size(px(16.))
+                            .text_color(theme.muted_foreground),
+                    )
+                    .child(context_name.clone()),
+            )
+            .child(selector)
+            .into_any_element()
+    }
+}
+
+/// Section 4.1/design.md decision 5: the picker's own way to reach the Tunnels
+/// window, alongside the app menu and the `tunnels.manage` command.
+fn manage_tunnels_control() -> impl IntoElement {
+    Button::new("picker-manage-tunnels")
+        .label("Manage tunnels…")
+        .icon(IconName::Settings)
+        .xsmall()
+        .ghost()
+        .tab_stop(false)
+        .on_click(|_event, _window, cx| crate::ui::tunnels::open_or_focus(cx))
+}
+
 impl Render for ClusterPicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
@@ -305,12 +429,18 @@ impl Render for ClusterPicker {
         };
 
         let this = cx.weak_entity();
+        let tunnel_choices = self.tunnel_choices.clone();
+        let tunnel_bindings = self.tunnel_bindings.clone();
         let items: Vec<CommandItem> = contexts
             .iter()
             .map(|name| {
-                CommandItem::new()
-                    .icon(Icon::new(IconName::Server))
-                    .label(name.clone())
+                let bound_id = tunnel_bindings.get(name).cloned();
+                CommandItem::new().label(name.clone()).child(context_row(
+                    name.clone(),
+                    bound_id,
+                    tunnel_choices.clone(),
+                    this.clone(),
+                ))
             })
             .collect();
         let command_contexts = contexts.clone();
@@ -351,6 +481,7 @@ impl Render for ClusterPicker {
                 .child(header(cx))
                 .child(command)
                 .children(status)
+                .child(div().flex().justify_end().child(manage_tunnels_control()))
                 .track_focus(&self.focus_handle)
                 .into_any_element(),
         )
@@ -358,241 +489,11 @@ impl Render for ClusterPicker {
     }
 }
 
-// `use super::*` here would re-import `gpui_kit`'s `test` attribute macro (this file's
-// `use gpui_kit::*` brings it in), shadowing the builtin `#[test]` and sending a plain
-// sync test into `#[gpui_kit::test]`'s async-runtime expansion instead - hence the
-// explicit imports below rather than a glob.
+// A sibling `tests.rs` rather than an inline module: this file is at the 700-line
+// cap (rust-structure.md), and `use super::*` there would re-import `gpui_kit`'s own
+// `test` attribute macro (this file's `use gpui_kit::*` brings it in), shadowing the
+// builtin `#[test]` and sending a plain sync test into `#[gpui_kit::test]`'s
+// async-runtime expansion instead - hence that file's explicit imports rather than a
+// glob.
 #[cfg(test)]
-mod tests {
-    use super::{
-        CARD_CHROME_HEIGHT, CARD_LIST_MAX_HEIGHT, CARD_WIDTH, LOGO_HEIGHT, LOGO_WIDTH,
-        MIN_WINDOW_SIZE, PICKER_CONTENT_GAP,
-    };
-    use crate::k8s::cluster::kubeconfig;
-    use std::fs;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    const FIXTURE: &str = r#"
-apiVersion: v1
-kind: Config
-clusters:
-  - name: kind-dev
-    cluster:
-      server: https://127.0.0.1:6443
-contexts:
-  - name: kind-dev
-    context:
-      cluster: kind-dev
-      user: kind-dev
-current-context: kind-dev
-users:
-  - name: kind-dev
-    user: {}
-"#;
-
-    fn fixture_path() -> std::path::PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("fernrohr-picker-fixture-{n}.yaml"));
-        fs::write(&path, FIXTURE).unwrap();
-        path
-    }
-
-    #[test]
-    fn lists_contexts_from_a_valid_kubeconfig() {
-        let path = fixture_path();
-        let contexts = kubeconfig::list_context_names(Some(&path)).unwrap();
-        assert_eq!(contexts, vec!["kind-dev".to_string()]);
-    }
-
-    #[test]
-    fn missing_kubeconfig_is_reported_as_an_error() {
-        let missing = std::env::temp_dir().join("fernrohr-picker-fixture-does-not-exist.yaml");
-        let result = kubeconfig::list_context_names(Some(&missing));
-        assert!(result.is_err());
-    }
-
-    /// Guards the `include_bytes!` in [`super::logo`]: a truncated or placeholder
-    /// asset compiles fine and only fails as a blank gap in the UI. WebP's RIFF
-    /// header carries the total file size, so a length that disagrees with it
-    /// catches truncation exactly rather than by proxy.
-    #[test]
-    fn the_embedded_logo_is_a_complete_webp() {
-        let bytes = include_bytes!("../../assets/fernrohr-logo.webp");
-        assert!(bytes.starts_with(b"RIFF"), "missing RIFF signature");
-        assert_eq!(&bytes[8..12], b"WEBP", "RIFF payload is not WebP");
-
-        let declared = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
-        assert_eq!(
-            declared + 8,
-            bytes.len(),
-            "RIFF size disagrees with file length - asset looks truncated"
-        );
-
-        // The lossless full-resolution encode is ~1.14MB. The floor catches a
-        // placeholder; the ceiling catches either the 1.6MB brand source in
-        // `images/` or a lossy re-encode being committed here by mistake - this
-        // asset is required to be bit-identical to the master, and both of those
-        // are not.
-        assert!(
-            (1_000_000..1_400_000).contains(&bytes.len()),
-            "logo is {} bytes, outside the expected lossless full-resolution range",
-            bytes.len()
-        );
-    }
-
-    /// The window minimum exists so the picker's centred column never overflows and
-    /// clips the logo. These pin the composition it is derived from, and catch the
-    /// one mistake derivation cannot catch on its own: a minimum *larger* than the
-    /// default window, which would open every fresh window already violating its own
-    /// floor.
-    #[test]
-    fn the_window_minimum_fits_the_picker() {
-        let min_width = f32::from(MIN_WINDOW_SIZE.width);
-        let min_height = f32::from(MIN_WINDOW_SIZE.height);
-
-        assert!(
-            min_width >= CARD_WIDTH,
-            "minimum width {min_width} is narrower than the {CARD_WIDTH}px card"
-        );
-
-        let required = LOGO_HEIGHT + PICKER_CONTENT_GAP + CARD_CHROME_HEIGHT + CARD_LIST_MAX_HEIGHT;
-        assert!(
-            min_height >= required,
-            "minimum height {min_height} cannot fit the picker, which needs {required}"
-        );
-
-        let default_layout = crate::config::workspace::WindowLayout::default();
-        assert!(
-            min_width <= default_layout.width && min_height <= default_layout.height,
-            "minimum {}x{} exceeds the default window {}x{} - a fresh window would open \
-             already violating its own minimum",
-            min_width,
-            min_height,
-            default_layout.width,
-            default_layout.height
-        );
-    }
-
-    /// The asset is re-encoded at full source resolution precisely so that rendering it
-    /// at `LOGO_WIDTH` stays sharp on a Retina display, and `LOGO_HEIGHT` is typed to its
-    /// aspect so the mark is not stretched. Neither link is enforced at runtime, so read
-    /// the real canvas out of the shipped bytes and hold both.
-    #[test]
-    fn the_embedded_logo_is_large_enough_for_the_size_it_renders_at() {
-        /// Canvas dimensions of `app/assets/fernrohr-logo.webp`. A lossless WebP is a
-        /// single `VP8L` chunk - unlike the lossy-with-alpha `VP8X` extended format -
-        /// and packs the canvas into a 32-bit field: 12 bytes of RIFF header, then the
-        /// chunk id and its length, then a 0x2f signature byte, then width-1 in bits
-        /// 0-13 and height-1 in bits 14-27.
-        fn canvas_size() -> (usize, usize) {
-            let bytes = include_bytes!("../../assets/fernrohr-logo.webp");
-            assert_eq!(&bytes[12..16], b"VP8L", "expected a lossless (VP8L) WebP");
-            assert_eq!(bytes[20], 0x2f, "missing the VP8L signature byte");
-            let packed = u32::from_le_bytes(bytes[21..25].try_into().unwrap());
-            (
-                (packed & 0x3fff) as usize + 1,
-                ((packed >> 14) & 0x3fff) as usize + 1,
-            )
-        }
-
-        let (width, height) = canvas_size();
-        assert!(
-            width >= (2. * LOGO_WIDTH) as usize,
-            "asset is {width}px wide but renders at {LOGO_WIDTH}px - soft on Retina"
-        );
-
-        let asset_aspect = width as f32 / height as f32;
-        let rendered_aspect = LOGO_WIDTH / LOGO_HEIGHT;
-        assert!(
-            (asset_aspect - rendered_aspect).abs() < 0.01,
-            "asset aspect {asset_aspect} does not match the rendered {rendered_aspect} - \
-             the mark would be stretched"
-        );
-    }
-
-    /// Section 3.2: drives `ClusterPicker` into a fake `Failed` attempt directly (via
-    /// `ClusterConnection::test_with_state`, no real connect) rather than through
-    /// `select`, so the failure path doesn't depend on network access or a real
-    /// kubeconfig - then confirms the picker remains interactive by driving a second
-    /// `select` call afterward.
-    ///
-    /// The retry also goes through the stub connection factory rather than
-    /// `ClusterRegistry::connection`: a real connect spawns tokio work on a runtime
-    /// worker thread, which gpui's test scheduler flags as nondeterminism and turns
-    /// into a flaky failure. This test previously failed that way on `develop`.
-    #[gpui_kit::test]
-    async fn failed_attempt_shows_the_reason_and_stays_interactive(
-        cx: &mut gpui_kit::TestAppContext,
-    ) {
-        use super::{Attempt, ClusterPicker};
-        use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
-        use gpui_kit::{AppContext as _, Entity};
-
-        /// Stands in for `ClusterRegistry::connection`: hands back a connection in a
-        /// non-terminal state so selecting again replaces the attempt without any
-        /// real I/O.
-        fn stub_connection(
-            cx: &mut gpui_kit::App,
-            _context_name: &str,
-        ) -> Entity<ClusterConnection> {
-            cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting))
-        }
-
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-        });
-        let window = cx.add_window(ClusterPicker::new);
-
-        window
-            .update(cx, |picker, _window, cx| {
-                picker.connection_factory = Some(stub_connection);
-                picker.attempt = Some(Attempt {
-                    context_name: "kind-dev".to_string(),
-                    connection: cx.new(|_| {
-                        ClusterConnection::test_with_state(ConnectionState::Failed(
-                            "connection refused".to_string(),
-                        ))
-                    }),
-                    connected: false,
-                });
-                cx.notify();
-            })
-            .unwrap();
-
-        window
-            .update(cx, |picker, _window, cx| {
-                let attempt = picker.attempt.as_ref().expect("attempt is still set");
-                assert_eq!(attempt.context_name, "kind-dev");
-                assert!(matches!(
-                    attempt.connection.read(cx).state,
-                    ConnectionState::Failed(ref reason) if reason == "connection refused"
-                ));
-            })
-            .unwrap();
-
-        // Stays interactive: a failed attempt doesn't leave the picker stuck - selecting
-        // again (retry, or a different context) starts a fresh attempt.
-        window
-            .update(cx, |picker, _window, cx| {
-                picker.select("kind-dev".to_string(), cx)
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        window
-            .update(cx, |picker, _window, _cx| {
-                assert_eq!(
-                    picker
-                        .attempt
-                        .as_ref()
-                        .expect("select started a new attempt")
-                        .context_name,
-                    "kind-dev"
-                );
-            })
-            .unwrap();
-    }
-}
+mod tests;

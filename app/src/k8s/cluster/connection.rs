@@ -1,4 +1,4 @@
-use super::tunnel;
+use super::tunnel::{self, ForwardKey};
 use crate::forward::managed::{ForwardState, ManagedForward as _};
 use crate::forward::registry::RegistryHandle;
 use crate::tunnel::ssh::SshTunnel;
@@ -186,7 +186,7 @@ pub struct ClusterConnection {
     /// forward when the last session using it disconnects" is just this field's own
     /// `Drop` (via `RegistryHandle`/`SshTunnel`'s), since there is one `ClusterSession`
     /// (and so one `ClusterConnection`) per app today. `None` for an unbound context.
-    _forward: Option<RegistryHandle<SshTunnel>>,
+    _forward: Option<RegistryHandle<ForwardKey, SshTunnel>>,
 }
 
 impl ClusterConnection {
@@ -240,15 +240,29 @@ impl ClusterConnection {
     /// the binding and acquiring the forward both happen synchronously here, on the
     /// GPUI foreground thread, since acquiring needs `&mut App`; only the already-
     /// extracted state receiver and local address move into the background task.
+    ///
+    /// Section 2.3: a bound context whose forward fails to acquire (its kubeconfig
+    /// server URL has no host, most commonly) fails the connection outright with that
+    /// reason - unlike an unbound context, there is no direct-connect fallback here,
+    /// since silently ignoring a configured tunnel would route traffic somewhere the
+    /// user didn't ask for. No background task is spawned in that case, so no `ssh`
+    /// ever starts.
     pub fn connect(cx: &mut App, context_name: Option<String>) -> Entity<Self> {
         cx.new(|cx: &mut Context<Self>| {
             let bound_context = resolve_bound_context(context_name.clone());
             let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
-            let forward = bound_context.and_then(|context| {
-                tunnel::acquire_for_context(cx, &tunnels_path, &context)
-                    .ok()
-                    .flatten()
-            });
+            let acquired = bound_context
+                .as_deref()
+                .map(|context| tunnel::acquire_for_context(cx, &tunnels_path, None, context));
+
+            if let Some(Err(error)) = acquired {
+                return Self {
+                    state: ConnectionState::Failed(error.to_string()),
+                    since: Instant::now(),
+                    _forward: None,
+                };
+            }
+            let forward = acquired.and_then(Result::ok).flatten();
             let forward_wait = forward
                 .as_ref()
                 .map(|handle| (handle.forward().state(), handle.forward().local_addr()));
