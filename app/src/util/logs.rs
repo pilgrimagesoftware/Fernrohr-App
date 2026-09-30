@@ -555,8 +555,10 @@ impl LogsPanel {
 }
 
 impl Panel for LogsPanel {
-    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title_element(&self.scope, self.streaming_title())
+    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let contexts = crate::util::shell::window_context_count(window, cx);
+        let text = panel_title::with_context(self.streaming_title(), &self.scope, contexts);
+        panel_title::title_element(&self.scope, text)
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {

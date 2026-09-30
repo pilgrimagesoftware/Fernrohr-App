@@ -112,6 +112,19 @@ pub fn title(scope: &PanelScope) -> String {
     scope.target.item_label()
 }
 
+/// `label` with " · <context>" appended when the window uses more than one context -
+/// for panels over one pod (Pod detail, Logs), where two windows' worth of the same
+/// pod name would otherwise be indistinguishable. `window_contexts` is the window's
+/// live count (`util::shell::window_context_count`), not the count baked into the
+/// scope when the panel opened, so the suffix follows add and disconnect.
+pub fn with_context(label: String, scope: &PanelScope, window_contexts: usize) -> String {
+    if window_contexts > 1 {
+        format!("{label} · {}", scope.context_name)
+    } else {
+        label
+    }
+}
+
 /// `text` as the panel's title element, with a "Context: <name>" tooltip. The dock
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
 pub fn title_element(scope: &PanelScope, text: String) -> AnyElement {
@@ -315,6 +328,18 @@ mod tests {
     fn several_connections_still_leave_the_cluster_out_of_the_title() {
         assert_eq!(title(&scope(kind("Pod", true), 2)), "Pods");
         assert_eq!(title(&scope(kind("Deployment", true), 3)), "Deployments");
+    }
+
+    /// Pod-scoped panels name the context only while the window uses several.
+    #[test]
+    fn with_context_appends_the_context_only_for_several() {
+        use super::with_context;
+        let pod = scope(NavTarget::pod("default", "web-1"), 1);
+        assert_eq!(with_context("Pod: web-1".into(), &pod, 1), "Pod: web-1");
+        assert_eq!(
+            with_context("Pod: web-1".into(), &pod, 2),
+            "Pod: web-1 · kind-dev"
+        );
     }
 
     /// The Logs view is a target of its own and gets the same rule.

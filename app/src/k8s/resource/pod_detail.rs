@@ -1047,8 +1047,11 @@ impl BasePanel for PodDetailPanel {
 /// No namespace picker: the panel is over one pod, not a namespace-scoped list,
 /// so there is no scope for a picker to change.
 impl Panel for PodDetailPanel {
-    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
+    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let contexts = crate::util::shell::window_context_count(window, cx);
+        let text =
+            panel_title::with_context(panel_title::title(&self.scope), &self.scope, contexts);
+        panel_title::title_element(&self.scope, text)
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {

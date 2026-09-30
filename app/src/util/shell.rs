@@ -241,6 +241,20 @@ fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorkspace {
     }
 }
 
+/// How many contexts the window currently uses, read live from its `MainWindow` - 1
+/// for a picker-mode window or one this module didn't open. Read, not cached: the
+/// count changes on add and disconnect, and dock panels are drawn after
+/// `MainWindow`'s own render has returned, so reading it here never re-enters it.
+pub(crate) fn window_context_count(window: &mut Window, cx: &App) -> usize {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return 1;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return 1;
+    };
+    main_window.read(cx).contexts().len().max(1)
+}
+
 /// A saved Resource panel width, clamped to the range its divider allows; the
 /// default when the layout has none.
 fn restored_resource_width(layout: &WindowLayout) -> Pixels {
