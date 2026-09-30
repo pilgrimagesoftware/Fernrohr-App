@@ -204,29 +204,51 @@ fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixels> {
 /// a window's actual open panels into `PanelDescriptor`s is a later change's job; on
 /// restore, `contexts` alone is enough to reconnect every context a window used
 /// (the spec's "Multi-context window restored" scenario), even before that job lands.
-fn layout_from_bounds(bounds: Bounds<Pixels>, contexts: Vec<String>) -> WindowLayout {
+fn layout_from_bounds(bounds: Bounds<Pixels>, live: LiveWorkspace) -> WindowLayout {
     WindowLayout {
         width: f32::from(bounds.size.width),
         height: f32::from(bounds.size.height),
         x: Some(f32::from(bounds.origin.x)),
         y: Some(f32::from(bounds.origin.y)),
-        contexts,
+        contexts: live.contexts,
         panels: Vec::new(),
+        resource_panel_width: live.resource_width.map(f32::from),
     }
+}
+
+/// What a save reads off a live window beyond its geometry.
+#[derive(Default)]
+struct LiveWorkspace {
+    contexts: Vec<String>,
+    resource_width: Option<Pixels>,
 }
 
 /// The live contexts a window uses, read back through its `Root` - empty for a
 /// `Picker`-mode window (nothing to save yet) or one whose `Root`/`MainWindow` can't
 /// be found (shouldn't happen for a window this module opened, but geometry alone is
 /// still worth saving over failing the whole snapshot).
-fn workspace_contexts(window: &mut Window, cx: &mut App) -> Vec<String> {
+fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorkspace {
     let Some(Some(root)) = window.root::<Root>() else {
-        return Vec::new();
+        return LiveWorkspace::default();
     };
     let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
-        return Vec::new();
+        return LiveWorkspace::default();
     };
-    main_window.read(cx).contexts()
+    let main_window = main_window.read(cx);
+    LiveWorkspace {
+        contexts: main_window.contexts(),
+        resource_width: main_window.resource_width(),
+    }
+}
+
+/// A saved Resource panel width, clamped to the range its divider allows; the
+/// default when the layout has none.
+fn restored_resource_width(layout: &WindowLayout) -> Pixels {
+    layout
+        .resource_panel_width
+        .map(px)
+        .map(|width| width.clamp(RESOURCE_PANEL_MIN_WIDTH, RESOURCE_PANEL_MAX_WIDTH))
+        .unwrap_or(RESOURCE_PANEL_WIDTH)
 }
 
 /// Builds the workspace dock for `context_name` and opens its first panel:
@@ -420,6 +442,9 @@ enum WindowMode {
         /// through [`MainWindow::sync_context_children`], which is what keeps the bar,
         /// the status bar, and the Resource panel's dropdown from disagreeing.
         context_bar: Entity<ContextBarView>,
+        /// The Resource panel's current width: seeded from the saved layout, updated
+        /// on every divider drag, and written back by [`save`].
+        resource_width: Pixels,
     },
 }
 
@@ -429,6 +454,7 @@ enum WindowMode {
 pub fn open_window(cx: &mut App, layout: WindowLayout) {
     let bounds = window_bounds(&layout, cx);
     let contexts = restored_contexts(&layout);
+    let resource_width = restored_resource_width(&layout);
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -445,8 +471,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
                 let bounds = window.bounds();
-                let contexts = workspace_contexts(window, cx);
-                let layout = layout_from_bounds(bounds, contexts);
+                let live = workspace_contexts(window, cx);
+                let layout = layout_from_bounds(bounds, live);
                 if !cx.has_global::<ClosedWindowLayouts>() {
                     cx.set_global(ClosedWindowLayouts::default());
                 }
@@ -469,6 +495,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                 watch_picker(picker, window, cx);
                 if !contexts.is_empty() {
                     view.enter_workspace(contexts, window, cx);
+                    view.set_resource_width(resource_width);
                 }
                 view
             });
@@ -726,6 +753,7 @@ impl MainWindow {
             nav: Box::new(NavTarget::pods()),
             status_bar,
             context_bar,
+            resource_width: RESOURCE_PANEL_WIDTH,
         };
         if !restored {
             self.watch_scope_changes(first, window, cx);
@@ -799,6 +827,19 @@ impl MainWindow {
 
     /// Every context this window uses - empty in `Picker` mode. What `save`
     /// (`util/shell.rs`'s module doc comment) persists per window.
+    fn resource_width(&self) -> Option<Pixels> {
+        match &self.mode {
+            WindowMode::Picker(_) => None,
+            WindowMode::Workspace { resource_width, .. } => Some(*resource_width),
+        }
+    }
+
+    fn set_resource_width(&mut self, width: Pixels) {
+        if let WindowMode::Workspace { resource_width, .. } = &mut self.mode {
+            *resource_width = width;
+        }
+    }
+
     fn contexts(&self) -> Vec<String> {
         match &self.mode {
             WindowMode::Picker(_) => Vec::new(),
@@ -1327,6 +1368,7 @@ impl Render for MainWindow {
                 resource_panel,
                 status_bar,
                 context_bar,
+                resource_width,
                 ..
             } => div()
                 .size_full()
@@ -1338,9 +1380,21 @@ impl Render for MainWindow {
                     // column: drag the divider to trade list width for dock space.
                     div().flex_1().min_h_0().child(
                         h_resizable("workspace-split")
+                            .on_resize({
+                                let this = cx.weak_entity();
+                                move |state, _window, cx| {
+                                    let Some(width) = state.read(cx).sizes().first().copied()
+                                    else {
+                                        return;
+                                    };
+                                    let _ = this.update(cx, |this, _cx| {
+                                        this.set_resource_width(width);
+                                    });
+                                }
+                            })
                             .child(
                                 resizable_panel()
-                                    .size(RESOURCE_PANEL_WIDTH)
+                                    .size(*resource_width)
                                     .size_range(RESOURCE_PANEL_MIN_WIDTH..RESOURCE_PANEL_MAX_WIDTH)
                                     .child(resource_panel.clone()),
                             )
@@ -1403,8 +1457,8 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
     for handle in cx.windows() {
         if let Ok(layout) = handle.update(cx, |_, window, cx| {
             let bounds = window.bounds();
-            let contexts = workspace_contexts(window, cx);
-            layout_from_bounds(bounds, contexts)
+            let live = workspace_contexts(window, cx);
+            layout_from_bounds(bounds, live)
         }) {
             layouts.insert(handle.window_id(), layout);
         }

@@ -5,8 +5,8 @@ use super::{
     ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor, PanelKey,
     SET_CONTEXT_TUNNEL_COMMAND_ID, SavedDockLayouts, ShowPodDetail, ToggleCommandPalette,
     WindowLayout, WindowMode, WorkspaceConfig, config, init, open_saved_or_default, open_window,
-    register_commands, restorable_panels, restored_contexts, save, watch_picker,
-    write_context_tunnel,
+    register_commands, restorable_panels, restored_contexts, restored_resource_width, save,
+    watch_picker, write_context_tunnel,
 };
 use crate::command::CommandRegistry;
 use crate::config::tunnels::{TunnelAuth, TunnelConfig};
@@ -1104,6 +1104,7 @@ async fn quitting_persists_open_window_geometry(cx: &mut TestAppContext) {
                 y: Some(20.0),
                 contexts: Vec::new(),
                 panels: Vec::new(),
+                resource_panel_width: None,
             },
         );
     });
@@ -1140,6 +1141,7 @@ async fn save_persists_geometry_of_a_window_already_closed(cx: &mut TestAppConte
                 y: Some(20.0),
                 contexts: Vec::new(),
                 panels: Vec::new(),
+                resource_panel_width: None,
             },
         )])));
         save(cx, &path);
@@ -1434,6 +1436,51 @@ async fn saving_persists_a_live_workspaces_contexts(cx: &mut TestAppContext) {
     );
 
     let _ = std::fs::remove_file(&path);
+}
+
+/// The Resource panel's width survives a relaunch: a restored window starts at its
+/// saved width and saving writes it back.
+#[gpui_kit::test]
+async fn the_resource_panel_width_round_trips(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let layout = WindowLayout {
+        contexts: vec!["kind-dev".to_string()],
+        panels: vec![pods_panel_descriptor("kind-dev")],
+        resource_panel_width: Some(330.0),
+        ..Default::default()
+    };
+    cx.update(|cx| open_window(cx, layout));
+    cx.run_until_parked();
+
+    cx.update(|cx| save(cx, &path));
+    let saved: WorkspaceConfig = config::load(&path);
+    assert_eq!(saved.windows[0].resource_panel_width, Some(330.0));
+    let _ = std::fs::remove_file(&path);
+}
+
+/// A saved width outside the divider's range is clamped, and a layout with none (an
+/// older file) starts at the default.
+#[test]
+fn a_restored_resource_panel_width_is_clamped_or_defaulted() {
+    use crate::consts::{RESOURCE_PANEL_MAX_WIDTH, RESOURCE_PANEL_MIN_WIDTH, RESOURCE_PANEL_WIDTH};
+    let with = |width: Option<f32>| WindowLayout {
+        resource_panel_width: width,
+        ..Default::default()
+    };
+    assert_eq!(
+        restored_resource_width(&with(Some(9999.0))),
+        RESOURCE_PANEL_MAX_WIDTH
+    );
+    assert_eq!(
+        restored_resource_width(&with(Some(10.0))),
+        RESOURCE_PANEL_MIN_WIDTH
+    );
+    assert_eq!(restored_resource_width(&with(None)), RESOURCE_PANEL_WIDTH);
 }
 
 /// Task 2.2: `save` reads a `Picker`-mode window's contexts as empty - there is

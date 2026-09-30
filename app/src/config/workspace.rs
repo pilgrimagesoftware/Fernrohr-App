@@ -21,6 +21,9 @@ pub struct WindowLayout {
     /// for that case, so this field is never the only way to find out.
     pub contexts: Vec<String>,
     pub panels: Vec<PanelDescriptor>,
+    /// The Resource panel's width in pixels, as last dragged. `None` in older files,
+    /// and for a window that was never connected; restore then uses the default.
+    pub resource_panel_width: Option<f32>,
 }
 
 impl Default for WindowLayout {
@@ -32,6 +35,7 @@ impl Default for WindowLayout {
             y: None,
             contexts: Vec::new(),
             panels: Vec::new(),
+            resource_panel_width: None,
         }
     }
 }
@@ -93,6 +97,7 @@ mod tests {
                         ascending: false,
                     },
                 }],
+                resource_panel_width: Some(310.0),
             }],
         };
         let text = toml::to_string(&config).unwrap();
