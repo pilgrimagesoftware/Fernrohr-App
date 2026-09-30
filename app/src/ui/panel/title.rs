@@ -171,7 +171,7 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
 ///
 /// It is also the panel's focus indicator: underlined in the accent colour
-/// while `focused`. Pass `focus_handle.contains_focused(..)`, not `is_focused`:
+/// (the user's system accent on macOS) while `focused`. Pass `focus_handle.contains_focused(..)`, not `is_focused`:
 /// a panel whose content takes focus itself (a table row, a text input) moves
 /// the window's focus to that child, and an indicator lit only while the
 /// panel's own handle held focus would go dark the moment the panel was used.
@@ -190,7 +190,10 @@ pub fn title_element(scope: &PanelScope, text: String, focused: bool, cx: &App) 
         // The underline's width is reserved while unfocused too, so moving
         // focus between panels doesn't shift any tab's label.
         .border_b_2()
-        .border_color(focus_underline(focused, cx.theme().blue))
+        .border_color(focus_underline(
+            focused,
+            crate::ui::accent::focus_accent(cx),
+        ))
         .debug_selector(|| {
             let state = if focused { "focused" } else { "unfocused" };
             format!("panel-title-{text}-{state}")
@@ -200,11 +203,9 @@ pub fn title_element(scope: &PanelScope, text: String, focused: bool, cx: &App) 
         .into_any_element()
 }
 
-/// The colour of a title's focus underline: `accent` while its panel holds
-/// focus, otherwise nothing visible.
-///
-/// `blue` rather than the theme's `primary`: the default themes' `primary`
-/// is the selected tab's own text colour, so it would mark nothing.
+/// The colour of a title's focus underline: `accent` (see
+/// [`crate::ui::accent::focus_accent`]) while its panel holds focus, otherwise
+/// nothing visible.
 fn focus_underline(focused: bool, accent: Hsla) -> Hsla {
     if focused { accent } else { transparent_black() }
 }

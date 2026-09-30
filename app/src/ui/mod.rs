@@ -1,3 +1,4 @@
+pub mod accent;
 pub mod context_bar;
 pub mod menu;
 pub mod nav;
