@@ -33,10 +33,9 @@ pub fn load(path: &Path, registry: &CommandRegistry) -> KeymapConfig {
 /// The effective keystroke for `command`: `keymap`'s override, or the
 /// command's default if there's no override, the override is empty (an
 /// invalid entry), or it names a different command.
-// ponytail: only catches an empty override, not a syntactically malformed
-// but non-empty one (GPUI's own KeyBinding::new panics on those). Validate
-// against GPUI's keystroke grammar here if a hand-edited keymap.toml with a
-// typo'd-but-nonempty binding turns out to be a real problem.
+// Only an empty override is treated as missing here; an override GPUI can't parse
+// falls back to the default in [`bindings`], which builds keys with the fallible
+// `KeyBinding::load` rather than the panicking `KeyBinding::new`.
 pub fn resolve(command_id: &str, default_binding: &str, keymap: &KeymapConfig) -> String {
     match keymap.bindings.get(command_id) {
         Some(binding) if !binding.trim().is_empty() => binding.clone(),
@@ -44,9 +43,48 @@ pub fn resolve(command_id: &str, default_binding: &str, keymap: &KeymapConfig) -
     }
 }
 
+/// A key binding for every registered command: its `keymap` override, else its
+/// default, in its own `KeyContext`. Built from the registry itself, so a registered
+/// command can never end up with a menu item and palette entry but no key - the
+/// failure a hand-maintained list of bindings allowed. An override that doesn't parse
+/// falls back to the default; a command whose default doesn't parse is skipped.
+pub fn bindings(
+    registry: &CommandRegistry,
+    keymap: &KeymapConfig,
+    mapper: &dyn gpui_kit::PlatformKeyboardMapper,
+) -> Vec<gpui_kit::KeyBinding> {
+    registry
+        .iter()
+        .filter_map(|command| {
+            let context = command.context.map(|context| {
+                std::rc::Rc::new(
+                    gpui_kit::KeyBindingContextPredicate::parse(context)
+                        .expect("a registered command's context parses"),
+                )
+            });
+            let load = |keys: &str| {
+                gpui_kit::KeyBinding::load(
+                    keys,
+                    command.action.boxed_clone(),
+                    context.clone(),
+                    false,
+                    None,
+                    mapper,
+                )
+                .ok()
+            };
+            let chosen = resolve(command.id, command.default_binding, keymap);
+            load(&chosen).or_else(|| {
+                log::warn!("keymap.toml: invalid binding {chosen:?} for {}", command.id);
+                load(command.default_binding)
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{KeymapConfig, load, resolve};
+    use super::{KeymapConfig, bindings, load, resolve};
     use crate::command::{Command, CommandRegistry};
     use gpui_kit::actions;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -137,5 +175,42 @@ mod tests {
 
         assert_eq!(effective, "cmd-t");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Every registered command gets a key - `tunnels.manage` once had a menu item and
+    /// palette entry but no binding, because keys came from a hand-kept list. A
+    /// command missing from an older `keymap.toml` still gets its default.
+    #[test]
+    fn every_registered_command_is_bound() {
+        let mut registry = CommandRegistry::new();
+        crate::util::shell::register_commands(&mut registry);
+        let keymap = KeymapConfig::default();
+
+        let bound = bindings(&registry, &keymap, &gpui_kit::DummyKeyboardMapper);
+        assert_eq!(
+            bound.len(),
+            registry.iter().count(),
+            "one binding per command"
+        );
+        let manage = bound
+            .iter()
+            .find(|binding| {
+                binding
+                    .action()
+                    .partial_eq(&crate::ui::tunnels::TunnelsManage)
+            })
+            .expect("tunnels.manage is bound");
+        let keys: Vec<String> = manage.keystrokes().iter().map(|k| k.unparse()).collect();
+        // Compared through the same parse/unparse, not as a literal: `cmd` is the
+        // platform modifier, written back as `super` on Linux.
+        let expected = gpui_kit::Keystroke::parse(
+            registry
+                .get("tunnels.manage")
+                .expect("registered")
+                .default_binding,
+        )
+        .expect("the default parses")
+        .unparse();
+        assert_eq!(keys, vec![expected]);
     }
 }

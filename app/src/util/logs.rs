@@ -8,8 +8,15 @@ pub enum LogEvent {
     Line(String),
     /// The stream ended normally (e.g. the pod was deleted).
     Ended,
-    /// The stream never started (e.g. the container hasn't started yet).
-    RequestFailed(String),
+    /// The stream never started (e.g. the container hasn't started yet), or
+    /// broke while reading it. `message` is what a person reads - readable
+    /// prose, never a client library's `Debug` dump; `detail` is that same
+    /// failure's full technical rendering, kept alongside rather than
+    /// discarded, for a report that needs more than the summary.
+    RequestFailed {
+        message: String,
+        detail: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +36,10 @@ pub struct LogsView {
     #[allow(dead_code)]
     selected_container: String,
     terminal_message: Option<String>,
+    /// The failure's full technical detail, alongside `terminal_message` - set
+    /// only for [`LogEvent::RequestFailed`], never for the plain "stream
+    /// ended" state, which has no error behind it to detail.
+    terminal_detail: Option<String>,
 }
 
 impl LogsView {
@@ -41,6 +52,7 @@ impl LogsView {
             containers,
             selected_container,
             terminal_message: None,
+            terminal_detail: None,
         }
     }
 
@@ -62,6 +74,12 @@ impl LogsView {
 
     pub fn terminal_message(&self) -> Option<&str> {
         self.terminal_message.as_deref()
+    }
+
+    /// The full technical detail behind [`Self::terminal_message`], when the
+    /// terminal state is a failure rather than a plain "stream ended."
+    pub fn terminal_detail(&self) -> Option<&str> {
+        self.terminal_detail.as_deref()
     }
 
     /// Whether a container picker needs to be shown at all - a single
@@ -96,15 +114,20 @@ impl LogsView {
         self.selected_container = container.to_string();
         self.lines.clear();
         self.terminal_message = None;
+        self.terminal_detail = None;
         true
     }
 
     pub fn apply(&mut self, event: LogEvent) {
         match event {
             LogEvent::Line(line) => self.append_line(line),
-            LogEvent::Ended => self.terminal_message = Some("Log stream ended.".into()),
-            LogEvent::RequestFailed(reason) => {
-                self.terminal_message = Some(format!("Couldn't start log stream: {reason}"));
+            LogEvent::Ended => {
+                self.terminal_message = Some("Log stream ended.".into());
+                self.terminal_detail = None;
+            }
+            LogEvent::RequestFailed { message, detail } => {
+                self.terminal_message = Some(format!("Couldn't start log stream: {message}"));
+                self.terminal_detail = Some(detail);
             }
         }
     }
@@ -140,16 +163,40 @@ where
     })
 }
 
+/// The readable half of a failure to *start* a pod's log stream: a plain
+/// sentence for the API's 404 - which `kube::Error`'s own `Display` renders as
+/// the unreadable `ApiError: pods "..." not found (...)` at the root of
+/// `1-window-context-bar` bug 2 - and [`crate::k8s::error::describe`]'s general
+/// rendering for every other [`kube::Error`]. A stream that *breaks* after it
+/// started (below, the `std::io::Error` branch) has no pod/namespace/context to
+/// name this precisely for, so that path keeps the error's own `Display`.
+fn describe_log_stream_error(
+    error: &kube::Error,
+    pod_name: &str,
+    namespace: &str,
+    context_name: &str,
+) -> String {
+    match error {
+        kube::Error::Api(status) if status.code == 404 => {
+            format!("Pod {pod_name} not found in namespace {namespace} on {context_name}.")
+        }
+        other => crate::k8s::error::describe(other),
+    }
+}
+
 /// Streams `container`'s logs in `namespace`/`pod_name` on `client`, line by
 /// line, until the stream ends or the returned `Task` is dropped. A failure
 /// to start the stream (e.g. the container hasn't started yet) reports
 /// through the same channel as [`LogEvent::RequestFailed`] rather than
 /// erroring the caller, matching [`LogsView`]'s own terminal-state handling.
+/// `context_name` names the failure only - `client` already carries the
+/// context to stream from.
 pub fn stream_container_logs(
     client: kube::Client,
     namespace: String,
     pod_name: String,
     container: String,
+    context_name: String,
     view: gpui_kit::Entity<LogsView>,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::Task<()> {
@@ -168,7 +215,10 @@ pub fn stream_container_logs(
         let stream = match api.log_stream(&pod_name, &lp).await {
             Ok(stream) => stream,
             Err(error) => {
-                let _ = tx.send(LogEvent::RequestFailed(error.to_string())).await;
+                let message =
+                    describe_log_stream_error(&error, &pod_name, &namespace, &context_name);
+                let detail = crate::k8s::error::detail(&error);
+                let _ = tx.send(LogEvent::RequestFailed { message, detail }).await;
                 return;
             }
         };
@@ -185,7 +235,9 @@ pub fn stream_container_logs(
                     break;
                 }
                 Some(Err(error)) => {
-                    let _ = tx.send(LogEvent::RequestFailed(error.to_string())).await;
+                    let message = error.to_string();
+                    let detail = format!("{error:?}");
+                    let _ = tx.send(LogEvent::RequestFailed { message, detail }).await;
                     break;
                 }
             }
@@ -265,6 +317,15 @@ impl LogsPanel {
         let Some(selection) = cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()) else {
             return;
         };
+        // A selection published by a *different* context's Pods panel is not
+        // this panel's to stream - see `util::shell::pod_scoped_context`'s doc
+        // comment on the same bug (`1-window-context-bar` bug 1): every Pods
+        // panel writes to the one app-scoped `SelectedPod`, so without this
+        // check a window with two contexts open would restart this panel's
+        // stream against whichever context's row was clicked last.
+        if selection.context_name != self.scope.context_name {
+            return;
+        }
         let crate::k8s::cluster::connection::ConnectionState::Connected(client) =
             &self.connection.read(cx).state
         else {
@@ -274,6 +335,7 @@ impl LogsPanel {
             namespace,
             name,
             containers,
+            context_name,
         } = selection;
         let container = containers.first().cloned().unwrap_or_default();
         let key = (namespace.clone(), name.clone(), container.clone());
@@ -298,6 +360,7 @@ impl LogsPanel {
             namespace,
             name,
             container,
+            context_name,
             view.clone(),
             cx,
         ));
@@ -338,6 +401,7 @@ impl LogsPanel {
             namespace,
             name,
             container,
+            self.scope.context_name.clone(),
             view.clone(),
             cx,
         ));
@@ -359,11 +423,9 @@ impl Render for LogsPanel {
         let view = self.view.read(cx);
         let following = view.follow_state() == FollowState::Following;
         let content = if let Some(message) = view.terminal_message() {
-            div()
-                .size_full()
-                .p_3()
-                .child(message.to_string())
-                .into_any_element()
+            let message = message.to_string();
+            let detail = view.terminal_detail().map(str::to_string);
+            panel_title::error_content(message, detail, cx).into_any_element()
         } else if self.current.is_none() {
             div()
                 .size_full()
@@ -433,6 +495,16 @@ impl Render for LogsPanel {
                 })
         });
 
+        let heading = self.current.as_ref().map(|(_, pod, container)| {
+            panel_title::item_heading(
+                format!("{pod} / {container}"),
+                panel_title::heading_context(
+                    &self.scope,
+                    crate::util::shell::window_context_count(window, cx),
+                ),
+                cx.theme().muted_foreground,
+            )
+        });
         let control_bar =
             (self.current.is_some() && view.terminal_message().is_none()).then(|| {
                 let line_count = view.lines().len();
@@ -442,11 +514,13 @@ impl Render for LogsPanel {
                 div()
                     .flex()
                     .items_center()
-                    .justify_end()
                     .gap_1()
                     .p_2()
                     .border_b_1()
                     .border_color(cx.theme().border)
+                    // "pod / container" (plus the context in a multi-context window) on
+                    // the left; the controls take the rest of the row on the right.
+                    .child(div().flex_1().min_w_0().children(heading))
                     .children(container_picker)
                     .child(
                         Button::new("logs-jump-top")
@@ -556,11 +630,11 @@ impl LogsPanel {
 
 impl Panel for LogsPanel {
     fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        self.streaming_title()
+        panel_title::title_element(&self.scope, self.streaming_title())
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
-        Some(self.streaming_title().into())
+        panel_title::tab_name(&self.scope)
     }
 
     fn toolbar_buttons(
@@ -577,118 +651,4 @@ impl Panel for LogsPanel {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{FollowState, LogEvent, LogsView, start_stream, streaming_title};
-    use gpui_kit::{AppContext as _, TestAppContext};
-
-    #[test]
-    fn streaming_title_names_the_pod_and_container() {
-        let current = (
-            "default".to_string(),
-            "web-1".to_string(),
-            "app".to_string(),
-        );
-        assert_eq!(
-            streaming_title(Some(&current), || "unreachable".to_string()),
-            "Logs: web-1 · app"
-        );
-    }
-
-    #[test]
-    fn streaming_title_falls_back_before_a_pod_is_selected() {
-        assert_eq!(streaming_title(None, || "Logs".to_string()), "Logs");
-    }
-
-    #[test]
-    fn history_renders_and_new_lines_append() {
-        let mut view = LogsView::new(vec!["app".into()]);
-        view.apply(LogEvent::Line("first".into()));
-        view.apply(LogEvent::Line("second".into()));
-
-        assert_eq!(view.lines(), &["first".to_string(), "second".to_string()]);
-    }
-
-    #[test]
-    fn scrolling_up_pauses_and_returning_to_bottom_resumes() {
-        let mut view = LogsView::new(vec!["app".into()]);
-        assert_eq!(view.follow_state(), FollowState::Following);
-
-        view.scroll_up();
-        assert_eq!(view.follow_state(), FollowState::Paused);
-
-        view.scroll_to_bottom();
-        assert_eq!(view.follow_state(), FollowState::Following);
-    }
-
-    #[test]
-    fn single_container_needs_no_pick() {
-        let view = LogsView::new(vec!["app".into()]);
-        assert_eq!(view.selected_container(), "app");
-        assert!(!view.needs_container_picker());
-    }
-
-    #[test]
-    fn multi_container_fixture_switches_streams_on_selection() {
-        let mut view = LogsView::new(vec!["app".into(), "sidecar".into()]);
-        assert_eq!(view.selected_container(), "app");
-        assert!(view.needs_container_picker());
-
-        view.apply(LogEvent::Line("from app".into()));
-        let changed = view.select_container("sidecar");
-
-        assert!(
-            changed,
-            "selecting a different container should report a change"
-        );
-        assert_eq!(view.selected_container(), "sidecar");
-        assert!(
-            view.lines().is_empty(),
-            "switching containers should clear the previous container's history"
-        );
-
-        let unchanged = view.select_container("sidecar");
-        assert!(!unchanged, "reselecting the current container is a no-op");
-    }
-
-    #[test]
-    fn deleted_pod_and_not_started_container_show_distinct_terminal_messages() {
-        let mut stream_ended = LogsView::new(vec!["app".into()]);
-        stream_ended.apply(LogEvent::Line("some log line".into()));
-        stream_ended.apply(LogEvent::Ended);
-
-        let mut request_failed = LogsView::new(vec!["app".into()]);
-        request_failed.apply(LogEvent::RequestFailed("container not started".into()));
-
-        let ended_message = stream_ended.terminal_message().unwrap();
-        let failed_message = request_failed.terminal_message().unwrap();
-        assert_ne!(ended_message, failed_message);
-        assert!(ended_message.to_lowercase().contains("ended"));
-        assert!(
-            failed_message
-                .to_lowercase()
-                .contains("container not started")
-        );
-    }
-
-    #[gpui_kit::test]
-    async fn mock_stream_populates_history_line_by_line(cx: &mut TestAppContext) {
-        cx.executor().allow_parking();
-        let view = cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-            cx.new(|_| LogsView::new(vec!["app".into()]))
-        });
-
-        let task = cx.update(|cx| {
-            start_stream(view.clone(), cx, 8, |tx| async move {
-                for line in ["line one", "line two", "line three"] {
-                    tx.send(LogEvent::Line(line.into())).await.unwrap();
-                }
-            })
-        });
-        task.await;
-
-        let lines = view.read_with(cx, |view, _| view.lines().to_vec());
-        assert_eq!(lines, vec!["line one", "line two", "line three"]);
-    }
-}
+mod tests;

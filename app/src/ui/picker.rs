@@ -3,6 +3,14 @@
 //! `Command` widget the app-wide command palette uses, drives a connection through
 //! `ClusterRegistry`, and emits [`PickerEvent::Connected`] on success so `shell::MainWindow`
 //! can switch that window into its normal panel workspace.
+//!
+//! A context row no longer connects on a single click: `Command`'s own row wrapper
+//! confirms on any click, which made an inadvertent click connect. `context_row`
+//! intercepts the click first (see its doc comment) and routes it through
+//! [`ClusterPicker::handle_row_click`] instead - a single click only moves the
+//! highlight, a double click connects. [`ClusterPicker::connect_button`] and `Enter`
+//! (via [`ClusterPicker::confirm_row`]) are the deliberate ways to connect the
+//! highlighted row.
 
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::kubeconfig;
@@ -14,7 +22,8 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, IndexPath, Sizable as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -27,7 +36,13 @@ pub enum PickerEvent {
 /// One read of `tunnels.toml`'s choices and bindings, for [`ClusterPicker::new`] and
 /// every [`ClusterPicker::set_tunnel`] afterward - kept as one function so the two
 /// call sites can't drift into reading it two different ways.
-fn load_tunnels(tunnels_path: &std::path::Path) -> (Vec<TunnelChoice>, BTreeMap<String, String>) {
+///
+/// `pub(crate)`: `ui/context_bar.rs`'s chips read the same cache for their tunnel
+/// name, refreshed on the same [`TunnelsRevision`] signal - one read of the file's
+/// shape, not two.
+pub(crate) fn load_tunnels(
+    tunnels_path: &std::path::Path,
+) -> (Vec<TunnelChoice>, BTreeMap<String, String>) {
     let store = TunnelStore::new(tunnels_path.to_path_buf());
     let choices = picker_tunnel::tunnel_choices(&store);
     let bindings = store.bindings().into_iter().collect();
@@ -46,6 +61,15 @@ pub struct ClusterPicker {
     contexts: Result<Vec<String>, String>,
     command_state: Entity<CommandState>,
     attempt: Option<Attempt>,
+    /// The context the highlight currently points at - what [`Self::connect_button`]
+    /// targets, set by [`Self::handle_row_click`] or `Command`'s own hover/keyboard
+    /// highlight (via the `on_select` wired in `render`). Kept separately from
+    /// `command_state`'s own highlighted index because that index is only correct
+    /// after `Command` has rendered at least once, which happens *after* this
+    /// struct's own `render` body runs; initializing this to the first context up
+    /// front (see [`Self::new`]) gives the Connect button a sensible target from
+    /// the very first frame.
+    selected_context: Option<String>,
     focus_handle: FocusHandle,
     /// Where `tunnels.toml` lives - the real preference-dir path in production, a
     /// scratch file in tests (see section 3.1's tests below).
@@ -78,10 +102,15 @@ impl ClusterPicker {
             this.tunnel_bindings = bindings;
             cx.notify();
         });
+        let contexts = kubeconfig::list_context_names(None).map_err(|error| error.to_string());
+        // Nothing is selected until the user clicks a row: the Connect button stays
+        // disabled rather than pointing at a context nobody chose.
+        let selected_context = None;
         Self {
-            contexts: kubeconfig::list_context_names(None).map_err(|error| error.to_string()),
+            contexts,
             command_state: cx.new(|cx| CommandState::new(window, cx)),
             attempt: None,
+            selected_context,
             focus_handle: cx.focus_handle(),
             tunnels_path,
             tunnel_choices,
@@ -147,6 +176,85 @@ impl ClusterPicker {
         cx.notify();
     }
 
+    /// What a row's own click handler ([`context_row`]) calls, replacing `Command`'s
+    /// built-in "any click confirms" behavior for this list: a single click only
+    /// moves the highlight (mirroring hover), so an inadvertent click no longer
+    /// starts a connection. A double click still connects immediately, matching
+    /// familiar file-manager conventions.
+    pub(crate) fn handle_row_click(
+        &mut self,
+        context_name: String,
+        row_index: usize,
+        click_count: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if click_count >= 2 {
+            self.select(context_name, cx);
+            return;
+        }
+        self.selected_context = Some(context_name);
+        self.command_state.update(cx, |state, cx| {
+            state.set_selected_index(Some(IndexPath::new(row_index)), window, cx)
+        });
+        cx.notify();
+    }
+
+    /// What `Enter` reaches through `Command`'s own confirm action and the
+    /// `on_confirm` wired in `render`: connects the context at `row_index` in the
+    /// picker's own model order - the same coordinates `Command::on_select` and
+    /// `Command::on_confirm` report, unaffected by the search query (see their doc
+    /// comments).
+    pub(crate) fn confirm_row(&mut self, row_index: usize, cx: &mut Context<Self>) {
+        let Ok(contexts) = &self.contexts else {
+            return;
+        };
+        let Some(context_name) = contexts.get(row_index).cloned() else {
+            return;
+        };
+        self.select(context_name, cx);
+    }
+
+    /// The context the user selected - by click or keyboard - if any.
+    pub(crate) fn selected_context(&self) -> Option<String> {
+        self.selected_context.clone()
+    }
+
+    /// Keyboard navigation moved `Command`'s highlight to `row_index`: select it.
+    fn follow_keyboard(&mut self, row_index: usize, cx: &mut Context<Self>) {
+        self.selected_context = self
+            .contexts
+            .as_ref()
+            .ok()
+            .and_then(|contexts| contexts.get(row_index).cloned());
+        cx.notify();
+    }
+
+    /// What [`Self::connect_button`]'s click handler calls: connects the currently
+    /// highlighted context, or does nothing if none is highlighted. The button
+    /// itself is disabled in that case, but a click that slips through must still
+    /// be a no-op rather than connecting the wrong thing.
+    pub(crate) fn connect_selected(&mut self, cx: &mut Context<Self>) {
+        let Some(context_name) = self.selected_context.clone() else {
+            return;
+        };
+        self.select(context_name, cx);
+    }
+
+    /// Whether an attempt is actively connecting - [`Self::connect_button`]'s other
+    /// disabling condition, alongside no selection, so a second click cannot start a
+    /// redundant connect while one is already under way. A `Failed` or already
+    /// `Connected` attempt does not count: retrying, or connecting a different
+    /// context afterward, is exactly what should stay available.
+    fn is_connect_in_flight(&self, cx: &App) -> bool {
+        self.attempt.as_ref().is_some_and(|attempt| {
+            matches!(
+                attempt.connection.read(cx).state,
+                ConnectionState::Connecting | ConnectionState::WaitingForTunnel
+            )
+        })
+    }
+
     fn emit_connected(&mut self, cx: &mut Context<Self>) {
         let Some(attempt) = &mut self.attempt else {
             return;
@@ -167,6 +275,26 @@ impl ClusterPicker {
 
     pub fn command_focus_handle(&self, cx: &App) -> FocusHandle {
         self.command_state.read(cx).focus_handle(cx)
+    }
+
+    /// `window-context-bar` section 3.2's "+" popover: the same picker, minus the
+    /// contexts `used` already names. Filtering post-construction, rather than a
+    /// second contexts source, is what keeps every other rule - tunnel bindings,
+    /// search, the connect flow - identical to the picker window's own.
+    pub(crate) fn exclude(&mut self, used: &[String]) {
+        let Ok(contexts) = &mut self.contexts else {
+            return;
+        };
+        contexts.retain(|name| !used.contains(name));
+        // A selected context that was just filtered out (another window uses it)
+        // is no longer selectable here: clear it rather than pick one for the user.
+        if !self
+            .selected_context
+            .as_ref()
+            .is_some_and(|name| contexts.contains(name))
+        {
+            self.selected_context = None;
+        }
     }
 }
 
@@ -315,8 +443,19 @@ fn header(cx: &App) -> impl IntoElement {
 /// the trailing end. Built fresh on every `Command` render (a `Fn`, not `FnMut`, per
 /// `CommandItem::child`'s contract), so everything it needs is captured by value here
 /// rather than borrowed from `ClusterPicker`.
+///
+/// The row wraps its own click handler rather than leaving clicks to `Command`'s
+/// built-in one, which confirms - starting a connection - on *any* click
+/// (`command/state.rs::render_item`). Our own `on_click`, which always calls
+/// `cx.stop_propagation()`, intercepts first (mouse events dispatch
+/// innermost-first), and [`ClusterPicker::handle_row_click`] decides select-only
+/// versus connect from the click count. The tunnel selector is unaffected:
+/// `Popover`'s trigger already stops a click at mouse-down, before it reaches even
+/// this row.
 fn context_row(
     context_name: String,
+    row_index: usize,
+    selected: bool,
     bound_id: Option<String>,
     choices: Vec<TunnelChoice>,
     picker: WeakEntity<ClusterPicker>,
@@ -336,15 +475,39 @@ fn context_row(
                 });
             },
         );
+
+        let picker_for_click = picker.clone();
+        let context_for_click = context_name.clone();
+
         div()
+            .id(format!("picker-row-{context_name}"))
             .flex()
             .flex_1()
             .items_center()
             .justify_between()
             .gap_2()
+            .px_1()
+            .rounded(theme.radius)
+            // The clicked selection, drawn by the row itself: `Command`'s own
+            // highlight follows the mouse, which must not move what Connect targets.
+            .when(selected, |row| row.bg(theme.selection))
+            .on_click(move |event, window, cx| {
+                cx.stop_propagation();
+                let _ = picker_for_click.update(cx, |this, cx| {
+                    this.handle_row_click(
+                        context_for_click.clone(),
+                        row_index,
+                        event.click_count(),
+                        window,
+                        cx,
+                    )
+                });
+            })
             .child(
                 div()
                     .flex()
+                    .flex_1()
+                    .min_w_0()
                     .items_center()
                     .gap_2()
                     .child(
@@ -352,9 +515,24 @@ fn context_row(
                             .size(px(16.))
                             .text_color(theme.muted_foreground),
                     )
-                    .child(context_name.clone()),
+                    // Long names (`gke_<project>_<region>_<cluster>`) are cut with an
+                    // ellipsis, full name on hover, so the tunnel selector stays visible.
+                    .child({
+                        let full = context_name.clone();
+                        div()
+                            .id(SharedString::from(format!("picker-name-{context_name}")))
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .child(context_name.clone())
+                            .tooltip(move |window, cx| {
+                                gpui_kit::component::tooltip::Tooltip::new(full.clone())
+                                    .build(window, cx)
+                            })
+                    }),
             )
-            .child(selector)
+            .child(div().flex_shrink_0().child(selector))
             .into_any_element()
     }
 }
@@ -367,12 +545,26 @@ fn manage_tunnels_control() -> impl IntoElement {
         .icon(IconName::Settings)
         .xsmall()
         .ghost()
-        .tab_stop(false)
         .on_click(|_event, _window, cx| crate::ui::tunnels::open_or_focus(cx))
 }
 
+/// The deliberate, visible way to connect the highlighted context - a single click
+/// on a row no longer does this itself (see [`context_row`]'s doc comment).
+/// Disabled with nothing highlighted or a connect already under way
+/// ([`ClusterPicker::is_connect_in_flight`]), so this can never start a redundant
+/// or targetless connect.
+fn connect_button(disabled: bool, picker: WeakEntity<ClusterPicker>) -> impl IntoElement {
+    Button::new("picker-connect")
+        .label("Connect")
+        .primary()
+        .disabled(disabled)
+        .on_click(move |_event, _window, cx| {
+            let _ = picker.update(cx, |this, cx| this.connect_selected(cx));
+        })
+}
+
 impl Render for ClusterPicker {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         // The logo sits outside the card so it reads as app branding rather than
         // as part of the command-palette chrome the card deliberately mimics.
@@ -431,27 +623,42 @@ impl Render for ClusterPicker {
         let this = cx.weak_entity();
         let tunnel_choices = self.tunnel_choices.clone();
         let tunnel_bindings = self.tunnel_bindings.clone();
+        let selected = self.selected_context.clone();
         let items: Vec<CommandItem> = contexts
             .iter()
-            .map(|name| {
+            .enumerate()
+            .map(|(row_index, name)| {
                 let bound_id = tunnel_bindings.get(name).cloned();
                 CommandItem::new().label(name.clone()).child(context_row(
                     name.clone(),
+                    row_index,
+                    selected.as_deref() == Some(name.as_str()),
                     bound_id,
                     tunnel_choices.clone(),
                     this.clone(),
                 ))
             })
             .collect();
-        let command_contexts = contexts.clone();
         let command = Command::new(&self.command_state)
             .items(items)
             .placeholder("Search contexts...")
-            .on_confirm(move |index_path, _window, cx| {
-                let Some(context_name) = command_contexts.get(index_path.row).cloned() else {
-                    return;
-                };
-                let _ = this.update(cx, |this, cx| this.select(context_name, cx));
+            // Keyboard navigation (arrows, or typing to filter) moves the selection;
+            // hover moves only `Command`'s own highlight. Both a click and the
+            // keyboard select, so Connect and `context.set_tunnel` follow either.
+            .on_select({
+                let this = this.clone();
+                move |index_path, window, cx| {
+                    if !window.last_input_was_keyboard() {
+                        return;
+                    }
+                    let _ = this.update(cx, |this, cx| this.follow_keyboard(index_path.row, cx));
+                }
+            })
+            .on_confirm({
+                let this = this.clone();
+                move |index_path, _window, cx| {
+                    let _ = this.update(cx, |this, cx| this.confirm_row(index_path.row, cx));
+                }
             });
 
         let status = self.attempt.as_ref().map(|attempt| {
@@ -476,12 +683,28 @@ impl Render for ClusterPicker {
             div().text_sm().text_color(color).child(text)
         });
 
+        let connect_disabled = self.selected_context.is_none() || self.is_connect_in_flight(cx);
+
         backdrop(
             card(cx)
                 .child(header(cx))
                 .child(command)
                 .children(status)
-                .child(div().flex().justify_end().child(manage_tunnels_control()))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(crate::ui::picker_keys::with_key(
+                            connect_button(connect_disabled, this.clone()),
+                            Some(crate::ui::picker_keys::enter_key()),
+                        ))
+                        .child(crate::ui::picker_keys::with_key(
+                            manage_tunnels_control(),
+                            crate::ui::picker_keys::manage_tunnels_key(window),
+                        )),
+                )
+                .child(crate::ui::picker_keys::key_hints(window, cx))
                 .track_focus(&self.focus_handle)
                 .into_any_element(),
         )

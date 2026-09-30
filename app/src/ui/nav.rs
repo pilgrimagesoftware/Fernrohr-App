@@ -183,6 +183,30 @@ impl OpenedPanel {
     }
 }
 
+/// Recovers the typed handle behind `id`, for a panel this window did not itself
+/// build - a restored one, whose only record in `util::shell::OpenPanel` is a
+/// `panel: None` (see that field's doc comment). `area.panel(id)` hands back the
+/// dock's own object-safe handle; `panel_name` says which of the four concrete panel
+/// types it is, and `Entity::from(&dyn PanelView)` recovers it as that type.
+///
+/// `window-context-bar` section 3.3's Disconnect needs this: it must close every
+/// panel a context has open in this window, including one the window only ever
+/// restored from a saved dock layout and so has no [`OpenedPanel`] for yet.
+pub fn opened_panel_for(
+    area: &gpui_kit::component::dock::DockArea,
+    id: PanelId,
+    cx: &App,
+) -> Option<OpenedPanel> {
+    let view = area.panel(id)?;
+    Some(match view.panel_name(cx) {
+        "Pods" => OpenedPanel::Pods(Entity::from(view.as_ref())),
+        "Logs" => OpenedPanel::Logs(Entity::from(view.as_ref())),
+        "Resource" => OpenedPanel::Placeholder(Entity::from(view.as_ref())),
+        "PodDetail" => OpenedPanel::PodDetail(Entity::from(view.as_ref())),
+        _ => return None,
+    })
+}
+
 /// Builds the panel for `scope` in its cluster's session and adds it to `area`'s
 /// centre.
 ///

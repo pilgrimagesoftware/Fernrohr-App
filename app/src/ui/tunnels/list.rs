@@ -9,6 +9,7 @@
 use super::editor::{TunnelEditor, TunnelEditorEvent};
 use crate::command::{Command, CommandRegistry};
 use crate::config::tunnels::TunnelConfig;
+use crate::consts::{TUNNELS_WINDOW_MIN_SIZE, TUNNELS_WINDOW_SIZE};
 use crate::k8s::cluster::kubeconfig;
 use crate::k8s::cluster::tunnel::{self, ForwardKey};
 use crate::tunnel::store::TunnelStore;
@@ -65,7 +66,14 @@ pub fn open_or_focus(cx: &mut App) {
     let handle = cx
         .open_window(
             WindowOptions {
-                window_min_size: Some(size(px(640.), px(520.))),
+                // An explicit, centered starting size: with only a minimum, the
+                // platform default opened this small list-and-editor window huge.
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    TUNNELS_WINDOW_SIZE,
+                    cx,
+                ))),
+                window_min_size: Some(TUNNELS_WINDOW_MIN_SIZE),
                 ..Default::default()
             },
             |window, cx| {

@@ -859,7 +859,14 @@ enum PodDetailState {
     /// The pod is gone. Its own state rather than an error: a detail panel that
     /// outlives its pod is a normal thing to have left open, not a failure.
     NotFound,
-    Failed(String),
+    /// `message` is what the panel shows by default - readable prose, not a
+    /// client library's `Debug` dump (`1-window-context-bar` bug 2); `detail`
+    /// is that same failure's full technical rendering, kept alongside rather
+    /// than discarded.
+    Failed {
+        message: String,
+        detail: String,
+    },
 }
 
 /// One fetch's outcome, so a 404 is told apart from every other error before it
@@ -873,17 +880,23 @@ enum PodFetch {
 /// trip's worth of state rather than a second fetch lifecycle to manage, since
 /// the Events tab has nothing to show until the pod itself has loaded anyway.
 /// A 404 on the pod skips the events lookup entirely: there is nothing left to
-/// name events by.
+/// name events by. Any other failure is `(message, detail)` - see
+/// `PodDetailState::Failed`'s doc comment.
 async fn fetch_pod(
     client: kube::Client,
     namespace: String,
     name: String,
-) -> Result<PodFetch, String> {
+) -> Result<PodFetch, (String, String)> {
     let api: Api<Pod> = Api::namespaced(client.clone(), &namespace);
     let pod = match api.get(&name).await {
         Ok(pod) => pod,
         Err(kube::Error::Api(status)) if status.code == 404 => return Ok(PodFetch::NotFound),
-        Err(error) => return Err(error.to_string()),
+        Err(error) => {
+            return Err((
+                crate::k8s::error::describe(&error),
+                crate::k8s::error::detail(&error),
+            ));
+        }
     };
     let events_api: Api<K8sEvent> = Api::namespaced(client, &namespace);
     let events = events_api
@@ -1034,7 +1047,7 @@ impl PodDetailPanel {
                     this.state = match result {
                         Ok(PodFetch::Found(pod, events)) => PodDetailState::Loaded(pod, events),
                         Ok(PodFetch::NotFound) => PodDetailState::NotFound,
-                        Err(error) => PodDetailState::Failed(error),
+                        Err((message, detail)) => PodDetailState::Failed { message, detail },
                     };
                     cx.notify();
                 });
@@ -1544,11 +1557,12 @@ impl Render for PodDetailPanel {
                 .p_3()
                 .child("This pod no longer exists.")
                 .into_any_element(),
-            PodDetailState::Failed(reason) => div()
-                .size_full()
-                .p_3()
-                .child(format!("Could not read pod: {reason}"))
-                .into_any_element(),
+            PodDetailState::Failed { message, detail } => panel_title::error_content(
+                format!("Could not read pod: {message}"),
+                Some(detail.clone()),
+                cx,
+            )
+            .into_any_element(),
             PodDetailState::Loaded(_, _) => match self.viewing {
                 // Field values wrap to the panel's width rather than
                 // overflowing it - vertical-only scroll, so nothing pushes
@@ -1574,6 +1588,7 @@ impl Render for PodDetailPanel {
         // convention `PodsPanel` uses - inside the panel's own body, not the
         // dock's shared per-tab-group toolbar, which only reflects whichever
         // tab happens to be active.
+        let window_contexts = crate::util::shell::window_context_count(window, cx);
         let yaml = self.viewing == DetailView::Yaml;
         let toggle_key =
             Kbd::binding_for_action(&ToggleDetailView, Some(PANEL_KEY_CONTEXT), window)
@@ -1602,30 +1617,54 @@ impl Render for PodDetailPanel {
             Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| Kbd::new(Keystroke::parse(literal).expect("valid keybinding")))
         };
+        // The pod's name (and, in a multi-context window, its context) on the left;
+        // the tab and view-toggle hints on the right.
+        //
+        // As the panel narrows, the name gives way first: it takes only the
+        // space the hints leave, ellipsizing, down to a floor that keeps a few
+        // characters readable. Past that floor the hints shrink instead and
+        // wrap onto further rows, each hint kept whole.
         let header = div()
             .flex()
             .items_center()
-            .justify_end()
+            .justify_between()
+            .gap_2()
             .p_2()
             .border_b_1()
             .border_color(cx.theme().border)
             .child(
                 div()
+                    .flex_1()
+                    .min_w(rems(8.))
+                    .child(panel_title::item_heading(
+                        self.pod.name.clone(),
+                        panel_title::heading_context(&self.scope, window_contexts),
+                        cx.theme().muted_foreground,
+                    )),
+            )
+            .child(
+                div()
                     .flex()
-                    .gap_3()
+                    .flex_wrap()
+                    .justify_end()
+                    .min_w_0()
+                    .gap_x_3()
+                    .gap_y_1()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .when(!yaml, |this| {
                         this.children(DetailSection::ALL.iter().map(|section| {
                             div()
                                 .flex()
+                                .flex_shrink_0()
                                 .items_center()
                                 .gap_1()
+                                .whitespace_nowrap()
                                 .child(tab_key(*section))
                                 .child(section.label())
                         }))
                     })
-                    .child(toggle_hint),
+                    .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
         let body = div()
@@ -1673,7 +1712,7 @@ impl BasePanel for PodDetailPanel {
 /// so there is no scope for a picker to change.
 impl Panel for PodDetailPanel {
     fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title(&self.scope)
+        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {

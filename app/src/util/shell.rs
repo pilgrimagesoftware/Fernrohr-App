@@ -3,22 +3,27 @@ use crate::config::{
     self,
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
+use crate::consts::{RESOURCE_PANEL_MAX_WIDTH, RESOURCE_PANEL_MIN_WIDTH, RESOURCE_PANEL_WIDTH};
+use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
 use crate::tunnel::store::TunnelStore;
+use crate::ui::context_bar::ContextBarView;
 use crate::ui::nav::{
     self, NavTarget, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
 };
 use crate::ui::panel_title::{self, PanelScope};
 use crate::ui::picker_tunnel;
 use crate::ui::tunnels;
+use crate::util::context_lifecycle;
 use crate::util::paths;
 use gpui_kit::component::Root;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::{
     DockArea, DockEvent, DockPlacement, DockSkin, PanelId, PanelInfo, PanelState,
 };
+use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::*;
 use kube::core::GroupVersionKind;
 use std::collections::HashMap;
@@ -99,35 +104,10 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     register_commands(&mut registry);
     let keymap = keymap::load(keymap_path, &registry);
 
-    let new_window_binding =
-        keymap::resolve(NEW_WINDOW_COMMAND_ID, NEW_WINDOW_DEFAULT_BINDING, &keymap);
-    let palette_binding = keymap::resolve(
-        TOGGLE_PALETTE_COMMAND_ID,
-        TOGGLE_PALETTE_DEFAULT_BINDING,
-        &keymap,
-    );
-    let show_pods_binding = keymap::resolve(
-        nav::SHOW_PODS_COMMAND_ID,
-        nav::SHOW_PODS_DEFAULT_BINDING,
-        &keymap,
-    );
-    let show_logs_binding = keymap::resolve(
-        nav::SHOW_LOGS_COMMAND_ID,
-        nav::SHOW_LOGS_DEFAULT_BINDING,
-        &keymap,
-    );
-    let set_context_tunnel_binding = keymap::resolve(
-        SET_CONTEXT_TUNNEL_COMMAND_ID,
-        SET_CONTEXT_TUNNEL_DEFAULT_BINDING,
-        &keymap,
-    );
-    cx.bind_keys([
-        KeyBinding::new(&new_window_binding, NewWindow, None),
-        KeyBinding::new(&palette_binding, ToggleCommandPalette, None),
-        KeyBinding::new(&show_pods_binding, ShowPods, None),
-        KeyBinding::new(&show_logs_binding, ShowLogs, None),
-        KeyBinding::new(&set_context_tunnel_binding, SetContextTunnel, None),
-    ]);
+    // Every registered command, from the registry itself - not a hand-kept list,
+    // which is how `tunnels.manage` ended up with a menu item but no key.
+    let bindings = keymap::bindings(&registry, &keymap, cx.keyboard_mapper().as_ref());
+    cx.bind_keys(bindings);
     // The panels' own shortcuts, each in its own key context. A panel naming a
     // key in its hint bar has not bound that key: without this the hint bar
     // prints letters no keystroke resolves to, and the shortcut does nothing.
@@ -139,6 +119,13 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });
+    // `window-context-bar` design.md decision 2: closing a window releases every
+    // hold it took, wherever it took them - the registry already knows which
+    // contexts a closed window used, so this needs no window-specific state.
+    cx.on_window_closed(|cx, window_id| {
+        ClusterRegistry::release_window(cx, window_id);
+    })
+    .detach();
 
     crate::ui::menu::init(&registry, cx);
     cx.set_global(registry);
@@ -156,6 +143,13 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         if let Some(layouts) = cx.try_global::<SavedDockLayouts>() {
             let _ = crate::config::dock_layouts::save(&dock_layouts_path, &layouts.0);
         }
+        // GPUI's quit path tears down windows but never runs the `Drop` glue on
+        // app-scoped globals - `ClusterRegistry`, and so every live `RegistryHandle`/
+        // `SshTunnel`/`SshTransport` it holds - so nothing would otherwise kill this
+        // run's own `ssh` forwards before the process exits. Runs synchronously here,
+        // not inside the returned future, so it's done before this observer even
+        // returns rather than racing GPUI's shutdown timeout. See `util::pidfile`.
+        crate::util::pidfile::kill_live_forwards();
         async {}
     })
     .detach();
@@ -187,14 +181,127 @@ fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixels> {
     }
 }
 
-fn layout_from_bounds(bounds: Bounds<Pixels>) -> WindowLayout {
+/// Task 2.2's save side: `contexts` is the live window's own `WindowMode::Workspace`
+/// list (empty for a `Picker`-mode window, which has none yet), read by
+/// [`workspace_contexts`] just before this is called. `panels` stays empty - turning
+/// a window's actual open panels into `PanelDescriptor`s is a later change's job; on
+/// restore, `contexts` alone is enough to reconnect every context a window used
+/// (the spec's "Multi-context window restored" scenario), even before that job lands.
+fn layout_from_bounds(bounds: Bounds<Pixels>, live: LiveWorkspace) -> WindowLayout {
     WindowLayout {
         width: f32::from(bounds.size.width),
         height: f32::from(bounds.size.height),
         x: Some(f32::from(bounds.origin.x)),
         y: Some(f32::from(bounds.origin.y)),
+        contexts: live.contexts,
         panels: Vec::new(),
+        resource_panel_width: live.resource_width.map(f32::from),
     }
+}
+
+/// What a save reads off a live window beyond its geometry.
+#[derive(Default)]
+struct LiveWorkspace {
+    contexts: Vec<String>,
+    resource_width: Option<Pixels>,
+}
+
+/// The live contexts a window uses, read back through its `Root` - empty for a
+/// `Picker`-mode window (nothing to save yet) or one whose `Root`/`MainWindow` can't
+/// be found (shouldn't happen for a window this module opened, but geometry alone is
+/// still worth saving over failing the whole snapshot).
+fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorkspace {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return LiveWorkspace::default();
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return LiveWorkspace::default();
+    };
+    let main_window = main_window.read(cx);
+    LiveWorkspace {
+        contexts: main_window.contexts(),
+        resource_width: main_window.resource_width(),
+    }
+}
+
+/// Remembers a closing main window's layout so `save` still writes it after the window
+/// is gone (see [`ClosedWindowLayouts`]).
+///
+/// Only the *last* main window is recorded. A window closed while others stay open
+/// is one the user is done with, so it's dropped rather than restored at the next
+/// launch. The last one is recorded because closing it quits the app
+/// (`QuitMode::LastWindowClosed`) before `save` can read any open window.
+fn record_closing_layout(window_id: WindowId, window: &mut Window, cx: &mut App) {
+    if other_open_main_windows(window_id, cx) > 0 {
+        if cx.has_global::<ClosedWindowLayouts>() {
+            cx.global_mut::<ClosedWindowLayouts>().0.remove(&window_id);
+        }
+        return;
+    }
+    let bounds = window.bounds();
+    let live = workspace_contexts(window, cx);
+    let layout = layout_from_bounds(bounds, live);
+    if !cx.has_global::<ClosedWindowLayouts>() {
+        cx.set_global(ClosedWindowLayouts::default());
+    }
+    cx.global_mut::<ClosedWindowLayouts>()
+        .0
+        .insert(window_id, layout);
+}
+
+/// How many main (workspace or picker) windows other than `except` are open.
+fn other_open_main_windows(except: WindowId, cx: &App) -> usize {
+    cx.windows()
+        .into_iter()
+        .filter(|handle| handle.window_id() != except)
+        .filter(|handle| {
+            handle
+                .downcast::<Root>()
+                .and_then(|root| root.read(cx).ok())
+                .is_some_and(|root| root.view().clone().downcast::<MainWindow>().is_ok())
+        })
+        .count()
+}
+
+/// Closes `window` the way its close button does. `remove_window` skips the
+/// platform's should-close hook, so a main window's layout is recorded here first;
+/// other windows (Tunnels, About) have no layout to keep.
+pub(crate) fn close_window(window: &mut Window, cx: &mut App) {
+    let is_main = window.root::<Root>().flatten().is_some_and(|root| {
+        root.read(cx)
+            .view()
+            .clone()
+            .downcast::<MainWindow>()
+            .is_ok()
+    });
+    if is_main {
+        record_closing_layout(window.window_handle().window_id(), window, cx);
+    }
+    window.remove_window();
+}
+
+/// How many contexts the window currently uses, read live from its `MainWindow` - 1
+/// for a picker-mode window or one this module didn't open. Read, not cached: the
+/// count changes on add and disconnect, and dock panels are drawn after
+/// `MainWindow`'s own render has returned, so reading it here never re-enters it.
+pub(crate) fn window_context_count(window: &mut Window, cx: &App) -> usize {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return 1;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return 1;
+    };
+    main_window.read(cx).contexts().len().max(1)
+}
+
+/// A saved Resource panel width, clamped to the range its divider allows; the
+/// default when the layout has none.
+fn restored_resource_width(layout: &WindowLayout) -> Pixels {
+    layout
+        .resource_panel_width
+        .map(px)
+        .map(|width| width.clamp(RESOURCE_PANEL_MIN_WIDTH, RESOURCE_PANEL_MAX_WIDTH))
+        .unwrap_or(RESOURCE_PANEL_WIDTH)
 }
 
 /// Builds the workspace dock for `context_name` and opens its first panel:
@@ -228,21 +335,31 @@ fn build_workspace(
     (dock_area, dock_skin, scope, first)
 }
 
-/// The first restorable panel's `cluster_context`, if any - used to pick which context
-/// a restored (non-empty) layout's workspace connects to, since full per-panel
-/// reconstruction from `PanelDescriptor` is future work.
-fn first_restored_context(layout: &WindowLayout) -> Option<String> {
-    restorable_panels(layout)
-        .into_iter()
-        .find_map(|descriptor| match descriptor {
+/// Every context a restored (non-empty) layout's workspace should reconnect, in the
+/// order the window used them: `layout.contexts` when it says anything, otherwise
+/// (`window-context-bar` design.md decision 3, an older file with no `contexts` at
+/// all) the distinct `cluster_context`s named by its saved panels, first-seen order.
+/// Empty for a layout with no restorable panels - that window opens in `Picker` mode.
+fn restored_contexts(layout: &WindowLayout) -> Vec<String> {
+    if !layout.contexts.is_empty() {
+        return layout.contexts.clone();
+    }
+    let mut contexts = Vec::new();
+    for descriptor in restorable_panels(layout) {
+        let context_name = match descriptor {
             PanelDescriptor::Pods {
                 cluster_context, ..
             }
             | PanelDescriptor::Logs {
                 cluster_context, ..
-            } => Some(cluster_context.clone()),
-            PanelDescriptor::Unknown => None,
-        })
+            } => cluster_context,
+            PanelDescriptor::Unknown => continue,
+        };
+        if !contexts.contains(context_name) {
+            contexts.push(context_name.clone());
+        }
+    }
+    contexts
 }
 
 /// Enough to recognise a panel the dock already holds: which kind, in which
@@ -332,6 +449,49 @@ fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
     keys
 }
 
+/// The cluster context a Logs or Pod-detail panel should scope itself to: the
+/// context that published the currently selected pod ([`SelectedPod`]), when
+/// `contexts` - this window's own - includes it; [`contexts[active]`](usize)
+/// while nothing is selected yet (a bare `nav.show_logs` before any pod has
+/// been clicked, or a restored panel with no live selection at all). Every
+/// other target is not pod-scoped and always reads `contexts[active]`.
+///
+/// A selection published by a context this window does not hold is refused
+/// rather than opened against `active` instead - that silent substitution
+/// (`1-window-context-bar` bug 1) is what streamed a pod selected in one
+/// context's Pods panel against a *different* context, turning a real pod
+/// into a 404. [`MainWindow::open_target_with_view`] no-ops on `None`, after
+/// this has logged why.
+fn pod_scoped_context(
+    target: &NavTarget,
+    contexts: &[String],
+    active: usize,
+    cx: &App,
+) -> Option<String> {
+    if !matches!(target, NavTarget::Logs | NavTarget::Pod(_)) {
+        return Some(contexts[active].clone());
+    }
+    match cx
+        .try_global::<SelectedPod>()
+        .and_then(|selected| selected.0.as_ref())
+    {
+        None => Some(contexts[active].clone()),
+        Some(selection) if contexts.iter().any(|held| held == &selection.context_name) => {
+            Some(selection.context_name.clone())
+        }
+        Some(selection) => {
+            log::warn!(
+                "selected pod {}/{} belongs to context {:?}, which this window does not hold \
+                 ({contexts:?}); not opening {target:?}",
+                selection.namespace,
+                selection.name,
+                selection.context_name,
+            );
+            None
+        }
+    }
+}
+
 /// A window's body: the cluster picker (no connected context yet) or a connected
 /// workspace. A window opens in `Picker` whenever it has no restored panels, per the
 /// `cluster-picker` and `app-shell` specs.
@@ -342,7 +502,19 @@ enum WindowMode {
         /// Keeps the dock's renderer alive. The default skin uses GPUI focus
         /// state for active panel chrome and provides its zoom control.
         _dock_skin: Rc<DockSkin>,
-        context_name: String,
+        /// Every context this window uses, in the order they were added
+        /// (`window-context-bar` design.md decision 1). A restored window can
+        /// already carry more than one; adding a second interactively (the "+"
+        /// control, section 3) is still that change's own later sections' job.
+        /// `connection_count` (how many cluster connections the window holds,
+        /// which section 10.1's title bar reads) is always `contexts.len()`
+        /// rather than a field of its own, so the two can never disagree.
+        contexts: Vec<String>,
+        /// Index into `contexts` naming which one the Resource panel's cluster
+        /// dropdown currently shows, and which one a window-wide action (like
+        /// `SetContextTunnel`) applies to. Always `0` while `contexts` has one
+        /// entry.
+        active: usize,
         /// The discovered-kind list in the window's left edge. It reads the
         /// same `ClusterSession` as `dock_area`, so picking a kind opens a
         /// panel without reconnecting.
@@ -356,24 +528,29 @@ enum WindowMode {
         /// dock's active panel once the user clicks tabs directly (section 12
         /// tracks that).
         nav: Box<NavTarget>,
-        /// How many cluster connections this window holds. One today: adding a
-        /// second connection to an already-connected window is an explicit
-        /// non-goal of this change (`design.md`), so the count is the window's
-        /// to state and pass on rather than something panels assume. Section
-        /// 10.1's title bar reads it.
-        connection_count: usize,
         /// `connection-status-bar`: one item per context this window uses, shown along
         /// the workspace's bottom edge. Absent in `Picker` mode - the picker already
         /// shows its own connect progress (proposal.md's non-goals).
         status_bar: Entity<crate::ui::status_bar::StatusBarView>,
+        /// `window-context-bar` section 3: one chip per context this window uses,
+        /// shown along the workspace's top edge, below the title bar. `contexts` and
+        /// `active` above are this bar's source of truth - every edit to either goes
+        /// through [`MainWindow::sync_context_children`], which is what keeps the bar,
+        /// the status bar, and the Resource panel's dropdown from disagreeing.
+        context_bar: Entity<ContextBarView>,
+        /// The Resource panel's current width: seeded from the saved layout, updated
+        /// on every divider drag, and written back by [`save`].
+        resource_width: Pixels,
     },
 }
 
-/// Opens one window, in `Picker` mode if `layout` has no restorable panels, or directly
-/// into a connected workspace (seeded from the restored layout's context) otherwise.
+/// Opens one window, in `Picker` mode if `layout` has no restorable contexts, or
+/// directly into a connected workspace (seeded from the restored layout's contexts)
+/// otherwise.
 pub fn open_window(cx: &mut App, layout: WindowLayout) {
     let bounds = window_bounds(&layout, cx);
-    let restored_context = first_restored_context(&layout);
+    let contexts = restored_contexts(&layout);
+    let resource_width = restored_resource_width(&layout);
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -389,13 +566,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
 
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
-                let layout = layout_from_bounds(window.bounds());
-                if !cx.has_global::<ClosedWindowLayouts>() {
-                    cx.set_global(ClosedWindowLayouts::default());
-                }
-                cx.global_mut::<ClosedWindowLayouts>()
-                    .0
-                    .insert(window_id, layout);
+                record_closing_layout(window_id, window, cx);
                 true
             });
 
@@ -410,8 +581,9 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                     unreachable!("just constructed a picker-mode window")
                 };
                 watch_picker(picker, window, cx);
-                if let Some(context_name) = restored_context {
-                    view.enter_workspace(context_name, window, cx);
+                if !contexts.is_empty() {
+                    view.enter_workspace(contexts, window, cx);
+                    view.set_resource_width(resource_width);
                 }
                 view
             });
@@ -434,7 +606,7 @@ fn watch_picker(
         window,
         |this: &mut MainWindow, _picker, event, window, cx| {
             let crate::ui::picker::PickerEvent::Connected { context_name, .. } = event;
-            this.enter_workspace(context_name.clone(), window, cx);
+            this.enter_workspace(vec![context_name.clone()], window, cx);
         },
     )
     .detach();
@@ -455,13 +627,17 @@ fn watch_workspace(
             if !matches!(event, DockEvent::LayoutChanged) {
                 return;
             }
-            if let WindowMode::Workspace { context_name, .. } = &this.mode
+            // Task 2.2: keyed by every context the window uses (`context_lifecycle::
+            // dock_layout_key`), not just the first - a single-context window's key is
+            // still its bare context name, so this is the same save it always was for
+            // that case, and a new one for a multi-context window (design.md decision 3
+            // predates task 2.2's fuller persistence; see that task's own note on why).
+            if let WindowMode::Workspace { contexts, .. } = &this.mode
                 && cx.has_global::<SavedDockLayouts>()
             {
+                let key = context_lifecycle::dock_layout_key(contexts);
                 let state = dock_area.read(cx).dump(cx);
-                cx.global_mut::<SavedDockLayouts>()
-                    .0
-                    .insert(context_name.clone(), state);
+                cx.global_mut::<SavedDockLayouts>().0.insert(key, state);
             }
             this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
@@ -499,6 +675,46 @@ fn tunnel_dialog_option(
         set_context_tunnel_and_close(&tunnels_path, &context_name, tunnel_id.clone(), window, cx);
     })
     .into_any_element()
+}
+
+/// The "Set tunnel for <context>" chooser: Direct plus every tunnel, the current
+/// binding checked. Shared by `context.set_tunnel` in a workspace and in the picker.
+fn open_tunnel_dialog(context_name: String, window: &mut Window, cx: &mut App) {
+    let tunnels_path = paths::preference_dir().join("tunnels.toml");
+    let store = TunnelStore::new(tunnels_path.clone());
+    let choices = picker_tunnel::tunnel_choices(&store);
+    let current = store.binding_for(&context_name);
+
+    Root::update(window, cx, |root, window, cx| {
+        root.open_dialog(
+            move |dialog, _window, _cx| {
+                let mut options: Vec<AnyElement> = Vec::new();
+                options.push(tunnel_dialog_option(
+                    "Direct".to_string(),
+                    current.is_none(),
+                    tunnels_path.clone(),
+                    context_name.clone(),
+                    None,
+                ));
+                for choice in &choices {
+                    let checked = current.as_deref() == Some(choice.id.as_str());
+                    options.push(tunnel_dialog_option(
+                        choice.name.clone(),
+                        checked,
+                        tunnels_path.clone(),
+                        context_name.clone(),
+                        Some(choice.id.clone()),
+                    ));
+                }
+                dialog
+                    .title(format!("Set tunnel for {context_name}"))
+                    .w(px(360.))
+                    .child(div().flex().flex_col().gap_1().children(options))
+            },
+            window,
+            cx,
+        );
+    });
 }
 
 /// Section 3.2's actual write: binds (`Some`) or unbinds (`None`) `context_name`
@@ -551,30 +767,48 @@ impl MainWindow {
         }
     }
 
-    /// Swaps this window to a connected workspace on `context_name`: the dock
-    /// (defaulting to Pods), the Resource panel listing that cluster's
-    /// discovered kinds, and the subscription that opens whatever is picked.
-    /// Both windows-enter-workspace sites go through here so the Resource
-    /// panel cannot be wired up in one of them and forgotten in the other.
+    /// Swaps this window to a connected workspace on `contexts`: the dock (defaulting
+    /// to a Pods panel on `contexts[0]`), the Resource panel listing that cluster's
+    /// discovered kinds, and the subscription that opens whatever is picked. Both
+    /// windows-enter-workspace sites go through here so the Resource panel cannot be
+    /// wired up in one of them and forgotten in the other.
+    ///
+    /// Takes this window's hold on every one of `contexts` (`window-context-bar`
+    /// design.md decision 2) before building anything else, so a session already
+    /// exists (or is connected here) for every step below to read - including a
+    /// context past `contexts[0]`, which a restored multi-context window holds but,
+    /// absent the "+" control and its panel (section 3), opens no panel for yet.
+    ///
+    /// `contexts` must not be empty.
     fn enter_workspace(
         &mut self,
-        context_name: String,
+        contexts: Vec<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // One connection per connected window in this change; see
-        // `WindowMode::Workspace::connection_count`.
-        const CONNECTIONS: usize = 1;
+        debug_assert!(
+            !contexts.is_empty(),
+            "a workspace always has at least one context"
+        );
+        let window_id = window.window_handle().window_id();
+        for context_name in &contexts {
+            ClusterRegistry::hold(cx, context_name, window_id);
+        }
+        let context_name = contexts[0].clone();
+        // Task 2.2: keyed by every context this window uses - see `watch_workspace`'s
+        // matching save-side key.
         let saved_layout = if cx.has_global::<SavedDockLayouts>() {
             cx.global::<SavedDockLayouts>()
                 .0
-                .get(&context_name)
+                .get(&context_lifecycle::dock_layout_key(&contexts))
                 .cloned()
         } else {
             None
         };
+        // One connection per context in `contexts`; see `WindowMode::Workspace::contexts`.
+        let connection_count = contexts.len();
         let (dock_area, dock_skin, scope, (first_id, first)) =
-            build_workspace(context_name.clone(), CONNECTIONS, window, cx);
+            build_workspace(context_name.clone(), connection_count, window, cx);
         let restored = saved_layout.is_some();
         let restored_keys = saved_layout
             .as_ref()
@@ -612,28 +846,42 @@ impl MainWindow {
             }]
         };
         watch_workspace(&dock_area, window, cx);
-        let resource_panel =
-            cx.new(|cx| crate::ui::resource_panel::ResourcePanel::new(context_name.clone(), cx));
+        let resource_panel = cx.new(|cx| {
+            crate::ui::resource_panel::ResourcePanel::new(
+                context_name.clone(),
+                contexts.clone(),
+                cx,
+            )
+        });
         cx.subscribe_in(
             &resource_panel,
             window,
-            |this: &mut MainWindow, _panel, event, window, cx| {
-                let crate::ui::resource_panel::ResourceEvent::Open(target) = event;
-                this.open_target(target.clone(), window, cx);
+            |this: &mut MainWindow, _panel, event, window, cx| match event {
+                crate::ui::resource_panel::ResourceEvent::Open(target) => {
+                    this.open_target(target.clone(), window, cx);
+                }
+                crate::ui::resource_panel::ResourceEvent::SwitchContext(context_name) => {
+                    this.set_active_context(context_name, window, cx);
+                }
             },
         )
         .detach();
         let status_bar =
-            cx.new(|cx| crate::ui::status_bar::StatusBarView::new(vec![context_name.clone()], cx));
+            cx.new(|cx| crate::ui::status_bar::StatusBarView::new(contexts.clone(), cx));
+        let main_window_handle = cx.weak_entity();
+        let context_bar =
+            cx.new(|cx| ContextBarView::new(contexts.clone(), 0, main_window_handle, cx));
         self.mode = WindowMode::Workspace {
             dock_area,
             _dock_skin: dock_skin,
-            context_name,
+            contexts,
+            active: 0,
             resource_panel,
             open_panels,
             nav: Box::new(NavTarget::pods()),
-            connection_count: CONNECTIONS,
             status_bar,
+            context_bar,
+            resource_width: RESOURCE_PANEL_WIDTH,
         };
         if !restored {
             self.watch_scope_changes(first, window, cx);
@@ -705,6 +953,218 @@ impl MainWindow {
         cx.notify();
     }
 
+    /// Every context this window uses - empty in `Picker` mode. What `save`
+    /// (`util/shell.rs`'s module doc comment) persists per window.
+    fn resource_width(&self) -> Option<Pixels> {
+        match &self.mode {
+            WindowMode::Picker(_) => None,
+            WindowMode::Workspace { resource_width, .. } => Some(*resource_width),
+        }
+    }
+
+    fn set_resource_width(&mut self, width: Pixels) {
+        if let WindowMode::Workspace { resource_width, .. } = &mut self.mode {
+            *resource_width = width;
+        }
+    }
+
+    fn contexts(&self) -> Vec<String> {
+        match &self.mode {
+            WindowMode::Picker(_) => Vec::new(),
+            WindowMode::Workspace { contexts, .. } => contexts.clone(),
+        }
+    }
+
+    /// How many of this window's open panels use `context_name` - the count the
+    /// Disconnect confirmation (`ui/context_bar.rs`) states before closing them.
+    /// `0` in `Picker` mode, or for a context this window doesn't use.
+    pub(crate) fn context_panel_count(&self, context_name: &str) -> usize {
+        let WindowMode::Workspace { open_panels, .. } = &self.mode else {
+            return 0;
+        };
+        open_panels
+            .iter()
+            .filter(|open| open.key.context_name == context_name)
+            .count()
+    }
+
+    /// Pushes `contexts`/`active` to the Resource panel, the status bar, and the
+    /// context bar - the one place that updates all three, so `add_context`,
+    /// `disconnect_context`, and `set_active_context` cannot update one and forget
+    /// another (see `WindowMode::Workspace::context_bar`'s doc comment). A no-op in
+    /// `Picker` mode.
+    fn sync_context_children(&mut self, cx: &mut Context<Self>) {
+        let WindowMode::Workspace {
+            contexts,
+            active,
+            resource_panel,
+            status_bar,
+            context_bar,
+            ..
+        } = &self.mode
+        else {
+            return;
+        };
+        let contexts_snapshot = contexts.clone();
+        let active_index = *active;
+        let Some(active_context) = contexts_snapshot.get(active_index).cloned() else {
+            return;
+        };
+        let resource_panel = resource_panel.clone();
+        let status_bar = status_bar.clone();
+        let context_bar = context_bar.clone();
+        // Deferred: a chip click (`ui/context_bar.rs::ContextBarView::
+        // on_chip_clicked`) and the Resource panel's own cluster dropdown
+        // (`ResourcePanel::cluster_dropdown`'s `cx.emit`) both reach this
+        // synchronously from within that very entity's own update - updating it
+        // again here, before that update returns, panics ("cannot update T while
+        // it is already being updated"). `cx.defer` runs this closure once the
+        // current effect cycle finishes and every lease along the way to here has
+        // released, which resolves before any `Entity::update`/`WindowHandle::
+        // update` call that reached `set_active_context` returns - so callers
+        // still observe the synced state immediately afterward, same as before
+        // this was deferred.
+        cx.defer(move |cx| {
+            resource_panel.update(cx, |panel, cx| {
+                panel.set_active_context(active_context, contexts_snapshot.clone(), cx);
+            });
+            status_bar.update(cx, |bar, cx| {
+                bar.set_context_names(contexts_snapshot.clone(), cx);
+            });
+            context_bar.update(cx, |bar, cx| {
+                bar.set_state(contexts_snapshot, active_index, cx);
+            });
+        });
+        cx.notify();
+    }
+
+    /// `window-context-bar` design.md decision 4: the one place `active` is
+    /// written - a chip click and the Resource panel's own cluster dropdown both
+    /// land here, which is what keeps the two in sync. A no-op if `context_name`
+    /// isn't one this window uses (a stale request racing a disconnect).
+    pub(crate) fn set_active_context(
+        &mut self,
+        context_name: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let WindowMode::Workspace {
+            contexts, active, ..
+        } = &mut self.mode
+        else {
+            return;
+        };
+        let Some(index) = contexts.iter().position(|name| name == context_name) else {
+            return;
+        };
+        *active = index;
+        self.sync_context_children(cx);
+    }
+
+    /// Section 3.2: adds `context_name` to this window, makes it the active
+    /// context, and opens its Pods panel. Called only after
+    /// `ui/context_bar.rs`'s "+" popover already reports
+    /// `PickerEvent::Connected` for it, so by the time this runs the connection
+    /// has already succeeded - a context that fails to connect never reaches
+    /// this at all, which is what keeps a failed add from opening a panel.
+    pub(crate) fn add_context(
+        &mut self,
+        context_name: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let WindowMode::Workspace { contexts, .. } = &self.mode else {
+            return;
+        };
+        if contexts.contains(&context_name) {
+            return;
+        }
+
+        let window_id = window.window_handle().window_id();
+        ClusterRegistry::hold(cx, &context_name, window_id);
+
+        let WindowMode::Workspace {
+            contexts, active, ..
+        } = &mut self.mode
+        else {
+            return;
+        };
+        contexts.push(context_name);
+        *active = contexts.len() - 1;
+        self.sync_context_children(cx);
+        self.open_target(NavTarget::pods(), window, cx);
+    }
+
+    /// Section 3.3: closes every panel in this window that uses `context_name`,
+    /// releases this window's hold on it, and removes its chip. Falls back to
+    /// the cluster picker when that was the window's last context.
+    pub(crate) fn disconnect_context(
+        &mut self,
+        context_name: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let WindowMode::Workspace {
+            dock_area,
+            open_panels,
+            ..
+        } = &self.mode
+        else {
+            return;
+        };
+        let dock_area = dock_area.clone();
+        let closing: Vec<(PanelId, Option<OpenedPanel>)> = open_panels
+            .iter()
+            .filter(|open| open.key.context_name == context_name)
+            .map(|open| (open.id, open.panel.clone()))
+            .collect();
+
+        for (id, opened) in closing {
+            let opened = opened.or_else(|| nav::opened_panel_for(dock_area.read(cx), id, cx));
+            let Some(opened) = opened else {
+                continue;
+            };
+            dock_area.update(cx, |area, cx| match opened {
+                OpenedPanel::Pods(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),
+            });
+        }
+
+        let WindowMode::Workspace { open_panels, .. } = &mut self.mode else {
+            return;
+        };
+        open_panels.retain(|open| open.key.context_name != context_name);
+
+        let window_id = window.window_handle().window_id();
+        ClusterRegistry::release(cx, &context_name, window_id);
+
+        let WindowMode::Workspace {
+            contexts, active, ..
+        } = &self.mode
+        else {
+            return;
+        };
+        let outcome =
+            context_lifecycle::contexts_after_disconnect(contexts, *active, &context_name);
+
+        match outcome {
+            Some((remaining, new_active)) => {
+                let WindowMode::Workspace {
+                    contexts, active, ..
+                } = &mut self.mode
+                else {
+                    return;
+                };
+                *contexts = remaining;
+                *active = new_active;
+                self.sync_context_children(cx);
+            }
+            None => self.enter_picker(window, cx),
+        }
+    }
+
     fn enter_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let picker = cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx));
         watch_picker(&picker, window, cx);
@@ -731,45 +1191,19 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let WindowMode::Workspace { context_name, .. } = &self.mode else {
-            return;
+        // The window's active context in a workspace; in the picker, the context the
+        // user selected there - so the binding can be set from the keyboard before
+        // connecting, not only from a row's dropdown.
+        let context_name = match &self.mode {
+            WindowMode::Workspace {
+                contexts, active, ..
+            } => contexts[*active].clone(),
+            WindowMode::Picker(picker) => match picker.read(cx).selected_context() {
+                Some(context_name) => context_name,
+                None => return,
+            },
         };
-        let context_name = context_name.clone();
-        let tunnels_path = paths::preference_dir().join("tunnels.toml");
-        let store = TunnelStore::new(tunnels_path.clone());
-        let choices = picker_tunnel::tunnel_choices(&store);
-        let current = store.binding_for(&context_name);
-
-        Root::update(window, cx, |root, window, cx| {
-            root.open_dialog(
-                move |dialog, _window, _cx| {
-                    let mut options: Vec<AnyElement> = Vec::new();
-                    options.push(tunnel_dialog_option(
-                        "Direct".to_string(),
-                        current.is_none(),
-                        tunnels_path.clone(),
-                        context_name.clone(),
-                        None,
-                    ));
-                    for choice in &choices {
-                        let checked = current.as_deref() == Some(choice.id.as_str());
-                        options.push(tunnel_dialog_option(
-                            choice.name.clone(),
-                            checked,
-                            tunnels_path.clone(),
-                            context_name.clone(),
-                            Some(choice.id.clone()),
-                        ));
-                    }
-                    dialog
-                        .title(format!("Set tunnel for {context_name}"))
-                        .w(px(360.))
-                        .child(div().flex().flex_col().gap_1().children(options))
-                },
-                window,
-                cx,
-            );
-        });
+        open_tunnel_dialog(context_name, window, cx);
     }
 
     /// Opens the selected pod's detail panel on the field list. Emitted by a
@@ -849,23 +1283,27 @@ impl MainWindow {
     ) {
         let WindowMode::Workspace {
             dock_area,
-            context_name,
+            contexts,
+            active,
             resource_panel,
             open_panels,
             nav,
-            connection_count,
             ..
         } = &mut self.mode
         else {
             return;
         };
-        let connection_count = *connection_count;
+        let connection_count = contexts.len();
+        let Some(context_name) = pod_scoped_context(&target, contexts.as_slice(), *active, cx)
+        else {
+            return;
+        };
         // Set only when a panel was actually built, so the subscription below
         // is not made for a panel the dock already had.
         let mut watch_scope = None;
         let scope = PanelScope {
             connection_count,
-            ..PanelScope::new(target.clone(), context_name.clone())
+            ..PanelScope::new(target.clone(), context_name)
         };
         let key = PanelKey::from(&scope);
         match open_panels.iter().find(|open| open.key == key) {
@@ -911,6 +1349,78 @@ impl MainWindow {
         let held: Vec<PanelId> = tree.panels().collect();
         open_panels.retain(|open| held.contains(&open.id));
     }
+
+    /// Test-only: a bare `Picker`-mode window, for tests elsewhere in the crate
+    /// that only need a real `WeakEntity<MainWindow>` to satisfy a constructor
+    /// (`ui/context_bar.rs::ContextBarView::new`, which stores one but never reads
+    /// it outside a click handler) - `mode` and `focus_handle` above have no
+    /// visibility modifier, so nothing outside this module can build a
+    /// `MainWindow` literal directly.
+    #[cfg(test)]
+    pub(crate) fn test_picker_window(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            mode: WindowMode::Picker(
+                cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
+            ),
+            focus_handle: cx.focus_handle(),
+        }
+    }
+
+    /// Test-only: a window already in `Workspace` mode on `contexts`, for tests
+    /// that need a chip click or a Resource panel dropdown pick to actually reach
+    /// [`Self::set_active_context`] and its downstream `sync_context_children`.
+    /// Not `util/shell/tests.rs`'s own `connected_window`: that helper drives a
+    /// real `ClusterConnection::connect`, which this one's callers don't need.
+    /// Callers must pre-seed every context's `ClusterRegistry` session first
+    /// (`insert_test_session`), so `enter_workspace`'s `hold` reuses it instead of
+    /// starting a real connect.
+    #[cfg(test)]
+    pub(crate) fn test_workspace(
+        contexts: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut this = Self::test_picker_window(window, cx);
+        this.enter_workspace(contexts, window, cx);
+        this
+    }
+
+    /// Test-only readback of which context is active - `active` itself has no
+    /// getter since production code only ever needs to write it (through
+    /// [`Self::set_active_context`]).
+    #[cfg(test)]
+    pub(crate) fn test_active_context_name(&self) -> Option<String> {
+        match &self.mode {
+            WindowMode::Workspace {
+                contexts, active, ..
+            } => contexts.get(*active).cloned(),
+            WindowMode::Picker(_) => None,
+        }
+    }
+
+    /// Test-only access to the Resource panel, so a test can drive its cluster
+    /// dropdown's `SwitchContext` exactly as a click does.
+    #[cfg(test)]
+    pub(crate) fn test_resource_panel(
+        &self,
+    ) -> Option<Entity<crate::ui::resource_panel::ResourcePanel>> {
+        match &self.mode {
+            WindowMode::Workspace { resource_panel, .. } => Some(resource_panel.clone()),
+            WindowMode::Picker(_) => None,
+        }
+    }
+
+    /// Test-only access to the embedded context bar, so a test can assert the
+    /// *real* bar [`Self::sync_context_children`] pushes into - not a second,
+    /// disconnected `ContextBarView` built only for the test - reflects an
+    /// active-context change.
+    #[cfg(test)]
+    pub(crate) fn test_context_bar(&self) -> Option<Entity<ContextBarView>> {
+        match &self.mode {
+            WindowMode::Workspace { context_bar, .. } => Some(context_bar.clone()),
+            WindowMode::Picker(_) => None,
+        }
+    }
 }
 
 /// Opens the command palette in a dialog on `window`'s `Root`. A fresh
@@ -944,32 +1454,54 @@ fn open_command_palette(window: &mut Window, cx: &mut App) {
 }
 
 impl Render for MainWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.mode {
             WindowMode::Picker(picker) => picker.clone().into_any_element(),
             // The Resource panel is the window's left edge. It used to be a
             // fixed Pods/Logs list built here; the kinds now come from the
             // cluster's own discovery (spec 8.1), so it owns its own chrome.
-            // `connection-status-bar`: the workspace is now a column - the
+            // `connection-status-bar`/`window-context-bar`: the workspace is a
+            // column - the context bar fixed to its own height at the top, the
             // existing panel row at `flex_1`, then the status bar fixed to its
-            // own height below it. The picker has no bar (it shows its own
-            // connect progress instead).
+            // own height below it. The picker has neither bar (it shows its own
+            // connect progress instead, and has no context list to chip yet).
             WindowMode::Workspace {
                 dock_area,
                 resource_panel,
                 status_bar,
+                context_bar,
+                resource_width,
                 ..
             } => div()
                 .size_full()
                 .flex()
                 .flex_col()
+                .child(context_bar.clone())
                 .child(
-                    div()
-                        .flex_1()
-                        .min_h_0()
-                        .flex()
-                        .child(resource_panel.clone())
-                        .child(dock_area.clone().into_any_element()),
+                    // The Resource panel is a resizable split, not a fixed-width
+                    // column: drag the divider to trade list width for dock space.
+                    div().flex_1().min_h_0().child(
+                        h_resizable("workspace-split")
+                            .on_resize({
+                                let this = cx.weak_entity();
+                                move |state, _window, cx| {
+                                    let Some(width) = state.read(cx).sizes().first().copied()
+                                    else {
+                                        return;
+                                    };
+                                    let _ = this.update(cx, |this, _cx| {
+                                        this.set_resource_width(width);
+                                    });
+                                }
+                            })
+                            .child(
+                                resizable_panel()
+                                    .size(*resource_width)
+                                    .size_range(RESOURCE_PANEL_MIN_WIDTH..RESOURCE_PANEL_MAX_WIDTH)
+                                    .child(resource_panel.clone()),
+                            )
+                            .child(resizable_panel().child(dock_area.clone().into_any_element())),
+                    ),
                 )
                 .child(status_bar.clone())
                 .into_any_element(),
@@ -986,6 +1518,15 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
             .on_action(cx.listener(Self::on_action_set_tunnel))
             .child(body)
+            // gpui-component's `Root` only records open dialogs, sheets and
+            // notifications; the window's own view has to draw them. Without these
+            // layers `Root::open_dialog` (the palette, "+", Disconnect,
+            // `context.set_tunnel`) opens nothing visible.
+            .children(gpui_kit::component::Root::render_sheet_layer(window, cx))
+            .children(gpui_kit::component::Root::render_dialog_layer(window, cx))
+            .children(gpui_kit::component::Root::render_notification_layer(
+                window, cx,
+            ))
     }
 }
 
@@ -1016,8 +1557,11 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
         HashMap::new()
     };
     for handle in cx.windows() {
-        if let Ok(layout) = handle.update(cx, |_, window, _cx| layout_from_bounds(window.bounds()))
-        {
+        if let Ok(layout) = handle.update(cx, |_, window, cx| {
+            let bounds = window.bounds();
+            let live = workspace_contexts(window, cx);
+            layout_from_bounds(bounds, live)
+        }) {
             layouts.insert(handle.window_id(), layout);
         }
     }
@@ -1025,1169 +1569,14 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
     let _ = config::save(workspace_path, &WorkspaceConfig { windows });
 }
 
+// A sibling `tests.rs` rather than an inline module, per rust-structure.md's
+// file-size cap: this module's own production code is already well past 700
+// lines on its own (a pre-existing condition `window-context-bar`'s own brief
+// says not to grow further "more than wiring"), and inlining the test module on
+// top of it made the file harder to navigate than the split costs. `tests.rs`
+// uses named imports rather than `use super::*` for the same reason `ui/status_
+// bar.rs`'s sibling does: that glob re-imports `gpui_kit::*`'s huge surface a
+// second time and blows this toolchain's macro-expansion budget alongside a
+// `#[gpui_kit::test]` item.
 #[cfg(test)]
-mod tests {
-    // Not `use super::*`: `gpui_kit::*` re-exports its own `test` attribute
-    // macro, which would shadow `core::prelude::v1::test` for the plain
-    // synchronous test below.
-    use super::{
-        ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor,
-        PanelKey, SET_CONTEXT_TUNNEL_COMMAND_ID, ShowPodDetail, ToggleCommandPalette, WindowLayout,
-        WindowMode, WorkspaceConfig, config, init, open_saved_or_default, open_window,
-        register_commands, restorable_panels, save, watch_picker, write_context_tunnel,
-    };
-    use crate::command::CommandRegistry;
-    use crate::config::tunnels::{TunnelAuth, TunnelConfig};
-    use crate::k8s::cluster::discovery::DiscoveredKind;
-    use crate::k8s::cluster::session::ClusterRegistry;
-    use crate::ui::nav;
-    use crate::ui::panel_title::PanelScope;
-    use gpui_kit::component::dock::{self, DockLayout, DockPlacement, PanelView as _};
-    use gpui_kit::{App, AppContext as _, Entity, SharedString, TestAppContext, Window, WindowId};
-    use kube::core::GroupVersionKind;
-    use std::collections::HashMap;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    fn temp_workspace_path() -> PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("fernrohr-shell-test-{n}.toml"))
-    }
-
-    fn temp_tunnels_path() -> PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("fernrohr-shell-set-tunnel-test-{n}.toml"));
-        let _ = std::fs::remove_file(&path);
-        path
-    }
-
-    /// Tasks.md 3.2: `context.set_tunnel` is registered with a title, alongside every
-    /// other palette command.
-    #[test]
-    fn set_context_tunnel_is_a_registered_command() {
-        let mut registry = CommandRegistry::new();
-        register_commands(&mut registry);
-
-        let command = registry
-            .get(SET_CONTEXT_TUNNEL_COMMAND_ID)
-            .expect("context.set_tunnel must be registered");
-        assert_eq!(command.title, "Set Tunnel for Context");
-    }
-
-    /// Tasks.md 3.2: the command's handler binds - `write_context_tunnel` is the
-    /// write `on_action_set_tunnel`'s dialog options call, factored out so it's
-    /// testable without a `Root` (which its `open_dialog`/`close_dialog` calls
-    /// require).
-    #[test]
-    fn set_context_tunnels_handler_binds_and_unbinds() {
-        let path = temp_tunnels_path();
-        let store = crate::tunnel::store::TunnelStore::new(path.clone());
-        store
-            .create(
-                "qa-bastion",
-                TunnelConfig {
-                    name: "QA".into(),
-                    bastion_user: "ops".into(),
-                    bastion_host: "bastion.example.com".into(),
-                    bastion_port: 22,
-                    jump_hosts: Vec::new(),
-                    auth: TunnelAuth::default(),
-                },
-                None,
-            )
-            .unwrap();
-
-        write_context_tunnel(&path, "qa-1", Some("qa-bastion")).unwrap();
-        assert_eq!(store.binding_for("qa-1"), Some("qa-bastion".to_string()));
-
-        write_context_tunnel(&path, "qa-1", None).unwrap();
-        assert_eq!(store.binding_for("qa-1"), None);
-
-        let _ = std::fs::remove_file(&path);
-    }
-
-    /// A connected window on `context_name`, for the panel-opening tests.
-    ///
-    /// `enter_workspace` opens a real Pods panel (`nav::add_panel` always
-    /// builds one via `PodsPanel::new`, not the `with_stubs` seam
-    /// `pods::tests` uses), which starts a genuine `ClusterConnection::connect`,
-    /// a tokio task that resolves a kubeconfig and probes a server, then
-    /// wakes its GPUI observer from that tokio thread. `allow_parking` is the
-    /// same seam `cluster::session`'s and `cluster::connection`'s own tests
-    /// use for this exact reason: without it, the wakeup races the test
-    /// scheduler's thread-confinement check non-deterministically, since it
-    /// depends on real wall-clock I/O timing rather than anything these tests
-    /// control.
-    async fn connected_window(
-        cx: &mut TestAppContext,
-        context_name: &str,
-    ) -> gpui_kit::WindowHandle<MainWindow> {
-        cx.executor().allow_parking();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-        });
-        cx.add_window(|window, cx| {
-            let mut main_window = MainWindow {
-                mode: WindowMode::Picker(
-                    cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
-                ),
-                focus_handle: cx.focus_handle(),
-            };
-            main_window.enter_workspace(context_name.to_string(), window, cx);
-            main_window
-        })
-    }
-
-    /// A kind with no concrete panel, as discovery would report a CRD's.
-    fn crd_kind() -> DiscoveredKind {
-        DiscoveredKind {
-            gvk: GroupVersionKind::gvk("ferns.example.com", "v1", "Fern"),
-            plural: "ferns".to_string(),
-            namespaced: true,
-        }
-    }
-
-    /// A cluster-scoped CRD, the kind 10.2 says must not grow a namespace picker.
-    fn cluster_scoped_kind() -> DiscoveredKind {
-        DiscoveredKind {
-            gvk: GroupVersionKind::gvk("widgets.example.com", "v1", "Widget"),
-            plural: "widgets".to_string(),
-            namespaced: false,
-        }
-    }
-
-    /// The title bar the dock builds for `panel`, read back the way the dock
-    /// reads it: through `PanelView`, which is the object-safe face of `Panel`
-    /// and takes no panel context.
-    ///
-    /// Returns the tab name, whether a namespace picker is on the bar, and how
-    /// many controls sit at its trailing end.
-    /// The namespace picker moved out of the title bar into each panel's own
-    /// body (Paul's feedback: a picker shared across a tab group's title bar
-    /// was ambiguous about which tab it scoped), so this reads only what
-    /// still lives in the dock's title bar: the name and the toolbar
-    /// controls.
-    fn title_bar_of<T: dock::Panel>(
-        panel: &Entity<T>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (Option<SharedString>, usize) {
-        let name = panel.tab_name(cx);
-        let controls = panel
-            .toolbar_buttons(window, cx)
-            .map_or(0, |buttons| buttons.len());
-        (name, controls)
-    }
-
-    /// Section 9.1: selecting a kind adds a panel to the dock rather than
-    /// replacing what was there, and it reuses the window's connection instead
-    /// of opening a new one - so the kinds listed and the panels opened stay on
-    /// one `ClusterSession`.
-    #[gpui_kit::test]
-    async fn opening_a_kind_adds_a_panel_and_keeps_the_session(cx: &mut TestAppContext) {
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-
-        let session_before =
-            cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
-
-        window
-            .update(cx, |main_window, window, cx| {
-                let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
-                    panic!("a connected window is in workspace mode")
-                };
-                let before = dock_area
-                    .read(cx)
-                    .layout(DockPlacement::Center)
-                    .expect("a workspace dock has a centre")
-                    .panels()
-                    .count();
-
-                main_window.open_target(NavTarget::Kind(crd_kind()), window, cx);
-
-                let dock_area = match &main_window.mode {
-                    WindowMode::Workspace { dock_area, .. } => dock_area,
-                    _ => unreachable!("open_target did not leave workspace mode"),
-                };
-                let after = dock_area
-                    .read(cx)
-                    .layout(DockPlacement::Center)
-                    .expect("a workspace dock has a centre")
-                    .panels()
-                    .count();
-                assert_eq!(after, before + 1, "the kind got its own panel");
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        let session_after = cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
-        assert_eq!(
-            session_before, session_after,
-            "opening a panel must not reconnect the window"
-        );
-    }
-
-    /// Section 9.3: a kind that already has a panel open is focused rather than
-    /// opened a second time. The workspace starts with Pods open, so the first
-    /// selection of Pods is already the "already open" case.
-    #[gpui_kit::test]
-    async fn reopening_a_kind_focuses_it_instead_of_duplicating(cx: &mut TestAppContext) {
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, window, cx| {
-                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                    panic!("a connected window is in workspace mode")
-                };
-                assert_eq!(
-                    open_panels.len(),
-                    1,
-                    "the workspace opens Pods and records it"
-                );
-                assert_eq!(
-                    open_panels[0].key,
-                    PanelKey {
-                        target: NavTarget::pods(),
-                        context_name: "kind-dev".to_string(),
-                        namespaces: Vec::new(),
-                    }
-                );
-
-                // A second, different kind is a genuinely new panel...
-                main_window.open_target(NavTarget::Kind(crd_kind()), window, cx);
-                // ...and the first one again, which must not add a third.
-                main_window.open_target(NavTarget::pods(), window, cx);
-                main_window.open_target(NavTarget::pods(), window, cx);
-
-                let WindowMode::Workspace {
-                    open_panels,
-                    dock_area,
-                    ..
-                } = &main_window.mode
-                else {
-                    unreachable!("open_target did not leave workspace mode")
-                };
-                assert_eq!(
-                    open_panels.len(),
-                    2,
-                    "two distinct kinds, however many times each is selected"
-                );
-                let distinct: std::collections::HashSet<_> =
-                    open_panels.iter().map(|open| open.key.clone()).collect();
-                assert_eq!(distinct.len(), 2, "the recorded keys are distinct");
-                assert_eq!(
-                    dock_area
-                        .read(cx)
-                        .layout(DockPlacement::Center)
-                        .expect("a workspace dock has a centre")
-                        .panels()
-                        .count(),
-                    2,
-                    "the dock holds one panel per distinct kind"
-                );
-            })
-            .unwrap();
-        cx.run_until_parked();
-    }
-
-    /// Section 5.1/5.4: the pod-detail request lands on the same `open_target`
-    /// every other panel uses, so a pod gets a panel of its own and
-    /// re-requesting it focuses rather than duplicates. What makes two pods
-    /// two panels is the pod identity now inside the key, not a second dedup
-    /// rule.
-    #[gpui_kit::test]
-    async fn a_pod_detail_panel_is_keyed_by_which_pod(cx: &mut TestAppContext) {
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-
-        let session_before =
-            cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
-
-        window
-            .update(cx, |main_window, window, cx| {
-                main_window.open_target(NavTarget::pod("prod", "web-1"), window, cx);
-                // The same pod again: focused, not opened twice.
-                main_window.open_target(NavTarget::pod("prod", "web-1"), window, cx);
-                // A different pod is a genuinely new panel.
-                main_window.open_target(NavTarget::pod("prod", "web-2"), window, cx);
-
-                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                    panic!("a connected window is in workspace mode")
-                };
-                let pods: Vec<_> = open_panels
-                    .iter()
-                    .filter(|open| matches!(open.key.target, NavTarget::Pod(_)))
-                    .map(|open| open.key.target.clone())
-                    .collect();
-                assert_eq!(
-                    pods,
-                    vec![
-                        NavTarget::pod("prod", "web-1"),
-                        NavTarget::pod("prod", "web-2"),
-                    ],
-                    "one panel per pod, however many times each is requested"
-                );
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        let session_after = cx.update(|cx| ClusterRegistry::connection(cx, "kind-dev").entity_id());
-        assert_eq!(
-            session_before, session_after,
-            "the detail panel reads the window's existing connection"
-        );
-    }
-
-    /// Section 5.1: the `ShowPodDetail` a Pods panel emits (for `d`, `y`, or
-    /// the row menu's "Open") resolves the pod from the app-scoped
-    /// `SelectedPod` and opens its detail panel - the same `open_target` the
-    /// keybinding-free path above uses.
-    #[gpui_kit::test]
-    async fn a_requested_pod_detail_opens_its_panel(cx: &mut TestAppContext) {
-        use crate::k8s::resource::pods::{PodSelection, SelectedPod};
-
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-
-        cx.update(|cx| {
-            cx.set_global(SelectedPod(Some(PodSelection {
-                namespace: "prod".into(),
-                name: "web-1".into(),
-                containers: vec!["web".into()],
-            })));
-        });
-        window
-            .update(cx, |main_window, window, cx| {
-                main_window.focus_handle.clone().focus(window, cx);
-                window.dispatch_action(Box::new(ShowPodDetail), cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, _window, _cx| {
-                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                    panic!("a connected window is in workspace mode")
-                };
-                assert!(
-                    open_panels
-                        .iter()
-                        .any(|open| open.key.target == NavTarget::pod("prod", "web-1")),
-                    "the selected pod's detail panel is open"
-                );
-            })
-            .unwrap();
-    }
-
-    /// `y` is bound to "the YAML, now", so it has to land on the YAML - and it
-    /// has to do so whether the panel is opened by the shortcut or already
-    /// sitting there showing fields, which is the case that actually comes up.
-    ///
-    /// Both halves matter and they fail differently: a fresh open needs the
-    /// view threaded into construction, and an existing panel needs the window
-    /// to hold on to the entity so it can switch a panel it only has a
-    /// `PanelId` for.
-    #[gpui_kit::test]
-    async fn asking_for_yaml_opens_and_switches_the_pod_panel_to_yaml(cx: &mut TestAppContext) {
-        use crate::k8s::resource::pod_detail::DetailView;
-        use crate::k8s::resource::pods::{PodSelection, SelectedPod};
-        use crate::ui::nav::ShowPodDetailYaml;
-
-        type Window = gpui_kit::WindowHandle<MainWindow>;
-
-        /// Dispatches an app-level detail request the way a keybinding would.
-        fn request_detail(cx: &mut TestAppContext, window: &Window, yaml: bool) {
-            window
-                .update(cx, |main_window, window, cx| {
-                    main_window.focus_handle.clone().focus(window, cx);
-                    if yaml {
-                        window.dispatch_action(Box::new(ShowPodDetailYaml), cx);
-                    } else {
-                        window.dispatch_action(Box::new(ShowPodDetail), cx);
-                    }
-                })
-                .unwrap();
-            cx.run_until_parked();
-        }
-
-        /// The view showing in the window's one pod detail panel.
-        fn open_panel_view(cx: &mut TestAppContext, window: &Window) -> DetailView {
-            window
-                .update(cx, |main_window, _window, cx| {
-                    let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                        panic!("a connected window is in workspace mode")
-                    };
-                    let detail: Vec<&OpenPanel> = open_panels
-                        .iter()
-                        .filter(|open| matches!(open.panel, Some(OpenedPanel::PodDetail(_))))
-                        .collect();
-                    assert_eq!(
-                        detail.len(),
-                        1,
-                        "one detail panel, whichever shortcut asked for it"
-                    );
-                    let Some(OpenedPanel::PodDetail(panel)) = &detail[0].panel else {
-                        unreachable!("filtered to detail panels")
-                    };
-                    panel.read(cx).view()
-                })
-                .unwrap()
-        }
-
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-        cx.update(|cx| {
-            cx.set_global(SelectedPod(Some(PodSelection {
-                namespace: "prod".into(),
-                name: "web-1".into(),
-                containers: vec!["web".into()],
-            })));
-        });
-
-        request_detail(cx, &window, true);
-        assert_eq!(
-            open_panel_view(cx, &window),
-            DetailView::Yaml,
-            "a fresh panel opens on the YAML, not on its default view"
-        );
-
-        request_detail(cx, &window, true);
-        assert_eq!(
-            open_panel_view(cx, &window),
-            DetailView::Yaml,
-            "asking again is still one panel, and still on the YAML"
-        );
-
-        request_detail(cx, &window, false);
-        assert_eq!(
-            open_panel_view(cx, &window),
-            DetailView::Structured,
-            "`d` switches the open panel back to the field list rather than \
-             adding a second panel for the same pod"
-        );
-    }
-
-    /// Closing a panel frees its key, so re-selecting the kind afterwards opens
-    /// a fresh panel instead of focusing a dock id the area no longer holds.
-    /// The dock has no id-keyed removal, so the centre is emptied the way the
-    /// app's own "last panel closed" path empties it.
-    #[gpui_kit::test]
-    async fn a_closed_kind_is_opened_again_rather_than_focused(cx: &mut TestAppContext) {
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, window, cx| {
-                let dock_area = match &main_window.mode {
-                    WindowMode::Workspace { dock_area, .. } => dock_area.clone(),
-                    _ => panic!("a connected window is in workspace mode"),
-                };
-                dock_area.update(cx, |area, cx| {
-                    area.set_center(DockLayout::tabs(), window, cx);
-                });
-                main_window.forget_closed_panels(&dock_area, cx);
-
-                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                    unreachable!()
-                };
-                assert!(open_panels.is_empty(), "the closed panel was forgotten");
-
-                main_window.open_target(NavTarget::pods(), window, cx);
-                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                    unreachable!()
-                };
-                assert_eq!(open_panels.len(), 1, "so the kind opens again");
-            })
-            .unwrap();
-        cx.run_until_parked();
-    }
-
-    #[test]
-    fn restorable_panels_skips_unknown_kinds() {
-        let layout = WindowLayout {
-            panels: vec![
-                PanelDescriptor::Unknown,
-                PanelDescriptor::Pods {
-                    cluster_context: "kind-dev".into(),
-                    namespace: crate::config::workspace::NamespaceScope::All,
-                    filter: String::new(),
-                    sort: crate::config::workspace::SortState {
-                        column: "name".into(),
-                        ascending: true,
-                    },
-                },
-                PanelDescriptor::Unknown,
-            ],
-            ..Default::default()
-        };
-
-        let kept = restorable_panels(&layout);
-
-        assert_eq!(kept.len(), 1);
-        assert!(matches!(kept[0], PanelDescriptor::Pods { .. }));
-    }
-
-    /// Section 10.1-10.3, checked on every panel type the dock holds rather than
-    /// on the title-bar helpers alone: each panel's tab names its kind, a
-    /// namespace picker is on the bar exactly when the kind is namespaced, and
-    /// the close control the dock needs is on every one of them.
-    ///
-    /// A cluster-scoped kind is in the list on purpose - it is the case where
-    /// the picker must be *absent*, which a test over namespaced kinds alone
-    /// could not catch.
-    #[gpui_kit::test]
-    async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-
-        let expected = 4;
-        let cases: [NavTarget; 4] = [
-            NavTarget::pods(),
-            NavTarget::Logs,
-            NavTarget::Kind(crd_kind()),
-            NavTarget::Kind(cluster_scoped_kind()),
-        ];
-
-        let mut checked: Vec<String> = Vec::new();
-        window
-            .update(cx, |main_window, window, cx| {
-                let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
-                    panic!("a connected window is in workspace mode")
-                };
-                for target in cases {
-                    let scope = PanelScope::new(target.clone(), "kind-dev".to_string());
-                    let (_id, opened) = dock_area.update(cx, |area, cx| {
-                        nav::add_panel(area, &scope, None, window, cx)
-                    });
-                    let (name, controls) = match opened {
-                        nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
-                        nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
-                        nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
-                        nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
-                    };
-                    assert_eq!(
-                        name.as_deref(),
-                        Some(target.list_label()).as_deref(),
-                        "the title bar names the kind, and adds the cluster only \
-                         when the window holds more than one connection"
-                    );
-                    assert!(
-                        controls > 0,
-                        "every resource panel needs its close control, found \
-                         none on {}",
-                        target.label()
-                    );
-                    checked.push(target.label());
-                }
-            })
-            .unwrap();
-
-        assert_eq!(
-            checked.len(),
-            expected,
-            "every panel type was checked: {checked:?}"
-        );
-    }
-
-    /// Section 10.2's second half: a panel that reports a narrower namespace is
-    /// re-filed under it.
-    ///
-    /// This is the body the title-bar subscription runs, driven directly: the
-    /// dock hands out panel ids rather than panel entities, so there is no way
-    /// from a test to pick a namespace in the rendered menu and watch the
-    /// event arrive. What it pins down is the rule the subscription exists for
-    /// - the panel stops being filed under the scope it no longer shows.
-    #[gpui_kit::test]
-    async fn a_narrowed_namespace_rekeys_the_open_panel(cx: &mut TestAppContext) {
-        let window = connected_window(cx, "kind-dev").await;
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, _window, cx| {
-                let (id, before) = match &main_window.mode {
-                    WindowMode::Workspace { open_panels, .. } => {
-                        let open = &open_panels[0];
-                        (open.id, open.key.clone())
-                    }
-                    _ => panic!("a connected window is in workspace mode"),
-                };
-                assert!(before.namespaces.is_empty(), "it starts on all namespaces");
-
-                main_window.rescope(id, vec!["staging".to_string(), "default".to_string()], cx);
-
-                let after = match &main_window.mode {
-                    WindowMode::Workspace { open_panels, .. } => open_panels[0].key.clone(),
-                    _ => unreachable!("rescope did not leave workspace mode"),
-                };
-                assert_ne!(
-                    before, after,
-                    "the panel must stop being filed under the scope it dropped"
-                );
-                assert_eq!(
-                    after.namespaces,
-                    ["staging", "default"],
-                    "and be filed under the namespaces it now shows"
-                );
-                assert_eq!(after.target, before.target, "only the namespace moved");
-                assert_eq!(
-                    after.context_name, before.context_name,
-                    "the cluster is still the cluster"
-                );
-            })
-            .unwrap();
-    }
-
-    /// Section 4.4: emptying a workspace's center dock (what closing its last panel
-    /// leaves behind) flips the window back to `Picker` mode - `watch_workspace`'s
-    /// `DockEvent::LayoutChanged` subscription, driven directly here via `set_center`
-    /// with an empty layout rather than a real interactive panel close.
-    #[gpui_kit::test]
-    async fn closing_the_last_panel_returns_to_the_picker(cx: &mut TestAppContext) {
-        // See `connected_window`'s doc comment: `enter_workspace` starts a real
-        // connect whose completion wakes GPUI from a tokio thread.
-        cx.executor().allow_parking();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-        });
-
-        let window = cx.add_window(|window, cx| {
-            // Goes through the same transition a real connect does, so this
-            // covers the Resource panel being wired up as well as the dock.
-            let mut main_window = MainWindow {
-                mode: WindowMode::Picker(
-                    cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
-                ),
-                focus_handle: cx.focus_handle(),
-            };
-            main_window.enter_workspace("kind-dev".to_string(), window, cx);
-            main_window
-        });
-
-        window
-            .update(cx, |main_window, _window, _cx| {
-                assert!(matches!(main_window.mode, WindowMode::Workspace { .. }));
-            })
-            .unwrap();
-
-        window
-            .update(cx, |main_window, window, cx| {
-                let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
-                    unreachable!("just asserted Workspace mode above");
-                };
-                dock_area.update(cx, |area, cx| {
-                    area.set_center(DockLayout::tabs(), window, cx);
-                });
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, _window, _cx| {
-                assert!(matches!(main_window.mode, WindowMode::Picker(_)));
-            })
-            .unwrap();
-    }
-
-    /// Regression test for the HANDOFF.md report: opening a second window and
-    /// selecting a context that a *first* window already connected said "connected"
-    /// but never switched the second window out of picker mode. Drives both windows
-    /// through the real `ClusterPicker::select` -> `PickerEvent::Connected` ->
-    /// `watch_picker` path (unlike `connected_window`, which shortcuts straight to
-    /// `enter_workspace` and so never exercised this path at all) - the same shared
-    /// connection entity stands in for `ClusterRegistry` returning the first window's
-    /// already-`Connected` entity to the second window's picker.
-    #[gpui_kit::test]
-    async fn second_window_connecting_to_an_already_connected_context_shows_workspace(
-        cx: &mut TestAppContext,
-    ) {
-        use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
-        use crate::ui::picker::ClusterPicker;
-        use kube::{Client, Config};
-        use std::cell::RefCell;
-
-        thread_local! {
-            static SHARED: RefCell<Option<Entity<ClusterConnection>>> = const { RefCell::new(None) };
-        }
-
-        // `connection_factory` only stubs the picker's own connection entity;
-        // `watch_picker` still drives `enter_workspace`, which starts a real
-        // `ClusterRegistry` connect for the panel it builds. See
-        // `connected_window`'s doc comment for why that needs `allow_parking`.
-        cx.executor().allow_parking();
-
-        fn shared_connected_stub(cx: &mut App, _context_name: &str) -> Entity<ClusterConnection> {
-            SHARED.with(|cell| {
-                if let Some(entity) = cell.borrow().as_ref() {
-                    return entity.clone();
-                }
-                let handle = crate::runtime::handle(cx);
-                let _guard = handle.enter();
-                let client =
-                    Client::try_from(Config::new("http://127.0.0.1:0".parse().unwrap())).unwrap();
-                let entity = cx.new(|_| {
-                    ClusterConnection::test_with_state(ConnectionState::Connected(client))
-                });
-                *cell.borrow_mut() = Some(entity.clone());
-                entity
-            })
-        }
-
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-        });
-
-        fn picker_window(cx: &mut TestAppContext) -> gpui_kit::WindowHandle<MainWindow> {
-            cx.add_window(|window, cx| {
-                let picker = cx.new(|cx| {
-                    let mut picker = ClusterPicker::new(window, cx);
-                    picker.connection_factory = Some(shared_connected_stub);
-                    picker
-                });
-                let main_window = MainWindow {
-                    mode: WindowMode::Picker(picker.clone()),
-                    focus_handle: cx.focus_handle(),
-                };
-                watch_picker(&picker, window, cx);
-                main_window
-            })
-        }
-
-        let first = picker_window(cx);
-        first
-            .update(cx, |main_window, _window, cx| {
-                let WindowMode::Picker(picker) = &main_window.mode else {
-                    unreachable!("just constructed in Picker mode");
-                };
-                picker.update(cx, |picker, cx| {
-                    picker.select("kind-dev".to_string(), cx);
-                });
-            })
-            .unwrap();
-        cx.run_until_parked();
-        first
-            .update(cx, |main_window, _window, _cx| {
-                assert!(
-                    matches!(main_window.mode, WindowMode::Workspace { .. }),
-                    "first window connects normally"
-                );
-            })
-            .unwrap();
-
-        let second = picker_window(cx);
-        second
-            .update(cx, |main_window, _window, cx| {
-                let WindowMode::Picker(picker) = &main_window.mode else {
-                    unreachable!("just constructed in Picker mode");
-                };
-                picker.update(cx, |picker, cx| {
-                    picker.select("kind-dev".to_string(), cx);
-                });
-            })
-            .unwrap();
-        cx.run_until_parked();
-        second
-            .update(cx, |main_window, _window, _cx| {
-                assert!(
-                    matches!(main_window.mode, WindowMode::Workspace { .. }),
-                    "second window selecting an already-connected context must also \
-                     switch to the workspace, not stay stuck showing the picker"
-                );
-            })
-            .unwrap();
-
-        SHARED.with(|cell| *cell.borrow_mut() = None);
-    }
-
-    /// Hypothesis two from `second-window-connect-fix/design.md`: a second window
-    /// connecting to a context that is *not* already connected (so it goes through
-    /// `cx.observe`'s callback, not `select`'s synchronous `emit_connected` call).
-    #[gpui_kit::test]
-    async fn second_window_connecting_to_a_fresh_context_shows_workspace(cx: &mut TestAppContext) {
-        use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
-        use crate::ui::picker::ClusterPicker;
-        use kube::{Client, Config};
-
-        // See the previous test: `connection_factory` stubs only the picker's
-        // own entity, not the real connect `enter_workspace` starts.
-        cx.executor().allow_parking();
-
-        fn connecting_then_connected_stub(
-            cx: &mut App,
-            _context_name: &str,
-        ) -> Entity<ClusterConnection> {
-            let handle = crate::runtime::handle(cx);
-            let _guard = handle.enter();
-            let client =
-                Client::try_from(Config::new("http://127.0.0.1:0".parse().unwrap())).unwrap();
-            let entity =
-                cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting));
-            entity.update(cx, |connection, cx| {
-                connection.state = ConnectionState::Connected(client);
-                cx.notify();
-            });
-            entity
-        }
-
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-        });
-
-        let second = cx.add_window(|window, cx| {
-            let picker = cx.new(|cx| {
-                let mut picker = ClusterPicker::new(window, cx);
-                picker.connection_factory = Some(connecting_then_connected_stub);
-                picker
-            });
-            let main_window = MainWindow {
-                mode: WindowMode::Picker(picker.clone()),
-                focus_handle: cx.focus_handle(),
-            };
-            watch_picker(&picker, window, cx);
-            main_window
-        });
-        second
-            .update(cx, |main_window, _window, cx| {
-                let WindowMode::Picker(picker) = &main_window.mode else {
-                    unreachable!("just constructed in Picker mode");
-                };
-                picker.update(cx, |picker, cx| {
-                    picker.select("fresh-dev".to_string(), cx);
-                });
-            })
-            .unwrap();
-        cx.run_until_parked();
-        second
-            .update(cx, |main_window, _window, _cx| {
-                assert!(
-                    matches!(main_window.mode, WindowMode::Workspace { .. }),
-                    "a fresh connect completing after select must still flip this \
-                     window to the workspace"
-                );
-            })
-            .unwrap();
-    }
-
-    #[gpui_kit::test]
-    async fn quitting_persists_open_window_geometry(cx: &mut TestAppContext) {
-        cx.executor().allow_parking();
-        let path = temp_workspace_path();
-        let keymap_path = temp_workspace_path();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-            init(cx, path.clone(), &keymap_path);
-            open_window(
-                cx,
-                WindowLayout {
-                    width: 900.0,
-                    height: 700.0,
-                    x: Some(10.0),
-                    y: Some(20.0),
-                    panels: Vec::new(),
-                },
-            );
-        });
-        cx.run_until_parked();
-
-        cx.update(|cx| save(cx, &path));
-
-        let saved: WorkspaceConfig = config::load(&path);
-        assert_eq!(saved.windows.len(), 1);
-        assert_eq!(saved.windows[0].width, 900.0);
-        assert_eq!(saved.windows[0].height, 700.0);
-
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&keymap_path);
-    }
-
-    #[gpui_kit::test]
-    async fn save_persists_geometry_of_a_window_already_closed(cx: &mut TestAppContext) {
-        // Regression test: under `QuitMode::LastWindowClosed`, `on_app_quit`
-        // fires after every window is already gone, so `cx.windows()` alone
-        // (the pre-fix implementation) sees nothing and silently saves an
-        // empty layout. `save` must also pick up geometry captured by
-        // `open_window`'s `on_window_should_close` hook and stashed in
-        // `ClosedWindowLayouts` before the window disappeared.
-        let path = temp_workspace_path();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            cx.set_global(ClosedWindowLayouts(HashMap::from([(
-                WindowId::from(1),
-                WindowLayout {
-                    width: 900.0,
-                    height: 700.0,
-                    x: Some(10.0),
-                    y: Some(20.0),
-                    panels: Vec::new(),
-                },
-            )])));
-            save(cx, &path);
-        });
-
-        let saved: WorkspaceConfig = config::load(&path);
-        assert_eq!(saved.windows.len(), 1);
-        assert_eq!(saved.windows[0].width, 900.0);
-        assert_eq!(saved.windows[0].height, 700.0);
-
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[gpui_kit::test]
-    async fn corrupt_workspace_file_yields_one_default_window(cx: &mut TestAppContext) {
-        cx.executor().allow_parking();
-        let path = temp_workspace_path();
-        std::fs::write(&path, "not valid toml {{{").unwrap();
-
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-            open_saved_or_default(cx, &path);
-        });
-        cx.run_until_parked();
-
-        let window_count = cx.update(|cx| cx.windows().len());
-        assert_eq!(window_count, 1);
-        assert_eq!(
-            std::fs::read_to_string(&path).unwrap(),
-            "not valid toml {{{"
-        );
-
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[gpui_kit::test]
-    async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
-        cx.executor().allow_parking();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-            let mut registry = CommandRegistry::new();
-            register_commands(&mut registry);
-            cx.set_global(registry);
-            open_window(cx, WindowLayout::default());
-        });
-        cx.run_until_parked();
-
-        let window = cx.update(|cx| cx.windows()[0]);
-
-        // Leak-safe: with no dialog open, `render_dialog_layer` returns
-        // `None` before touching any dialog state.
-        let dialog_open_before = window
-            .update(cx, |_, window, cx| {
-                gpui_kit::component::Root::render_dialog_layer(window, cx).is_some()
-            })
-            .unwrap();
-        assert!(!dialog_open_before);
-
-        window
-            .update(cx, |_, window, cx| {
-                window.dispatch_action(Box::new(ToggleCommandPalette), cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        // Not re-checked via `render_dialog_layer` here: actually rendering
-        // gpui-component's `Command` widget installs a model that outlives
-        // `close_all_dialogs`/`remove_window` and trips the test harness's
-        // leaked-entity check - reproduced directly against gpui-component
-        // 0.6.6, not something under our control. `open_command_palette`
-        // reaching this point without panicking, immediately after the
-        // action dispatch above, is what's covered instead.
-
-        // Close the dialog before the test ends, or the leak detector flags
-        // its CommandState entity: the harness asserts every entity created
-        // during a test is released by teardown.
-        window
-            .update(cx, |_, window, cx| {
-                let Some(Some(root)) = window.root::<gpui_kit::component::Root>() else {
-                    return;
-                };
-                root.update(cx, |root, cx| root.close_all_dialogs(window, cx));
-            })
-            .unwrap();
-        window
-            .update(cx, |_, window, _cx| window.remove_window())
-            .unwrap();
-        cx.run_until_parked();
-    }
-
-    #[test]
-    fn restored_panel_keys_preserve_kind_context_and_namespace() {
-        use gpui_kit::component::dock::{PanelInfo, PanelState};
-
-        let state = PanelState {
-            panel_name: "Pods".to_string(),
-            children: Vec::new(),
-            info: PanelInfo::Panel(serde_json::json!({
-                "context_name": "kind-dev",
-                "namespaces": ["kube-system"],
-            })),
-        };
-
-        let keys = super::restored_panel_keys(&state);
-
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys[0].target, NavTarget::pods());
-        assert_eq!(keys[0].context_name, "kind-dev");
-        assert_eq!(keys[0].namespaces, vec!["kube-system"]);
-    }
-
-    /// The panel's own keys have to be *bound*, not merely printed.
-    ///
-    /// The hint bar under the pods table reads the keymap for each shortcut
-    /// and falls back to printing the letter, so an unbound `d` looks
-    /// identical to a working one on screen while doing nothing when pressed.
-    /// This presses the key rather than dispatching the action, because the
-    /// binding is exactly the part that can be missing.
-    ///
-    /// At the end of the module on purpose: `title_bar_of` above is being
-    /// changed on another branch, and a test whose context sits under it would
-    /// stop applying the moment that lands.
-    #[gpui_kit::test]
-    async fn a_pods_panel_shortcut_key_reaches_the_window(cx: &mut TestAppContext) {
-        use crate::k8s::resource::pods::{PodSelection, SelectedPod};
-        use gpui_kit::{Focusable as _, test::TestWindowExt as _};
-
-        let workspace = temp_workspace_path();
-        let keymap = temp_workspace_path();
-        // See `connected_window`'s doc comment: `enter_workspace` starts a real
-        // connect whose completion wakes GPUI from a tokio thread.
-        cx.executor().allow_parking();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-            init(cx, workspace.clone(), &keymap);
-        });
-        let window = cx.add_window(|window, cx| {
-            let mut main_window = MainWindow {
-                mode: WindowMode::Picker(
-                    cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
-                ),
-                focus_handle: cx.focus_handle(),
-            };
-            main_window.enter_workspace("kind-dev".to_string(), window, cx);
-            main_window
-        });
-        cx.run_until_parked();
-        cx.update(|cx| {
-            cx.set_global(SelectedPod(Some(PodSelection {
-                namespace: "default".into(),
-                name: "web-1".into(),
-                containers: vec!["web".into()],
-            })));
-        });
-
-        // Focus the pods list, the way clicking into its table would.
-        window
-            .update(cx, |main_window, window, cx| {
-                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                    panic!("a connected window is in workspace mode")
-                };
-                let Some(OpenedPanel::Pods(panel)) = open_panels[0].panel.clone() else {
-                    panic!("a new workspace opens on the pods list")
-                };
-                panel.read(cx).focus_handle(cx).focus(window, cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        // A real keystroke, not a dispatched action. Dispatched through the
-        // window rather than the entity: a keypress re-renders, and re-entering
-        // the window's view while it is mid-update is what gpui forbids.
-        cx.update_window(window.into(), |_, window, cx| {
-            window.render_frame(cx);
-            window.dispatch_keystroke(
-                gpui_kit::Keystroke::parse("d").expect("valid keystroke"),
-                cx,
-            );
-            window.render_frame(cx);
-        })
-        .expect("the window is still open");
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, _window, _cx| {
-                let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
-                    panic!("a connected window is in workspace mode")
-                };
-                assert!(
-                    open_panels
-                        .iter()
-                        .any(|open| open.key.target == NavTarget::pod("default", "web-1")),
-                    "pressing `d` in the pods list opened the selected pod's detail \
-                     panel, so the key was bound rather than only printed"
-                );
-            })
-            .unwrap();
-
-        let _ = std::fs::remove_file(&workspace);
-        let _ = std::fs::remove_file(&keymap);
-    }
-
-    /// `connection-status-bar` 2.3: the status bar renders under a connected workspace's
-    /// body, and a picker-mode window - which shows its own connect progress instead
-    /// (proposal.md's non-goals) - has no such field to render at all.
-    #[gpui_kit::test]
-    async fn the_status_bar_renders_only_in_workspace_mode(cx: &mut TestAppContext) {
-        use gpui_kit::test::TestWindowExt as _;
-
-        cx.executor().allow_parking();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-        });
-
-        let window = cx.add_window(|window, cx| MainWindow {
-            mode: WindowMode::Picker(
-                cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
-            ),
-            focus_handle: cx.focus_handle(),
-        });
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, _window, _cx| {
-                assert!(
-                    matches!(main_window.mode, WindowMode::Picker(_)),
-                    "the picker variant carries no status bar field"
-                );
-            })
-            .unwrap();
-        cx.update_window(window.into(), |_, window, cx| {
-            window.render_frame(cx);
-        })
-        .expect("a picker-mode window renders with no status bar");
-
-        window
-            .update(cx, |main_window, window, cx| {
-                main_window.enter_workspace("kind-dev".to_string(), window, cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        window
-            .update(cx, |main_window, _window, cx| {
-                let WindowMode::Workspace { status_bar, .. } = &main_window.mode else {
-                    panic!("entering the workspace leaves picker mode")
-                };
-                assert_eq!(
-                    status_bar.read(cx).items(cx).len(),
-                    1,
-                    "the bar is wired to the window's own context, not merely a field \
-                     nobody reads"
-                );
-            })
-            .unwrap();
-        cx.update_window(window.into(), |_, window, cx| {
-            window.render_frame(cx);
-        })
-        .expect("a workspace window renders its status bar");
-    }
-}
+mod tests;

@@ -204,6 +204,22 @@ impl ClusterConnection {
         }
     }
 
+    /// [`Self::test_with_state`] bound to a real tunnel forward - the seam
+    /// `ClusterRegistry`'s hold/release tests use to observe a tunnel actually torn
+    /// down (its `ForwardRegistry` entry gone) when the last window holding its
+    /// context releases it, without driving a real [`Self::connect`].
+    #[cfg(test)]
+    pub(crate) fn test_with_state_and_forward(
+        state: ConnectionState,
+        forward: RegistryHandle<ForwardKey, SshTunnel>,
+    ) -> Self {
+        Self {
+            state,
+            since: Instant::now(),
+            _forward: Some(forward),
+        }
+    }
+
     /// When [`Self::state`] last changed, for the status bar's elapsed-time display.
     pub fn since(&self) -> Instant {
         self.since

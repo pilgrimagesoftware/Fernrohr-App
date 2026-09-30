@@ -87,15 +87,7 @@ impl StatusBarView {
         // through the registry for no other benefit.
         let registry_observation =
             cx.observe_global::<ClusterRegistry>(|this, cx| this.refresh(cx));
-        let connection_observations = context_names
-            .iter()
-            .map(|context_name| {
-                let connection = ClusterRegistry::connection(cx, context_name);
-                cx.observe(&connection, |this: &mut Self, _connection, cx| {
-                    this.refresh(cx)
-                })
-            })
-            .collect();
+        let connection_observations = Self::observe_connections(&context_names, cx);
         let mut this = Self {
             context_names,
             clock,
@@ -105,6 +97,29 @@ impl StatusBarView {
         };
         this.ensure_tick(cx);
         this
+    }
+
+    fn observe_connections(context_names: &[String], cx: &mut Context<Self>) -> Vec<Subscription> {
+        context_names
+            .iter()
+            .map(|context_name| {
+                let connection = ClusterRegistry::connection(cx, context_name);
+                cx.observe(&connection, |this: &mut Self, _connection, cx| {
+                    this.refresh(cx)
+                })
+            })
+            .collect()
+    }
+
+    /// `window-context-bar` task 4.1: lets the bar's item source track the window's
+    /// live `contexts` - adding or disconnecting a context (section 3) - rather than
+    /// staying pinned to whatever list [`Self::new`] was built with. Rebuilds the
+    /// per-connection observations for the new list, so a context just added starts
+    /// being watched and one just dropped stops being read.
+    pub fn set_context_names(&mut self, context_names: Vec<String>, cx: &mut Context<Self>) {
+        self._connection_observations = Self::observe_connections(&context_names, cx);
+        self.context_names = context_names;
+        self.refresh(cx);
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {

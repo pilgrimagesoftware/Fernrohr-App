@@ -13,6 +13,12 @@ mod ui;
 mod util;
 
 fn main() {
+    // Crash recovery: reap any `ssh -N -L` forward a previous run left running after
+    // being killed or crashing before its own `Drop` could tear it down. Runs before
+    // anything else in `main` so it always happens before any tunnel could possibly
+    // be acquired. See `util::pidfile`'s module docs for the quit-time half of this.
+    util::pidfile::sweep_stale();
+
     gpui_kit::application()
         .with_assets(gpui_kit::assets::Assets)
         .with_quit_mode(QuitMode::LastWindowClosed)

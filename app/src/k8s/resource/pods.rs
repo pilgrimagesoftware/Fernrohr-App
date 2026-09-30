@@ -340,11 +340,19 @@ pub fn register_restore(cx: &mut App) {
 /// The pod a Logs panel should stream, set by clicking a row in a Pods
 /// panel. App-scoped rather than a direct link between the two panels, since
 /// either can live in any dock split of any window.
+///
+/// `context_name` is the cluster context of the Pods panel that published this
+/// selection - not necessarily the window's active context in a multi-context
+/// window. Without it, a pod selected from one context's Pods panel would open
+/// Logs or a detail panel against whichever context happened to be active
+/// (`1-window-context-bar` bug 1): `pods "..." not found` against a cluster
+/// the pod was never in.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PodSelection {
     pub namespace: String,
     pub name: String,
     pub containers: Vec<String>,
+    pub context_name: String,
 }
 
 #[derive(Default)]
@@ -644,6 +652,7 @@ impl Render for PodsPanel {
                             namespace: pod.metadata.namespace.clone().unwrap_or_default(),
                             name: pod.metadata.name.clone().unwrap_or_default(),
                             containers,
+                            context_name: self.scope.context_name.clone(),
                         };
                         PodTableRow {
                             row: pod_row(pod, now),
@@ -734,16 +743,21 @@ impl Render for PodsPanel {
                     this.scope = this.scope.scoped_to(namespaces.clone());
                     cx.emit(ScopeEvent::NamespacesChanged(namespaces));
                 });
-            })
-            .map(|picker| {
-                div()
-                    .flex()
-                    .justify_end()
-                    .p_2()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(picker)
             });
+        // "Context: <name>" on the left, the namespace picker (when there is one)
+        // on the right, in one header row.
+        let header = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .p_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(panel_title::context_label(
+                &self.scope,
+                cx.theme().muted_foreground,
+            ))
+            .children(namespace_bar);
 
         div()
             .size_full()
@@ -758,7 +772,7 @@ impl Render for PodsPanel {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .children(namespace_bar)
+                    .child(header)
                     .child(div().flex_1().min_h_0().child(content)),
                 &self.focus_handle,
                 window,
@@ -788,7 +802,7 @@ impl BasePanel for PodsPanel {
 /// this panel and a placeholder get an identical bar.
 impl Panel for PodsPanel {
     fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title(&self.scope)
+        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
@@ -1120,6 +1134,7 @@ mod tests {
                 namespace: "default".into(),
                 name: "web-1".into(),
                 containers: vec!["web".into()],
+                context_name: "dev".into(),
             })));
             let first = cx.new(|cx| {
                 PodsPanel::with_stubs(PanelScope::new(NavTarget::pods(), "dev".into()), cx)
@@ -1344,6 +1359,7 @@ mod tests {
                     namespace: namespace.into(),
                     name: name.into(),
                     containers: Vec::new(),
+                    context_name: "ctx".into(),
                 },
             },
         )
@@ -1479,6 +1495,7 @@ mod tests {
                     namespace: "ns-e".into(),
                     name: "aa-name".into(),
                     containers: Vec::new(),
+                    context_name: "ctx".into(),
                 },
             },
         );
@@ -1528,6 +1545,7 @@ mod tests {
                 namespace: "default".into(),
                 name: "web-1".into(),
                 containers: Vec::new(),
+                context_name: "ctx".into(),
             },
         }]);
 
@@ -1639,6 +1657,7 @@ mod tests {
                 namespace: "ns-a".into(),
                 name: "d-name".into(),
                 containers: Vec::new(),
+                context_name: "ctx".into(),
             }),
             Some(1),
         );
@@ -1647,6 +1666,7 @@ mod tests {
                 namespace: "ns-a".into(),
                 name: "missing".into(),
                 containers: Vec::new(),
+                context_name: "ctx".into(),
             }),
             None,
             "a name absent from that namespace's row should not match"
@@ -1685,6 +1705,7 @@ mod tests {
                     namespace: "ns-c".into(),
                     name: "b-name".into(),
                     containers: Vec::new(),
+                    context_name: "ctx".into(),
                 }));
             })
             .unwrap();
@@ -1741,6 +1762,7 @@ mod tests {
                     namespace: "ns-c".into(),
                     name: "b-name".into(),
                     containers: Vec::new(),
+                    context_name: "ctx".into(),
                 }));
             })
             .unwrap();
@@ -1752,6 +1774,7 @@ mod tests {
                 namespace: "ns-a".into(),
                 name: "d-name".into(),
                 containers: Vec::new(),
+                context_name: "ctx".into(),
             })));
         });
 
@@ -1776,6 +1799,7 @@ mod tests {
                     namespace: "ns-e".into(),
                     name: "aa-name".into(),
                     containers: Vec::new(),
+                    context_name: "ctx".into(),
                 },
             },
         );
@@ -1830,6 +1854,7 @@ mod tests {
                     namespace: "ns-c".into(),
                     name: "b-name".into(),
                     containers: Vec::new(),
+                    context_name: "ctx".into(),
                 }));
             })
             .unwrap();

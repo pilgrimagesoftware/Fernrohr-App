@@ -203,6 +203,83 @@ async fn elapsed_time_advances_and_escalates_with_the_injected_clock(cx: &mut Te
     cx.run_until_parked();
 }
 
+/// `window-context-bar` task 4.1: `set_context_names` is what lets the window's live
+/// `contexts` (section 3's add/disconnect) drive the bar, rather than the list it was
+/// built with. Adding a context grows `items`, and its pause afterward still reaches
+/// the bar - proving the per-connection observation was rebuilt, not just the list.
+#[gpui_kit::test]
+async fn set_context_names_grows_items_and_observes_the_new_context(cx: &mut TestAppContext) {
+    init(cx);
+    let client_a = test_client(cx);
+    let client_b = test_client(cx);
+    subscribe_connected(cx, "kind-dev", client_a);
+
+    let bar = cx.update(|cx| cx.new(|cx| StatusBarView::new(vec!["kind-dev".to_string()], cx)));
+    assert_eq!(cx.update(|cx| bar.read(cx).items(cx).len()), 1);
+
+    subscribe_connected(cx, "staging", client_b);
+    cx.update(|cx| {
+        bar.update(cx, |bar, cx| {
+            bar.set_context_names(vec!["kind-dev".to_string(), "staging".to_string()], cx);
+        });
+    });
+    assert_eq!(cx.update(|cx| bar.read(cx).items(cx).len()), 2);
+
+    cx.update(|cx| {
+        ClusterRegistry::apply_health_transition(
+            cx,
+            "staging",
+            HealthTransition::Pause(PauseReason::Reconnecting),
+        )
+    });
+    let items = cx.update(|cx| bar.read(cx).items(cx));
+    let staging = items
+        .iter()
+        .find(|item| item.context_name == "staging")
+        .expect("staging is in the list after set_context_names");
+    assert!(
+        matches!(
+            staging.health,
+            ContextHealth::Paused {
+                reason: PauseReason::Reconnecting,
+                ..
+            }
+        ),
+        "the newly added context's own pause reached the bar: {:?}",
+        staging.health
+    );
+
+    drop(bar);
+    cx.run_until_parked();
+}
+
+/// `window-context-bar` task 4.1: dropping a context out of `set_context_names` must
+/// stop the bar from listing it - the disconnect confirmation's "the chip is removed"
+/// promise, one layer down.
+#[gpui_kit::test]
+async fn set_context_names_shrinks_items(cx: &mut TestAppContext) {
+    init(cx);
+    let client_a = test_client(cx);
+    let client_b = test_client(cx);
+    subscribe_connected(cx, "kind-dev", client_a);
+    subscribe_connected(cx, "staging", client_b);
+
+    let bar = cx.update(|cx| {
+        cx.new(|cx| StatusBarView::new(vec!["kind-dev".to_string(), "staging".to_string()], cx))
+    });
+    assert_eq!(cx.update(|cx| bar.read(cx).items(cx).len()), 2);
+
+    cx.update(|cx| {
+        bar.update(cx, |bar, cx| {
+            bar.set_context_names(vec!["kind-dev".to_string()], cx);
+        });
+    });
+
+    let items = cx.update(|cx| bar.read(cx).items(cx));
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].context_name, "kind-dev");
+}
+
 /// Section 2.2: the one-second tick runs only while something is unhealthy, and stops
 /// once every item is connected again.
 #[gpui_kit::test]

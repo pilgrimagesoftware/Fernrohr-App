@@ -66,9 +66,12 @@ type OnPick = Rc<dyn Fn(Option<String>, &mut App)>;
 /// caller (here, `ClusterPicker`) does the actual `TunnelStore::bind`/`unbind` write,
 /// since it also owns the store's path and the cache to refresh afterward.
 ///
-/// A click here never reaches the row's own `on_click` (which would otherwise start a
-/// connection): `Button`'s own click handling calls `cx.stop_propagation()`, so this is
-/// safe to embed inside a `Command` list row (see `command/state.rs`'s `render_item`).
+/// A click here never reaches the row's own click handling (`ui/picker.rs`'s
+/// `context_row`, which otherwise turns a single click into a select and a double
+/// click into a connect): the dropdown's `Popover` trigger stops a click from
+/// propagating at mouse-down, before it reaches even the row that wraps this
+/// selector, so it is safe to embed inside a `Command` list row (see
+/// `command/state.rs`'s `render_item`).
 pub fn selector(
     row_id: impl Into<ElementId>,
     choices: &[TunnelChoice],

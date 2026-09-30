@@ -198,7 +198,7 @@ impl BasePanel for PlaceholderPanel {
 /// only supplies them, so a placeholder and a concrete panel get the same bar.
 impl Panel for PlaceholderPanel {
     fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title(&self.scope)
+        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
