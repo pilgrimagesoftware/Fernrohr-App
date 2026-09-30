@@ -1175,6 +1175,18 @@ impl MainWindow {
         cx.notify();
     }
 
+    /// `resource.focus`: puts keyboard focus on this window's Resource panel.
+    fn on_action_focus_resources(
+        &mut self,
+        _: &crate::ui::resource_panel::FocusResources,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let WindowMode::Workspace { resource_panel, .. } = &self.mode {
+            resource_panel.update(cx, |panel, cx| panel.focus_list(window, cx));
+        }
+    }
+
     fn on_action_show_pods(&mut self, _: &ShowPods, window: &mut Window, cx: &mut Context<Self>) {
         self.open_target(NavTarget::pods(), window, cx);
     }
@@ -1516,6 +1528,7 @@ impl Render for MainWindow {
                 open_command_palette(window, cx);
             })
             .on_action(cx.listener(Self::on_action_show_pods))
+            .on_action(cx.listener(Self::on_action_focus_resources))
             .on_action(cx.listener(Self::on_action_show_logs))
             .on_action(cx.listener(Self::on_action_show_pod_detail))
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))

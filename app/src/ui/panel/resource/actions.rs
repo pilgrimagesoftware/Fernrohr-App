@@ -19,10 +19,12 @@ use crate::ui::nav::NavTarget;
 use gpui_kit::component::input::Escape;
 use gpui_kit::{Context, Focusable as _, Window, actions};
 
-actions!(resource_panel, [FocusFilter]);
+actions!(resource_panel, [FocusFilter, FocusResources]);
 
 pub(super) const FOCUS_FILTER_COMMAND_ID: &str = "resource.focus_filter";
 pub(super) const FOCUS_FILTER_DEFAULT_BINDING: &str = "/";
+pub(super) const FOCUS_RESOURCES_COMMAND_ID: &str = "resource.focus";
+pub(super) const FOCUS_RESOURCES_DEFAULT_BINDING: &str = "cmd-0";
 
 /// The commands this module contributes to the app-wide [`CommandRegistry`] -
 /// see this module's doc comment for why `/` alone goes through it.
@@ -38,6 +40,16 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         context: Some(PANEL_KEY_CONTEXT),
         action: Box::new(FocusFilter),
         menu: None,
+    });
+    // The keyboard's way *into* the panel: without it, reaching the list took a
+    // click, which keyboard-first.md rules out. Global, so it works from any panel.
+    registry.register(Command {
+        id: FOCUS_RESOURCES_COMMAND_ID,
+        title: "Focus Resources",
+        default_binding: FOCUS_RESOURCES_DEFAULT_BINDING,
+        context: None,
+        action: Box::new(FocusResources),
+        menu: Some(crate::command::MenuSlot::Navigate),
     });
 }
 

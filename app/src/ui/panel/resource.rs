@@ -27,7 +27,7 @@ mod keyboard;
 mod render;
 mod section;
 
-pub(crate) use actions::register_commands;
+pub(crate) use actions::{FocusResources, register_commands};
 
 /// The panel's own keybindings (Up/Down/Enter/Left/Right), in its own key
 /// context - `/` is not here, see `actions::register_commands`'s doc comment.
@@ -96,6 +96,17 @@ pub struct ResourcePanel {
 }
 
 impl ResourcePanel {
+    /// Moves keyboard focus onto the kind list, so Up/Down/Enter/Left/Right and `/`
+    /// work without a click first.
+    pub(crate) fn focus_list(&self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus_handle, cx);
+    }
+
+    /// Whether the kind list holds keyboard focus.
+    pub(crate) fn is_list_focused(&self, window: &Window) -> bool {
+        self.focus_handle.is_focused(window)
+    }
+
     /// `contexts` is the window's full context list (`window-context-bar` design.md
     /// decision 4), so the cluster dropdown always lists every context the window
     /// uses, not just the one `context_name` starts on.
