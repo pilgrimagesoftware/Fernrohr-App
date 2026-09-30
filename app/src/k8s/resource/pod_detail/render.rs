@@ -1,0 +1,283 @@
+//! Drawing the panel: the header with its shortcut hints, the tabbed
+//! structured view, the Events tab and the YAML view.
+
+use super::commands::{
+    CONTAINERS_TAB_KEY, EVENTS_TAB_KEY, MANAGED_FIELDS_TAB_KEY, OVERVIEW_TAB_KEY,
+    PANEL_KEY_CONTEXT, SelectContainersTab, SelectEventsTab, SelectManagedFieldsTab,
+    SelectOverviewTab, SelectVolumesTab, TOGGLE_VIEW_KEY, ToggleDetailView, VOLUMES_TAB_KEY,
+};
+use super::fetch::PodDetailState;
+use super::format::format_events;
+use super::model::{BadgeTone, DetailSection, DetailView};
+use super::panel::PodDetailPanel;
+use crate::ui::panel_title;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::kbd::Kbd;
+use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::tab::{Tab, TabBar};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use jiff::Timestamp;
+
+impl PodDetailPanel {
+    fn render_structured(&self, cx: &Context<Self>) -> AnyElement {
+        let fields = self.fields(Timestamp::now());
+        let active_tab = self.active_tab;
+        let this = cx.weak_entity();
+        let tabs = TabBar::new("pod-detail-tabs")
+            .selected_index(
+                DetailSection::ALL
+                    .iter()
+                    .position(|section| *section == active_tab)
+                    .unwrap_or(0),
+            )
+            .on_click(move |ix, _window, cx| {
+                let Some(section) = DetailSection::ALL.get(*ix).copied() else {
+                    return;
+                };
+                let _ = this.update(cx, |this: &mut Self, cx| this.set_active_tab(section, cx));
+            })
+            .children(
+                DetailSection::ALL
+                    .iter()
+                    .map(|section| Tab::new().label(section.label())),
+            );
+        let content = if active_tab == DetailSection::Events {
+            self.render_events(cx)
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .children(
+                    fields
+                        .iter()
+                        .filter(|field| field.section == active_tab)
+                        .map(|field| self.render_field(field, cx)),
+                )
+                .into_any_element()
+        };
+        div()
+            .flex()
+            .flex_col()
+            .child(tabs)
+            .child(div().flex().flex_col().pt_2().child(content))
+            .into_any_element()
+    }
+
+    /// The Events tab: every event naming this pod, newest first. Its own
+    /// render path rather than a `PodField` - events come from a separate
+    /// fetch, not from `pod_fields`'s projection of the pod object itself.
+    fn render_events(&self, cx: &Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let events = match self.events() {
+            Some(Ok(events)) => format_events(events, Timestamp::now()),
+            Some(Err(reason)) => {
+                return div()
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+                    .child(format!("Could not list events: {reason}"))
+                    .into_any_element();
+            }
+            None => Vec::new(),
+        };
+        if events.is_empty() {
+            return div()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child("No events.")
+                .into_any_element();
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .children(events.iter().map(|event| {
+                let reason_color = match event.tone {
+                    BadgeTone::Good => theme.foreground,
+                    BadgeTone::Warning => theme.warning,
+                    BadgeTone::Unknown => theme.muted_foreground,
+                };
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .p_2()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.border)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(reason_color)
+                                    .child(event.reason.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.muted_foreground)
+                                    .child(format!("{} · x{}", event.age, event.count)),
+                            ),
+                    )
+                    .child(div().text_sm().child(event.message.clone()))
+                    .into_any_element()
+            }))
+            .into_any_element()
+    }
+
+    fn render_yaml(&self, cx: &App) -> AnyElement {
+        let Some(yaml) = self.yaml() else {
+            return div().into_any_element();
+        };
+        div()
+            .size_full()
+            .font_family(cx.theme().mono_font_family.clone())
+            .whitespace_nowrap()
+            .child(yaml)
+            .into_any_element()
+    }
+}
+
+impl Render for PodDetailPanel {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let content = match &self.state {
+            PodDetailState::Loading => div()
+                .size_full()
+                .p_3()
+                .child("Loading pod...")
+                .into_any_element(),
+            PodDetailState::NotFound => div()
+                .size_full()
+                .p_3()
+                .child("This pod no longer exists.")
+                .into_any_element(),
+            PodDetailState::Failed { message, detail } => panel_title::error_content(
+                format!("Could not read pod: {message}"),
+                Some(detail.clone()),
+                cx,
+            )
+            .into_any_element(),
+            PodDetailState::Loaded(_, _) => match self.viewing {
+                // Field values wrap to the panel's width rather than
+                // overflowing it - vertical-only scroll, so nothing pushes
+                // the layout wider than the panel actually is.
+                DetailView::Structured => div()
+                    .size_full()
+                    .p_3()
+                    .overflow_y_scrollbar()
+                    .child(self.render_structured(cx))
+                    .into_any_element(),
+                // YAML is monospace and line-oriented like the Logs panel -
+                // it keeps both-axis scroll rather than wrapping lines.
+                DetailView::Yaml => div()
+                    .size_full()
+                    .p_3()
+                    .overflow_scrollbar()
+                    .child(self.render_yaml(cx))
+                    .into_any_element(),
+            },
+        };
+
+        // The structured/YAML toggle, with the same visible-shortcut-hint
+        // convention `PodsPanel` uses - inside the panel's own body, not the
+        // dock's shared per-tab-group toolbar, which only reflects whichever
+        // tab happens to be active.
+        let window_contexts = crate::util::shell::window_context_count(window, cx);
+        let yaml = self.viewing == DetailView::Yaml;
+        let toggle_key =
+            Kbd::binding_for_action(&ToggleDetailView, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| {
+                    Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
+                });
+        let toggle_hint = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(toggle_key)
+            .child(if yaml { "Show fields" } else { "Show YAML" });
+        let tab_key = |section: DetailSection| -> Kbd {
+            let (action, literal): (&dyn Action, &str) = match section {
+                DetailSection::Overview => (&SelectOverviewTab as &dyn Action, OVERVIEW_TAB_KEY),
+                DetailSection::Containers => {
+                    (&SelectContainersTab as &dyn Action, CONTAINERS_TAB_KEY)
+                }
+                DetailSection::Volumes => (&SelectVolumesTab as &dyn Action, VOLUMES_TAB_KEY),
+                DetailSection::Events => (&SelectEventsTab as &dyn Action, EVENTS_TAB_KEY),
+                DetailSection::ManagedFields => (
+                    &SelectManagedFieldsTab as &dyn Action,
+                    MANAGED_FIELDS_TAB_KEY,
+                ),
+            };
+            Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| Kbd::new(Keystroke::parse(literal).expect("valid keybinding")))
+        };
+        // The pod's name (and, in a multi-context window, its context) on the left;
+        // the tab and view-toggle hints on the right.
+        //
+        // As the panel narrows, the name gives way first: it takes only the
+        // space the hints leave, ellipsizing, down to a floor that keeps a few
+        // characters readable. Past that floor the hints shrink instead and
+        // wrap onto further rows, each hint kept whole.
+        let header = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap_2()
+            .p_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(rems(8.))
+                    .child(panel_title::item_heading(
+                        self.pod.name.clone(),
+                        panel_title::heading_context(&self.scope, window_contexts),
+                        cx.theme().muted_foreground,
+                    )),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .justify_end()
+                    .min_w_0()
+                    .gap_x_3()
+                    .gap_y_1()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .when(!yaml, |this| {
+                        this.children(DetailSection::ALL.iter().map(|section| {
+                            div()
+                                .flex()
+                                .flex_shrink_0()
+                                .items_center()
+                                .gap_1()
+                                .whitespace_nowrap()
+                                .child(tab_key(*section))
+                                .child(section.label())
+                        }))
+                    })
+                    .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
+            );
+
+        div()
+            .size_full()
+            .key_context(PANEL_KEY_CONTEXT)
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::on_action_toggle_view))
+            .on_action(cx.listener(Self::on_action_select_overview_tab))
+            .on_action(cx.listener(Self::on_action_select_containers_tab))
+            .on_action(cx.listener(Self::on_action_select_volumes_tab))
+            .on_action(cx.listener(Self::on_action_select_events_tab))
+            .on_action(cx.listener(Self::on_action_select_managed_fields_tab))
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(div().flex_1().min_h_0().child(content))
+    }
+}
