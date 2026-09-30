@@ -82,6 +82,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SET_CONTEXT_TUNNEL_DEFAULT_BINDING,
         context: None,
         action: Box::new(SetContextTunnel),
+        menu: Some(crate::command::MenuSlot::Context),
     });
     nav::register_commands(registry);
     tunnels::register_commands(registry);

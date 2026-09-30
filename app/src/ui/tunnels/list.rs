@@ -34,6 +34,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: TUNNELS_MANAGE_DEFAULT_BINDING,
         context: None,
         action: Box::new(TunnelsManage),
+        // The Context menu: tunnels are how a context is reached, and the menu bar
+        // makes the Tunnels window reachable with no cluster window open.
+        menu: Some(crate::command::MenuSlot::Context),
     });
 }
 
@@ -45,7 +48,7 @@ impl Global for TunnelsWindowHandle {}
 
 /// Opens the Tunnels window, or brings an already-open one to the front -
 /// design.md decision 5's single-instance rule. Reached from `tunnels.manage`
-/// (bound above), the app menu (`main.rs`), and the picker's "Manage tunnels…"
+/// (bound above), the menu bar's Context menu (`ui/menu.rs`), and the picker's "Manage tunnels…"
 /// control (`ui/picker.rs`).
 pub fn open_or_focus(cx: &mut App) {
     if !cx.has_global::<TunnelsWindowHandle>() {
