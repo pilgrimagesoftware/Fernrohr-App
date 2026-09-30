@@ -322,14 +322,34 @@ pub fn error_content(message: String, detail: Option<String>, cx: &App) -> impl 
         .flex()
         .flex_col()
         .gap_2()
-        .child(gpui_kit::component::text::markdown(message).selectable(true))
+        .child(gpui_kit::component::text::markdown(escape_markdown(&message)).selectable(true))
         .children(detail.map(|detail| {
             div()
                 .text_sm()
                 .text_color(cx.theme().muted_foreground)
-                .font_family(cx.theme().mono_font_family.clone())
-                .child(gpui_kit::component::text::markdown(detail).selectable(true))
+                .child(gpui_kit::component::text::markdown(code_block(&detail)).selectable(true))
         }))
+}
+
+/// `text` with every markdown-significant character backslash-escaped, so the only
+/// selectable-text primitive gpui-component offers (markdown) shows it verbatim.
+fn escape_markdown(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if "\\`*_{}[]()<>#+-.!|~".contains(ch) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// `text` as a fenced code block - rendered verbatim and in monospace. The fence is
+/// longer than any backtick run inside `text`, so nothing in it can close the block.
+fn code_block(text: &str) -> String {
+    let longest_run = text.split(|ch| ch != '`').map(str::len).max().unwrap_or(0);
+    let fence = "`".repeat(longest_run.max(2) + 1);
+    format!("{fence}text\n{text}\n{fence}")
 }
 
 /// A panel changed the scope it shows.
@@ -378,6 +398,18 @@ mod tests {
     fn several_connections_still_leave_the_cluster_out_of_the_title() {
         assert_eq!(title(&scope(kind("Pod", true), 2)), "Pods");
         assert_eq!(title(&scope(kind("Deployment", true), 3)), "Deployments");
+    }
+
+    /// Error text goes through markdown (the only selectable-text primitive), so
+    /// it must come out verbatim: escaped prose, and detail fenced so backticks and
+    /// backslashes survive.
+    #[test]
+    fn error_text_is_rendered_verbatim() {
+        use super::{code_block, escape_markdown};
+        assert_eq!(escape_markdown("continue_: None"), "continue\\_: None");
+        assert_eq!(escape_markdown("a*b"), "a\\*b");
+        assert_eq!(code_block(r#"pods \"x\""#), "```text\npods \\\"x\\\"\n```");
+        assert_eq!(code_block("a ```` b"), "`````text\na ```` b\n`````");
     }
 
     /// An item heading names the context only while the window uses several.
