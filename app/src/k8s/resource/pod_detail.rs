@@ -10,7 +10,6 @@
 use crate::command::{Command, CommandRegistry};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::resource::pods::format_age;
-use crate::keymap::{self, KeymapConfig};
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::ActiveTheme as _;
@@ -115,47 +114,6 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
-}
-
-/// The panel's own keybindings, each resolved through `keymap` by its command
-/// id - so a `keymap.toml` override rebinds it. Registered with the window's
-/// keymap the same way `pods::panel_bindings` is - printing a key in a hint
-/// bar does not bind it.
-pub fn panel_bindings(keymap: &KeymapConfig) -> [KeyBinding; 6] {
-    let key = |id, default| keymap::resolve(id, default, keymap);
-    let context = Some(PANEL_KEY_CONTEXT);
-    [
-        KeyBinding::new(
-            &key(TOGGLE_VIEW_COMMAND_ID, TOGGLE_VIEW_KEY),
-            ToggleDetailView,
-            context,
-        ),
-        KeyBinding::new(
-            &key(OVERVIEW_TAB_COMMAND_ID, OVERVIEW_TAB_KEY),
-            SelectOverviewTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(CONTAINERS_TAB_COMMAND_ID, CONTAINERS_TAB_KEY),
-            SelectContainersTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(VOLUMES_TAB_COMMAND_ID, VOLUMES_TAB_KEY),
-            SelectVolumesTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(EVENTS_TAB_COMMAND_ID, EVENTS_TAB_KEY),
-            SelectEventsTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(MANAGED_FIELDS_TAB_COMMAND_ID, MANAGED_FIELDS_TAB_KEY),
-            SelectManagedFieldsTab,
-            context,
-        ),
-    ]
 }
 
 /// Which tab a structured field belongs to, and the tab strip itself. Kept
@@ -2352,6 +2310,14 @@ mod tests {
         );
     }
 
+    /// The panel's bindings as the app builds them: from its registered
+    /// commands, through `keymap::bindings`, with `keymap`'s overrides.
+    fn registered_bindings(keymap: &KeymapConfig, cx: &gpui_kit::App) -> Vec<gpui_kit::KeyBinding> {
+        let mut registry = CommandRegistry::new();
+        super::register_commands(&mut registry);
+        crate::keymap::bindings(&registry, keymap, cx.keyboard_mapper().as_ref())
+    }
+
     fn stub_panel(
         cx: &mut TestAppContext,
         state: ConnectionState,
@@ -2537,7 +2503,7 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
-            cx.bind_keys(super::panel_bindings(&KeymapConfig::default()));
+            cx.bind_keys(registered_bindings(&KeymapConfig::default(), cx));
         });
         let window = stub_panel(cx, ConnectionState::Connecting);
         let mut vcx = VisualTestContext::from_window(window.into(), cx);
@@ -2617,7 +2583,7 @@ mod tests {
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
-            cx.bind_keys(super::panel_bindings(&keymap));
+            cx.bind_keys(registered_bindings(&keymap, cx));
         });
         let window = stub_panel(cx, ConnectionState::Connecting);
         let mut vcx = VisualTestContext::from_window(window.into(), cx);
