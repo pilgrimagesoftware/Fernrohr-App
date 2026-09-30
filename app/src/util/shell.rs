@@ -334,6 +334,10 @@ enum WindowMode {
         /// to state and pass on rather than something panels assume. Section
         /// 10.1's title bar reads it.
         connection_count: usize,
+        /// `connection-status-bar`: one item per context this window uses, shown along
+        /// the workspace's bottom edge. Absent in `Picker` mode - the picker already
+        /// shows its own connect progress (proposal.md's non-goals).
+        status_bar: Entity<crate::ui::status_bar::StatusBarView>,
     },
 }
 
@@ -529,6 +533,8 @@ impl MainWindow {
             },
         )
         .detach();
+        let status_bar =
+            cx.new(|cx| crate::ui::status_bar::StatusBarView::new(vec![context_name.clone()], cx));
         self.mode = WindowMode::Workspace {
             dock_area,
             _dock_skin: dock_skin,
@@ -537,6 +543,7 @@ impl MainWindow {
             open_panels,
             nav: Box::new(NavTarget::pods()),
             connection_count: CONNECTIONS,
+            status_bar,
         };
         if !restored {
             self.watch_scope_changes(first, window, cx);
@@ -801,15 +808,28 @@ impl Render for MainWindow {
             // The Resource panel is the window's left edge. It used to be a
             // fixed Pods/Logs list built here; the kinds now come from the
             // cluster's own discovery (spec 8.1), so it owns its own chrome.
+            // `connection-status-bar`: the workspace is now a column - the
+            // existing panel row at `flex_1`, then the status bar fixed to its
+            // own height below it. The picker has no bar (it shows its own
+            // connect progress instead).
             WindowMode::Workspace {
                 dock_area,
                 resource_panel,
+                status_bar,
                 ..
             } => div()
-                .flex()
                 .size_full()
-                .child(resource_panel.clone())
-                .child(dock_area.clone().into_any_element())
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .flex()
+                        .child(resource_panel.clone())
+                        .child(dock_area.clone().into_any_element()),
+                )
+                .child(status_bar.clone())
                 .into_any_element(),
         };
         div()
@@ -1913,5 +1933,65 @@ mod tests {
 
         let _ = std::fs::remove_file(&workspace);
         let _ = std::fs::remove_file(&keymap);
+    }
+
+    /// `connection-status-bar` 2.3: the status bar renders under a connected workspace's
+    /// body, and a picker-mode window - which shows its own connect progress instead
+    /// (proposal.md's non-goals) - has no such field to render at all.
+    #[gpui_kit::test]
+    async fn the_status_bar_renders_only_in_workspace_mode(cx: &mut TestAppContext) {
+        use gpui_kit::test::TestWindowExt as _;
+
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+
+        let window = cx.add_window(|window, cx| MainWindow {
+            mode: WindowMode::Picker(
+                cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
+            ),
+            focus_handle: cx.focus_handle(),
+        });
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, _window, _cx| {
+                assert!(
+                    matches!(main_window.mode, WindowMode::Picker(_)),
+                    "the picker variant carries no status bar field"
+                );
+            })
+            .unwrap();
+        cx.update_window(window.into(), |_, window, cx| {
+            window.render_frame(cx);
+        })
+        .expect("a picker-mode window renders with no status bar");
+
+        window
+            .update(cx, |main_window, window, cx| {
+                main_window.enter_workspace("kind-dev".to_string(), window, cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        window
+            .update(cx, |main_window, _window, cx| {
+                let WindowMode::Workspace { status_bar, .. } = &main_window.mode else {
+                    panic!("entering the workspace leaves picker mode")
+                };
+                assert_eq!(
+                    status_bar.read(cx).items(cx).len(),
+                    1,
+                    "the bar is wired to the window's own context, not merely a field \
+                     nobody reads"
+                );
+            })
+            .unwrap();
+        cx.update_window(window.into(), |_, window, cx| {
+            window.render_frame(cx);
+        })
+        .expect("a workspace window renders its status bar");
     }
 }

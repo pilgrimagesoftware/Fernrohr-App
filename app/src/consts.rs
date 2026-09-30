@@ -27,3 +27,9 @@ pub(crate) const TUNNEL_KEYCHAIN_SERVICE: &str = "com.pilgrimagesoftware.fernroh
 /// A single named constant so the "arbitrary" 30 seconds (design.md's own word) is easy
 /// to find and retune after real use, rather than a literal buried in `severity`.
 pub(crate) const STATUS_ESCALATE_AFTER: Duration = Duration::from_secs(30);
+
+/// `connection-status-bar` design decision 4: how often the status bar refreshes elapsed
+/// time and re-checks the escalation threshold while any item it shows is not connected.
+/// Idle (fully connected) windows run no timer at all, so this only ever wakes a window
+/// with a problem to show.
+pub(crate) const STATUS_TICK_INTERVAL: Duration = Duration::from_secs(1);
