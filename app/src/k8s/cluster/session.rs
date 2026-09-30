@@ -265,26 +265,6 @@ impl ClusterRegistry {
         ContextHealth::Connected
     }
 
-    /// Why `context_name`'s Pods watch is currently paused and for how long, for section
-    /// 7.4's panel display. `None` when the watch is active, unpaused, or the context has
-    /// no session yet.
-    // SUPERSEDED(connection-status-bar): the status bar's `health` above replaces this as
-    // the panel banner's data source; removed once `k8s/resource/pods.rs` stops calling it
-    // (task 3.1).
-    pub fn pods_pause_info(
-        cx: &App,
-        context_name: &str,
-    ) -> Option<(PauseReason, std::time::Duration)> {
-        if !cx.has_global::<Self>() {
-            return None;
-        }
-        cx.global::<Self>()
-            .sessions
-            .get(context_name)?
-            .watchers
-            .pause_info(&"pods")
-    }
-
     /// Unsubscribes a panel from `context_name`'s shared Pods watch, tearing it down on
     /// the 1-to-0 transition.
     pub fn unsubscribe_pods(cx: &mut App, context_name: &str) {
