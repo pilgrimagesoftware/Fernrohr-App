@@ -1,14 +1,16 @@
 //! Everything the Resource panel draws: the header/cluster dropdown, the
-//! grouped, collapsible kind list, and the status views (connecting,
-//! loading, empty, failed).
+//! grouped, filterable kind list, and the status views (connecting, loading,
+//! empty, failed).
 
-use super::section::Section;
+use super::section::VisibleSection;
 use super::{ResourcePanel, ResourceState};
 use crate::ui::nav::NavTarget;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::sidebar::{Sidebar, SidebarItem as _, SidebarMenuItem};
 use gpui_kit::component::{Icon, IconName};
 use gpui_kit::*;
@@ -59,17 +61,18 @@ impl ResourcePanel {
 
     /// One category's header - name, running count, and a click that
     /// collapses or expands its rows (section 2.2) - over its rows, when
-    /// expanded.
+    /// expanded. `expanded` already accounts for an active filter (design.md:
+    /// a match forces its section open regardless of stored collapse state).
     fn render_section(
         &self,
-        section: &Section,
+        section: &VisibleSection,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme().clone();
         let this = cx.weak_entity();
         let category = section.category;
-        let expanded = !self.collapsed.contains(&category);
+        let expanded = section.expanded;
 
         let header = div()
             .id(format!("resource-section-{}", category.title()))
@@ -101,12 +104,12 @@ impl ResourcePanel {
                     )
                     .child(category.title()),
             )
-            .child(div().child(section.kinds.len().to_string()));
+            .child(div().child(section.total.to_string()));
 
         let mut rows = div().flex().flex_col().w_full();
         if expanded {
             for (index, (label, target, active)) in
-                self.rows(&section.kinds).into_iter().enumerate()
+                self.rows(&section.matches).into_iter().enumerate()
             {
                 let item = self.kind_item(label, target, active, cx);
                 let id = format!("resource-row-{}-{index}", category.title());
@@ -123,18 +126,48 @@ impl ResourcePanel {
             .into_any_element()
     }
 
-    /// The grouped, collapsible list: a stack of section headers over their
-    /// rows. Rows are rendered directly rather than through `Sidebar`'s own
-    /// virtualized list, since that list takes one homogeneous item type and
-    /// cannot interleave a section header between two rows - not a cost worth
-    /// paying at the couple-hundred-row scale a cluster's discovery reports.
+    /// The grouped, filterable list: a scrollable stack of sections over a
+    /// bottom-pinned filter box. Rows are rendered directly rather than
+    /// through `Sidebar`'s own virtualized list, since that list takes one
+    /// homogeneous item type and cannot interleave a section header between
+    /// two rows - not a cost worth paying at the couple-hundred-row scale a
+    /// cluster's discovery reports.
     fn render_kinds(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let sections = self.sections();
-        let mut list = div().flex().flex_col().w_full();
-        for section in &sections {
-            list = list.child(self.render_section(section, window, cx));
-        }
-        self.with_header(list.into_any_element(), cx)
+        let theme = cx.theme().clone();
+        let filter = self.filter_text(cx);
+        let sections = self.visible_sections(cx);
+
+        let list: AnyElement = if sections.is_empty() {
+            div()
+                .p_3()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child(format!("No resource kinds match \u{201c}{filter}\u{201d}."))
+                .into_any_element()
+        } else {
+            let mut list = div().flex().flex_col().w_full();
+            for section in &sections {
+                list = list.child(self.render_section(section, window, cx));
+            }
+            list.into_any_element()
+        };
+
+        let body = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(div().flex_1().min_h_0().overflow_y_scrollbar().child(list))
+            .child(
+                div()
+                    .w_full()
+                    .px_2()
+                    .py_2()
+                    .border_t_1()
+                    .border_color(theme.sidebar_border)
+                    .child(Input::new(&self.filter_input)),
+            );
+
+        self.with_header(body.into_any_element(), cx)
     }
 
     /// The panel's frame: [`Self::header`] drawn here, above header-less content,

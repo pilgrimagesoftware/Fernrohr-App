@@ -10,10 +10,12 @@ use crate::ui::nav::{NavTarget, has_concrete_panel};
 use gpui_kit::{AppContext as _, TestAppContext, WindowHandle};
 use kube::core::GroupVersionKind;
 
-// `resource-panel-grouping`: section 1/2's pure category/grouping tests need
-// no window (`logic`); section 2.2/2.3's collapse behavior needs a live
-// panel (`grouping`). Children of this module rather than this file's own
-// line count, per `.claude/rules/rust-structure.md`.
+// `resource-panel-grouping`: section 1/2/3's pure category/grouping/filter
+// tests need no window (`logic`); section 2.2/2.3's collapse behavior and
+// section 3's live filter box each need a real panel (`grouping`, `filter`).
+// Children of this module rather than this file's own line count, per
+// `.claude/rules/rust-structure.md`.
+mod filter;
 mod grouping;
 mod logic;
 
@@ -31,11 +33,12 @@ fn kind(group: &str, kind: &str) -> DiscoveredKind {
 fn stub_panel(cx: &mut TestAppContext) -> WindowHandle<ResourcePanel> {
     let connection =
         cx.update(|cx| cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting)));
-    cx.add_window(|_window, cx| {
+    cx.add_window(|window, cx| {
         ResourcePanel::with_connection(
             "kind-dev".to_string(),
             vec!["kind-dev".to_string()],
             connection.clone(),
+            window,
             cx,
         )
     })
@@ -49,11 +52,12 @@ async fn cluster_dropdown_requires_multiple_connections(cx: &mut TestAppContext)
     });
     let connection =
         cx.update(|cx| cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting)));
-    let window = cx.add_window(|_window, cx| {
+    let window = cx.add_window(|window, cx| {
         ResourcePanel::with_contexts(
             "kind-dev".to_string(),
             vec!["kind-dev".to_string(), "kind-staging".to_string()],
             connection,
+            window,
             cx,
         )
     });
@@ -326,11 +330,12 @@ async fn set_active_context_to_a_different_context_reloads_from_its_connection(
     });
     let kind_dev =
         cx.update(|cx| cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting)));
-    let window = cx.add_window(|_window, cx| {
+    let window = cx.add_window(|window, cx| {
         ResourcePanel::with_contexts(
             "kind-dev".to_string(),
             vec!["kind-dev".to_string(), "staging".to_string()],
             kind_dev,
+            window,
             cx,
         )
     });
@@ -398,11 +403,12 @@ async fn set_active_context_to_the_current_context_does_not_reload(cx: &mut Test
     });
     let connection =
         cx.update(|cx| cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting)));
-    let window = cx.add_window(|_window, cx| {
+    let window = cx.add_window(|window, cx| {
         ResourcePanel::with_contexts(
             "kind-dev".to_string(),
             vec!["kind-dev".to_string(), "staging".to_string()],
             connection,
+            window,
             cx,
         )
     });

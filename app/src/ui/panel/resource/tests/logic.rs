@@ -1,7 +1,7 @@
-//! GPUI-free coverage for section 1's category lookup and section 2's
-//! grouping - no window needed, which is what keeps it fast and exhaustive.
-//! `super::kind` (this module's parent, `resource::tests`) builds the
-//! fixtures.
+//! GPUI-free coverage for section 1's category lookup, section 2's grouping,
+//! and section 3's filter matching/visibility - no window needed, which is
+//! what keeps it fast and exhaustive. `super::kind` (this module's parent,
+//! `resource::tests`) builds the fixtures.
 
 use super::kind;
 use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -97,4 +97,69 @@ fn group_kinds_orders_sections_and_loses_no_kind() {
 fn grouping_no_kinds_yields_no_sections() {
     let kinds: Vec<DiscoveredKind> = Vec::new();
     assert!(super::super::section::group_kinds(&kinds).is_empty());
+}
+
+/// Section 3.1: matching checks the row's label, kind, plural and API group -
+/// including a group that appears in neither the label nor the kind name.
+#[test]
+fn matches_filter_checks_label_kind_plural_and_group() {
+    let cron_job = kind("batch", "CronJob");
+
+    assert!(super::super::section::matches_filter(&cron_job, "cronjob"));
+    assert!(super::super::section::matches_filter(
+        &cron_job,
+        "CronJob · batch"
+    ));
+    assert!(super::super::section::matches_filter(&cron_job, "cronjobs"));
+    assert!(
+        super::super::section::matches_filter(&cron_job, "batch"),
+        "the group alone should match, even though it's in neither the label nor the kind"
+    );
+    assert!(!super::super::section::matches_filter(&cron_job, "ingress"));
+    assert!(
+        super::super::section::matches_filter(&cron_job, ""),
+        "an empty filter matches everything"
+    );
+}
+
+/// Section 3.2/3.3: a collapsed section with a match renders expanded and
+/// keeps its match; a section with none is dropped entirely; the stored
+/// collapse set itself is left untouched by any of this.
+#[test]
+fn visible_sections_expands_matches_and_hides_the_rest_without_mutating_collapse() {
+    let ingress = DiscoveredKind {
+        plural: "ingresses".to_string(),
+        ..kind("networking.k8s.io", "Ingress")
+    };
+    let kinds = vec![kind("apps", "Deployment"), ingress];
+    let mut collapsed = std::collections::HashSet::new();
+    collapsed.insert(Category::Workloads);
+
+    let filtered = super::super::section::visible_sections(&kinds, &collapsed, "ingress");
+    assert_eq!(filtered.len(), 1, "only the matching section remains");
+    assert_eq!(filtered[0].category.to_string(), "Network");
+    assert!(
+        filtered[0].expanded,
+        "a match forces its section expanded regardless of collapse state"
+    );
+
+    assert!(
+        collapsed.contains(&Category::Workloads),
+        "filtering must not mutate the stored collapse state"
+    );
+
+    let no_match = super::super::section::visible_sections(&kinds, &collapsed, "nonesuch");
+    assert!(
+        no_match.is_empty(),
+        "no sections render when nothing matches"
+    );
+
+    let cleared = super::super::section::visible_sections(&kinds, &collapsed, "");
+    assert!(
+        cleared
+            .iter()
+            .find(|section| section.category.to_string() == "Workloads")
+            .is_some_and(|section| !section.expanded),
+        "clearing the filter restores Workloads to its stored collapsed state"
+    );
 }

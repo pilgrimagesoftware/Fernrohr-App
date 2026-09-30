@@ -850,6 +850,7 @@ impl MainWindow {
             crate::ui::resource_panel::ResourcePanel::new(
                 context_name.clone(),
                 contexts.clone(),
+                window,
                 cx,
             )
         });

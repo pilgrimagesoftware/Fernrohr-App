@@ -8,14 +8,16 @@
 //! reconnects.
 //!
 //! `resource-panel-grouping` groups the flat list into fixed-order category
-//! sections ([`category`]/[`section`]), collapsible per window. [`render`]
-//! draws it; this file stays wiring and state.
+//! sections ([`category`]/[`section`]), collapsible per window, with a
+//! bottom-pinned filter (section 3). [`render`] draws it; this file stays
+//! wiring and state.
 
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::ui::nav::NavTarget;
 use category::Category;
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 use std::collections::HashSet;
 
@@ -63,20 +65,29 @@ pub struct ResourcePanel {
     /// Categories the user collapsed, this window only. Section 2.3: default
     /// expanded, never written to the preference file.
     collapsed: HashSet<Category>,
+    /// The bottom-pinned filter box's text field (section 3.1).
+    filter_input: Entity<InputState>,
     /// Kept, rather than `.detach()`ed, so [`Self::set_active_context`] can
     /// replace it: switching the active context means observing a *different*
     /// connection, and the old subscription must stop firing into a state that
     /// no longer describes what `header` shows.
     _connection_observation: Subscription,
+    /// Re-renders on every keystroke in the filter.
+    _filter_observation: Subscription,
 }
 
 impl ResourcePanel {
     /// `contexts` is the window's full context list (`window-context-bar` design.md
     /// decision 4), so the cluster dropdown always lists every context the window
     /// uses, not just the one `context_name` starts on.
-    pub fn new(context_name: String, contexts: Vec<String>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        context_name: String,
+        contexts: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let connection = ClusterRegistry::connection(cx, &context_name);
-        Self::with_connection(context_name, contexts, connection, cx)
+        Self::with_connection(context_name, contexts, connection, window, cx)
     }
 
     /// Construction from an explicit connection, so tests can hand in a stub.
@@ -92,9 +103,17 @@ impl ResourcePanel {
         context_name: String,
         contexts: Vec<String>,
         connection: Entity<ClusterConnection>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let observation = Self::observe(&connection, cx);
+        let filter_input = cx.new(|cx| InputState::new(window, cx).placeholder("Filter kinds..."));
+        let filter_observation =
+            cx.subscribe(&filter_input, |_this: &mut Self, _input, event, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            });
         let mut this = Self {
             context_name,
             contexts,
@@ -102,7 +121,9 @@ impl ResourcePanel {
             loading: false,
             selected: None,
             collapsed: HashSet::new(),
+            filter_input,
             _connection_observation: observation,
+            _filter_observation: filter_observation,
         };
         this.sync(&connection, cx);
         this
@@ -150,9 +171,10 @@ impl ResourcePanel {
         context_name: String,
         contexts: Vec<String>,
         connection: Entity<ClusterConnection>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::with_connection(context_name, contexts, connection, cx)
+        Self::with_connection(context_name, contexts, connection, window, cx)
     }
 
     fn shows_cluster_dropdown(&self) -> bool {
@@ -238,15 +260,23 @@ impl ResourcePanel {
         cx.notify();
     }
 
-    /// The kinds currently listed, partitioned into the fixed-order sections
-    /// section 2 renders - the single source `render` reads, so what shows
-    /// and what a test asserts can never drift apart.
-    fn sections(&self) -> Vec<section::Section> {
-        let kinds = match &self.state {
-            ResourceState::Loaded(kinds) => kinds.as_slice(),
+    fn loaded_kinds(&self) -> &[DiscoveredKind] {
+        match &self.state {
+            ResourceState::Loaded(kinds) => kinds,
             _ => &[],
-        };
-        section::group_kinds(kinds)
+        }
+    }
+
+    fn filter_text(&self, cx: &App) -> String {
+        self.filter_input.read(cx).value().to_string()
+    }
+
+    /// The sections to render right now: `loaded_kinds` partitioned by
+    /// category, with the current filter and collapse state applied - the
+    /// single source `render` reads, so what shows and what a test asserts
+    /// can never drift apart.
+    fn visible_sections(&self, cx: &App) -> Vec<section::VisibleSection> {
+        section::visible_sections(self.loaded_kinds(), &self.collapsed, &self.filter_text(cx))
     }
 
     /// Flips `category`'s collapsed state - a section header's click.

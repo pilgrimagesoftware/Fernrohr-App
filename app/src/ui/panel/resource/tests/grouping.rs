@@ -8,8 +8,8 @@ use super::{kind, stub_panel};
 use gpui_kit::TestAppContext;
 
 /// Section 2.2: collapsing a section hides its rows but keeps its row count -
-/// `render_section`'s header always reports `section.kinds.len()`, whether or
-/// not the section is expanded.
+/// `render_section`'s header always reports `section.total`, whether or not
+/// the section is expanded.
 #[gpui_kit::test]
 async fn collapsing_a_section_keeps_reporting_its_count(cx: &mut TestAppContext) {
     cx.update(|cx| {
@@ -27,17 +27,17 @@ async fn collapsing_a_section_keeps_reporting_its_count(cx: &mut TestAppContext)
         .unwrap();
 
     window
-        .update(cx, |panel, _window, _cx| {
-            let sections = panel.sections();
+        .update(cx, |panel, _window, cx| {
+            let sections = panel.visible_sections(cx);
             let workloads = sections
                 .iter()
                 .find(|section| section.category.to_string() == "Workloads")
                 .expect("Workloads is still a section, just collapsed");
             assert_eq!(
-                workloads.kinds.len(),
-                2,
+                workloads.total, 2,
                 "the header still reports how many kinds it holds"
             );
+            assert!(!workloads.expanded, "rows are hidden while collapsed");
             assert!(
                 panel.collapsed.contains(&Category::Workloads),
                 "the click collapsed it"
