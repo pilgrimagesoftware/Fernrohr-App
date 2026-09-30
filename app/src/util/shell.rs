@@ -91,6 +91,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     });
     nav::register_commands(registry);
     tunnels::register_commands(registry);
+    crate::k8s::resource::pod_detail::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -136,7 +137,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // key in its hint bar has not bound that key: without this the hint bar
     // prints letters no keystroke resolves to, and the shortcut does nothing.
     cx.bind_keys(crate::k8s::resource::pods::panel_bindings());
-    cx.bind_keys(crate::k8s::resource::pod_detail::panel_bindings());
+    cx.bind_keys(crate::k8s::resource::pod_detail::panel_bindings(&keymap));
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
     });
