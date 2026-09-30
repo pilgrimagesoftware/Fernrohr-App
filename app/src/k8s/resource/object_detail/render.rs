@@ -190,7 +190,7 @@ impl Render for ObjectDetailPanel {
                     )),
             );
 
-        let body = div()
+        div()
             .size_full()
             .key_context(key_context())
             .track_focus(&self.focus_handle)
@@ -199,9 +199,7 @@ impl Render for ObjectDetailPanel {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(content));
-
-        panel_title::focus_frame(body, &self.focus_handle, window, cx)
+            .child(div().flex_1().min_h_0().child(content))
     }
 }
 

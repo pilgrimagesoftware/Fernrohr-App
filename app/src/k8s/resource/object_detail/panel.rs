@@ -244,8 +244,13 @@ impl BasePanel for ObjectDetailPanel {
 /// The dock's title bar, from the same rules every panel's comes from. No
 /// namespace picker: the panel is over one object.
 impl Panel for ObjectDetailPanel {
-    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
+    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title_element(
+            &self.scope,
+            panel_title::title(&self.scope),
+            self.focus_handle.contains_focused(window, cx),
+            cx,
+        )
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
