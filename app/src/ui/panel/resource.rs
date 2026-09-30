@@ -287,8 +287,12 @@ impl ResourcePanel {
         let theme = cx.theme().clone();
         // One row: "Resources" on the left, the context (a dropdown once the window
         // holds several) in the right corner, sharing the label's text baseline.
+        // `flex_1` + `min_w_0`, not `w_full`: the sidebar puts this inside a padded
+        // `h_flex`, where `w_full` takes the container's whole width and pushes the
+        // selector past the panel's right edge.
         div()
-            .w_full()
+            .flex_1()
+            .min_w_0()
             .flex()
             .items_baseline()
             .justify_between()
@@ -302,24 +306,21 @@ impl ResourcePanel {
             )
             // `ml_auto` as well as `justify_between`: the selector stays in the right
             // corner even if the sidebar's header slot doesn't stretch this row.
-            .child(
-                div()
-                    .ml_auto()
-                    .min_w_0()
-                    .child(if self.shows_cluster_dropdown() {
-                        self.cluster_dropdown(cx)
-                    } else {
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(self.context_name.clone())
-                            .into_any_element()
-                    }),
-            )
+            .child(div().ml_auto().min_w_0().overflow_hidden().child(
+                if self.shows_cluster_dropdown() {
+                    self.cluster_dropdown(cx)
+                } else {
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(self.context_name.clone())
+                        .into_any_element()
+                },
+            ))
             .into_any_element()
     }
 
