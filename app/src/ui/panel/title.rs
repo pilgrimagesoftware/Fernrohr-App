@@ -14,6 +14,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::*;
 use std::rc::Rc;
 
@@ -104,17 +105,46 @@ impl PanelScope {
 /// off the target, so a caller cannot label a list "Pod" or a detail panel
 /// "Pods" by forgetting to pass a flag.
 ///
-/// The cluster is named only when the window has more than one connection open.
-/// With one connection it is the only cluster there is, so repeating its name
-/// in every panel's title is noise - and the resource panel's own header already
-/// says which cluster the window is on.
+/// The cluster is never part of the title: the tab and title bar stay short, and
+/// [`title_element`]'s tooltip and each panel's own [`context_label`] say which
+/// cluster a panel reads.
 pub fn title(scope: &PanelScope) -> String {
-    let label = scope.target.item_label();
-    if scope.connection_count > 1 {
-        format!("{label} · {}", scope.context_name)
-    } else {
-        label
-    }
+    scope.target.item_label()
+}
+
+/// `text` as the panel's title element, with a "Context: <name>" tooltip. The dock
+/// draws this in the tab (see [`tab_name`]) and in the title bar.
+pub fn title_element(scope: &PanelScope, text: String) -> AnyElement {
+    let tooltip = format!("Context: {}", scope.context_name);
+    div()
+        .id(SharedString::from(format!(
+            "panel-title-{}-{text}",
+            scope.context_name
+        )))
+        .child(text)
+        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        .into_any_element()
+}
+
+/// The "Context: <name>" line a panel shows at the top of its content, truncated
+/// with an ellipsis when the name is long, with the full name in a tooltip.
+pub fn context_label(scope: &PanelScope, muted: Hsla) -> impl IntoElement {
+    let full = format!("Context: {}", scope.context_name);
+    let tooltip = full.clone();
+    div()
+        .id(SharedString::from(format!(
+            "panel-context-{}",
+            scope.context_name
+        )))
+        .flex_1()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_ellipsis()
+        .text_sm()
+        .text_color(muted)
+        .child(full)
+        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
 }
 
 /// The label a namespace scope reads on the picker's button.
@@ -136,13 +166,11 @@ pub fn namespaces_offered(namespaces: &[String]) -> Vec<Option<String>> {
         .collect()
 }
 
-/// The tab name the dock labels the panel's tab with, which is its title.
-///
-/// Its own function because the dock asks for the title and the tab name
-/// separately, and a panel supplying one and not the other would show a
-/// different name in the tab than in the bar.
-pub fn tab_name(scope: &PanelScope) -> Option<SharedString> {
-    Some(title(scope).into())
+/// Always `None`: the dock then draws the tab from the panel's title element, so
+/// the tab gets [`title_element`]'s context tooltip - a plain tab name can't carry
+/// one - and the tab and the title bar can't drift apart.
+pub fn tab_name(_scope: &PanelScope) -> Option<SharedString> {
+    None
 }
 
 /// The close button every resource panel's title bar carries.
@@ -281,22 +309,19 @@ mod tests {
         assert_eq!(title(&scope(kind("Pod", true), 1)), "Pods");
     }
 
-    /// Section 10.1: with more than one connection the panels stop being
-    /// interchangeable, so each says which cluster it reads.
+    /// With several connections the title still leaves the cluster out; the tab's
+    /// tooltip and the panel's "Context:" line name it instead.
     #[test]
-    fn several_connections_name_the_cluster() {
-        assert_eq!(title(&scope(kind("Pod", true), 2)), "Pods · kind-dev");
-        assert_eq!(
-            title(&scope(kind("Deployment", true), 3)),
-            "Deployments · kind-dev"
-        );
+    fn several_connections_still_leave_the_cluster_out_of_the_title() {
+        assert_eq!(title(&scope(kind("Pod", true), 2)), "Pods");
+        assert_eq!(title(&scope(kind("Deployment", true), 3)), "Deployments");
     }
 
     /// The Logs view is a target of its own and gets the same rule.
     #[test]
     fn the_logs_view_titles_by_the_same_rule() {
         assert_eq!(title(&scope(NavTarget::Logs, 1)), "Logs");
-        assert_eq!(title(&scope(NavTarget::Logs, 2)), "Logs · kind-dev");
+        assert_eq!(title(&scope(NavTarget::Logs, 2)), "Logs");
     }
 
     /// Section 2.2: a panel over one pod names the pod, so two pods' detail
@@ -311,7 +336,7 @@ mod tests {
         assert_ne!(title(&pod_scope), title(&other), "two pods, two names");
 
         let with_cluster = scope(NavTarget::pod("default", "api-7d9f-ftg5t"), 2);
-        assert_eq!(title(&with_cluster), "Pod: api-7d9f-ftg5t · kind-dev");
+        assert_eq!(title(&with_cluster), "Pod: api-7d9f-ftg5t");
     }
 
     /// A pod is namespaced whatever discovery said about any kind, so a panel

@@ -556,11 +556,11 @@ impl LogsPanel {
 
 impl Panel for LogsPanel {
     fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        self.streaming_title()
+        panel_title::title_element(&self.scope, self.streaming_title())
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
-        Some(self.streaming_title().into())
+        panel_title::tab_name(&self.scope)
     }
 
     fn toolbar_buttons(

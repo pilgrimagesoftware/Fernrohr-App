@@ -597,11 +597,13 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                     nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
                 };
+                // No plain tab name, so the dock draws the tab from the panel's
+                // title element and its "Context:" tooltip.
+                assert_eq!(name, None, "the tab is drawn from the title element");
                 assert_eq!(
-                    name.as_deref(),
-                    Some(target.list_label()).as_deref(),
-                    "the title bar names the kind, and adds the cluster only \
-                     when the window holds more than one connection"
+                    crate::ui::panel::title::title(&scope),
+                    target.list_label(),
+                    "the title names the kind, never the cluster"
                 );
                 assert!(
                     controls > 0,

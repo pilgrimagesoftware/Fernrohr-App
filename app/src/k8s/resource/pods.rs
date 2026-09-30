@@ -734,16 +734,21 @@ impl Render for PodsPanel {
                     this.scope = this.scope.scoped_to(namespaces.clone());
                     cx.emit(ScopeEvent::NamespacesChanged(namespaces));
                 });
-            })
-            .map(|picker| {
-                div()
-                    .flex()
-                    .justify_end()
-                    .p_2()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(picker)
             });
+        // "Context: <name>" on the left, the namespace picker (when there is one)
+        // on the right, in one header row.
+        let header = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .p_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(panel_title::context_label(
+                &self.scope,
+                cx.theme().muted_foreground,
+            ))
+            .children(namespace_bar);
 
         div()
             .size_full()
@@ -758,7 +763,7 @@ impl Render for PodsPanel {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .children(namespace_bar)
+                    .child(header)
                     .child(div().flex_1().min_h_0().child(content)),
                 &self.focus_handle,
                 window,
@@ -788,7 +793,7 @@ impl BasePanel for PodsPanel {
 /// this panel and a placeholder get an identical bar.
 impl Panel for PodsPanel {
     fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title(&self.scope)
+        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
