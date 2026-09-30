@@ -1,7 +1,7 @@
 //! A human-readable rendering of a [`kube::Error`], shared by every panel that
 //! surfaces a cluster API failure to the user - the log stream
 //! (`util::logs::stream_container_logs`) and the pod-detail fetch
-//! (`k8s::resource::pod_detail::fetch_pod`) today.
+//! (`k8s::resource::pod_detail::fetch::fetch_pod`) today.
 //!
 //! `kube::Error::Api`'s own `Display` is `"ApiError: <message> (<Debug>)"`:
 //! it tells a developer everything, and a user nothing readable - the shape
@@ -13,7 +13,7 @@
 //! A 404 is deliberately not special-cased here: every caller already tells a
 //! "this pod is gone" 404 apart from any other failure before it ever reaches
 //! [`describe`], because "not found" is its own state (see
-//! `pod_detail::PodDetailState::NotFound`), naming what's missing, not a
+//! `pod_detail::fetch::PodDetailState::NotFound`), naming what's missing, not a
 //! message this module could word better.
 
 /// The message half of a failure report: what a panel shows by default.
