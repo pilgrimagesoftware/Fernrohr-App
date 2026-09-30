@@ -234,9 +234,10 @@ async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
     // back on Overview so its key is exercised from another tab.
     for (keystroke, expected) in [
         ("2", DetailSection::Containers),
-        ("3", DetailSection::Volumes),
-        ("4", DetailSection::Events),
-        ("5", DetailSection::ManagedFields),
+        ("3", DetailSection::Configuration),
+        ("4", DetailSection::Volumes),
+        ("5", DetailSection::Events),
+        ("6", DetailSection::ManagedFields),
         ("1", DetailSection::Overview),
     ] {
         vcx.simulate_keystrokes(keystroke);
@@ -244,7 +245,7 @@ async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
         assert_eq!(active_tab(&mut vcx), expected, "after pressing {keystroke}");
     }
 
-    vcx.simulate_keystrokes("3 y");
+    vcx.simulate_keystrokes("4 y");
     vcx.run_until_parked();
     let view = |vcx: &mut VisualTestContext| {
         window
@@ -270,7 +271,11 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
     let commands: Vec<_> = registry.iter().collect();
-    assert_eq!(commands.len(), 6);
+    assert_eq!(
+        commands.len(),
+        8,
+        "the view toggle, six tabs, and Hide Secret Values"
+    );
     assert!(
         commands
             .iter()
@@ -278,7 +283,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         "panel shortcuts are panel-scoped and stay out of the menu bar"
     );
     assert!(registry.available(&[]).is_empty());
-    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 6);
+    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 8);
 
     let mut keymap = KeymapConfig::default();
     keymap

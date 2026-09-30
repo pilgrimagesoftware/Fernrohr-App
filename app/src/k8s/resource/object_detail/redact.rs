@@ -45,6 +45,13 @@ pub(super) fn placeholder(size: usize) -> String {
     format!("<redacted: {size} {unit}>")
 }
 
+/// The size a [`placeholder`] states, or `None` for any other text.
+pub(super) fn placeholder_size(text: &str) -> Option<usize> {
+    let rest = text.strip_prefix("<redacted: ")?;
+    let (size, unit) = rest.split_once(' ')?;
+    matches!(unit, "byte>" | "bytes>").then(|| size.parse().ok())?
+}
+
 /// The decoded length of a base64 value, from its length and padding alone -
 /// the value itself is never decoded.
 fn base64_decoded_len(encoded: &str) -> usize {
@@ -63,6 +70,15 @@ fn base64_decoded_len(encoded: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::base64_decoded_len;
+
+    #[test]
+    fn placeholder_size_reads_back_what_placeholder_wrote() {
+        use super::{placeholder, placeholder_size};
+        for size in [0, 1, 15, 4096] {
+            assert_eq!(placeholder_size(&placeholder(size)), Some(size));
+        }
+        assert_eq!(placeholder_size("hunter2"), None);
+    }
 
     #[test]
     fn decoded_length_counts_padding() {

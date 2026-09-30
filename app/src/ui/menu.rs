@@ -27,10 +27,24 @@ actions!(
     ]
 );
 
-/// Builds the seven-menu bar from `registry` and installs it via
-/// `cx.set_menus`. Called once at startup, after every command is
-/// registered and before the registry is moved into its global slot.
+/// Registers the platform items' handlers and installs the menu bar. Called
+/// once at startup, after every command is registered and before the
+/// registry is moved into its global slot.
 pub fn init(registry: &CommandRegistry, cx: &mut App) {
+    register_handlers(cx);
+    cx.set_menus(menus(registry));
+}
+
+/// Re-installs the menu bar from the registry global. The native menu reads
+/// each item's shortcut from the live keymap when it's installed, so this is
+/// what makes the menu show a key the keybindings editor just changed.
+/// Handlers aren't re-registered - they're app-wide and already in place.
+pub fn rebuild_menus(cx: &mut App) {
+    let menus = menus(cx.global::<CommandRegistry>());
+    cx.set_menus(menus);
+}
+
+fn register_handlers(cx: &mut App) {
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
     cx.on_action(|_: &Hide, cx: &mut App| cx.hide());
     cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());
@@ -53,19 +67,32 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
             let _ = window.update(cx, |_, window, _| window.zoom_window());
         }
     });
+}
 
-    cx.set_menus(vec![
-        Menu::new("App").items(vec![
-            MenuItem::action("About Fernrohr", About),
-            MenuItem::separator(),
-            MenuItem::os_submenu("Services", SystemMenuType::Services),
-            MenuItem::separator(),
-            MenuItem::action("Hide Fernrohr", Hide),
-            MenuItem::action("Hide Others", HideOthers),
-            MenuItem::action("Show All", ShowAll),
-            MenuItem::separator(),
-            MenuItem::action("Quit Fernrohr", Quit),
-        ]),
+/// The seven-menu bar, from `registry`.
+fn menus(registry: &CommandRegistry) -> Vec<Menu> {
+    vec![
+        Menu::new("App").items({
+            let mut items = vec![MenuItem::action("About Fernrohr", About)];
+            // Settings… and anything else the registry puts in the App menu,
+            // between About and Services as on every Mac app.
+            let app_items = registry_items(MenuSlot::App, registry);
+            if !app_items.is_empty() {
+                items.push(MenuItem::separator());
+                items.extend(app_items);
+            }
+            items.extend([
+                MenuItem::separator(),
+                MenuItem::os_submenu("Services", SystemMenuType::Services),
+                MenuItem::separator(),
+                MenuItem::action("Hide Fernrohr", Hide),
+                MenuItem::action("Hide Others", HideOthers),
+                MenuItem::action("Show All", ShowAll),
+                MenuItem::separator(),
+                MenuItem::action("Quit Fernrohr", Quit),
+            ]);
+            items
+        }),
         menu_from_registry("Context", MenuSlot::Context, registry),
         menu_from_registry("Edit", MenuSlot::Edit, registry),
         menu_from_registry("View", MenuSlot::View, registry),
@@ -80,7 +107,7 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
             items
         }),
         menu_from_registry("Help", MenuSlot::Help, registry),
-    ]);
+    ]
 }
 
 /// Each platform's standard shortcut for an item, or none - `Hide` and friends
@@ -219,6 +246,92 @@ mod tests {
     use gpui_kit::{Action, actions};
 
     actions!(menu_test, [TestAction]);
+
+    /// After a keymap edit and `rebuild_menus`, the menu bar is re-installed
+    /// with the command still in it, and the key the native menu shows - the
+    /// action's earliest binding that no `Unbind` cancelled - is the new one.
+    /// Rebuilding doesn't register handlers again: About still opens exactly
+    /// one window.
+    #[gpui_kit::test]
+    fn rebuilt_menus_show_the_new_key_and_fire_once(cx: &mut gpui_kit::TestAppContext) {
+        use crate::keymap::{Edit, apply};
+        use crate::ui::panel::focus::FocusNextPanel;
+
+        cx.executor().allow_parking();
+        let dir = std::env::temp_dir();
+        let n = std::process::id();
+        let (workspace, keymap) = (
+            dir.join(format!("fernrohr-menu-workspace-{n}.toml")),
+            dir.join(format!("fernrohr-menu-keymap-{n}.toml")),
+        );
+        let _ = std::fs::remove_file(&keymap);
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            crate::util::shell::init(cx, workspace.clone(), &keymap);
+
+            apply(cx, "panel.focus_next", Edit::Set("cmd-shift-j".into())).expect("saved");
+            super::rebuild_menus(cx);
+            super::rebuild_menus(cx);
+
+            let menus = cx.get_menus().expect("a menu bar is installed");
+            let navigate = menus
+                .iter()
+                .find(|menu| menu.name.as_ref() == "Navigate")
+                .expect("a Navigate menu");
+            assert!(
+                navigate.items.iter().any(|item| matches!(
+                    item,
+                    gpui_kit::OwnedMenuItem::Action { name, .. } if name == "Focus Next Panel"
+                )),
+                "the command is still in its menu"
+            );
+            let shown = cx
+                .key_bindings()
+                .borrow()
+                .bindings_for_action(&FocusNextPanel)
+                .next()
+                .map(|binding| {
+                    binding
+                        .keystrokes()
+                        .iter()
+                        .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
+                        .collect::<Vec<_>>()
+                });
+            let expected = gpui_kit::Keystroke::parse("cmd-shift-j").unwrap().unparse();
+            assert_eq!(shown, Some(vec![expected]), "the menu shows the new key");
+        });
+
+        let before = cx.update(|cx| cx.windows().len());
+        cx.update(|cx| cx.dispatch_action(&About));
+        cx.run_until_parked();
+        assert_eq!(
+            cx.update(|cx| cx.windows().len()),
+            before + 1,
+            "About's handler ran once, not once per rebuild"
+        );
+        let _ = std::fs::remove_file(&workspace);
+        let _ = std::fs::remove_file(&keymap);
+    }
+
+    /// Settings… sits in the App menu, between About and Services, once the
+    /// registry has it - `MenuSlot::App`'s first command.
+    #[test]
+    fn the_app_menu_carries_settings() {
+        let mut registry = CommandRegistry::new();
+        crate::ui::settings::register_commands(&mut registry);
+        let menus = super::menus(&registry);
+        let names: Vec<String> = menus[0]
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                gpui_kit::MenuItem::Action { name, .. } => Some(name.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names.first().map(String::as_str), Some("About Fernrohr"));
+        assert_eq!(names.get(1).map(String::as_str), Some("Settings…"));
+    }
 
     /// The App and Window menu items answer to each platform's standard
     /// shortcuts - through their registered commands, the path every command's
