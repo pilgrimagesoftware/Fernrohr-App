@@ -97,6 +97,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::link::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
+    crate::ui::panel::focus::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -1360,7 +1361,7 @@ impl MainWindow {
         }
         .scoped_to(namespaces);
         let key = PanelKey::from(&scope);
-        match open_panels.iter().find(|open| open.key == key) {
+        let id = match open_panels.iter().find(|open| open.key == key) {
             Some(open) => {
                 let id = open.id;
                 if let (Some(OpenedPanel::PodDetail(panel)), Some(view)) =
@@ -1369,6 +1370,7 @@ impl MainWindow {
                     panel.update(cx, |panel, cx| panel.set_view(view, cx));
                 }
                 dock_area.update(cx, |area, cx| area.select_panel(id, window, cx));
+                id
             }
             None => {
                 let (id, opened) = dock_area.update(cx, |area, cx| {
@@ -1380,7 +1382,16 @@ impl MainWindow {
                     panel: Some(opened.clone()),
                 });
                 watch_scope = Some(opened);
+                id
             }
+        };
+        // Whichever arm ran, the panel asked for takes keyboard focus: neither
+        // `select_panel` nor `add_panel_view` moves it, so without this a panel
+        // opened from the keyboard needed a click before its own keys worked.
+        // Only user requests come through here - a restored layout is loaded by
+        // `DockArea::load`, so relaunching doesn't hop focus panel by panel.
+        if let Some(panel) = dock_area.read(cx).panel(id) {
+            window.focus(&panel.focus_handle(cx), cx);
         }
         **nav = target;
         let showing = (**nav).clone();
@@ -1545,6 +1556,8 @@ impl Render for MainWindow {
             })
             .on_action(cx.listener(Self::on_action_show_pods))
             .on_action(cx.listener(Self::on_action_focus_resources))
+            .on_action(cx.listener(Self::on_action_focus_next_panel))
+            .on_action(cx.listener(Self::on_action_focus_previous_panel))
             .on_action(cx.listener(Self::on_action_show_logs))
             .on_action(cx.listener(Self::on_action_show_pod_detail))
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
@@ -1611,6 +1624,9 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
 // bar.rs`'s sibling does: that glob re-imports `gpui_kit::*`'s huge surface a
 // second time and blows this toolchain's macro-expansion budget alongside a
 // `#[gpui_kit::test]` item.
+#[cfg(test)]
+mod focus_tests;
 mod follow;
+mod panel_focus;
 #[cfg(test)]
 mod tests;

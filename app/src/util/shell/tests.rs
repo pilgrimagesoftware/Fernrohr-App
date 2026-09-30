@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn temp_workspace_path() -> PathBuf {
+pub(super) fn temp_workspace_path() -> PathBuf {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("fernrohr-shell-test-{n}.toml"))
 }

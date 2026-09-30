@@ -66,7 +66,7 @@ impl PlaceholderPanel {
     /// fails the test on any cross-thread activity it can see, so a test that
     /// only wants to know which kind a panel holds would otherwise be testing
     /// the tokio runtime as well.
-    fn with_namespaces(
+    pub(crate) fn with_namespaces(
         kind: DiscoveredKind,
         scope: PanelScope,
         namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
