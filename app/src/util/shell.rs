@@ -91,7 +91,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     });
     nav::register_commands(registry);
     tunnels::register_commands(registry);
+    crate::k8s::resource::pods::register_commands(registry);
     crate::k8s::resource::pod_detail::register_commands(registry);
+    crate::ui::resource_panel::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -108,11 +110,11 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // which is how `tunnels.manage` ended up with a menu item but no key.
     let bindings = keymap::bindings(&registry, &keymap, cx.keyboard_mapper().as_ref());
     cx.bind_keys(bindings);
-    // The panels' own shortcuts, each in its own key context. A panel naming a
-    // key in its hint bar has not bound that key: without this the hint bar
-    // prints letters no keystroke resolves to, and the shortcut does nothing.
-    cx.bind_keys(crate::k8s::resource::pods::panel_bindings());
+    // Pod detail's own shortcuts, in its key context. Its actions are already
+    // registered commands, so `bindings` above binds them too; this duplicate
+    // goes once `pod_detail` finishes moving to the registry.
     cx.bind_keys(crate::k8s::resource::pod_detail::panel_bindings(&keymap));
+    cx.bind_keys(crate::ui::resource_panel::panel_bindings());
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
     });
@@ -851,6 +853,7 @@ impl MainWindow {
             crate::ui::resource_panel::ResourcePanel::new(
                 context_name.clone(),
                 contexts.clone(),
+                window,
                 cx,
             )
         });
@@ -1173,6 +1176,18 @@ impl MainWindow {
         cx.notify();
     }
 
+    /// `resource.focus`: puts keyboard focus on this window's Resource panel.
+    fn on_action_focus_resources(
+        &mut self,
+        _: &crate::ui::resource_panel::FocusResources,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let WindowMode::Workspace { resource_panel, .. } = &self.mode {
+            resource_panel.update(cx, |panel, cx| panel.focus_list(window, cx));
+        }
+    }
+
     fn on_action_show_pods(&mut self, _: &ShowPods, window: &mut Window, cx: &mut Context<Self>) {
         self.open_target(NavTarget::pods(), window, cx);
     }
@@ -1428,30 +1443,7 @@ impl MainWindow {
 /// `CommandState` is created per open (not reused across opens) since the
 /// palette's own query/selection state should reset each time it's summoned.
 fn open_command_palette(window: &mut Window, cx: &mut App) {
-    let Some(Some(root)) = window.root::<gpui_kit::component::Root>() else {
-        return;
-    };
-    let items = cx.global::<CommandRegistry>();
-    let items = crate::command::build_items(items, &[]);
-    let state = cx.new(|cx| gpui_kit::component::command::CommandState::new(window, cx));
-
-    root.update(cx, |root, cx| {
-        root.open_dialog(
-            move |dialog, _window, _cx| {
-                let state = state.clone();
-                let items = items.clone();
-                dialog.content(move |content, _window, _cx| {
-                    content.child(
-                        gpui_kit::component::command::Command::new(&state)
-                            .items(items.clone())
-                            .placeholder("Type a command..."),
-                    )
-                })
-            },
-            window,
-            cx,
-        );
-    });
+    crate::util::palette::open(window, cx);
 }
 
 impl Render for MainWindow {
@@ -1514,6 +1506,7 @@ impl Render for MainWindow {
                 open_command_palette(window, cx);
             })
             .on_action(cx.listener(Self::on_action_show_pods))
+            .on_action(cx.listener(Self::on_action_focus_resources))
             .on_action(cx.listener(Self::on_action_show_logs))
             .on_action(cx.listener(Self::on_action_show_pod_detail))
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))

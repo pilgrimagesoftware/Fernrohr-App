@@ -292,35 +292,11 @@ use gpui_kit::*;
 
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
 
-actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
-
-pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
-
-/// The keys the panel's shortcut hint bar prints, and the keys the panel's
-/// bindings use. One set of letters, named once, because the hint bar reads
-/// the keymap and falls back to a literal: if the two lists drift, the panel
-/// advertises a shortcut it does not have.
-const NAMESPACE_KEY: &str = "w";
-const DESCRIBE_KEY: &str = "d";
-const LOGS_KEY: &str = "l";
-const YAML_KEY: &str = "y";
-
-/// The panel's own keybindings, in the panel's key context.
-///
-/// In the context rather than global on purpose: `d` means "describe the
-/// selected pod" while a Pods panel is on the focus path, and means nothing
-/// anywhere else. A context binding matches at any depth of the focus path,
-/// so these still fire once a table row has taken focus from the panel. The
-/// bindings are registered with the window's keymap rather than assumed: a
-/// panel that prints a key has not thereby bound it.
-pub fn panel_bindings() -> [KeyBinding; 4] {
-    [
-        KeyBinding::new(NAMESPACE_KEY, WarpNamespace, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(DESCRIBE_KEY, DescribePod, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(LOGS_KEY, ShowPodLogs, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(YAML_KEY, ShowPodYaml, Some(PANEL_KEY_CONTEXT)),
-    ]
-}
+mod commands;
+use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, YAML_KEY};
+pub use commands::{
+    DescribePod, PANEL_KEY_CONTEXT, ShowPodLogs, ShowPodYaml, WarpNamespace, register_commands,
+};
 
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Pods", |context, _window, cx| {
@@ -1206,116 +1182,74 @@ mod tests {
             "an unselected pod opens nothing"
         );
     }
-    /// Every key the hint bar prints resolves to the action it names, in the
-    /// panel's context. The hint bar reads the keymap and falls back to a
-    /// literal, so a binding naming the wrong action, or leaving the context,
-    /// is invisible until a keystroke does the wrong thing.
-    ///
-    /// At the tail of the module, with its imports local, so it neither
-    /// depends on nor disturbs the shared import block above.
-    #[test]
-    fn panel_bindings_pair_each_key_with_the_action_the_hint_bar_names() {
-        use super::{ShowPodLogs, WarpNamespace, panel_bindings};
-        use gpui_kit::AsKeystroke as _;
 
-        let bindings = panel_bindings();
-        let actual: Vec<(String, &dyn gpui_kit::Action)> = bindings
-            .iter()
-            .map(|binding| {
-                // The keystroke as typed, not as displayed: the hint bar prints
-                // the platform's upper-case key form ("W"), but the binding has
-                // to answer to "w".
-                let keys: Vec<String> = binding
-                    .keystrokes()
-                    .iter()
-                    .map(|key| key.as_keystroke().key.clone())
-                    .collect();
-                assert_eq!(
-                    keys.len(),
-                    1,
-                    "a panel shortcut should be a single key, got {keys:?}"
-                );
-                (keys[0].clone(), binding.action())
+    /// The shortcuts reach the focused panel by real keystrokes, through the
+    /// bindings the app builds from the command registry - not a hand-kept
+    /// binding list, which is what these commands replaced.
+    #[gpui_kit::test]
+    async fn typed_pod_shortcuts_reach_the_focused_panel(cx: &mut gpui_kit::TestAppContext) {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let dispatches = Rc::new(RefCell::new(Vec::new()));
+        let logs_requests = Rc::new(RefCell::new(0));
+        let first = cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            let mut registry = crate::command::CommandRegistry::new();
+            super::register_commands(&mut registry);
+            cx.bind_keys(crate::keymap::bindings(
+                &registry,
+                &crate::keymap::KeymapConfig::default(),
+                &gpui_kit::DummyKeyboardMapper,
+            ));
+            cx.set_global(SelectedPod(Some(PodSelection {
+                namespace: "default".into(),
+                name: "web-1".into(),
+                containers: vec!["web".into()],
+                context_name: "dev".into(),
+            })));
+            cx.new(|cx| PodsPanel::with_stubs(PanelScope::new(NavTarget::pods(), "dev".into()), cx))
+        });
+        let second = cx.update(|cx| {
+            cx.new(|cx| {
+                PodsPanel::with_stubs(PanelScope::new(NavTarget::pods(), "prod".into()), cx)
             })
-            .collect();
-        let expected: Vec<(String, &dyn gpui_kit::Action)> = vec![
-            ("w".to_string(), &WarpNamespace),
-            ("d".to_string(), &DescribePod),
-            ("l".to_string(), &ShowPodLogs),
-            ("y".to_string(), &ShowPodYaml),
-        ];
+        });
+        let window = cx.add_window({
+            let dispatches = dispatches.clone();
+            let (first, second) = (first.clone(), second.clone());
+            move |_, _| PanelHarness {
+                first: first.clone(),
+                second: second.clone(),
+                dispatches: dispatches.clone(),
+            }
+        });
+        cx.update(|cx| {
+            let logs_requests = logs_requests.clone();
+            cx.on_action(move |_: &crate::ui::nav::ShowLogs, _cx| {
+                *logs_requests.borrow_mut() += 1;
+            });
+        });
+        let cx = &mut gpui_kit::VisualTestContext::from_window(window.into(), cx);
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let handle = first.read(cx).focus_handle.clone();
+            handle.focus(window, cx);
+        });
+
+        cx.simulate_keystrokes("d y");
+        cx.run_until_parked();
         assert_eq!(
-            actual
-                .iter()
-                .map(|(key, _)| key.as_str())
-                .collect::<Vec<_>>(),
-            expected
-                .iter()
-                .map(|(key, _)| key.as_str())
-                .collect::<Vec<_>>()
+            *dispatches.borrow(),
+            vec![DetailView::Structured, DetailView::Yaml],
+            "`d` asks for the fields and `y` for the YAML"
         );
-        for (index, (key, action)) in actual.iter().enumerate() {
-            assert!(
-                action.partial_eq(expected[index].1),
-                "key `{key}` is bound to the wrong action"
-            );
-        }
+
+        cx.simulate_keystrokes("l");
+        cx.run_until_parked();
+        assert_eq!(*logs_requests.borrow(), 1, "`l` asks for the pod's logs");
     }
-
-    /// The shortcut has to resolve with a *child* scope on the focus path, not
-    /// only when the panel itself holds focus.
-    ///
-    /// Selecting a row hands focus to the table inside the panel, and that is
-    /// the case the shortcut broke on: the panel's own handle is no longer the
-    /// focused element, so a binding scoped too tightly, or a listener that
-    /// only the panel answers, would both look correct until someone clicked a
-    /// row. A context binding matches at the depth of the focused context, so
-    /// the panel's bindings must come back for a stack that ends in the table.
-    #[test]
-    fn panel_bindings_resolve_beneath_a_focused_child_scope() {
-        use super::{DescribePod, PANEL_KEY_CONTEXT, panel_bindings};
-        use gpui_kit::{KeyContext, Keymap, Keystroke};
-
-        /// A one-element input slice, borrowed: the API takes a slice so a key
-        /// can be mid-chord, and cloning a keystroke to satisfy that is noise.
-        fn slice(key: &Keystroke) -> &[Keystroke] {
-            std::slice::from_ref(key)
-        }
-
-        let keymap = Keymap::new(panel_bindings().to_vec());
-        let panel = KeyContext::try_from(PANEL_KEY_CONTEXT).expect("a valid context name");
-        let table = KeyContext::try_from("DataTable").expect("a valid context name");
-        let d = Keystroke::parse("d").expect("a valid keystroke");
-        let one = |context: &KeyContext| [context.clone()];
-
-        let with_panel_focused = keymap.bindings_for_input(slice(&d), &one(&panel));
-        let with_table_focused = keymap.bindings_for_input(slice(&d), &[panel, table]);
-
-        for (depth, (matched, _)) in [("panel", with_panel_focused), ("table", with_table_focused)]
-        {
-            assert!(
-                matched
-                    .iter()
-                    .any(|binding| binding.action().partial_eq(&DescribePod)),
-                "`d` does not resolve to DescribePod with the {depth} scope focused"
-            );
-        }
-
-        // And it stops resolving once the panel is off the path, which is what
-        // makes these the panel's keys rather than the window's: with the logs
-        // panel focused, `d` is nobody's shortcut. A binding registered without
-        // a context would fail here, having passed the two cases above.
-        let logs = KeyContext::try_from("LogsPanel").expect("a valid context name");
-        let (elsewhere, _) = keymap.bindings_for_input(slice(&d), &one(&logs));
-        assert!(
-            !elsewhere
-                .iter()
-                .any(|binding| binding.action().partial_eq(&DescribePod)),
-            "`d` still opens a pod's detail from another panel, so the binding \
-             is not scoped to the pods panel"
-        );
-    }
-
     /// Four rows with a distinct, non-alphabetical value in every column, so
     /// sorting by any one of them actually reorders the set rather than
     /// leaving it looking like the input by coincidence.
