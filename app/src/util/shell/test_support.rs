@@ -4,10 +4,15 @@
 // Named imports rather than `use super::*`: a glob re-import of `gpui_kit::*`
 // next to `#[gpui_kit::test]` items blows the macro-expansion budget (see
 // `util/shell.rs`), and would shadow the built-in `#[test]`.
+use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
-use crate::util::shell::{MainWindow, PanelDescriptor, WindowMode};
+use crate::k8s::cluster::session::ClusterRegistry;
+use crate::util::shell::{MainWindow, OpenedPanel, PanelDescriptor, WindowMode, init};
 use gpui_kit::component::dock::{self, PanelView as _};
-use gpui_kit::{App, AppContext as _, Entity, SharedString, TestAppContext, Window};
+use gpui_kit::{
+    App, AppContext as _, Entity, FocusHandle, Focusable as _, SharedString, TestAppContext,
+    VisualTestContext, Window, WindowHandle,
+};
 use kube::core::GroupVersionKind;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -110,4 +115,73 @@ pub(super) fn pods_panel_descriptor(cluster_context: &str) -> PanelDescriptor {
             ascending: true,
         },
     }
+}
+
+/// A connected single-context window with the app's real bindings, focused on
+/// its Resource panel the way `resource.focus` leaves it.
+pub(super) fn workspace(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path, &keymap_path);
+        ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);
+    });
+    let window = cx.add_window(|window, cx| {
+        MainWindow::test_workspace(vec!["kind-dev".to_string()], window, cx)
+    });
+    window
+        .update(cx, |main_window, window, cx| {
+            let resource = main_window
+                .test_resource_panel()
+                .expect("a workspace window");
+            resource.read(cx).focus_handle().focus(window, cx);
+        })
+        .unwrap();
+    window
+}
+
+pub(super) fn press(cx: &mut VisualTestContext, keys: &str) {
+    let keys = gpui_kit::Keystroke::parse(keys).expect("valid").unparse();
+    cx.simulate_keystrokes(&keys);
+    cx.run_until_parked();
+}
+
+/// The focus handles a test checks, read off the live window.
+pub(super) struct Handles {
+    pub(super) resource: FocusHandle,
+    pub(super) pods: FocusHandle,
+}
+
+pub(super) fn handles(window: WindowHandle<MainWindow>, cx: &mut VisualTestContext) -> Handles {
+    window
+        .update(cx, |main_window, _window, cx| {
+            let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            let Some(OpenedPanel::Pods(pods)) = open_panels[0].panel.clone() else {
+                panic!("a new workspace opens on the pods list")
+            };
+            Handles {
+                resource: main_window
+                    .test_resource_panel()
+                    .expect("a workspace window")
+                    .read(cx)
+                    .focus_handle(),
+                pods: pods.read(cx).focus_handle(cx),
+            }
+        })
+        .unwrap()
+}
+
+pub(super) fn focused(
+    window: WindowHandle<MainWindow>,
+    handle: &FocusHandle,
+    cx: &mut VisualTestContext,
+) -> bool {
+    window
+        .update(cx, |_, window, cx| handle.contains_focused(window, cx))
+        .unwrap()
 }
