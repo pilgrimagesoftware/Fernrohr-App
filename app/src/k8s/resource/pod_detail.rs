@@ -7,8 +7,10 @@
 //! nothing to keep up to date beyond a re-fetch, and no reason to stream a whole
 //! cluster's pods into a panel that shows one.
 
+use crate::command::{Command, CommandRegistry};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::resource::pods::format_age;
+use crate::keymap::{self, KeymapConfig};
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::ActiveTheme as _;
@@ -53,24 +55,105 @@ const VOLUMES_TAB_KEY: &str = "3";
 const EVENTS_TAB_KEY: &str = "4";
 const MANAGED_FIELDS_TAB_KEY: &str = "5";
 
-/// The panel's own keybindings. Registered with the window's keymap the same
-/// way `pods::panel_bindings` is - printing a key in a hint bar does not
-/// bind it.
-pub fn panel_bindings() -> [KeyBinding; 6] {
-    [
-        KeyBinding::new(TOGGLE_VIEW_KEY, ToggleDetailView, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(OVERVIEW_TAB_KEY, SelectOverviewTab, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(
-            CONTAINERS_TAB_KEY,
-            SelectContainersTab,
-            Some(PANEL_KEY_CONTEXT),
+const TOGGLE_VIEW_COMMAND_ID: &str = "pod_detail.toggle_view";
+const OVERVIEW_TAB_COMMAND_ID: &str = "pod_detail.tab_overview";
+const CONTAINERS_TAB_COMMAND_ID: &str = "pod_detail.tab_containers";
+const VOLUMES_TAB_COMMAND_ID: &str = "pod_detail.tab_volumes";
+const EVENTS_TAB_COMMAND_ID: &str = "pod_detail.tab_events";
+const MANAGED_FIELDS_TAB_COMMAND_ID: &str = "pod_detail.tab_managed_fields";
+
+/// The panel's shortcuts as registry commands, gated to its key context: each
+/// gets a palette entry while a detail panel has focus, and a `keymap.toml`
+/// override by id. None belongs in the menu bar - they act on one panel, not
+/// the app.
+pub fn register_commands(registry: &mut CommandRegistry) {
+    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 6] = [
+        (
+            TOGGLE_VIEW_COMMAND_ID,
+            "Pod Detail: Toggle Fields/YAML",
+            TOGGLE_VIEW_KEY,
+            Box::new(ToggleDetailView),
         ),
-        KeyBinding::new(VOLUMES_TAB_KEY, SelectVolumesTab, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(EVENTS_TAB_KEY, SelectEventsTab, Some(PANEL_KEY_CONTEXT)),
-        KeyBinding::new(
+        (
+            OVERVIEW_TAB_COMMAND_ID,
+            "Pod Detail: Overview Tab",
+            OVERVIEW_TAB_KEY,
+            Box::new(SelectOverviewTab),
+        ),
+        (
+            CONTAINERS_TAB_COMMAND_ID,
+            "Pod Detail: Containers Tab",
+            CONTAINERS_TAB_KEY,
+            Box::new(SelectContainersTab),
+        ),
+        (
+            VOLUMES_TAB_COMMAND_ID,
+            "Pod Detail: Volumes Tab",
+            VOLUMES_TAB_KEY,
+            Box::new(SelectVolumesTab),
+        ),
+        (
+            EVENTS_TAB_COMMAND_ID,
+            "Pod Detail: Events Tab",
+            EVENTS_TAB_KEY,
+            Box::new(SelectEventsTab),
+        ),
+        (
+            MANAGED_FIELDS_TAB_COMMAND_ID,
+            "Pod Detail: Managed Fields Tab",
             MANAGED_FIELDS_TAB_KEY,
+            Box::new(SelectManagedFieldsTab),
+        ),
+    ];
+    for (id, title, default_binding, action) in commands {
+        registry.register(Command {
+            id,
+            title,
+            default_binding,
+            context: Some(PANEL_KEY_CONTEXT),
+            action,
+            menu: None,
+        });
+    }
+}
+
+/// The panel's own keybindings, each resolved through `keymap` by its command
+/// id - so a `keymap.toml` override rebinds it. Registered with the window's
+/// keymap the same way `pods::panel_bindings` is - printing a key in a hint
+/// bar does not bind it.
+pub fn panel_bindings(keymap: &KeymapConfig) -> [KeyBinding; 6] {
+    let key = |id, default| keymap::resolve(id, default, keymap);
+    let context = Some(PANEL_KEY_CONTEXT);
+    [
+        KeyBinding::new(
+            &key(TOGGLE_VIEW_COMMAND_ID, TOGGLE_VIEW_KEY),
+            ToggleDetailView,
+            context,
+        ),
+        KeyBinding::new(
+            &key(OVERVIEW_TAB_COMMAND_ID, OVERVIEW_TAB_KEY),
+            SelectOverviewTab,
+            context,
+        ),
+        KeyBinding::new(
+            &key(CONTAINERS_TAB_COMMAND_ID, CONTAINERS_TAB_KEY),
+            SelectContainersTab,
+            context,
+        ),
+        KeyBinding::new(
+            &key(VOLUMES_TAB_COMMAND_ID, VOLUMES_TAB_KEY),
+            SelectVolumesTab,
+            context,
+        ),
+        KeyBinding::new(
+            &key(EVENTS_TAB_COMMAND_ID, EVENTS_TAB_KEY),
+            SelectEventsTab,
+            context,
+        ),
+        KeyBinding::new(
+            &key(MANAGED_FIELDS_TAB_COMMAND_ID, MANAGED_FIELDS_TAB_KEY),
             SelectManagedFieldsTab,
-            Some(PANEL_KEY_CONTEXT),
+            context,
         ),
     ]
 }
@@ -1616,14 +1699,15 @@ mod tests {
     // would shadow `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
         BadgeTone, DetailSection, DetailView, K8sEvent, ManagedFieldEntry, PodDetailPanel,
-        PodDetailState, PodEvent, PodFetch, PodField, PodFieldValue, SelectContainersTab,
-        SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab, SelectVolumesTab,
-        events_selector, fetch_pod, format_age, format_events, managed_field_entry, pod_fields,
+        PodDetailState, PodEvent, PodFetch, PodField, PodFieldValue, events_selector, fetch_pod,
+        format_age, format_events, managed_field_entry, pod_fields,
     };
+    use crate::command::CommandRegistry;
     use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+    use crate::keymap::KeymapConfig;
     use crate::ui::nav::{NavTarget, PodRef};
     use crate::ui::panel_title::PanelScope;
-    use gpui_kit::{AppContext as _, TestAppContext};
+    use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
     use jiff::Timestamp;
     use k8s_openapi::api::core::v1::{
         Container, EventSeries, HostIP, Pod, PodCondition, PodIP, PodSpec, PodStatus, Toleration,
@@ -2406,61 +2490,116 @@ mod tests {
             .unwrap();
     }
 
-    /// Section 2.3: the tab-switch keybinding is not only printed in the hint
-    /// bar - dispatching it actually moves the active tab.
+    /// Section 2.3: the tab keys are not only printed in the hint bar - real
+    /// keystrokes, through the panel's key context and the bound keymap, move
+    /// the active tab. `y` then toggles to YAML and back, keeping the tab.
     #[gpui_kit::test]
-    async fn the_tab_switch_keybinding_changes_the_active_tab(cx: &mut TestAppContext) {
+    async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::runtime::init(cx);
-            cx.bind_keys(super::panel_bindings());
+            cx.bind_keys(super::panel_bindings(&KeymapConfig::default()));
         });
         let window = stub_panel(cx, ConnectionState::Connecting);
+        let mut vcx = VisualTestContext::from_window(window.into(), cx);
 
         window
-            .update(cx, |panel, _window, cx| {
+            .update(&mut vcx, |panel, window, cx| {
                 panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+                panel.focus_handle.clone().focus(window, cx);
                 cx.notify();
             })
             .unwrap();
-        cx.run_until_parked();
+        vcx.run_until_parked();
 
-        assert_eq!(
+        let active_tab = |vcx: &mut VisualTestContext| {
             window
-                .update(cx, |panel, _window, _cx| panel.active_tab())
-                .unwrap(),
-            DetailSection::Overview
-        );
+                .update(vcx, |panel, _window, _cx| panel.active_tab())
+                .unwrap()
+        };
+        assert_eq!(active_tab(&mut vcx), DetailSection::Overview);
 
         // Every tab, not just one: each has its own action, and an action with
         // no `on_action` listener fails silently rather than to compile. Ends
-        // back on Overview so its binding is exercised from another tab.
-        let steps: [(Box<dyn gpui_kit::Action>, DetailSection); 5] = [
-            (Box::new(SelectContainersTab), DetailSection::Containers),
-            (Box::new(SelectVolumesTab), DetailSection::Volumes),
-            (Box::new(SelectEventsTab), DetailSection::Events),
-            (
-                Box::new(SelectManagedFieldsTab),
-                DetailSection::ManagedFields,
-            ),
-            (Box::new(SelectOverviewTab), DetailSection::Overview),
-        ];
-        for (action, expected) in steps {
-            window
-                .update(cx, |panel, window, cx| {
-                    panel.focus_handle.clone().focus(window, cx);
-                    window.dispatch_action(action, cx);
-                })
-                .unwrap();
-            cx.run_until_parked();
-
-            assert_eq!(
-                window
-                    .update(cx, |panel, _window, _cx| panel.active_tab())
-                    .unwrap(),
-                expected
-            );
+        // back on Overview so its key is exercised from another tab.
+        for (keystroke, expected) in [
+            ("2", DetailSection::Containers),
+            ("3", DetailSection::Volumes),
+            ("4", DetailSection::Events),
+            ("5", DetailSection::ManagedFields),
+            ("1", DetailSection::Overview),
+        ] {
+            vcx.simulate_keystrokes(keystroke);
+            vcx.run_until_parked();
+            assert_eq!(active_tab(&mut vcx), expected, "after pressing {keystroke}");
         }
+
+        vcx.simulate_keystrokes("3 y");
+        vcx.run_until_parked();
+        let view = |vcx: &mut VisualTestContext| {
+            window
+                .update(vcx, |panel, _window, _cx| panel.view())
+                .unwrap()
+        };
+        assert_eq!(view(&mut vcx), DetailView::Yaml);
+        vcx.simulate_keystrokes("y");
+        vcx.run_until_parked();
+        assert_eq!(view(&mut vcx), DetailView::Structured);
+        assert_eq!(
+            active_tab(&mut vcx),
+            DetailSection::Volumes,
+            "returning from YAML lands on the tab the user left"
+        );
+    }
+
+    /// Every panel shortcut is a registry command gated to this panel's key
+    /// context, so it has a palette entry and a keymap id - and a
+    /// `keymap.toml` override rebinds the real key.
+    #[gpui_kit::test]
+    async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext) {
+        let mut registry = CommandRegistry::new();
+        super::register_commands(&mut registry);
+        let commands: Vec<_> = registry.iter().collect();
+        assert_eq!(commands.len(), 6);
+        assert!(
+            commands
+                .iter()
+                .all(|command| command.context == Some(super::PANEL_KEY_CONTEXT)
+                    && command.menu.is_none()),
+            "panel shortcuts are panel-scoped and stay out of the menu bar"
+        );
+        assert!(registry.available(&[]).is_empty());
+        assert_eq!(registry.available(&[super::PANEL_KEY_CONTEXT]).len(), 6);
+
+        let mut keymap = KeymapConfig::default();
+        keymap
+            .bindings
+            .insert("pod_detail.tab_events".into(), "e".into());
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            cx.bind_keys(super::panel_bindings(&keymap));
+        });
+        let window = stub_panel(cx, ConnectionState::Connecting);
+        let mut vcx = VisualTestContext::from_window(window.into(), cx);
+        window
+            .update(&mut vcx, |panel, window, cx| {
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+                panel.focus_handle.clone().focus(window, cx);
+                cx.notify();
+            })
+            .unwrap();
+        vcx.run_until_parked();
+
+        vcx.simulate_keystrokes("e");
+        vcx.run_until_parked();
+        assert_eq!(
+            window
+                .update(&mut vcx, |panel, _window, _cx| panel.active_tab())
+                .unwrap(),
+            DetailSection::Events,
+            "the override key reaches the Events tab"
+        );
     }
 
     /// Section 4.4: a pod that is gone is reported as gone - its own state, not
