@@ -112,9 +112,21 @@ impl ResourcePanel {
             for (index, (label, target, active)) in
                 self.rows(&section.matches).into_iter().enumerate()
             {
+                let tooltip = match &target {
+                    NavTarget::Kind(kind) => super::api_version_label(kind),
+                    _ => String::new(),
+                };
                 let item = self.kind_item(label, target, active, cx);
                 let id = format!("resource-row-{}-{index}", category.title());
-                rows = rows.child(item.render(id, window, cx).into_any_element());
+                rows = rows.child(
+                    div()
+                        .id(SharedString::from(format!("{id}-tip")))
+                        .child(item.render(id, window, cx))
+                        .tooltip(move |window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(tooltip.clone())
+                                .build(window, cx)
+                        }),
+                );
             }
         }
 

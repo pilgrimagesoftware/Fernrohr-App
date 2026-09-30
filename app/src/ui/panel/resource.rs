@@ -344,13 +344,27 @@ impl ResourcePanel {
     /// opens, and whether that target is the one currently showing. Splitting
     /// this out of `render`'s row-building is what makes the list assertable -
     /// the rendered rows are otherwise only reachable by simulating a click.
+    ///
+    /// A row reads just its kind (`Deployment`); the API group lives in the row's
+    /// tooltip ([`api_version_label`]). Only when two kinds in `kinds` share a name
+    /// does each keep its group in the label, so the two rows stay distinct.
     fn rows(&self, kinds: &[DiscoveredKind]) -> Vec<(String, NavTarget, bool)> {
         kinds
             .iter()
             .map(|kind| {
                 let target = NavTarget::Kind(kind.clone());
                 let active = self.selected.as_ref() == Some(&target);
-                (target.label(), target, active)
+                let shared_name = kinds
+                    .iter()
+                    .filter(|other| other.gvk.kind == kind.gvk.kind)
+                    .count()
+                    > 1;
+                let label = if shared_name {
+                    kind.label()
+                } else {
+                    kind.gvk.kind.clone()
+                };
+                (label, target, active)
             })
             .collect()
     }
@@ -369,6 +383,16 @@ impl ResourcePanel {
 }
 
 impl EventEmitter<ResourceEvent> for ResourcePanel {}
+
+/// A kind's API version for its row tooltip: `apps/v1`, or `v1 (core)` for the core
+/// group, which has no name of its own.
+pub(super) fn api_version_label(kind: &DiscoveredKind) -> String {
+    if kind.gvk.group.is_empty() {
+        format!("{} (core)", kind.gvk.version)
+    } else {
+        format!("{}/{}", kind.gvk.group, kind.gvk.version)
+    }
+}
 
 // Not `use super::*;` in the sibling test module: `gpui_kit::*`'s huge re-export
 // surface (all of `gpui`/`gpui-component`), combined with `IconName`'s ~2500 variants

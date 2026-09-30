@@ -2,8 +2,8 @@
 //! `ResourcePanel` (unlike `logic.rs`'s pure `group_kinds`), since collapse
 //! state lives on the panel itself.
 
-use super::super::ResourceState;
 use super::super::category::Category;
+use super::super::{ResourceState, api_version_label};
 use super::{kind, stub_panel};
 use gpui_kit::TestAppContext;
 
@@ -71,4 +71,29 @@ async fn a_freshly_constructed_panel_starts_fully_expanded(cx: &mut TestAppConte
             );
         })
         .unwrap();
+}
+
+/// A row reads just its kind; the API group moves to the row's tooltip. Only kinds
+/// that share a name in the same list keep their group, so their rows stay distinct.
+#[gpui_kit::test]
+async fn rows_name_the_kind_and_keep_the_group_only_for_shared_names(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = stub_panel(cx);
+    let kinds = vec![
+        kind("apps", "Deployment"),
+        kind("", "Event"),
+        kind("events.k8s.io", "Event"),
+    ];
+    window
+        .update(cx, |panel, _window, _cx| {
+            let labels: Vec<String> = panel.rows(&kinds).into_iter().map(|row| row.0).collect();
+            assert_eq!(labels, vec!["Deployment", "Event", "Event · events.k8s.io"]);
+        })
+        .unwrap();
+
+    assert_eq!(api_version_label(&kind("apps", "Deployment")), "apps/v1");
+    assert_eq!(api_version_label(&kind("", "Pod")), "v1 (core)");
 }
