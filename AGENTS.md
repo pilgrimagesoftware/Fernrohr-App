@@ -36,6 +36,26 @@ Commits are automatically signed. Never skip hooks with `--no-verify`.
 - PRs require CI to pass and at least one approval
 - Auto-merge enabled when all checks pass
 
+## Keyboard Navigation Is First-Class
+
+Fernrohr is keyboard-first. Every feature must be fully usable from both the keyboard and the
+mouse. A feature that only one of them can reach isn't done.
+
+- Every action (select, open, connect, edit, delete, confirm, cancel) has a keyboard route and a
+  mouse route.
+- User-facing actions go through the command registry (`src/command.rs`: id, title, default binding,
+  `KeyContext`, menu slot), so each one gets a keybinding, a palette entry and a menu item.
+- One selection, moved by both clicks and keyboard navigation; hover never moves it. gpui-component's
+  `Command` selects on hover, so use `window.last_input_was_keyboard()` to tell keyboard input from
+  hover (see `ClusterPicker::follow_keyboard` in `src/ui/picker.rs`).
+- Show shortcuts in a hint row from the live keymap (`Kbd::binding_for_action`), and make dialogs
+  work from the keyboard: Tab, Enter or Space, Escape, and sensible focus.
+- Tests cover the keyboard route with real keystrokes (`VisualTestContext::simulate_keystrokes`),
+  not only direct handler calls.
+
+The full rule, which the meta repo loads for agents automatically, is
+`.claude/rules/keyboard-first.md` in the parent Fernrohr repo.
+
 ## Running Checks Locally
 
 ### Build
