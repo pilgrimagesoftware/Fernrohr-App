@@ -23,13 +23,7 @@ fn pid_dir() -> PathBuf {
 /// path.
 #[cfg(unix)]
 pub(crate) fn kill_process_group(pid: u32) {
-    let _ = std::process::Command::new("kill")
-        .arg("-KILL")
-        .arg(format!("-{pid}"))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
+    let _ = signal_process_group("-KILL", pid);
 }
 
 #[cfg(not(unix))]
@@ -39,19 +33,35 @@ pub(crate) fn kill_process_group(_pid: u32) {}
 /// any member alive, via a zero-signal `kill -0`.
 #[cfg(unix)]
 fn process_group_alive(pid: u32) -> bool {
+    signal_process_group("-0", pid)
+}
+
+#[cfg(not(unix))]
+fn process_group_alive(_pid: u32) -> bool {
+    false
+}
+
+/// Runs `kill <signal> -- -<pid>` and reports whether it succeeded.
+///
+/// The `--` is load-bearing. Without it, procps-ng's `/usr/bin/kill` (Ubuntu, Debian)
+/// misparses `kill -KILL -<pid>` and signals every process the user can reach, which on
+/// a CI runner includes the runner agent itself. BSD `kill` on macOS accepts either
+/// form. pgids 0 and 1 are refused outright: `-0` is the caller's own process group
+/// and `-1` is every process, and a corrupt pidfile must not be able to name either.
+#[cfg(unix)]
+fn signal_process_group(signal: &str, pid: u32) -> bool {
+    if pid <= 1 {
+        return false;
+    }
     std::process::Command::new("kill")
-        .arg("-0")
+        .arg(signal)
+        .arg("--")
         .arg(format!("-{pid}"))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .is_ok_and(|status| status.success())
-}
-
-#[cfg(not(unix))]
-fn process_group_alive(_pid: u32) -> bool {
-    false
 }
 
 /// One pidfile for one live `ssh` forward. Written on spawn, removed on `Drop` - so a
@@ -177,6 +187,35 @@ mod tests {
         let status = child.wait().expect("child should be waitable after kill");
         assert!(!status.success());
         assert!(!process_group_alive(pid));
+    }
+
+    /// Regression: without `--`, procps-ng `kill -KILL -<pid>` signalled every process
+    /// the user owned, taking the Linux CI runner down with it. An unrelated process in
+    /// its own group must survive a kill aimed at a different group.
+    #[test]
+    fn kill_process_group_leaves_other_groups_alone() {
+        let mut target = spawn_sleep_in_its_own_group();
+        let mut bystander = spawn_sleep_in_its_own_group();
+
+        kill_process_group(target.id());
+        target.wait().expect("target should be waitable after kill");
+
+        assert!(process_group_alive(bystander.id()));
+        assert!(
+            bystander
+                .try_wait()
+                .expect("bystander should be pollable")
+                .is_none()
+        );
+
+        kill_process_group(bystander.id());
+        let _ = bystander.wait();
+    }
+
+    #[test]
+    fn signal_process_group_refuses_own_group_and_broadcast_pgids() {
+        assert!(!process_group_alive(0));
+        assert!(!process_group_alive(1));
     }
 
     #[test]
