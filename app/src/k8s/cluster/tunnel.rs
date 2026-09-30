@@ -383,4 +383,54 @@ mod tests {
         let _ = std::fs::remove_file(&tunnels_path);
         let _ = std::fs::remove_file(&kubeconfig_path);
     }
+
+    /// Tasks.md 3.3: rebinding a context mid-connection never alters the connection
+    /// already using its old tunnel - `connect` (and so `acquire_for_context`) only
+    /// ever runs at connection start, so the already-acquired `RegistryHandle` simply
+    /// keeps pointing at its own forward regardless of what `tunnels.toml` says
+    /// afterward. The *next* acquire, though, picks up the new binding.
+    #[gpui_kit::test]
+    async fn rebinding_a_context_never_alters_its_live_connection(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        let tunnels_path = temp_tunnels_path();
+        let kubeconfig_path = kubeconfig_fixture(&[("staging", "https://10.0.0.1:6443")]);
+
+        let store = TunnelStore::new(tunnels_path.clone());
+        store.create("bastion-a", sample_tunnel("a"), None).unwrap();
+        store.create("bastion-b", sample_tunnel("b"), None).unwrap();
+        store.bind("staging", "bastion-a").unwrap();
+
+        cx.update(crate::runtime::init);
+        let handle_a = cx
+            .update(|cx| acquire_for_context(cx, &tunnels_path, Some(&kubeconfig_path), "staging"))
+            .unwrap()
+            .expect("staging is bound to bastion-a");
+        let addr_a = handle_a.forward().local_addr();
+
+        // Rebind mid-connection: nothing about the live handle changes.
+        store.bind("staging", "bastion-b").unwrap();
+        assert_eq!(
+            handle_a.forward().local_addr(),
+            addr_a,
+            "the live connection must keep using bastion-a's forward after a rebind"
+        );
+
+        // Reconnecting - a fresh acquire - picks up the new binding and gets its own
+        // forward, distinct from the still-live handle_a.
+        let handle_b = cx
+            .update(|cx| acquire_for_context(cx, &tunnels_path, Some(&kubeconfig_path), "staging"))
+            .unwrap()
+            .expect("staging is now bound to bastion-b");
+        assert_ne!(
+            handle_b.forward().local_addr(),
+            addr_a,
+            "the next connection must acquire bastion-b's own forward"
+        );
+
+        drop(handle_a);
+        drop(handle_b);
+        let _ = std::fs::remove_file(&tunnels_path);
+        let _ = std::fs::remove_file(&kubeconfig_path);
+    }
 }
