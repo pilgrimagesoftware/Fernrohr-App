@@ -27,10 +27,24 @@ actions!(
     ]
 );
 
-/// Builds the seven-menu bar from `registry` and installs it via
-/// `cx.set_menus`. Called once at startup, after every command is
-/// registered and before the registry is moved into its global slot.
+/// Registers the platform items' handlers and installs the menu bar. Called
+/// once at startup, after every command is registered and before the
+/// registry is moved into its global slot.
 pub fn init(registry: &CommandRegistry, cx: &mut App) {
+    register_handlers(cx);
+    cx.set_menus(menus(registry));
+}
+
+/// Re-installs the menu bar from the registry global. The native menu reads
+/// each item's shortcut from the live keymap when it's installed, so this is
+/// what makes the menu show a key the keybindings editor just changed.
+/// Handlers aren't re-registered - they're app-wide and already in place.
+pub fn rebuild_menus(cx: &mut App) {
+    let menus = menus(cx.global::<CommandRegistry>());
+    cx.set_menus(menus);
+}
+
+fn register_handlers(cx: &mut App) {
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
     cx.on_action(|_: &Hide, cx: &mut App| cx.hide());
     cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());
@@ -53,19 +67,32 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
             let _ = window.update(cx, |_, window, _| window.zoom_window());
         }
     });
+}
 
-    cx.set_menus(vec![
-        Menu::new("App").items(vec![
-            MenuItem::action("About Fernrohr", About),
-            MenuItem::separator(),
-            MenuItem::os_submenu("Services", SystemMenuType::Services),
-            MenuItem::separator(),
-            MenuItem::action("Hide Fernrohr", Hide),
-            MenuItem::action("Hide Others", HideOthers),
-            MenuItem::action("Show All", ShowAll),
-            MenuItem::separator(),
-            MenuItem::action("Quit Fernrohr", Quit),
-        ]),
+/// The seven-menu bar, from `registry`.
+fn menus(registry: &CommandRegistry) -> Vec<Menu> {
+    vec![
+        Menu::new("App").items({
+            let mut items = vec![MenuItem::action("About Fernrohr", About)];
+            // Settings… and anything else the registry puts in the App menu,
+            // between About and Services as on every Mac app.
+            let app_items = registry_items(MenuSlot::App, registry);
+            if !app_items.is_empty() {
+                items.push(MenuItem::separator());
+                items.extend(app_items);
+            }
+            items.extend([
+                MenuItem::separator(),
+                MenuItem::os_submenu("Services", SystemMenuType::Services),
+                MenuItem::separator(),
+                MenuItem::action("Hide Fernrohr", Hide),
+                MenuItem::action("Hide Others", HideOthers),
+                MenuItem::action("Show All", ShowAll),
+                MenuItem::separator(),
+                MenuItem::action("Quit Fernrohr", Quit),
+            ]);
+            items
+        }),
         menu_from_registry("Context", MenuSlot::Context, registry),
         menu_from_registry("Edit", MenuSlot::Edit, registry),
         menu_from_registry("View", MenuSlot::View, registry),
@@ -80,7 +107,7 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
             items
         }),
         menu_from_registry("Help", MenuSlot::Help, registry),
-    ]);
+    ]
 }
 
 /// Each platform's standard shortcut for an item, or none - `Hide` and friends
@@ -219,6 +246,25 @@ mod tests {
     use gpui_kit::{Action, actions};
 
     actions!(menu_test, [TestAction]);
+
+    /// Settings… sits in the App menu, between About and Services, once the
+    /// registry has it - `MenuSlot::App`'s first command.
+    #[test]
+    fn the_app_menu_carries_settings() {
+        let mut registry = CommandRegistry::new();
+        crate::ui::settings::register_commands(&mut registry);
+        let menus = super::menus(&registry);
+        let names: Vec<String> = menus[0]
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                gpui_kit::MenuItem::Action { name, .. } => Some(name.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names.first().map(String::as_str), Some("About Fernrohr"));
+        assert_eq!(names.get(1).map(String::as_str), Some("Settings…"));
+    }
 
     /// The App and Window menu items answer to each platform's standard
     /// shortcuts - through their registered commands, the path every command's

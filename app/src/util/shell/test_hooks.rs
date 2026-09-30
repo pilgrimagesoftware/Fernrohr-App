@@ -19,6 +19,13 @@ impl MainWindow {
         }
     }
 
+    /// Test-only: focuses the window's own handle, the way `focus_initial`
+    /// does at launch, so a test's keystrokes have a focus path to dispatch on.
+    #[cfg(test)]
+    pub(crate) fn test_focus(&self, window: &mut Window, cx: &mut App) {
+        self.focus_handle.focus(window, cx);
+    }
+
     /// Test-only: a window already in `Workspace` mode on `contexts`, for tests
     /// that need a chip click or a Resource panel dropdown pick to actually reach
     /// [`Self::set_active_context`] and its downstream `sync_context_children`.
