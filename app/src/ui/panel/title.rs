@@ -11,49 +11,33 @@
 
 use crate::ui::nav::NavTarget;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::*;
 use std::rc::Rc;
 
-/// Wraps dock-panel content with the same focus treatment used by every
-/// resource view. The dock skin owns title-bar chrome but has no focus-aware
-/// panel-style hook, so the panel body supplies the visible focus boundary.
+/// Wraps dock-panel content.
+///
+/// Previously drew a bordered box inset within the panel as a focus
+/// indicator; dropped per Paul's review (2026-09-29) - a border framing the
+/// content read as unwanted "inner framing" (visible in a Logs panel
+/// screenshot: a boxed rule around the log lines, separate from the panel's
+/// own edge). The real replacement - coloring the panel's own tab when it has
+/// focus - needs a per-tab style hook the dock's tab strip does not expose:
+/// `Panel::title_style` only applies to the single-panel, no-tab-strip case
+/// (`TabPanel::render_title`, not `render_tabs`), confirmed by reading the
+/// vendored `gpui-component` 0.6.6 source. Tracked alongside the per-tab
+/// close button finding in `openspec/changes/per-tab-close-button`, since
+/// both are the same "the tab strip isn't per-panel customizable" gap in the
+/// same vendored crate.
 pub fn focus_frame(
     content: impl IntoElement,
-    focus_handle: &FocusHandle,
-    window: &Window,
-    cx: &App,
+    _focus_handle: &FocusHandle,
+    _window: &Window,
+    _cx: &App,
 ) -> impl IntoElement {
-    let theme = cx.theme();
-    // `contains_focused`, not `is_focused`: a panel whose content takes focus
-    // itself (a table row, a text input) moves the window's focus to that
-    // child, and a border that lit only while the panel's own handle was the
-    // focused element would go dark the moment the panel was actually being
-    // used. The panel is active whenever the focus is inside it.
-    let border = focus_border(
-        focus_handle.contains_focused(window, cx),
-        theme.primary,
-        theme.border,
-    );
-
-    // Inset rather than flush with the outer edge: a panel at the window's
-    // bottom edge would otherwise have this border's square corners clipped
-    // by macOS's rounded window mask.
-    div().size_full().child(
-        div()
-            .size_full()
-            .m(px(2.))
-            .border_1()
-            .border_color(border)
-            .child(content),
-    )
-}
-
-fn focus_border(focused: bool, primary: Hsla, border: Hsla) -> Hsla {
-    if focused { primary } else { border }
+    div().size_full().child(content)
 }
 
 /// Everything a panel needs to draw its title bar, and everything the window
@@ -270,30 +254,10 @@ pub enum ScopeEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::{PanelScope, focus_border, label_for, namespaces_offered, title};
+    use super::{PanelScope, label_for, namespaces_offered, title};
     use crate::k8s::cluster::discovery::DiscoveredKind;
     use crate::ui::nav::NavTarget;
-    use gpui_kit::Hsla;
     use kube::core::GroupVersionKind;
-
-    #[test]
-    fn a_focused_panel_uses_the_primary_border() {
-        let primary = Hsla {
-            h: 0.,
-            s: 1.,
-            l: 0.5,
-            a: 1.,
-        };
-        let border = Hsla {
-            h: 0.5,
-            s: 1.,
-            l: 0.5,
-            a: 1.,
-        };
-
-        assert_eq!(focus_border(true, primary, border), primary);
-        assert_eq!(focus_border(false, primary, border), border);
-    }
 
     fn kind(kind: &str, namespaced: bool) -> NavTarget {
         NavTarget::Kind(DiscoveredKind {
