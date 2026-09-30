@@ -93,7 +93,7 @@ fn set_context_tunnels_handler_binds_and_unbinds() {
 /// scheduler's thread-confinement check non-deterministically, since it
 /// depends on real wall-clock I/O timing rather than anything these tests
 /// control.
-async fn connected_window(
+pub(super) async fn connected_window(
     cx: &mut TestAppContext,
     context_name: &str,
 ) -> gpui_kit::WindowHandle<MainWindow> {
