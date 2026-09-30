@@ -114,10 +114,8 @@ impl<K: Hash + Eq + Clone + Ord, F: ManagedForward> ForwardRegistry<K, F> {
     }
 
     /// The live set of acquired keys, updated on first acquire and last release - a
-    /// Tunnels UI derives each tunnel's running state from this without polling.
-    // UNWIRED(tunnel-management-ui#4): the Tunnels window (section 4) is the first
-    // real caller, via `k8s::cluster::tunnel::live_forward_keys`.
-    #[allow(dead_code)]
+    /// Tunnels UI derives each tunnel's running state from this without polling, via
+    /// `k8s::cluster::tunnel::live_forward_keys`.
     pub fn live_keys(&self) -> watch::Receiver<BTreeSet<K>> {
         self.inner.live_keys.subscribe()
     }

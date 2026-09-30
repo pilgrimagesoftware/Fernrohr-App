@@ -11,8 +11,9 @@ use crate::tunnel::store::TunnelStore;
 use crate::ui::picker_tunnel::{self, TunnelChoice};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
-use gpui_kit::component::{ActiveTheme as _, Icon};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _};
 use gpui_kit::*;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -349,6 +350,18 @@ fn context_row(
     }
 }
 
+/// Section 4.1/design.md decision 5: the picker's own way to reach the Tunnels
+/// window, alongside the app menu and the `tunnels.manage` command.
+fn manage_tunnels_control() -> impl IntoElement {
+    Button::new("picker-manage-tunnels")
+        .label("Manage tunnels…")
+        .icon(IconName::Settings)
+        .xsmall()
+        .ghost()
+        .tab_stop(false)
+        .on_click(|_event, _window, cx| crate::ui::tunnels::open_or_focus(cx))
+}
+
 impl Render for ClusterPicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
@@ -459,6 +472,7 @@ impl Render for ClusterPicker {
                 .child(header(cx))
                 .child(command)
                 .children(status)
+                .child(div().flex().justify_end().child(manage_tunnels_control()))
                 .track_focus(&self.focus_handle)
                 .into_any_element(),
         )

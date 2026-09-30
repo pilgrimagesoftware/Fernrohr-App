@@ -24,7 +24,7 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::Path;
 use std::time::Duration;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 /// Identifies one shared SSH forward: a tunnel and the API server it reaches through
 /// that tunnel. Two contexts collide on this key - and so share one `ssh` process -
@@ -101,12 +101,37 @@ impl TunnelForwards {
 /// tunnel's running state (group by [`ForwardKey::tunnel_id`]) without polling. Safe to
 /// call before any tunnel has ever been acquired - initializes an empty registry rather
 /// than requiring one to already exist.
-// UNWIRED(tunnel-management-ui#4): the Tunnels window (section 4) is the first real
-// caller.
-#[allow(dead_code)]
 pub fn live_forward_keys(cx: &mut App) -> watch::Receiver<BTreeSet<ForwardKey>> {
     TunnelForwards::ensure_init(cx);
     cx.global::<TunnelForwards>().registry.live_keys()
+}
+
+/// Relays [`live_forward_keys`]'s watch channel onto an `mpsc` sender, reporting the
+/// current set immediately and then every change - the same
+/// `spawn_stream`/`runtime::drain` bridge `k8s::cluster::health::drive` uses for
+/// `ForwardState`, so `ui::tunnels::list::TunnelsWindow` can derive running state from
+/// an ordinary GPUI background task instead of polling. Pure and `App`-free so it's
+/// testable against a hand-driven `watch::Sender` standing in for a fake forward's
+/// acquire/release, the same way `health::drive`'s own tests stand in for a fake
+/// `ForwardState` transition.
+pub async fn drive_live_keys(
+    mut rx: watch::Receiver<BTreeSet<ForwardKey>>,
+    tx: mpsc::Sender<BTreeSet<ForwardKey>>,
+) {
+    // Bound to a local and dropped before the `.await` below rather than cloned
+    // inline (`tx.send(rx.borrow_and_update().clone()).await`) - inline, the
+    // borrowed `watch::Ref`'s temporary lives to the end of that statement, which
+    // includes the `.await`, and it is not `Send`.
+    let initial = rx.borrow_and_update().clone();
+    if tx.send(initial).await.is_err() {
+        return;
+    }
+    while rx.changed().await.is_ok() {
+        let next = rx.borrow_and_update().clone();
+        if tx.send(next).await.is_err() {
+            return;
+        }
+    }
 }
 
 /// Resolves `context`'s tunnel binding (if any) via `tunnels.toml` and acquires the
@@ -432,5 +457,38 @@ mod tests {
         drop(handle_b);
         let _ = std::fs::remove_file(&tunnels_path);
         let _ = std::fs::remove_file(&kubeconfig_path);
+    }
+
+    /// Section 4.1's "running state follows a fake forward's acquire and release":
+    /// a hand-driven `watch::Sender<BTreeSet<ForwardKey>>` stands in for
+    /// `ForwardRegistry::live_keys` (which only ever changes on a real acquire/release,
+    /// per `forward/registry.rs`'s own tests), and `drive_live_keys` must report the
+    /// initial snapshot immediately, then each change, in order.
+    #[tokio::test]
+    async fn drive_live_keys_reports_the_initial_set_then_each_change() {
+        let key = ForwardKey {
+            tunnel_id: "qa-bastion".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 6443,
+        };
+        let (state_tx, state_rx) = watch::channel(BTreeSet::new());
+        let (tx, mut rx) = mpsc::channel(4);
+        let handle = tokio::spawn(drive_live_keys(state_rx, tx));
+
+        assert_eq!(rx.recv().await, Some(BTreeSet::new()));
+
+        // "acquire"
+        state_tx
+            .send(BTreeSet::from([key.clone()]))
+            .expect("receiver still live");
+        assert_eq!(rx.recv().await, Some(BTreeSet::from([key.clone()])));
+
+        // "release"
+        state_tx.send(BTreeSet::new()).expect("receiver still live");
+        assert_eq!(rx.recv().await, Some(BTreeSet::new()));
+
+        drop(state_tx);
+        handle.await.unwrap();
+        assert_eq!(rx.recv().await, None);
     }
 }

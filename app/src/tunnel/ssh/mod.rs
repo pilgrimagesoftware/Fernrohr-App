@@ -122,6 +122,78 @@ impl SshTunnelConfig {
         args.push(self.bastion_target());
         args
     }
+
+    /// Task 4.3 of `tunnel-management-ui`: the argv the Tunnels window's Test button
+    /// spawns - the same bastion-reaching options [`Self::args`] builds (`-F`, `-p`,
+    /// `-J`, identity, known-hosts), minus the `-N -L` forward, plus `-o
+    /// BatchMode=yes -o ConnectTimeout=15` so a bad key or an unreachable bastion
+    /// fails fast rather than hanging on a prompt, and a trailing remote command
+    /// (`true`) so the test actually opens a session rather than just resolving a
+    /// `-J` hop. Design.md decision 7: never forwards a port, so this never touches
+    /// `ForwardRegistry` - there is nothing here for it to acquire.
+    pub(crate) fn test_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        if let Some(config_file) = &self.ssh_config_file {
+            args.push("-F".to_string());
+            args.push(config_file.display().to_string());
+        }
+        args.extend([
+            "-p".to_string(),
+            self.bastion_port.to_string(),
+            "-o".to_string(),
+            "BatchMode=yes".to_string(),
+            "-o".to_string(),
+            "ConnectTimeout=15".to_string(),
+        ]);
+
+        if let Some(jump) = self.jump_flag() {
+            args.push("-J".to_string());
+            args.push(jump);
+        }
+
+        if let Some(identity_file) = &self.identity_file {
+            args.push("-i".to_string());
+            args.push(identity_file.display().to_string());
+        }
+
+        if let Some(known_hosts) = &self.known_hosts_file {
+            args.push("-o".to_string());
+            args.push(format!("UserKnownHostsFile={}", known_hosts.display()));
+            args.push("-o".to_string());
+            args.push("StrictHostKeyChecking=yes".to_string());
+        }
+
+        args.push(self.bastion_target());
+        args.push("true".to_string());
+        args
+    }
+}
+
+/// Task 4.3: runs the Tunnels window's connectivity test - spawns `ssh` with
+/// [`SshTunnelConfig::test_args`] and awaits its exit, classifying a failure the same
+/// way a real tunnel's `connect` does. Never spawns through `ForwardRegistry` and
+/// never supervises or retries: one `ssh` process, one outcome.
+pub async fn test_connection(config: &SshTunnelConfig) -> Result<(), String> {
+    let ssh_path = require_ssh_on_path()?;
+
+    let output = Command::new(ssh_path)
+        .args(config.test_args())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|err| format!("failed to spawn ssh: {err}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(classify_exit_failure(
+            output.status,
+            &String::from_utf8_lossy(&output.stderr),
+        ))
+    }
 }
 
 /// The [`crate::forward::supervisor::ForwardTransport`] `SshTunnel` plugs into

@@ -12,6 +12,7 @@ use crate::ui::nav::{
 };
 use crate::ui::panel_title::{self, PanelScope};
 use crate::ui::picker_tunnel;
+use crate::ui::tunnels;
 use crate::util::paths;
 use gpui_kit::component::Root;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -81,6 +82,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(SetContextTunnel),
     });
     nav::register_commands(registry);
+    tunnels::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -127,6 +129,9 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // prints letters no keystroke resolves to, and the shortcut does nothing.
     cx.bind_keys(crate::k8s::resource::pods::panel_bindings());
     cx.bind_keys(crate::k8s::resource::pod_detail::panel_bindings());
+    cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
+        tunnels::open_or_focus(cx);
+    });
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });
