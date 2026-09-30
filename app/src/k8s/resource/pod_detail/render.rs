@@ -7,10 +7,11 @@ use super::commands::{
     SelectOverviewTab, SelectVolumesTab, TOGGLE_VIEW_KEY, ToggleDetailView, VOLUMES_TAB_KEY,
 };
 use super::fetch::PodDetailState;
-use super::format::format_events;
-use super::model::{BadgeTone, DetailSection, DetailView};
+use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
+use crate::k8s::resource::events;
 use crate::ui::panel_title;
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::scroll::ScrollableElement as _;
@@ -68,65 +69,12 @@ impl PodDetailPanel {
     /// render path rather than a `PodField` - events come from a separate
     /// fetch, not from `pod_fields`'s projection of the pod object itself.
     fn render_events(&self, cx: &Context<Self>) -> AnyElement {
-        let theme = cx.theme();
         let events = match self.events() {
-            Some(Ok(events)) => format_events(events, Timestamp::now()),
-            Some(Err(reason)) => {
-                return div()
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(format!("Could not list events: {reason}"))
-                    .into_any_element();
-            }
-            None => Vec::new(),
+            Some(Ok(events)) => Ok(events::summarize(events, Timestamp::now())),
+            Some(Err(reason)) => Err(reason.clone()),
+            None => Ok(Vec::new()),
         };
-        if events.is_empty() {
-            return div()
-                .text_sm()
-                .text_color(theme.muted_foreground)
-                .child("No events.")
-                .into_any_element();
-        }
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .children(events.iter().map(|event| {
-                let reason_color = match event.tone {
-                    BadgeTone::Good => theme.foreground,
-                    BadgeTone::Warning => theme.warning,
-                    BadgeTone::Unknown => theme.muted_foreground,
-                };
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .p_2()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(theme.border)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(reason_color)
-                                    .child(event.reason.clone()),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{} · x{}", event.age, event.count)),
-                            ),
-                    )
-                    .child(div().text_sm().child(event.message.clone()))
-                    .into_any_element()
-            }))
-            .into_any_element()
+        crate::ui::detail::events(&events, cx)
     }
 
     fn render_yaml(&self, cx: &App) -> AnyElement {
@@ -187,6 +135,7 @@ impl Render for PodDetailPanel {
         // dock's shared per-tab-group toolbar, which only reflects whichever
         // tab happens to be active.
         let window_contexts = crate::util::shell::window_context_count(window, cx);
+        let has_links = !self.followable(cx).is_empty();
         let yaml = self.viewing == DetailView::Yaml;
         let toggle_key =
             Kbd::binding_for_action(&ToggleDetailView, Some(PANEL_KEY_CONTEXT), window)
@@ -262,12 +211,27 @@ impl Render for PodDetailPanel {
                                 .child(section.label())
                         }))
                     })
+                    .when(has_links, |this| {
+                        this.child(
+                            div()
+                                .id("go-to-hint")
+                                .flex()
+                                .flex_shrink_0()
+                                .items_center()
+                                .gap_1()
+                                .whitespace_nowrap()
+                                .child(crate::ui::link::go_to_key(window))
+                                .child("Go to…")
+                                .test_support(),
+                        )
+                    })
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
         div()
             .size_full()
-            .key_context(PANEL_KEY_CONTEXT)
+            .key_context(key_context())
+            .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
@@ -280,4 +244,13 @@ impl Render for PodDetailPanel {
             .child(header)
             .child(div().flex_1().min_h_0().child(content))
     }
+}
+
+/// The panel's own key context plus the shared one `links.go_to` is gated to,
+/// so `g` reaches this panel without the link module knowing it exists.
+fn key_context() -> KeyContext {
+    let mut context = KeyContext::default();
+    context.add(PANEL_KEY_CONTEXT);
+    context.add(crate::ui::link::LINKS_KEY_CONTEXT);
+    context
 }

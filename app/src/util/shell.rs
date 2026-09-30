@@ -94,6 +94,8 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     tunnels::register_commands(registry);
     crate::k8s::resource::pods::register_commands(registry);
     crate::k8s::resource::pod_detail::register_commands(registry);
+    crate::ui::link::register_commands(registry);
+    crate::k8s::resource::object_detail::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
 }
@@ -131,6 +133,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.set_global(registry);
     crate::k8s::resource::pods::register_restore(cx);
     crate::k8s::resource::pod_detail::register_restore(cx);
+    crate::k8s::resource::object_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
@@ -430,6 +433,10 @@ fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
                 .to_string(),
             data["pod_name"].as_str().unwrap_or_default().to_string(),
         ),
+        "ObjectDetail" => match crate::k8s::resource::object_detail::target_from_state(data) {
+            Some(object) => NavTarget::Object(object),
+            None => return keys,
+        },
         "Resource" => NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind {
             gvk: GroupVersionKind::gvk(
                 data["group"].as_str().unwrap_or_default(),
@@ -940,7 +947,7 @@ impl MainWindow {
             // A pod's detail panel shows one pod rather than a namespace-
             // filterable list of many, so it carries no picker and never
             // re-scopes.
-            nav::OpenedPanel::PodDetail(_) => {}
+            nav::OpenedPanel::PodDetail(_) | nav::OpenedPanel::ObjectDetail(_) => {}
         }
     }
 
@@ -1131,6 +1138,7 @@ impl MainWindow {
                 OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::ObjectDetail(panel) => area.remove_panel(panel, window, cx),
             });
         }
 
@@ -1295,6 +1303,28 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.open_target_in(target, initial_view, None, Vec::new(), window, cx);
+    }
+
+    /// `open_target_with_view` with the scope spelled out: `context_name` is
+    /// the cluster context to open the panel against (`None` for the window's
+    /// own choice, as every menu, palette and row request makes), and
+    /// `namespaces` the namespace scope to give it.
+    ///
+    /// A followed reference (`resource-links` 3.1) names its context
+    /// explicitly - the context of the panel it was shown in, which in a
+    /// multi-context window need not be the active one. A context this window
+    /// doesn't hold is refused rather than substituted, for the same reason
+    /// `pod_scoped_context` refuses a foreign selection.
+    pub(crate) fn open_target_in(
+        &mut self,
+        target: NavTarget,
+        initial_view: Option<DetailView>,
+        context_name: Option<String>,
+        namespaces: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let WindowMode::Workspace {
             dock_area,
             contexts,
@@ -1308,9 +1338,19 @@ impl MainWindow {
             return;
         };
         let connection_count = contexts.len();
-        let Some(context_name) = pod_scoped_context(&target, contexts.as_slice(), *active, cx)
-        else {
-            return;
+        let context_name = match context_name {
+            Some(named) if contexts.contains(&named) => named,
+            Some(named) => {
+                log::warn!(
+                    "not opening {target:?}: context {named:?} is not held by this window \
+                     ({contexts:?})"
+                );
+                return;
+            }
+            None => match pod_scoped_context(&target, contexts.as_slice(), *active, cx) {
+                Some(context_name) => context_name,
+                None => return,
+            },
         };
         // Set only when a panel was actually built, so the subscription below
         // is not made for a panel the dock already had.
@@ -1318,7 +1358,8 @@ impl MainWindow {
         let scope = PanelScope {
             connection_count,
             ..PanelScope::new(target.clone(), context_name)
-        };
+        }
+        .scoped_to(namespaces);
         let key = PanelKey::from(&scope);
         let id = match open_panels.iter().find(|open| open.key == key) {
             Some(open) => {
@@ -1521,6 +1562,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_pod_detail))
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
             .on_action(cx.listener(Self::on_action_set_tunnel))
+            .on_action(cx.listener(Self::on_action_follow_reference))
             .child(body)
             // gpui-component's `Root` only records open dialogs, sheets and
             // notifications; the window's own view has to draw them. Without these
@@ -1584,6 +1626,7 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
 // `#[gpui_kit::test]` item.
 #[cfg(test)]
 mod focus_tests;
+mod follow;
 mod panel_focus;
 #[cfg(test)]
 mod tests;

@@ -1,9 +1,9 @@
 //! Event ordering and tone, managed-field entries, and the events selector.
 
 use super::fixtures::{at, rich_pod};
-use crate::k8s::resource::pod_detail::fetch::events_selector;
-use crate::k8s::resource::pod_detail::format::{format_events, managed_field_entry};
-use crate::k8s::resource::pod_detail::model::{BadgeTone, ManagedFieldEntry, PodEvent};
+use crate::k8s::resource::events::{EventSummary, InvolvedObject, selector, summarize};
+use crate::k8s::resource::pod_detail::format::managed_field_entry;
+use crate::k8s::resource::pod_detail::model::{BadgeTone, ManagedFieldEntry};
 use crate::k8s::resource::pods::format_age;
 use k8s_openapi::api::core::v1::{Event as K8sEvent, EventSeries};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{
@@ -39,26 +39,26 @@ fn events_sort_newest_first_across_legacy_and_series_timestamps() {
         ..Default::default()
     };
 
-    let events = format_events(&[undated, legacy, series], at(400));
+    let events = summarize(&[undated, legacy, series], at(400));
 
     assert_eq!(
         events,
         vec![
-            PodEvent {
+            EventSummary {
                 reason: "BackOff".into(),
                 message: "Back-off restarting failed container".into(),
                 count: 4,
                 age: format_age(100),
                 tone: BadgeTone::Warning,
             },
-            PodEvent {
+            EventSummary {
                 reason: "Pulled".into(),
                 message: "Container image already present".into(),
                 count: 2,
                 age: format_age(300),
                 tone: BadgeTone::Good,
             },
-            PodEvent {
+            EventSummary {
                 reason: "Unknown".into(),
                 message: String::new(),
                 count: 1,
@@ -97,6 +97,16 @@ fn a_bare_managed_fields_entry_is_kept_and_says_what_is_missing() {
     assert_eq!(entry.manager, "unknown manager");
     assert_eq!(entry.operation, "unknown operation");
     assert_eq!(entry.fields_json, "(no field ownership recorded)");
+}
+
+/// The selector pod detail lists a pod's events with - what `fetch_pod` builds.
+fn events_selector(pod: &k8s_openapi::api::core::v1::Pod, namespace: &str, name: &str) -> String {
+    selector(&InvolvedObject {
+        kind: "Pod",
+        namespace: Some(namespace),
+        name,
+        uid: pod.metadata.uid.as_deref(),
+    })
 }
 
 #[test]

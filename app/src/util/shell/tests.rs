@@ -93,7 +93,7 @@ fn set_context_tunnels_handler_binds_and_unbinds() {
 /// scheduler's thread-confinement check non-deterministically, since it
 /// depends on real wall-clock I/O timing rather than anything these tests
 /// control.
-async fn connected_window(
+pub(super) async fn connected_window(
     cx: &mut TestAppContext,
     context_name: &str,
 ) -> gpui_kit::WindowHandle<MainWindow> {
@@ -574,12 +574,17 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
     let window = connected_window(cx, "kind-dev").await;
     cx.run_until_parked();
 
-    let expected = 4;
-    let cases: [NavTarget; 4] = [
+    let expected = 5;
+    let cases: [NavTarget; 5] = [
         NavTarget::pods(),
         NavTarget::Logs,
         NavTarget::Kind(crd_kind()),
         NavTarget::Kind(cluster_scoped_kind()),
+        NavTarget::Object(crate::ui::nav::ObjectTarget {
+            kind: crd_kind(),
+            namespace: Some("staging".into()),
+            name: "fronds".into(),
+        }),
     ];
 
     let mut checked: Vec<String> = Vec::new();
@@ -598,13 +603,16 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                     nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
+                    nav::OpenedPanel::ObjectDetail(panel) => title_bar_of(&panel, window, cx),
                 };
                 // No plain tab name, so the dock draws the tab from the panel's
                 // title element and its "Context:" tooltip.
                 assert_eq!(name, None, "the tab is drawn from the title element");
+                // `item_label` is `list_label` for a list; for one object it
+                // is the kind plus the object's name.
                 assert_eq!(
                     crate::ui::panel::title::title(&scope),
-                    target.list_label(),
+                    target.item_label(),
                     "the title names the kind, never the cluster"
                 );
                 assert!(

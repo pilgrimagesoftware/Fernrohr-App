@@ -73,6 +73,7 @@ impl PanelScope {
         match &self.target {
             NavTarget::Kind(kind) => kind.namespaced,
             NavTarget::Logs | NavTarget::Pod(_) => true,
+            NavTarget::Object(object) => object.kind.namespaced,
         }
     }
 }
