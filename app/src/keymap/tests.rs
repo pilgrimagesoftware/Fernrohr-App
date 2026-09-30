@@ -9,6 +9,14 @@ actions!(keymap_test, [TestAction]);
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// `keys` as GPUI spells it back on this platform - `cmd` reads `super` off
+/// macOS - for comparing with a keystroke's `unparse`.
+fn spelled(keys: &str) -> String {
+    gpui_kit::Keystroke::parse(keys)
+        .expect("a valid keystroke")
+        .unparse()
+}
+
 fn temp_path() -> std::path::PathBuf {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("fernrohr-keymap-test-{n}.toml"))
@@ -73,7 +81,7 @@ fn invalid_entry_falls_back_to_default_and_leaves_file_untouched() {
             .keystrokes()
             .iter()
             .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
-            .eq(["cmd-t".to_string()])),
+            .eq([spelled("cmd-t")])),
         "an unparseable override falls back to the default"
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), contents);

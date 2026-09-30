@@ -80,6 +80,19 @@ fn resolves(cx: &App, key: &str, action: &dyn Action) -> bool {
         .any(|binding| binding.action().partial_eq(action))
 }
 
+/// `keys` as a recording stores them on this platform - `cmd` reads `super`
+/// off macOS.
+fn spelled(keys: &str) -> String {
+    Keystroke::parse(keys).expect("a valid keystroke").unparse()
+}
+
+/// Close Window's key: `cmd-w` on macOS, `ctrl-w` elsewhere.
+const CLOSE_KEY: &str = if cfg!(target_os = "macos") {
+    "cmd-w"
+} else {
+    "ctrl-w"
+};
+
 fn override_of(cx: &App, id: &str) -> Option<String> {
     cx.global::<LiveKeymap>().config().bindings.get(id).cloned()
 }
@@ -125,8 +138,8 @@ async fn every_registered_command_has_a_row(cx: &mut TestAppContext) {
     });
 }
 
-/// Recording `cmd-w` - Close Window's key - records it (and asks, since
-/// Close Window has it) instead of closing the window; Escape cancels.
+/// Recording Close Window's key records it (and asks, since Close Window has
+/// it) instead of closing the window; Escape cancels.
 #[gpui_kit::test]
 async fn recording_a_bound_key_does_not_run_it(cx: &mut TestAppContext) {
     let main = app(cx);
@@ -147,16 +160,16 @@ async fn recording_a_bound_key_does_not_run_it(cx: &mut TestAppContext) {
             }
         })
     });
-    press(&mut vcx, "cmd-w");
+    press(&mut vcx, CLOSE_KEY);
     assert!(
         fired.borrow().is_empty(),
-        "cmd-w ran nothing while recording, not Close Window: {:?}",
+        "Close Window's key ran nothing while recording: {:?}",
         fired.borrow()
     );
     assert_eq!(
         cx.update(|cx| section.read(cx).test_mode()),
         "confirming",
-        "cmd-w is Close Window's, so the editor asks"
+        "the key is Close Window's, so the editor asks"
     );
 
     press(&mut vcx, "escape");
@@ -185,8 +198,8 @@ async fn a_recorded_key_works_immediately(cx: &mut TestAppContext) {
     cx.update(|cx| {
         assert_eq!(section.read(cx).test_mode(), "browsing");
         assert_eq!(
-            override_of(cx, "panel.focus_next").as_deref(),
-            Some("cmd-shift-j")
+            override_of(cx, "panel.focus_next"),
+            Some(spelled("cmd-shift-j"))
         );
         assert!(
             resolves(cx, "cmd-shift-j", &FocusNextPanel),
@@ -213,10 +226,7 @@ async fn confirming_a_conflict_applies_the_key(cx: &mut TestAppContext) {
     press(&mut vcx, "enter");
     cx.update(|cx| {
         assert_eq!(section.read(cx).test_mode(), "browsing");
-        assert_eq!(
-            override_of(cx, "panel.focus_next").as_deref(),
-            Some("cmd-n")
-        );
+        assert_eq!(override_of(cx, "panel.focus_next"), Some(spelled("cmd-n")));
     });
 }
 
