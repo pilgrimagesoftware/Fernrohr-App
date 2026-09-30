@@ -1,6 +1,7 @@
 //! Opening a panel: the one path every request takes, with its dedup/focus rule, and forgetting panels the user closed.
 
 use super::*;
+use gpui_kit::component::dock::InsertTarget;
 
 impl MainWindow {
     /// Shows `target`: a new panel in the dock if that kind is not already
@@ -108,8 +109,22 @@ impl MainWindow {
                 id
             }
             None => {
+                // A panel opened from another one - a double-clicked row, a
+                // followed link - joins the group it was opened from, rather
+                // than the dock's first group: a Pods list in a lower split
+                // opens its pods down there beside it.
+                let source = crate::ui::panel::focus::focused_group(dock_area.read(cx), window, cx);
                 let (id, opened) = dock_area.update(cx, |area, cx| {
-                    nav::add_panel(area, &scope, initial_view, window, cx)
+                    let (id, opened) = nav::add_panel(area, &scope, initial_view, window, cx);
+                    if let Some(node) = source {
+                        let target = InsertTarget::Tabs {
+                            node,
+                            ix: None,
+                            activate: true,
+                        };
+                        area.move_panel(id, target, window, cx);
+                    }
+                    (id, opened)
                 });
                 open_panels.push(OpenPanel {
                     key,
