@@ -20,6 +20,7 @@ use crate::config::{
     tunnels::{TunnelConfig, TunnelsConfig},
 };
 use crate::tunnel::secrets::TunnelSecretStore;
+use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 
@@ -27,8 +28,37 @@ use std::path::PathBuf;
 pub enum TunnelStoreError {
     NotFound,
     AlreadyExists,
+    /// `create`/`update` rejected the tunnel before writing it - one entry per
+    /// offending field, so a caller (the section 4.2 editor) can mark each inline.
+    Invalid(Vec<TunnelFieldError>),
     Secret(keyring::Error),
     Io(io::Error),
+}
+
+/// A single invalid field on a [`TunnelConfig`] passed to
+/// [`TunnelStore::create`]/[`TunnelStore::update`]. `bastion_port` is a `u16`, so the
+/// only out-of-range value in 1-65535 is `0`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TunnelFieldError {
+    EmptyHost,
+    EmptyUser,
+    InvalidPort,
+}
+
+/// Collects every violation of tasks.md 1.2's validation rules (non-empty host and
+/// user, port 1-65535). Empty, not `None`, when `tunnel` is valid.
+fn validate(tunnel: &TunnelConfig) -> Vec<TunnelFieldError> {
+    let mut errors = Vec::new();
+    if tunnel.bastion_host.trim().is_empty() {
+        errors.push(TunnelFieldError::EmptyHost);
+    }
+    if tunnel.bastion_user.trim().is_empty() {
+        errors.push(TunnelFieldError::EmptyUser);
+    }
+    if tunnel.bastion_port == 0 {
+        errors.push(TunnelFieldError::InvalidPort);
+    }
+    errors
 }
 
 impl From<keyring::Error> for TunnelStoreError {
@@ -88,6 +118,10 @@ impl TunnelStore {
         tunnel: TunnelConfig,
         secret: Option<&str>,
     ) -> Result<(), TunnelStoreError> {
+        let errors = validate(&tunnel);
+        if !errors.is_empty() {
+            return Err(TunnelStoreError::Invalid(errors));
+        }
         let mut config: TunnelsConfig = config::load(&self.config_path);
         if config.tunnels.contains_key(id) {
             return Err(TunnelStoreError::AlreadyExists);
@@ -109,6 +143,10 @@ impl TunnelStore {
         tunnel: TunnelConfig,
         secret: Option<&str>,
     ) -> Result<(), TunnelStoreError> {
+        let errors = validate(&tunnel);
+        if !errors.is_empty() {
+            return Err(TunnelStoreError::Invalid(errors));
+        }
         let mut config: TunnelsConfig = config::load(&self.config_path);
         if !config.tunnels.contains_key(id) {
             return Err(TunnelStoreError::NotFound);
@@ -173,6 +211,30 @@ impl TunnelStore {
         config::save(&self.config_path, &config)?;
         Ok(())
     }
+
+    /// How many contexts are bound to each tunnel, for the section 4 Tunnels panel's
+    /// read-only usage count. Every existing tunnel id is present, at `0` if unused.
+    pub fn usage_counts(&self) -> BTreeMap<String, usize> {
+        let config: TunnelsConfig = config::load(&self.config_path);
+        let mut counts: BTreeMap<String, usize> =
+            config.tunnels.keys().map(|id| (id.clone(), 0)).collect();
+        for tunnel_id in config.context_bindings.values() {
+            *counts.entry(tunnel_id.clone()).or_insert(0) += 1;
+        }
+        counts
+    }
+
+    /// Bindings whose context is absent from `existing_contexts` (the kubeconfig's own
+    /// context list) - e.g. after a `kubectl config rename-context`. Each pair is
+    /// `(context, tunnel_id)`.
+    pub fn stale_bindings(&self, existing_contexts: &[String]) -> Vec<(String, String)> {
+        let config: TunnelsConfig = config::load(&self.config_path);
+        config
+            .context_bindings
+            .into_iter()
+            .filter(|(context, _)| !existing_contexts.iter().any(|c| c == context))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -195,8 +257,7 @@ mod tests {
             bastion_host: "bastion.example.com".into(),
             bastion_port: 22,
             jump_hosts: Vec::new(),
-            remote_host: "10.0.1.5".into(),
-            remote_port: 6443,
+            auth: crate::config::tunnels::TunnelAuth::default(),
         }
     }
 
@@ -389,5 +450,107 @@ mod tests {
         let store = TunnelStore::new(temp_config_path());
         store.unbind("never-bound").unwrap();
         assert!(store.bindings().is_empty());
+    }
+
+    /// Tasks.md 1.2: `create`/`update` reject an empty `bastion_host`, naming the field.
+    #[test]
+    fn create_rejects_an_empty_host() {
+        let store = TunnelStore::new(temp_config_path());
+        let mut tunnel = sample_tunnel("Bad");
+        tunnel.bastion_host = String::new();
+
+        let err = store.create("bad", tunnel, None).unwrap_err();
+
+        assert!(matches!(
+            err,
+            TunnelStoreError::Invalid(errors) if errors == vec![TunnelFieldError::EmptyHost]
+        ));
+        assert!(store.list().is_empty(), "an invalid tunnel must not save");
+    }
+
+    /// Tasks.md 1.2: an empty `bastion_user` is rejected the same way.
+    #[test]
+    fn create_rejects_an_empty_user() {
+        let store = TunnelStore::new(temp_config_path());
+        let mut tunnel = sample_tunnel("Bad");
+        tunnel.bastion_user = String::new();
+
+        let err = store.create("bad", tunnel, None).unwrap_err();
+
+        assert!(matches!(
+            err,
+            TunnelStoreError::Invalid(errors) if errors == vec![TunnelFieldError::EmptyUser]
+        ));
+    }
+
+    /// Tasks.md 1.2: `bastion_port` must be in 1-65535; `u16` already caps the top, so
+    /// only `0` is out of range.
+    #[test]
+    fn create_rejects_an_out_of_range_port() {
+        let store = TunnelStore::new(temp_config_path());
+        let mut tunnel = sample_tunnel("Bad");
+        tunnel.bastion_port = 0;
+
+        let err = store.create("bad", tunnel, None).unwrap_err();
+
+        assert!(matches!(
+            err,
+            TunnelStoreError::Invalid(errors) if errors == vec![TunnelFieldError::InvalidPort]
+        ));
+    }
+
+    /// `update` validates too, and rejects before touching the file.
+    #[test]
+    fn update_rejects_an_invalid_tunnel() {
+        let store = TunnelStore::new(temp_config_path());
+        store.create("a", sample_tunnel("A"), None).unwrap();
+        let mut invalid = sample_tunnel("A renamed");
+        invalid.bastion_user = String::new();
+
+        let err = store.update("a", invalid, None).unwrap_err();
+
+        assert!(matches!(
+            err,
+            TunnelStoreError::Invalid(errors) if errors == vec![TunnelFieldError::EmptyUser]
+        ));
+        assert_eq!(store.get("a").unwrap().name, "A");
+    }
+
+    /// Tasks.md 1.2: `usage_counts` reflects bindings shared across contexts, and
+    /// includes an unused tunnel at `0` rather than omitting it.
+    #[test]
+    fn usage_counts_reflects_shared_and_unused_tunnels() {
+        let store = TunnelStore::new(temp_config_path());
+        store
+            .create("qa-bastion", sample_tunnel("QA"), None)
+            .unwrap();
+        store
+            .create("unused-bastion", sample_tunnel("Unused"), None)
+            .unwrap();
+        store.bind("qa-1", "qa-bastion").unwrap();
+        store.bind("qa-2", "qa-bastion").unwrap();
+
+        let counts = store.usage_counts();
+
+        assert_eq!(counts.get("qa-bastion"), Some(&2));
+        assert_eq!(counts.get("unused-bastion"), Some(&0));
+    }
+
+    /// Tasks.md 1.2: a binding whose context is absent from the given list is stale.
+    #[test]
+    fn stale_bindings_lists_contexts_absent_from_the_given_list() {
+        let store = TunnelStore::new(temp_config_path());
+        store
+            .create("qa-bastion", sample_tunnel("QA"), None)
+            .unwrap();
+        store.bind("qa-1", "qa-bastion").unwrap();
+        store.bind("renamed-away", "qa-bastion").unwrap();
+
+        let stale = store.stale_bindings(&["qa-1".to_string()]);
+
+        assert_eq!(
+            stale,
+            vec![("renamed-away".to_string(), "qa-bastion".to_string())]
+        );
     }
 }
