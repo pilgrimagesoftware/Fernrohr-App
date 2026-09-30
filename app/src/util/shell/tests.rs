@@ -4,9 +4,9 @@
 use super::{
     ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor, PanelKey,
     SET_CONTEXT_TUNNEL_COMMAND_ID, SavedDockLayouts, ShowLogs, ShowPodDetail, ToggleCommandPalette,
-    WindowLayout, WindowMode, WorkspaceConfig, config, init, open_saved_or_default, open_window,
-    register_commands, restorable_panels, restored_contexts, restored_resource_width, save,
-    watch_picker, write_context_tunnel,
+    WindowLayout, WindowMode, WorkspaceConfig, close_window, config, init, open_saved_or_default,
+    open_window, register_commands, restorable_panels, restored_contexts, restored_resource_width,
+    save, watch_picker, write_context_tunnel,
 };
 use crate::command::CommandRegistry;
 use crate::config::tunnels::{TunnelAuth, TunnelConfig};
@@ -1118,6 +1118,54 @@ async fn quitting_persists_open_window_geometry(cx: &mut TestAppContext) {
     assert_eq!(saved.windows.len(), 1);
     assert_eq!(saved.windows[0].width, 900.0);
     assert_eq!(saved.windows[0].height, 700.0);
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}
+
+/// A window closed while another stays open is forgotten; only the last one to close
+/// is remembered (closing it quits the app), so relaunch reopens what was open at
+/// quit - not every window ever closed this run.
+#[gpui_kit::test]
+async fn closing_a_window_while_others_stay_open_forgets_it(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+        open_window(cx, WindowLayout::default());
+        open_window(cx, WindowLayout::default());
+    });
+    cx.run_until_parked();
+
+    let windows = cx.update(|cx| cx.windows());
+    assert_eq!(windows.len(), 2);
+    windows[0]
+        .update(cx, |_, window, cx| close_window(window, cx))
+        .unwrap();
+    cx.run_until_parked();
+    let recorded = cx.update(|cx| {
+        cx.try_global::<ClosedWindowLayouts>()
+            .map_or(0, |closed| closed.0.len())
+    });
+    assert_eq!(
+        recorded, 0,
+        "a window closed while another is open is forgotten"
+    );
+
+    windows[1]
+        .update(cx, |_, window, cx| close_window(window, cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| save(cx, &path));
+    let saved: WorkspaceConfig = config::load(&path);
+    assert_eq!(
+        saved.windows.len(),
+        1,
+        "only the last window closed is restored"
+    );
 
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(&keymap_path);

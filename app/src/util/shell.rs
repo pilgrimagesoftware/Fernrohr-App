@@ -226,7 +226,18 @@ fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorkspace {
 
 /// Remembers a closing main window's layout so `save` still writes it after the window
 /// is gone (see [`ClosedWindowLayouts`]).
+///
+/// Only the *last* main window is recorded. A window closed while others stay open
+/// is one the user is done with, so it's dropped rather than restored at the next
+/// launch. The last one is recorded because closing it quits the app
+/// (`QuitMode::LastWindowClosed`) before `save` can read any open window.
 fn record_closing_layout(window_id: WindowId, window: &mut Window, cx: &mut App) {
+    if other_open_main_windows(window_id, cx) > 0 {
+        if cx.has_global::<ClosedWindowLayouts>() {
+            cx.global_mut::<ClosedWindowLayouts>().0.remove(&window_id);
+        }
+        return;
+    }
     let bounds = window.bounds();
     let live = workspace_contexts(window, cx);
     let layout = layout_from_bounds(bounds, live);
@@ -236,6 +247,20 @@ fn record_closing_layout(window_id: WindowId, window: &mut Window, cx: &mut App)
     cx.global_mut::<ClosedWindowLayouts>()
         .0
         .insert(window_id, layout);
+}
+
+/// How many main (workspace or picker) windows other than `except` are open.
+fn other_open_main_windows(except: WindowId, cx: &App) -> usize {
+    cx.windows()
+        .into_iter()
+        .filter(|handle| handle.window_id() != except)
+        .filter(|handle| {
+            handle
+                .downcast::<Root>()
+                .and_then(|root| root.read(cx).ok())
+                .is_some_and(|root| root.view().clone().downcast::<MainWindow>().is_ok())
+        })
+        .count()
 }
 
 /// Closes `window` the way its close button does. `remove_window` skips the
