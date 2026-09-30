@@ -103,6 +103,7 @@ impl ResourcePanel {
     }
 
     /// Whether the kind list holds keyboard focus.
+    #[cfg(test)]
     pub(crate) fn is_list_focused(&self, window: &Window) -> bool {
         self.focus_handle.is_focused(window)
     }
