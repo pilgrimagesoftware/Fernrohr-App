@@ -560,8 +560,10 @@ async fn test_connection_reports_failure_against_a_closed_port() {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
 
+    // The connection is refused before authentication, so the user never matters -
+    // and `USER` is unset in minimal containers.
     let config = SshTunnelConfig {
-        bastion_user: std::env::var("USER").unwrap(),
+        bastion_user: "fernrohr-test".to_string(),
         bastion_host: "127.0.0.1".to_string(),
         bastion_port: port,
         jump_hosts: Vec::new(),
