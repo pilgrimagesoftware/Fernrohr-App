@@ -24,6 +24,6 @@ mod render;
 #[cfg(test)]
 mod tests;
 
-pub use commands::{panel_bindings, register_commands};
+pub use commands::register_commands;
 pub use model::DetailView;
 pub use panel::{PodDetailPanel, register_restore};

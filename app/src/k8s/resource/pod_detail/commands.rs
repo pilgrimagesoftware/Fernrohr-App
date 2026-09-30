@@ -2,7 +2,6 @@
 //! keybindings that reach them. Rendering their hints is `render`'s job.
 
 use crate::command::{Command, CommandRegistry};
-use crate::keymap::{self, KeymapConfig};
 use gpui_kit::*;
 
 actions!(
@@ -89,45 +88,4 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
-}
-
-/// The panel's own keybindings, each resolved through `keymap` by its command
-/// id - so a `keymap.toml` override rebinds it. Registered with the window's
-/// keymap the same way `pods::panel_bindings` is - printing a key in a hint
-/// bar does not bind it.
-pub fn panel_bindings(keymap: &KeymapConfig) -> [KeyBinding; 6] {
-    let key = |id, default| keymap::resolve(id, default, keymap);
-    let context = Some(PANEL_KEY_CONTEXT);
-    [
-        KeyBinding::new(
-            &key(TOGGLE_VIEW_COMMAND_ID, TOGGLE_VIEW_KEY),
-            ToggleDetailView,
-            context,
-        ),
-        KeyBinding::new(
-            &key(OVERVIEW_TAB_COMMAND_ID, OVERVIEW_TAB_KEY),
-            SelectOverviewTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(CONTAINERS_TAB_COMMAND_ID, CONTAINERS_TAB_KEY),
-            SelectContainersTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(VOLUMES_TAB_COMMAND_ID, VOLUMES_TAB_KEY),
-            SelectVolumesTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(EVENTS_TAB_COMMAND_ID, EVENTS_TAB_KEY),
-            SelectEventsTab,
-            context,
-        ),
-        KeyBinding::new(
-            &key(MANAGED_FIELDS_TAB_COMMAND_ID, MANAGED_FIELDS_TAB_KEY),
-            SelectManagedFieldsTab,
-            context,
-        ),
-    ]
 }

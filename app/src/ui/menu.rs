@@ -3,12 +3,14 @@
 //! and its palette/keymap entry are the same registered command, never a
 //! second list that can drift from the first.
 //!
-//! Two kinds of item that have no `CommandRegistry` entry and never will -
-//! `Quit`/`About` under App, `Minimize`/`Zoom` under Window - are platform
-//! affordances, not app actions, and are built directly against GPUI's menu
-//! API rather than routed through the registry.
+//! The platform items - `Quit`/`About`/`Hide` under App, `Minimize`/`Zoom`/
+//! `Close Window` under Window - keep their native places in those two menus,
+//! so the menu builds them directly rather than from a registry slot. They are
+//! still registered commands ([`register_commands`], `menu: None`): every
+//! user-facing action reaches the command palette and takes a `keymap.toml`
+//! override, and its key comes from the registry like any other command's.
 
-use crate::command::{CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, MenuSlot};
 use gpui_kit::*;
 
 actions!(
@@ -29,7 +31,6 @@ actions!(
 /// `cx.set_menus`. Called once at startup, after every command is
 /// registered and before the registry is moved into its global slot.
 pub fn init(registry: &CommandRegistry, cx: &mut App) {
-    cx.bind_keys(platform_bindings());
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
     cx.on_action(|_: &Hide, cx: &mut App| cx.hide());
     cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());
@@ -82,23 +83,65 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
     ]);
 }
 
-/// The platform's standard shortcuts for the App and Window menu items above. A menu
-/// item shows (and answers to) whatever key its action is bound to, so without these
-/// the items had no shortcuts and ⌘Q did nothing.
-fn platform_bindings() -> Vec<KeyBinding> {
-    #[cfg(target_os = "macos")]
-    return vec![
-        KeyBinding::new("cmd-q", Quit, None),
-        KeyBinding::new("cmd-h", Hide, None),
-        KeyBinding::new("alt-cmd-h", HideOthers, None),
-        KeyBinding::new("cmd-m", Minimize, None),
-        KeyBinding::new("cmd-w", CloseWindow, None),
+/// Each platform's standard shortcut for an item, or none - `Hide` and friends
+/// are macOS conventions with nothing to bind elsewhere.
+const fn platform_key(macos: &'static str, other: &'static str) -> &'static str {
+    if cfg!(target_os = "macos") {
+        macos
+    } else {
+        other
+    }
+}
+
+/// The App and Window menus' platform items as registered commands. A menu
+/// item shows (and answers to) whatever key its action is bound to, so these
+/// bindings are also what gives the native items their shortcuts.
+pub fn register_commands(registry: &mut CommandRegistry) {
+    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 8] = [
+        ("app.about", "About Fernrohr", "", Box::new(About)),
+        (
+            "app.hide",
+            "Hide Fernrohr",
+            platform_key("cmd-h", ""),
+            Box::new(Hide),
+        ),
+        (
+            "app.hide_others",
+            "Hide Others",
+            platform_key("alt-cmd-h", ""),
+            Box::new(HideOthers),
+        ),
+        ("app.show_all", "Show All", "", Box::new(ShowAll)),
+        (
+            "app.quit",
+            "Quit Fernrohr",
+            platform_key("cmd-q", "ctrl-q"),
+            Box::new(Quit),
+        ),
+        (
+            "window.minimize",
+            "Minimize",
+            platform_key("cmd-m", ""),
+            Box::new(Minimize),
+        ),
+        ("window.zoom", "Zoom", "", Box::new(Zoom)),
+        (
+            "window.close",
+            "Close Window",
+            platform_key("cmd-w", "ctrl-w"),
+            Box::new(CloseWindow),
+        ),
     ];
-    #[cfg(not(target_os = "macos"))]
-    return vec![
-        KeyBinding::new("ctrl-q", Quit, None),
-        KeyBinding::new("ctrl-w", CloseWindow, None),
-    ];
+    for (id, title, default_binding, action) in commands {
+        registry.register(Command {
+            id,
+            title,
+            default_binding,
+            context: None,
+            action,
+            menu: None,
+        });
+    }
 }
 
 fn menu_from_registry(name: &'static str, slot: MenuSlot, registry: &CommandRegistry) -> Menu {
@@ -170,19 +213,26 @@ impl Render for AboutView {
 #[cfg(test)]
 mod tests {
     use super::{
-        About, CloseWindow, Hide, MenuSlot, Minimize, Quit, platform_bindings, registry_items,
+        About, CloseWindow, Hide, MenuSlot, Minimize, Quit, register_commands, registry_items,
     };
     use crate::command::{Command, CommandRegistry};
     use gpui_kit::{Action, actions};
 
     actions!(menu_test, [TestAction]);
 
-    /// The App and Window menu items answer to the platform's standard shortcuts -
-    /// without these bindings the items showed no keys and ⌘Q did nothing.
-    #[cfg(target_os = "macos")]
+    /// The App and Window menu items answer to each platform's standard
+    /// shortcuts - through their registered commands, the path every command's
+    /// key takes - and every platform item reaches the palette. Hide and
+    /// Minimize are macOS conventions, unbound elsewhere.
     #[test]
     fn platform_items_have_their_standard_shortcuts() {
-        let bindings = platform_bindings();
+        let mut registry = CommandRegistry::new();
+        register_commands(&mut registry);
+        let bindings = crate::keymap::bindings(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            &gpui_kit::DummyKeyboardMapper,
+        );
         let key_for = |action: &dyn Action| {
             bindings
                 .iter()
@@ -196,10 +246,27 @@ mod tests {
                         .join(" ")
                 })
         };
-        assert_eq!(key_for(&Quit).as_deref(), Some("cmd-q"));
-        assert_eq!(key_for(&Hide).as_deref(), Some("cmd-h"));
-        assert_eq!(key_for(&Minimize).as_deref(), Some("cmd-m"));
-        assert_eq!(key_for(&CloseWindow).as_deref(), Some("cmd-w"));
+        let macos = cfg!(target_os = "macos");
+        assert_eq!(
+            key_for(&Quit).as_deref(),
+            Some(if macos { "cmd-q" } else { "ctrl-q" })
+        );
+        assert_eq!(key_for(&Hide).as_deref(), macos.then_some("cmd-h"));
+        assert_eq!(key_for(&Minimize).as_deref(), macos.then_some("cmd-m"));
+        assert_eq!(
+            key_for(&CloseWindow).as_deref(),
+            Some(if macos { "cmd-w" } else { "ctrl-w" })
+        );
+        assert_eq!(
+            key_for(&About),
+            None,
+            "About has no shortcut, and no warning"
+        );
+        assert_eq!(
+            registry.available(&[]).len(),
+            8,
+            "every platform item is a palette entry"
+        );
     }
 
     #[test]
