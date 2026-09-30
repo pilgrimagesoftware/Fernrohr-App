@@ -220,10 +220,10 @@ mod tests {
 
     actions!(menu_test, [TestAction]);
 
-    /// The App and Window menu items answer to the platform's standard shortcuts -
-    /// through their registered commands, the path every command's key takes -
-    /// and every platform item reaches the palette.
-    #[cfg(target_os = "macos")]
+    /// The App and Window menu items answer to each platform's standard
+    /// shortcuts - through their registered commands, the path every command's
+    /// key takes - and every platform item reaches the palette. Hide and
+    /// Minimize are macOS conventions, unbound elsewhere.
     #[test]
     fn platform_items_have_their_standard_shortcuts() {
         let mut registry = CommandRegistry::new();
@@ -246,10 +246,17 @@ mod tests {
                         .join(" ")
                 })
         };
-        assert_eq!(key_for(&Quit).as_deref(), Some("cmd-q"));
-        assert_eq!(key_for(&Hide).as_deref(), Some("cmd-h"));
-        assert_eq!(key_for(&Minimize).as_deref(), Some("cmd-m"));
-        assert_eq!(key_for(&CloseWindow).as_deref(), Some("cmd-w"));
+        let macos = cfg!(target_os = "macos");
+        assert_eq!(
+            key_for(&Quit).as_deref(),
+            Some(if macos { "cmd-q" } else { "ctrl-q" })
+        );
+        assert_eq!(key_for(&Hide).as_deref(), macos.then_some("cmd-h"));
+        assert_eq!(key_for(&Minimize).as_deref(), macos.then_some("cmd-m"));
+        assert_eq!(
+            key_for(&CloseWindow).as_deref(),
+            Some(if macos { "cmd-w" } else { "ctrl-w" })
+        );
         assert_eq!(
             key_for(&About),
             None,
