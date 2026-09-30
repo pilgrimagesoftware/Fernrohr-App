@@ -5,7 +5,6 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::viewer::viewer_for;
 use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -45,11 +44,28 @@ fn reference(
         context_name: context_name.to_string(),
         target: target.clone(),
     };
+    // Accent-coloured and underlined at rest, so a link reads as one before the
+    // pointer finds it. `primary` isn't a hue in the default themes - it's the
+    // body text colour - which left links indistinguishable from plain text.
+    let accent = crate::ui::accent::focus_accent(cx);
+    let underline = |alpha: f32| UnderlineStyle {
+        thickness: px(1.),
+        color: Some(accent.opacity(alpha)),
+        wavy: false,
+    };
+    let (rest, hovered) = (underline(0.45), underline(1.));
     div()
         .id(id)
-        .text_color(cx.theme().primary)
+        .text_color(accent)
         .cursor_pointer()
-        .hover(|style| style.underline())
+        .map(|mut this| {
+            this.text_style().underline = Some(rest);
+            this
+        })
+        .hover(move |mut style| {
+            style.text_style().underline = Some(hovered);
+            style
+        })
         .on_click(move |_event, window, cx| {
             window.dispatch_action(Box::new(action.clone()), cx);
         })

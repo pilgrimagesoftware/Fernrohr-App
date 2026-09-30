@@ -1,5 +1,5 @@
-//! The accent colour Fernrohr marks "this is where you are" with - today the
-//! focused panel's tab underline.
+//! The accent colour Fernrohr marks "this is where you are" and "you can go
+//! here" with - the focused panel's tab underline, and followable links.
 //!
 //! On macOS that is the user's own accent colour from System Settings
 //! (`NSColor.controlAccentColor`). Other platforms have no such lookup here yet,
