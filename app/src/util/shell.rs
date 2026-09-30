@@ -89,6 +89,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(SetContextTunnel),
         menu: Some(crate::command::MenuSlot::Context),
     });
+    crate::ui::menu::register_commands(registry);
     nav::register_commands(registry);
     tunnels::register_commands(registry);
     crate::k8s::resource::pods::register_commands(registry);
@@ -110,10 +111,6 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // which is how `tunnels.manage` ended up with a menu item but no key.
     let bindings = keymap::bindings(&registry, &keymap, cx.keyboard_mapper().as_ref());
     cx.bind_keys(bindings);
-    // Pod detail's own shortcuts, in its key context. Its actions are already
-    // registered commands, so `bindings` above binds them too; this duplicate
-    // goes once `pod_detail` finishes moving to the registry.
-    cx.bind_keys(crate::k8s::resource::pod_detail::panel_bindings(&keymap));
     cx.bind_keys(crate::ui::resource_panel::panel_bindings());
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
