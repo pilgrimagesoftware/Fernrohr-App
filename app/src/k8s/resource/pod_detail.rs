@@ -1625,7 +1625,7 @@ impl Render for PodDetailPanel {
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
-        let body = div()
+        div()
             .size_full()
             .key_context(PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
@@ -1638,9 +1638,7 @@ impl Render for PodDetailPanel {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(content));
-
-        panel_title::focus_frame(body, &self.focus_handle, window, cx)
+            .child(div().flex_1().min_h_0().child(content))
     }
 }
 
@@ -1669,8 +1667,13 @@ impl BasePanel for PodDetailPanel {
 /// No namespace picker: the panel is over one pod, not a namespace-scoped list,
 /// so there is no scope for a picker to change.
 impl Panel for PodDetailPanel {
-    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
+    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title_element(
+            &self.scope,
+            panel_title::title(&self.scope),
+            self.focus_handle.contains_focused(window, cx),
+            cx,
+        )
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
