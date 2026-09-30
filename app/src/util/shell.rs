@@ -3,6 +3,7 @@ use crate::config::{
     self,
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
+use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
@@ -135,6 +136,13 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });
+    // `window-context-bar` design.md decision 2: closing a window releases every
+    // hold it took, wherever it took them - the registry already knows which
+    // contexts a closed window used, so this needs no window-specific state.
+    cx.on_window_closed(|cx, window_id| {
+        ClusterRegistry::release_window(cx, window_id);
+    })
+    .detach();
 
     cx.set_global(registry);
     crate::k8s::resource::pods::register_restore(cx);
@@ -556,6 +564,10 @@ impl MainWindow {
     /// discovered kinds, and the subscription that opens whatever is picked.
     /// Both windows-enter-workspace sites go through here so the Resource
     /// panel cannot be wired up in one of them and forgotten in the other.
+    ///
+    /// Takes this window's hold on `context_name` (`window-context-bar` design.md
+    /// decision 2) before building anything else, so a session already exists (or is
+    /// connected here) for every step below to read.
     fn enter_workspace(
         &mut self,
         context_name: String,
@@ -563,8 +575,9 @@ impl MainWindow {
         cx: &mut Context<Self>,
     ) {
         // One connection per connected window in this change; see
-        // `WindowMode::Workspace::connection_count`.
+        // `WindowMode::Workspace::contexts`.
         const CONNECTIONS: usize = 1;
+        ClusterRegistry::hold(cx, &context_name, window.window_handle().window_id());
         let saved_layout = if cx.has_global::<SavedDockLayouts>() {
             cx.global::<SavedDockLayouts>()
                 .0
@@ -1695,6 +1708,71 @@ mod tests {
                 assert!(matches!(main_window.mode, WindowMode::Picker(_)));
             })
             .unwrap();
+    }
+
+    /// Tasks.md 1.3: entering a workspace takes this window's hold, and closing the
+    /// window releases it - two windows on one context share the session until both
+    /// close, matching `ClusterRegistry`'s own hold/release tests one layer down.
+    #[gpui_kit::test]
+    async fn closing_a_window_releases_only_its_own_hold(cx: &mut TestAppContext) {
+        let workspace = temp_workspace_path();
+        let keymap = temp_workspace_path();
+        // See `connected_window`'s doc comment: `enter_workspace` starts a real
+        // connect whose completion wakes GPUI from a tokio thread.
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            // `init` registers the `on_window_closed` hook that releases a closed
+            // window's holds - the thing under test.
+            init(cx, workspace.clone(), &keymap);
+        });
+
+        fn open(cx: &mut TestAppContext) -> gpui_kit::WindowHandle<MainWindow> {
+            cx.add_window(|window, cx| {
+                let mut main_window = MainWindow {
+                    mode: WindowMode::Picker(
+                        cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
+                    ),
+                    focus_handle: cx.focus_handle(),
+                };
+                main_window.enter_workspace("kind-dev".to_string(), window, cx);
+                main_window
+            })
+        }
+
+        let window_a = open(cx);
+        let window_b = open(cx);
+        cx.run_until_parked();
+
+        assert_eq!(
+            cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+            2,
+            "both windows took a hold on entering their workspace"
+        );
+
+        window_a
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+            1,
+            "closing one window must release only its own hold"
+        );
+
+        window_b
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+            0,
+            "closing the last window must release the session entirely"
+        );
+
+        let _ = std::fs::remove_file(&workspace);
+        let _ = std::fs::remove_file(&keymap);
     }
 
     /// Regression test for the HANDOFF.md report: opening a second window and
