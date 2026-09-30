@@ -249,16 +249,13 @@ fn matches_filter(row: &PodRow, filter: &str) -> bool {
 // UNWIRED: see `matches_namespace` above.
 #[allow(dead_code)]
 fn sort_rows(rows: &mut [PodRow], sort: &SortState) {
-    rows.sort_by(|a, b| match sort.column.as_str() {
-        "namespace" => a.namespace.cmp(&b.namespace),
-        "ready" => a.ready.cmp(&b.ready),
-        "status" => a.status.cmp(&b.status),
-        "restarts" => a.restarts.cmp(&b.restarts),
-        "age" => a.age_secs.cmp(&b.age_secs),
-        _ => a.name.cmp(&b.name),
-    });
-    if !sort.ascending {
-        rows.reverse();
+    let col = pods_table::PodColumn::from_id(&sort.column);
+    if sort.ascending {
+        rows.sort_by(|a, b| pods_table::compare(a, b, col));
+    } else {
+        // A reversed comparator, not `.reverse()` on the slice - see
+        // `PodTableDelegate::apply_sort` for why that matters with ties.
+        rows.sort_by(|a, b| pods_table::compare(b, a, col));
     }
 }
 
@@ -290,9 +287,10 @@ use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
 use gpui_kit::component::kbd::Kbd;
-use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
-use gpui_kit::component::table::{Column, DataTable, TableDelegate, TableEvent, TableState};
+use gpui_kit::component::table::{DataTable, TableEvent, TableState};
 use gpui_kit::*;
+
+use super::pods_table::{self, PodTableDelegate, PodTableRow};
 
 actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
 
@@ -349,88 +347,23 @@ pub struct PodSelection {
     pub containers: Vec<String>,
 }
 
-struct PodTableRow {
-    row: PodRow,
-    selection: PodSelection,
-}
-
-#[derive(Default)]
-struct PodTableDelegate {
-    rows: Vec<PodTableRow>,
-}
-
-impl TableDelegate for PodTableDelegate {
-    fn columns_count(&self, _: &App) -> usize {
-        8
-    }
-
-    fn rows_count(&self, _: &App) -> usize {
-        self.rows.len()
-    }
-
-    fn column(&self, col_ix: usize, _: &App) -> Column {
-        let (id, title, width) = match col_ix {
-            0 => ("name", "Name", 220.),
-            1 => ("namespace", "Namespace", 150.),
-            2 => ("ready", "Ready", 80.),
-            3 => ("status", "Status", 130.),
-            4 => ("restarts", "Restarts", 90.),
-            5 => ("age", "Age", 70.),
-            6 => ("ip", "IP", 150.),
-            _ => ("node", "Node", 180.),
-        };
-        Column::new(id, title).width(px(width))
-    }
-
-    /// Section 5.2: a row's "Open" is the mouse-reachable twin of the `d`
-    /// keybinding - both select the pod and emit `ShowPodDetail`, so they land
-    /// on the same `open_target` call. Selecting here (not only dispatching)
-    /// is what lets the menu act on the row under the pointer rather than
-    /// whatever was selected last.
-    fn context_menu(
-        &mut self,
-        row_ix: usize,
-        menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
-    ) -> PopupMenu {
-        let Some(selection) = self.rows.get(row_ix).map(|row| row.selection.clone()) else {
-            return menu;
-        };
-        menu.item(
-            PopupMenuItem::new("Open").on_click(move |_event, window, cx| {
-                cx.set_global(SelectedPod(Some(selection.clone())));
-                window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
-            }),
-        )
-    }
-
-    fn render_td(
-        &mut self,
-        row_ix: usize,
-        col_ix: usize,
-        _: &mut Window,
-        _: &mut Context<TableState<Self>>,
-    ) -> impl IntoElement {
-        let row = &self.rows[row_ix].row;
-        let value = match col_ix {
-            0 => row.name.clone(),
-            1 => row.namespace.clone(),
-            2 => row.ready.clone(),
-            3 => row.status.clone(),
-            4 => row.restarts.to_string(),
-            5 => row.age.clone(),
-            6 => row.pod_ip.clone(),
-            _ => row.node.clone(),
-        };
-        div().whitespace_nowrap().child(value)
-    }
-}
-
 #[derive(Default)]
 pub struct SelectedPod(pub Option<PodSelection>);
 
 impl Global for SelectedPod {}
+
+/// Tells a Pods table which pod its own row click picked, so a later sort or
+/// row update can move the highlight with that pod (`pods_table::reselect`).
+fn remember_selection<V>(
+    table: &Entity<TableState<PodTableDelegate>>,
+    selection: &PodSelection,
+    cx: &mut Context<V>,
+) {
+    let selection = selection.clone();
+    table.update(cx, |table, _| {
+        table.delegate_mut().remember_selection(Some(selection));
+    });
+}
 
 /// A dock panel connecting to its scope's cluster and rendering its live,
 /// all-namespaces Pods table.
@@ -607,9 +540,9 @@ impl PodsPanel {
                 TableState::new(PodTableDelegate::default(), window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
-                    .sortable(false)
-                    .col_movable(false)
-                    .col_resizable(false)
+                    .sortable(true)
+                    .col_movable(true)
+                    .col_resizable(true)
             });
             cx.subscribe_in(&table, window, |_this, table, event, window, cx| {
                 let row_ix = match event {
@@ -622,12 +555,13 @@ impl PodsPanel {
                         let Some(selection) = table
                             .read(cx)
                             .delegate()
-                            .rows
+                            .rows()
                             .get(*row_ix)
                             .map(|row| row.selection.clone())
                         else {
                             return;
                         };
+                        remember_selection(table, &selection, cx);
                         cx.set_global(SelectedPod(Some(selection)));
                         window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
                         return;
@@ -637,12 +571,13 @@ impl PodsPanel {
                 let Some(selection) = table
                     .read(cx)
                     .delegate()
-                    .rows
+                    .rows()
                     .get(row_ix)
                     .map(|row| row.selection.clone())
                 else {
                     return;
                 };
+                remember_selection(table, &selection, cx);
                 cx.set_global(SelectedPod(Some(selection)));
                 cx.notify();
             })
@@ -651,8 +586,12 @@ impl PodsPanel {
         }
         let table = self.pod_table.as_ref().unwrap().clone();
         table.update(cx, |table, cx| {
-            table.delegate_mut().rows = rows;
-            table.refresh(cx);
+            table.delegate_mut().set_rows(rows);
+            // A row update can move or drop the pod at the previously
+            // selected index (see `pods_table::reselect`'s doc comment) -
+            // called directly, not deferred, since `table` here is already
+            // the full `&mut TableState`, unlike inside `perform_sort`.
+            pods_table::reselect(table, cx);
             cx.notify();
         });
         table
@@ -886,7 +825,7 @@ mod tests {
     // re-exports its own `test` attribute macro, which would shadow
     // `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
-        DescribePod, NamespaceScope, PanelScope, Pod, PodSelection, PodsPanel, PodsTable,
+        DescribePod, NamespaceScope, PanelScope, Pod, PodRow, PodSelection, PodsPanel, PodsTable,
         SelectedPod, ShowPodYaml, SortState, is_unauthorized, matches_namespaces, pod_row,
         view_rows, watcher,
     };
@@ -1368,6 +1307,566 @@ mod tests {
                 .any(|binding| binding.action().partial_eq(&DescribePod)),
             "`d` still opens a pod's detail from another panel, so the binding \
              is not scoped to the pods panel"
+        );
+    }
+
+    /// Four rows with a distinct, non-alphabetical value in every column, so
+    /// sorting by any one of them actually reorders the set rather than
+    /// leaving it looking like the input by coincidence.
+    fn pod_table_rows_fixture() -> Vec<crate::k8s::resource::pods_table::PodTableRow> {
+        use crate::k8s::resource::pods_table::PodTableRow;
+
+        [
+            (
+                "b-name", "ns-c", "1/2", "Running", 3, 300, "10.0.0.3", "node-c",
+            ),
+            (
+                "d-name", "ns-a", "2/2", "Pending", 1, 100, "10.0.0.1", "node-a",
+            ),
+            (
+                "a-name", "ns-d", "0/2", "Failed", 4, 400, "10.0.0.4", "node-d",
+            ),
+            (
+                "c-name",
+                "ns-b",
+                "3/3",
+                "Succeeded",
+                2,
+                200,
+                "10.0.0.2",
+                "node-b",
+            ),
+        ]
+        .into_iter()
+        .map(
+            |(name, namespace, ready, status, restarts, age_secs, ip, node)| PodTableRow {
+                row: PodRow {
+                    name: name.into(),
+                    namespace: namespace.into(),
+                    ready: ready.into(),
+                    status: status.into(),
+                    restarts,
+                    age: String::new(),
+                    pod_ip: ip.into(),
+                    node: node.into(),
+                    age_secs,
+                },
+                selection: PodSelection {
+                    namespace: namespace.into(),
+                    name: name.into(),
+                    containers: Vec::new(),
+                },
+            },
+        )
+        .collect()
+    }
+
+    /// The pure per-column comparator `PodTableDelegate::resort` and
+    /// `sort_rows` both build on: this pins the column-to-field mapping for
+    /// every column, Ip and Node included, directly - each is exercised
+    /// against a pair of rows where it alone determines the order.
+    #[test]
+    fn compare_orders_rows_by_every_column() {
+        use crate::k8s::resource::pods_table::{PodColumn, compare};
+        use std::cmp::Ordering;
+
+        // Every field of `a` sorts before the matching field of `b`, so each
+        // column's comparator can be checked against the same pair.
+        let a = PodRow {
+            name: "a-name".into(),
+            namespace: "ns-a".into(),
+            ready: "0/2".into(),
+            status: "Failed".into(),
+            restarts: 1,
+            age: String::new(),
+            pod_ip: "10.0.0.1".into(),
+            node: "node-a".into(),
+            age_secs: 100,
+        };
+        let b = PodRow {
+            name: "b-name".into(),
+            namespace: "ns-b".into(),
+            ready: "1/2".into(),
+            status: "Running".into(),
+            restarts: 2,
+            age: String::new(),
+            pod_ip: "10.0.0.2".into(),
+            node: "node-b".into(),
+            age_secs: 200,
+        };
+
+        for col in PodColumn::DEFAULT_ORDER {
+            assert_eq!(
+                compare(&a, &b, col),
+                Ordering::Less,
+                "{col:?} should order `a` before `b`"
+            );
+            assert_eq!(
+                compare(&b, &a, col),
+                Ordering::Greater,
+                "{col:?} should order `b` after `a`"
+            );
+        }
+    }
+
+    /// `PodTableDelegate::resort` mirrors the header-click cycle
+    /// (`Default -> Descending -> Ascending -> Default`, see
+    /// `TableState::perform_sort`): each direction reorders `rows` by that
+    /// column, and cycling back to `Default` restores the order rows were
+    /// last supplied in - not merely whatever order sorting happened to leave
+    /// them in - for every sortable column.
+    #[test]
+    fn resort_orders_rows_and_default_restores_the_supplied_order() {
+        use crate::k8s::resource::pods_table::{PodColumn, PodTableDelegate, compare};
+        use gpui_kit::component::table::ColumnSort;
+
+        fn names(rows: &[crate::k8s::resource::pods_table::PodTableRow]) -> Vec<&str> {
+            rows.iter().map(|r| r.row.name.as_str()).collect()
+        }
+
+        for (col_ix, col) in PodColumn::DEFAULT_ORDER.into_iter().enumerate() {
+            let natural = pod_table_rows_fixture();
+            let mut delegate = PodTableDelegate::default();
+            delegate.set_rows(natural.clone());
+
+            delegate.resort(col_ix, ColumnSort::Descending);
+            let mut want_desc = natural.clone();
+            want_desc.sort_by(|a, b| compare(&b.row, &a.row, col));
+            assert_eq!(
+                names(delegate.rows()),
+                names(&want_desc),
+                "{col:?} descending"
+            );
+
+            delegate.resort(col_ix, ColumnSort::Ascending);
+            let mut want_asc = natural.clone();
+            want_asc.sort_by(|a, b| compare(&a.row, &b.row, col));
+            assert_eq!(
+                names(delegate.rows()),
+                names(&want_asc),
+                "{col:?} ascending"
+            );
+
+            delegate.resort(col_ix, ColumnSort::Default);
+            assert_eq!(
+                names(delegate.rows()),
+                names(&natural),
+                "{col:?} default should restore the supplied order"
+            );
+        }
+    }
+
+    /// A rows-only update - what `PodsPanel::sync_table` does every render -
+    /// must not undo an active sort: `set_rows` is `sync_table`'s call, and
+    /// unlike a full `TableState::refresh()` it has to keep applying the
+    /// sort that was active before the new rows arrived.
+    #[test]
+    fn set_rows_keeps_an_active_sort_applied() {
+        use crate::k8s::resource::pods_table::{PodTableDelegate, compare};
+        use gpui_kit::component::table::ColumnSort;
+
+        let mut delegate = PodTableDelegate::default();
+        delegate.set_rows(pod_table_rows_fixture());
+        delegate.resort(0, ColumnSort::Ascending); // Name, ascending.
+
+        // A fresh row arrives in an arbitrary position, as a live watch
+        // update would deliver it - not already in sorted order.
+        let mut updated = pod_table_rows_fixture();
+        updated.insert(
+            1,
+            crate::k8s::resource::pods_table::PodTableRow {
+                row: PodRow {
+                    name: "aa-name".into(),
+                    namespace: "ns-e".into(),
+                    ready: "1/1".into(),
+                    status: "Running".into(),
+                    restarts: 0,
+                    age: String::new(),
+                    pod_ip: "10.0.0.5".into(),
+                    node: "node-e".into(),
+                    age_secs: 50,
+                },
+                selection: PodSelection {
+                    namespace: "ns-e".into(),
+                    name: "aa-name".into(),
+                    containers: Vec::new(),
+                },
+            },
+        );
+        delegate.set_rows(updated.clone());
+
+        let mut want = updated;
+        want.sort_by(|a, b| {
+            compare(
+                &a.row,
+                &b.row,
+                crate::k8s::resource::pods_table::PodColumn::Name,
+            )
+        });
+        let got: Vec<&str> = delegate
+            .rows()
+            .iter()
+            .map(|r| r.row.name.as_str())
+            .collect();
+        let want_names: Vec<&str> = want.iter().map(|r| r.row.name.as_str()).collect();
+        assert_eq!(
+            got, want_names,
+            "the sort applied before the row update still holds"
+        );
+    }
+
+    /// After two column moves, the lookup `render_td` renders cells from
+    /// (`cell_text_at`) reads each visual position's *own* column - not the
+    /// column that used to sit there before the moves.
+    #[test]
+    fn moving_columns_renders_each_visual_position_from_its_own_column() {
+        use crate::k8s::resource::pods_table::PodTableDelegate;
+
+        let mut delegate = PodTableDelegate::default();
+        delegate.set_rows(vec![crate::k8s::resource::pods_table::PodTableRow {
+            row: PodRow {
+                name: "web-1".into(),
+                namespace: "default".into(),
+                ready: "1/1".into(),
+                status: "Running".into(),
+                restarts: 0,
+                age: "1m".into(),
+                pod_ip: "10.0.0.9".into(),
+                node: "node-z".into(),
+                age_secs: 60,
+            },
+            selection: PodSelection {
+                namespace: "default".into(),
+                name: "web-1".into(),
+                containers: Vec::new(),
+            },
+        }]);
+
+        // Default order: [Name, Namespace, Ready, Status, Restarts, Age, Ip, Node].
+        delegate.reorder_columns(7, 0); // Node to the front.
+        delegate.reorder_columns(2, 0); // Namespace (now at index 2) to the front.
+        // Now: [Namespace, Node, Name, Ready, Status, Restarts, Age, Ip].
+        assert_eq!(
+            delegate.cell_text_at(0, 0),
+            "default",
+            "col 0 is now Namespace"
+        );
+        assert_eq!(delegate.cell_text_at(0, 1), "node-z", "col 1 is now Node");
+        assert_eq!(delegate.cell_text_at(0, 2), "web-1", "col 2 is now Name");
+    }
+
+    /// `column(ix)` marks every column sortable, but only the active column's
+    /// direction survives - the other seven read back `ColumnSort::Default`
+    /// even while one column is actively sorted, which is what lets a future
+    /// `TableState::refresh()` redraw the same single indicator.
+    #[gpui_kit::test]
+    async fn column_reports_the_active_sort_on_the_active_column_only(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        use crate::k8s::resource::pods_table::PodTableDelegate;
+        use gpui_kit::component::table::{ColumnSort, TableDelegate as _};
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            let mut delegate = PodTableDelegate::default();
+            delegate.resort(2, ColumnSort::Descending);
+
+            for col_ix in 0..delegate.columns_count(cx) {
+                let column = delegate.column(col_ix, cx);
+                if col_ix == 2 {
+                    assert_eq!(column.sort, Some(ColumnSort::Descending));
+                } else {
+                    assert_eq!(
+                        column.sort,
+                        Some(ColumnSort::Default),
+                        "column {col_ix} should not report the active column's sort"
+                    );
+                }
+            }
+        });
+    }
+
+    /// The same sort-survives-a-row-update guarantee as
+    /// `set_rows_keeps_an_active_sort_applied`, but driven through a real
+    /// `TableState<PodTableDelegate>` in a window - the same object
+    /// `PodsPanel::sync_table` drives - rather than the delegate alone.
+    #[gpui_kit::test]
+    async fn a_row_update_keeps_a_real_table_states_rows_sorted(cx: &mut gpui_kit::TestAppContext) {
+        use crate::k8s::resource::pods_table::PodTableDelegate;
+        use gpui_kit::component::table::{ColumnSort, TableState};
+
+        cx.update(gpui_kit::init);
+        let window = cx.add_window(|window, cx| {
+            TableState::new(PodTableDelegate::default(), window, cx)
+                .sortable(true)
+                .col_movable(true)
+                .col_resizable(true)
+        });
+
+        window
+            .update(cx, |table, _window, cx| {
+                table.delegate_mut().set_rows(pod_table_rows_fixture());
+                table.delegate_mut().resort(0, ColumnSort::Ascending);
+                cx.notify();
+            })
+            .unwrap();
+
+        window
+            .update(cx, |table, _window, cx| {
+                table.delegate_mut().set_rows(pod_table_rows_fixture());
+                cx.notify();
+            })
+            .unwrap();
+
+        let names: Vec<String> = window
+            .update(cx, |table, _window, _cx| {
+                table
+                    .delegate()
+                    .rows()
+                    .iter()
+                    .map(|r| r.row.name.clone())
+                    .collect()
+            })
+            .unwrap();
+        assert_eq!(
+            names,
+            vec!["a-name", "b-name", "c-name", "d-name"],
+            "the sort applied before the row update still holds"
+        );
+    }
+
+    /// `PodTableDelegate::index_of` matches by namespace and name, not
+    /// position - the lookup `reselect` relies on to survive a sort or a row
+    /// update reordering `rows` underneath it.
+    #[test]
+    fn index_of_finds_the_row_by_namespace_and_name() {
+        use crate::k8s::resource::pods_table::PodTableDelegate;
+
+        let mut delegate = PodTableDelegate::default();
+        delegate.set_rows(pod_table_rows_fixture());
+
+        assert_eq!(
+            delegate.index_of(&PodSelection {
+                namespace: "ns-a".into(),
+                name: "d-name".into(),
+                containers: Vec::new(),
+            }),
+            Some(1),
+        );
+        assert_eq!(
+            delegate.index_of(&PodSelection {
+                namespace: "ns-a".into(),
+                name: "missing".into(),
+                containers: Vec::new(),
+            }),
+            None,
+            "a name absent from that namespace's row should not match"
+        );
+    }
+
+    /// `TableState` tracks its selection as a bare row index (see
+    /// `gpui-component`'s `TableState::selected_row`); a sort that moves the
+    /// selected pod to a different index must move the highlight with it,
+    /// via `PodTableDelegate::perform_sort`'s deferred `reselect` - the same
+    /// path a real header click drives.
+    #[gpui_kit::test]
+    async fn perform_sort_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext) {
+        use crate::k8s::resource::pods_table::PodTableDelegate;
+        use gpui_kit::component::table::{ColumnSort, TableDelegate as _, TableState};
+
+        cx.update(gpui_kit::init);
+        let window = cx.add_window(|window, cx| {
+            TableState::new(PodTableDelegate::default(), window, cx)
+                .row_selectable(true)
+                .sortable(true)
+        });
+
+        // "b-name" sits at natural index 0 (see `pod_table_rows_fixture`);
+        // select it there, matching what a prior row click would have done.
+        window
+            .update(cx, |table, _window, cx| {
+                table.delegate_mut().set_rows(pod_table_rows_fixture());
+                table.set_selected_row(0, cx);
+                cx.notify();
+            })
+            .unwrap();
+        window
+            .update(cx, |table, _window, _cx| {
+                table.delegate_mut().remember_selection(Some(PodSelection {
+                    namespace: "ns-c".into(),
+                    name: "b-name".into(),
+                    containers: Vec::new(),
+                }));
+            })
+            .unwrap();
+
+        window
+            .update(cx, |table, window, cx| {
+                // Ascending by Name (column 0): "a-name" now sorts first,
+                // pushing "b-name" from index 0 to index 1.
+                table
+                    .delegate_mut()
+                    .perform_sort(0, ColumnSort::Ascending, window, cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        let selected_name = window
+            .update(cx, |table, _window, _cx| {
+                table
+                    .selected_row()
+                    .map(|ix| table.delegate().rows()[ix].row.name.clone())
+            })
+            .unwrap();
+        assert_eq!(
+            selected_name.as_deref(),
+            Some("b-name"),
+            "selection should follow the pod that moved, not stay pinned to its old index"
+        );
+    }
+
+    /// The same follow-the-pod guarantee as `perform_sort_reselects_the_pod_that_moved`,
+    /// but for a watch-driven row replacement (`PodsPanel::sync_table`'s call to
+    /// `set_rows`) rather than a sort - `reselect` is called directly there, not
+    /// deferred, since the caller already holds `&mut TableState`.
+    #[gpui_kit::test]
+    async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext) {
+        use crate::k8s::resource::pods_table::{PodTableDelegate, reselect};
+        use gpui_kit::component::table::TableState;
+
+        cx.update(gpui_kit::init);
+        let window = cx.add_window(|window, cx| {
+            TableState::new(PodTableDelegate::default(), window, cx).row_selectable(true)
+        });
+
+        window
+            .update(cx, |table, _window, cx| {
+                table.delegate_mut().set_rows(pod_table_rows_fixture());
+                table.set_selected_row(0, cx); // "b-name".
+                cx.notify();
+            })
+            .unwrap();
+        window
+            .update(cx, |table, _window, _cx| {
+                table.delegate_mut().remember_selection(Some(PodSelection {
+                    namespace: "ns-c".into(),
+                    name: "b-name".into(),
+                    containers: Vec::new(),
+                }));
+            })
+            .unwrap();
+
+        // Another Pods panel selecting a different pod publishes it app-wide;
+        // this table must keep following its own pick, not the global.
+        cx.update(|cx| {
+            cx.set_global(SelectedPod(Some(PodSelection {
+                namespace: "ns-a".into(),
+                name: "d-name".into(),
+                containers: Vec::new(),
+            })));
+        });
+
+        // A fresh row arrives ahead of it, pushing "b-name" from index 0 to 1
+        // - the same shape of change a live watch update delivers.
+        let mut updated = pod_table_rows_fixture();
+        updated.insert(
+            0,
+            crate::k8s::resource::pods_table::PodTableRow {
+                row: PodRow {
+                    name: "aa-name".into(),
+                    namespace: "ns-e".into(),
+                    ready: "1/1".into(),
+                    status: "Running".into(),
+                    restarts: 0,
+                    age: String::new(),
+                    pod_ip: "10.0.0.5".into(),
+                    node: "node-e".into(),
+                    age_secs: 50,
+                },
+                selection: PodSelection {
+                    namespace: "ns-e".into(),
+                    name: "aa-name".into(),
+                    containers: Vec::new(),
+                },
+            },
+        );
+
+        window
+            .update(cx, |table, _window, cx| {
+                table.delegate_mut().set_rows(updated);
+                reselect(table, cx);
+                cx.notify();
+            })
+            .unwrap();
+
+        let selected_name = window
+            .update(cx, |table, _window, _cx| {
+                table
+                    .selected_row()
+                    .map(|ix| table.delegate().rows()[ix].row.name.clone())
+            })
+            .unwrap();
+        assert_eq!(
+            selected_name.as_deref(),
+            Some("b-name"),
+            "selection should follow the pod to its new index, not stay pinned to the old one"
+        );
+    }
+
+    /// When the selected pod is no longer among the new rows, `reselect`
+    /// clears the table's selection rather than leaving the highlight on
+    /// whichever pod now occupies the old index.
+    #[gpui_kit::test]
+    async fn set_rows_clears_selection_when_the_selected_pod_is_gone(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        use crate::k8s::resource::pods_table::{PodTableDelegate, reselect};
+        use gpui_kit::component::table::TableState;
+
+        cx.update(gpui_kit::init);
+        let window = cx.add_window(|window, cx| {
+            TableState::new(PodTableDelegate::default(), window, cx).row_selectable(true)
+        });
+
+        window
+            .update(cx, |table, _window, cx| {
+                table.delegate_mut().set_rows(pod_table_rows_fixture());
+                table.set_selected_row(0, cx); // "b-name".
+                cx.notify();
+            })
+            .unwrap();
+        window
+            .update(cx, |table, _window, _cx| {
+                table.delegate_mut().remember_selection(Some(PodSelection {
+                    namespace: "ns-c".into(),
+                    name: "b-name".into(),
+                    containers: Vec::new(),
+                }));
+            })
+            .unwrap();
+
+        // "b-name" is gone from the new rows entirely (e.g. the pod was
+        // deleted between watch updates).
+        let remaining: Vec<_> = pod_table_rows_fixture()
+            .into_iter()
+            .filter(|row| row.row.name != "b-name")
+            .collect();
+
+        window
+            .update(cx, |table, _window, cx| {
+                table.delegate_mut().set_rows(remaining);
+                reselect(table, cx);
+                cx.notify();
+            })
+            .unwrap();
+
+        let selected_row = window
+            .update(cx, |table, _window, _cx| table.selected_row())
+            .unwrap();
+        assert_eq!(
+            selected_row, None,
+            "a selected pod missing from the new rows should clear the selection, \
+             not highlight whatever pod now sits at the old index"
         );
     }
 }
