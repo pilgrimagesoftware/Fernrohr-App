@@ -371,3 +371,108 @@ async fn a_tunnel_created_elsewhere_appears_in_an_open_picker(cx: &mut gpui_kit:
         .unwrap();
     let _ = std::fs::remove_file(&tunnels_path);
 }
+
+/// `window-context-bar` section 3.2: the "+" popover's own filtering -
+/// `ContextBarView::open_add_dialog` (`ui/context_bar.rs`) calls this with the
+/// window's current `contexts` so the popover never re-offers a context already
+/// in use. Setting `contexts` directly (rather than through `ClusterPicker::new`,
+/// which reads this machine's real kubeconfig) keeps the candidate list under
+/// this test's own control.
+#[gpui_kit::test]
+async fn exclude_removes_used_contexts_and_leaves_the_rest(cx: &mut gpui_kit::TestAppContext) {
+    use super::ClusterPicker;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, _cx| {
+            picker.contexts = Ok(vec![
+                "kind-dev".to_string(),
+                "staging".to_string(),
+                "prod".to_string(),
+            ]);
+        })
+        .unwrap();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            picker.exclude(&["kind-dev".to_string(), "staging".to_string()]);
+        })
+        .unwrap();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            assert_eq!(
+                picker.contexts.as_deref(),
+                Ok(["prod".to_string()].as_slice()),
+                "only the unused context remains"
+            );
+        })
+        .unwrap();
+}
+
+/// Excluding a context this picker never listed (a window using a context this
+/// kubeconfig no longer has) is a no-op, not a panic or a silent truncation.
+#[gpui_kit::test]
+async fn excluding_an_unlisted_context_changes_nothing(cx: &mut gpui_kit::TestAppContext) {
+    use super::ClusterPicker;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, _cx| {
+            picker.contexts = Ok(vec!["kind-dev".to_string()]);
+        })
+        .unwrap();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            picker.exclude(&["never-listed".to_string()]);
+        })
+        .unwrap();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            assert_eq!(
+                picker.contexts.as_deref(),
+                Ok(["kind-dev".to_string()].as_slice())
+            );
+        })
+        .unwrap();
+}
+
+/// A picker whose kubeconfig read already failed has nothing to filter - `exclude`
+/// must leave the error alone rather than panicking on the `Err` case.
+#[gpui_kit::test]
+async fn excluding_from_a_failed_picker_leaves_the_error_alone(cx: &mut gpui_kit::TestAppContext) {
+    use super::ClusterPicker;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, _cx| {
+            picker.contexts = Err("missing kubeconfig".to_string());
+        })
+        .unwrap();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            picker.exclude(&["kind-dev".to_string()]);
+        })
+        .unwrap();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            assert_eq!(picker.contexts, Err("missing kubeconfig".to_string()));
+        })
+        .unwrap();
+}

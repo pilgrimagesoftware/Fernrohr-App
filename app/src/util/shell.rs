@@ -830,7 +830,7 @@ impl MainWindow {
             status_bar,
             context_bar,
             ..
-        } = &mut self.mode
+        } = &self.mode
         else {
             return;
         };
@@ -839,14 +839,30 @@ impl MainWindow {
         let Some(active_context) = contexts_snapshot.get(active_index).cloned() else {
             return;
         };
-        resource_panel.update(cx, |panel, cx| {
-            panel.set_active_context(active_context, contexts_snapshot.clone(), cx);
-        });
-        status_bar.update(cx, |bar, cx| {
-            bar.set_context_names(contexts_snapshot.clone(), cx);
-        });
-        context_bar.update(cx, |bar, cx| {
-            bar.set_state(contexts_snapshot, active_index, cx);
+        let resource_panel = resource_panel.clone();
+        let status_bar = status_bar.clone();
+        let context_bar = context_bar.clone();
+        // Deferred: a chip click (`ui/context_bar.rs::ContextBarView::
+        // on_chip_clicked`) and the Resource panel's own cluster dropdown
+        // (`ResourcePanel::cluster_dropdown`'s `cx.emit`) both reach this
+        // synchronously from within that very entity's own update - updating it
+        // again here, before that update returns, panics ("cannot update T while
+        // it is already being updated"). `cx.defer` runs this closure once the
+        // current effect cycle finishes and every lease along the way to here has
+        // released, which resolves before any `Entity::update`/`WindowHandle::
+        // update` call that reached `set_active_context` returns - so callers
+        // still observe the synced state immediately afterward, same as before
+        // this was deferred.
+        cx.defer(move |cx| {
+            resource_panel.update(cx, |panel, cx| {
+                panel.set_active_context(active_context, contexts_snapshot.clone(), cx);
+            });
+            status_bar.update(cx, |bar, cx| {
+                bar.set_context_names(contexts_snapshot.clone(), cx);
+            });
+            context_bar.update(cx, |bar, cx| {
+                bar.set_state(contexts_snapshot, active_index, cx);
+            });
         });
         cx.notify();
     }
@@ -1187,6 +1203,78 @@ impl MainWindow {
         };
         let held: Vec<PanelId> = tree.panels().collect();
         open_panels.retain(|open| held.contains(&open.id));
+    }
+
+    /// Test-only: a bare `Picker`-mode window, for tests elsewhere in the crate
+    /// that only need a real `WeakEntity<MainWindow>` to satisfy a constructor
+    /// (`ui/context_bar.rs::ContextBarView::new`, which stores one but never reads
+    /// it outside a click handler) - `mode` and `focus_handle` above have no
+    /// visibility modifier, so nothing outside this module can build a
+    /// `MainWindow` literal directly.
+    #[cfg(test)]
+    pub(crate) fn test_picker_window(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            mode: WindowMode::Picker(
+                cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
+            ),
+            focus_handle: cx.focus_handle(),
+        }
+    }
+
+    /// Test-only: a window already in `Workspace` mode on `contexts`, for tests
+    /// that need a chip click or a Resource panel dropdown pick to actually reach
+    /// [`Self::set_active_context`] and its downstream `sync_context_children`.
+    /// Not `util/shell/tests.rs`'s own `connected_window`: that helper drives a
+    /// real `ClusterConnection::connect`, which this one's callers don't need.
+    /// Callers must pre-seed every context's `ClusterRegistry` session first
+    /// (`insert_test_session`), so `enter_workspace`'s `hold` reuses it instead of
+    /// starting a real connect.
+    #[cfg(test)]
+    pub(crate) fn test_workspace(
+        contexts: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut this = Self::test_picker_window(window, cx);
+        this.enter_workspace(contexts, window, cx);
+        this
+    }
+
+    /// Test-only readback of which context is active - `active` itself has no
+    /// getter since production code only ever needs to write it (through
+    /// [`Self::set_active_context`]).
+    #[cfg(test)]
+    pub(crate) fn test_active_context_name(&self) -> Option<String> {
+        match &self.mode {
+            WindowMode::Workspace {
+                contexts, active, ..
+            } => contexts.get(*active).cloned(),
+            WindowMode::Picker(_) => None,
+        }
+    }
+
+    /// Test-only access to the Resource panel, so a test can drive its cluster
+    /// dropdown's `SwitchContext` exactly as a click does.
+    #[cfg(test)]
+    pub(crate) fn test_resource_panel(
+        &self,
+    ) -> Option<Entity<crate::ui::resource_panel::ResourcePanel>> {
+        match &self.mode {
+            WindowMode::Workspace { resource_panel, .. } => Some(resource_panel.clone()),
+            WindowMode::Picker(_) => None,
+        }
+    }
+
+    /// Test-only access to the embedded context bar, so a test can assert the
+    /// *real* bar [`Self::sync_context_children`] pushes into - not a second,
+    /// disconnected `ContextBarView` built only for the test - reflects an
+    /// active-context change.
+    #[cfg(test)]
+    pub(crate) fn test_context_bar(&self) -> Option<Entity<ContextBarView>> {
+        match &self.mode {
+            WindowMode::Workspace { context_bar, .. } => Some(context_bar.clone()),
+            WindowMode::Picker(_) => None,
+        }
     }
 }
 

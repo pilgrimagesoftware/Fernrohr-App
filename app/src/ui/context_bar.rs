@@ -372,7 +372,8 @@ impl Render for ContextBarView {
 
 // Not `use super::*;` in a sibling test module here: `gpui_kit::*`'s re-export
 // surface combined with `IconName`'s ~2500 variants blows the compiler's
-// macro-expansion budget alongside a `#[cfg(test)]` module in the same file (see
-// `ui/status_bar.rs`'s note on the same crash). This file carries no inline tests
-// for that reason; `ContextBarView`'s behavior is covered from `util/shell.rs`'s
-// tests, which already exercise `MainWindow` end to end.
+// macro-expansion budget alongside a `#[cfg(test)]`/`#[gpui_kit::test]`-annotated
+// item in the same module (see `ui/status_bar.rs`'s note on the same crash).
+// Named imports instead, here and in `tests.rs`.
+#[cfg(test)]
+mod tests;
