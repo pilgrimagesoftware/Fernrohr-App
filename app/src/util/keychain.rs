@@ -28,9 +28,13 @@ pub fn smoke_test(account: &str, secret: &str) -> keyring::Result<bool> {
         Err(err) => return Err(err),
     }
 
-    let read_back = entry.get_password()?;
-    entry.delete_credential()?;
-    Ok(read_back == secret)
+    // Delete unconditionally, even if the read-back fails: a fixed `account`
+    // means a credential the read step errors out on (before reaching the
+    // delete this function used to only reach on success) survives the
+    // process and pollutes every later run against the same account.
+    let read_back = entry.get_password();
+    let _ = entry.delete_credential();
+    Ok(read_back? == secret)
 }
 
 #[cfg(test)]

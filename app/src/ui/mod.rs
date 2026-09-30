@@ -1,3 +1,4 @@
+pub mod menu;
 pub mod nav;
 pub mod panel;
 pub mod picker;

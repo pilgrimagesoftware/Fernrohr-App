@@ -60,6 +60,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: NEW_WINDOW_DEFAULT_BINDING,
         context: None,
         action: Box::new(NewWindow),
+        menu: Some(crate::command::MenuSlot::Window),
     });
     registry.register(Command {
         id: TOGGLE_PALETTE_COMMAND_ID,
@@ -67,6 +68,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: TOGGLE_PALETTE_DEFAULT_BINDING,
         context: None,
         action: Box::new(ToggleCommandPalette),
+        menu: Some(crate::command::MenuSlot::View),
     });
     nav::register_commands(registry);
 }
@@ -113,6 +115,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         open_window(cx, WindowLayout::default());
     });
 
+    crate::ui::menu::init(&registry, cx);
     cx.set_global(registry);
     crate::k8s::resource::pods::register_restore(cx);
     crate::k8s::resource::pod_detail::register_restore(cx);
