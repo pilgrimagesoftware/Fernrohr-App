@@ -23,7 +23,7 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Root;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
-use gpui_kit::component::dialog::DialogButtonProps;
+use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -208,22 +208,39 @@ impl ContextBarView {
                 move |dialog, _window, _cx| {
                     let target = target.clone();
                     let context_name = context_name.clone();
-                    dialog
-                        .title(title.clone())
-                        .child(body.clone())
-                        .button_props(
-                            DialogButtonProps::default()
-                                .ok_text("Disconnect")
-                                .ok_variant(ButtonVariant::Danger)
-                                .show_cancel(true)
-                                .on_ok(move |_event, window, cx| {
-                                    let context_name = context_name.clone();
-                                    let _ = target.update(cx, |main_window, cx| {
-                                        main_window.disconnect_context(context_name, window, cx);
-                                    });
-                                    true
-                                }),
-                        )
+                    // A plain `Dialog` draws a footer only when one is set;
+                    // `button_props` alone renders no buttons (only the alert
+                    // variant turns it into OK/Cancel).
+                    dialog.title(title.clone()).child(body.clone()).footer(
+                        DialogFooter::new()
+                            .child(
+                                Button::new("context-disconnect-cancel")
+                                    .label("Cancel")
+                                    .on_click(|_event, window, cx| {
+                                        Root::update(window, cx, |root, window, cx| {
+                                            root.close_dialog(window, cx);
+                                        });
+                                    }),
+                            )
+                            .child(
+                                Button::new("context-disconnect-confirm")
+                                    .label("Disconnect")
+                                    .with_variant(ButtonVariant::Danger)
+                                    .on_click(move |_event, window, cx| {
+                                        Root::update(window, cx, |root, window, cx| {
+                                            root.close_dialog(window, cx);
+                                        });
+                                        let context_name = context_name.clone();
+                                        let _ = target.update(cx, |main_window, cx| {
+                                            main_window.disconnect_context(
+                                                context_name,
+                                                window,
+                                                cx,
+                                            );
+                                        });
+                                    }),
+                            ),
+                    )
                 },
                 window,
                 cx,
@@ -297,6 +314,7 @@ impl ContextBarView {
             chip.context_name
         )))
         .ghost()
+        .small()
         .child(
             div()
                 .flex()
@@ -333,12 +351,17 @@ impl ContextBarView {
             )
         });
 
+        // A capsule, not a tab: fully rounded and bordered, so the bar reads as a set
+        // of contexts rather than a second tab strip above the dock's own tabs.
         div()
             .flex()
             .items_center()
-            .gap_1()
-            .px_2()
-            .rounded_md()
+            .gap_0p5()
+            .pl_1()
+            .pr_0p5()
+            .rounded_full()
+            .border_1()
+            .border_color(theme.border)
             .when(chip.active, |el| el.bg(theme.selection))
             .child(body)
             .child(menu_button)
