@@ -509,38 +509,59 @@ fn managed_field_entry(
     }
 }
 
-/// One event's age-and-tone summary, newest first. `Warning`-type events read
-/// as a warning tone; anything else (chiefly `Normal`) reads as good, since
-/// an event with no type at all is not itself a sign of trouble.
-fn format_events(mut events: Vec<K8sEvent>, now: Timestamp) -> Vec<PodEvent> {
-    events.sort_by(|a, b| {
-        let time = |event: &K8sEvent| {
+/// When an event last happened. The legacy `lastTimestamp`/`firstTimestamp`
+/// pair is empty on events written through `events.k8s.io/v1` (the scheduler's
+/// `Scheduled`, among others), which record `series.lastObservedTime` and
+/// `eventTime` instead - reading only the legacy pair would sort those last and
+/// age them "unknown".
+fn event_time(event: &K8sEvent) -> Option<Timestamp> {
+    event
+        .last_timestamp
+        .as_ref()
+        .map(|time| time.0)
+        .or_else(|| {
             event
-                .last_timestamp
+                .series
                 .as_ref()
-                .or(event.first_timestamp.as_ref())
+                .and_then(|series| series.last_observed_time.as_ref())
                 .map(|time| time.0)
-        };
-        time(b).cmp(&time(a))
-    });
-    events
+        })
+        .or_else(|| event.event_time.as_ref().map(|time| time.0))
+        .or_else(|| event.first_timestamp.as_ref().map(|time| time.0))
+}
+
+/// One event's age-and-tone summary, newest first. `Warning`-type events read
+/// as a warning tone and any other type (chiefly `Normal`) as good; an event
+/// with no type at all is `Unknown`, neither good nor a warning.
+fn format_events(events: &[K8sEvent], now: Timestamp) -> Vec<PodEvent> {
+    let mut events: Vec<(&K8sEvent, Option<Timestamp>)> = events
         .iter()
-        .map(|event| {
-            let age = event
-                .last_timestamp
-                .as_ref()
-                .or(event.first_timestamp.as_ref())
-                .map(|time| format_age(now.duration_since(time.0).as_secs_f64() as i64))
+        .map(|event| (event, event_time(event)))
+        .collect();
+    // `Option`'s ordering puts `None` first, so reversing it sorts newest
+    // first and leaves undated events at the end.
+    events.sort_by(|(_, a), (_, b)| b.cmp(a));
+    events
+        .into_iter()
+        .map(|(event, time)| {
+            let age = time
+                .map(|time| format_age(now.duration_since(time).as_secs()))
                 .unwrap_or_else(|| "unknown".to_string());
             let tone = match event.type_.as_deref() {
                 Some("Warning") => BadgeTone::Warning,
                 Some(_) => BadgeTone::Good,
                 None => BadgeTone::Unknown,
             };
+            // Like the timestamps, a series-style event counts its repeats on
+            // `series.count` rather than the legacy `count`.
+            let count = event
+                .count
+                .or_else(|| event.series.as_ref().and_then(|series| series.count))
+                .unwrap_or(1);
             PodEvent {
                 reason: non_empty(&event.reason).unwrap_or("Unknown").to_string(),
                 message: non_empty(&event.message).unwrap_or_default().to_string(),
-                count: event.count.unwrap_or(1),
+                count,
                 age,
                 tone,
             }
@@ -742,10 +763,16 @@ pub enum DetailView {
     Yaml,
 }
 
+/// The events naming a pod, or why they could not be listed. Kept apart from
+/// the pod's own fetch result: a user allowed to `get` pods but not to `list`
+/// events still gets the pod, and the Events tab says why it is empty rather
+/// than claiming there were none.
+type PodEvents = Result<Vec<K8sEvent>, String>;
+
 /// What the panel knows about the pod it is scoped to.
 enum PodDetailState {
     Loading,
-    Loaded(Box<Pod>, Vec<K8sEvent>),
+    Loaded(Box<Pod>, PodEvents),
     /// The pod is gone. Its own state rather than an error: a detail panel that
     /// outlives its pod is a normal thing to have left open, not a failure.
     NotFound,
@@ -755,7 +782,7 @@ enum PodDetailState {
 /// One fetch's outcome, so a 404 is told apart from every other error before it
 /// reaches the panel's state.
 enum PodFetch {
-    Found(Box<Pod>, Vec<K8sEvent>),
+    Found(Box<Pod>, PodEvents),
     NotFound,
 }
 
@@ -776,13 +803,26 @@ async fn fetch_pod(
         Err(error) => return Err(error.to_string()),
     };
     let events_api: Api<K8sEvent> = Api::namespaced(client, &namespace);
-    let selector = format!("involvedObject.name={name},involvedObject.namespace={namespace}");
     let events = events_api
-        .list(&ListParams::default().fields(&selector))
+        .list(&ListParams::default().fields(&events_selector(&pod, &namespace, &name)))
         .await
         .map(|list| list.items)
-        .unwrap_or_default();
+        .map_err(|error| error.to_string());
     Ok(PodFetch::Found(Box::new(pod), events))
+}
+
+/// The field selector for this pod's events. Name and namespace alone are not
+/// enough: a Service or ReplicaSet can share the pod's name, and a StatefulSet
+/// pod is recreated under the same name - so the selector also pins the kind
+/// and, when the pod has one, its UID, keeping a predecessor's events out.
+fn events_selector(pod: &Pod, namespace: &str, name: &str) -> String {
+    let mut selector = format!(
+        "involvedObject.kind=Pod,involvedObject.namespace={namespace},involvedObject.name={name}"
+    );
+    if let Some(uid) = non_empty(&pod.metadata.uid) {
+        selector.push_str(&format!(",involvedObject.uid={uid}"));
+    }
+    selector
 }
 
 pub fn register_restore(cx: &mut gpui_kit::App) {
@@ -825,10 +865,10 @@ pub struct PodDetailPanel {
     /// `viewing` is `Yaml`, but kept regardless so switching back to
     /// Structured returns to the tab the user left, not always Overview.
     active_tab: DetailSection,
-    /// Which `Collapsed`-value sections (Managed Fields, Tolerations,
-    /// Volumes, ...) are expanded, keyed by field label. Absent means
-    /// collapsed - the default for a long list the user came for something
-    /// else in.
+    /// Which disclosures are expanded: `Collapsed`-value fields (Tolerations)
+    /// keyed by field label, and Managed Fields entries keyed `mf-<index>`.
+    /// Absent means collapsed - the default for a long list the user came for
+    /// something else in.
     open_sections: std::collections::HashSet<String>,
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
@@ -957,13 +997,12 @@ impl PodDetailPanel {
         }
     }
 
-    /// The events naming this pod, if the fetch has landed. Empty rather than
-    /// absent when the pod loaded but had none - the Events tab reads "no
-    /// events" the same way either way.
-    fn events(&self) -> &[K8sEvent] {
+    /// The events naming this pod, once the fetch has landed - or why they
+    /// could not be listed. `None` until then.
+    fn events(&self) -> Option<&PodEvents> {
         match &self.state {
-            PodDetailState::Loaded(_, events) => events,
-            _ => &[],
+            PodDetailState::Loaded(_, events) => Some(events),
+            _ => None,
         }
     }
 
@@ -986,218 +1025,219 @@ impl PodDetailPanel {
 
     fn render_field(&self, field: &PodField, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
-        let value = match &field.value {
-            PodFieldValue::Text(text) => div().child(text.clone()).into_any_element(),
-            // Link-styled but not yet clickable - see `design.md` on the
-            // deferred navigation pass.
-            PodFieldValue::Link(text) => div()
-                .text_color(theme.primary)
-                .child(text.clone())
-                .into_any_element(),
-            PodFieldValue::Chips(chips) => div()
-                .flex()
-                .flex_wrap()
-                .gap_1()
-                .children(chips.iter().map(|chip| {
-                    div()
-                        .px_2()
-                        .py_0p5()
-                        .rounded_md()
-                        .bg(theme.muted)
-                        .text_sm()
-                        .child(chip.clone())
-                }))
-                .into_any_element(),
-            PodFieldValue::Badges(badges) => div()
-                .flex()
-                .flex_wrap()
-                .gap_1()
-                .children(badges.iter().map(|badge| {
-                    let color = match badge.tone {
-                        BadgeTone::Good => theme.success,
-                        BadgeTone::Warning => theme.warning,
-                        BadgeTone::Unknown => theme.muted_foreground,
-                    };
-                    div()
-                        .px_2()
-                        .py_0p5()
-                        .rounded_full()
-                        .bg(color)
-                        .text_color(theme.background)
-                        .text_sm()
-                        .child(badge.condition.clone())
-                }))
-                .into_any_element(),
-            PodFieldValue::Collapsed(rows) => {
-                // Bound before the closure: the id is used twice and the
-                // closure is `'static`, so it cannot borrow `field`.
-                let label = field.label;
-                let open = self.open_sections.contains(label);
-                let this = cx.weak_entity();
-                div()
+        let value =
+            match &field.value {
+                PodFieldValue::Text(text) => div().child(text.clone()).into_any_element(),
+                // Link-styled but not yet clickable - see `design.md` on the
+                // deferred navigation pass.
+                PodFieldValue::Link(text) => div()
+                    .text_color(theme.primary)
+                    .child(text.clone())
+                    .into_any_element(),
+                PodFieldValue::Chips(chips) => div()
                     .flex()
-                    .flex_col()
+                    .flex_wrap()
                     .gap_1()
-                    .child(
-                        Button::new(label)
-                            .label(if open { "Hide" } else { "Show" })
-                            .xsmall()
-                            .ghost()
-                            .tab_stop(false)
-                            .on_click(move |_event, _window, cx| {
-                                let _ = this.update(cx, |this: &mut Self, cx| {
-                                    if !this.open_sections.remove(label) {
-                                        this.open_sections.insert(label.to_string());
-                                    }
-                                    cx.notify();
-                                });
-                            }),
-                    )
-                    .child(
-                        Collapsible::new().open(open).content(
+                    .children(chips.iter().map(|chip| {
+                        div()
+                            .px_2()
+                            .py_0p5()
+                            .rounded_md()
+                            .bg(theme.muted)
+                            .text_sm()
+                            .child(chip.clone())
+                    }))
+                    .into_any_element(),
+                PodFieldValue::Badges(badges) => div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_1()
+                    .children(badges.iter().map(|badge| {
+                        let color = match badge.tone {
+                            BadgeTone::Good => theme.success,
+                            BadgeTone::Warning => theme.warning,
+                            BadgeTone::Unknown => theme.muted_foreground,
+                        };
+                        div()
+                            .px_2()
+                            .py_0p5()
+                            .rounded_full()
+                            .bg(color)
+                            .text_color(theme.background)
+                            .text_sm()
+                            .child(badge.condition.clone())
+                    }))
+                    .into_any_element(),
+                PodFieldValue::Collapsed(rows) => {
+                    // Bound before the closure: the id is used twice and the
+                    // closure is `'static`, so it cannot borrow `field`.
+                    let label = field.label;
+                    let open = self.open_sections.contains(label);
+                    let this = cx.weak_entity();
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(
+                            Button::new(label)
+                                .label(if open { "Hide" } else { "Show" })
+                                .xsmall()
+                                .ghost()
+                                .tab_stop(false)
+                                .on_click(move |_event, _window, cx| {
+                                    let _ = this.update(cx, |this: &mut Self, cx| {
+                                        if !this.open_sections.remove(label) {
+                                            this.open_sections.insert(label.to_string());
+                                        }
+                                        cx.notify();
+                                    });
+                                }),
+                        )
+                        .child(Collapsible::new().open(open).content(
                             div().flex().flex_col().children(
                                 rows.iter().map(|row| div().text_sm().child(row.clone())),
                             ),
-                        ),
-                    )
-                    .into_any_element()
-            }
-            PodFieldValue::List(rows) => div()
-                .flex()
-                .flex_col()
-                .children(rows.iter().map(|row| div().text_sm().child(row.clone())))
-                .into_any_element(),
-            PodFieldValue::Containers(containers) => div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .children(containers.iter().map(|container| {
-                    let ready_color = match container.ready {
-                        Some(true) => theme.success,
-                        Some(false) => theme.warning,
-                        None => theme.muted_foreground,
-                    };
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_1()
-                        .p_2()
-                        .rounded_md()
-                        .border_1()
-                        .border_color(theme.border)
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(div().size(px(8.)).rounded_full().bg(ready_color))
-                                .child(
-                                    div()
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .child(container.name.clone()),
-                                )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(theme.muted_foreground)
-                                        .child(container.state.clone()),
-                                ),
-                        )
-                        .child(div().text_sm().min_w_0().child(container.image.clone()))
-                        .when(container.restart_count > 0, |this| {
-                            this.child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.warning)
-                                    .child(format!("{} restarts", container.restart_count)),
-                            )
-                        })
-                        .when(!container.ports.is_empty(), |this| {
-                            this.child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("Ports: {}", container.ports.join(", "))),
-                            )
-                        })
-                        .when(!container.requests.is_empty(), |this| {
-                            this.child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("Requests: {}", container.requests.join(", "))),
-                            )
-                        })
-                        .when(!container.limits.is_empty(), |this| {
-                            this.child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("Limits: {}", container.limits.join(", "))),
-                            )
-                        })
-                }))
-                .into_any_element(),
-            PodFieldValue::ManagedFields(entries) => div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .children(entries.iter().enumerate().map(|(index, entry)| {
-                    // Keyed by index, not manager name: two entries can
-                    // share a manager (a status subresource update versus
-                    // the main resource), and collapsing them onto one key
-                    // would toggle both at once.
-                    let key: SharedString = format!("mf-{index}").into();
-                    let open = self.open_sections.contains(key.as_ref());
-                    let this = cx.weak_entity();
-                    let key_for_click = key.clone();
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_1()
-                        .p_2()
-                        .rounded_md()
-                        .border_1()
-                        .border_color(theme.border)
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .justify_between()
-                                .child(format!("{}: {}", entry.manager, entry.operation))
-                                .child(
-                                    Button::new(key)
-                                        .label(if open { "Hide" } else { "Show" })
-                                        .xsmall()
-                                        .ghost()
-                                        .tab_stop(false)
-                                        .on_click(move |_event, _window, cx| {
-                                            let _ = this.update(cx, |this: &mut Self, cx| {
-                                                if this.open_sections.remove(key_for_click.as_ref())
-                                                {
-                                                    // removed above
-                                                } else {
-                                                    this.open_sections
-                                                        .insert(key_for_click.to_string());
-                                                }
-                                                cx.notify();
-                                            });
-                                        }),
-                                ),
-                        )
-                        .child(
-                            Collapsible::new().open(open).content(
-                                div()
-                                    .font_family(theme.mono_font_family.clone())
-                                    .text_sm()
-                                    .whitespace_nowrap()
-                                    .child(entry.fields_json.clone()),
-                            ),
-                        )
+                        ))
                         .into_any_element()
-                }))
-                .into_any_element(),
-        };
+                }
+                PodFieldValue::List(rows) => div()
+                    .flex()
+                    .flex_col()
+                    .children(rows.iter().map(|row| div().text_sm().child(row.clone())))
+                    .into_any_element(),
+                PodFieldValue::Containers(containers) => {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .children(containers.iter().map(|container| {
+                            let ready_color = match container.ready {
+                                Some(true) => theme.success,
+                                Some(false) => theme.warning,
+                                None => theme.muted_foreground,
+                            };
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .p_2()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme.border)
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().size(px(8.)).rounded_full().bg(ready_color))
+                                        .child(
+                                            div()
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .child(container.name.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(theme.muted_foreground)
+                                                .child(container.state.clone()),
+                                        ),
+                                )
+                                .child(div().text_sm().min_w_0().child(container.image.clone()))
+                                .when(container.restart_count > 0, |this| {
+                                    this.child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme.warning)
+                                            .child(format!("{} restarts", container.restart_count)),
+                                    )
+                                })
+                                .when(!container.ports.is_empty(), |this| {
+                                    this.child(
+                                        div().text_sm().text_color(theme.muted_foreground).child(
+                                            format!("Ports: {}", container.ports.join(", ")),
+                                        ),
+                                    )
+                                })
+                                .when(!container.requests.is_empty(), |this| {
+                                    this.child(
+                                        div().text_sm().text_color(theme.muted_foreground).child(
+                                            format!("Requests: {}", container.requests.join(", ")),
+                                        ),
+                                    )
+                                })
+                                .when(!container.limits.is_empty(), |this| {
+                                    this.child(
+                                        div().text_sm().text_color(theme.muted_foreground).child(
+                                            format!("Limits: {}", container.limits.join(", ")),
+                                        ),
+                                    )
+                                })
+                        }))
+                        .into_any_element()
+                }
+                PodFieldValue::ManagedFields(entries) => div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(entries.iter().enumerate().map(|(index, entry)| {
+                        // Keyed by index, not manager name: two entries can
+                        // share a manager (a status subresource update versus
+                        // the main resource), and collapsing them onto one key
+                        // would toggle both at once.
+                        let key: SharedString = format!("mf-{index}").into();
+                        let open = self.open_sections.contains(key.as_ref());
+                        let this = cx.weak_entity();
+                        let key_for_click = key.clone();
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .p_2()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(theme.border)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(format!("{}: {}", entry.manager, entry.operation))
+                                    .child(
+                                        Button::new(key)
+                                            .label(if open { "Hide" } else { "Show" })
+                                            .xsmall()
+                                            .ghost()
+                                            .tab_stop(false)
+                                            .on_click(move |_event, _window, cx| {
+                                                let _ = this.update(cx, |this: &mut Self, cx| {
+                                                    if !this
+                                                        .open_sections
+                                                        .remove(key_for_click.as_ref())
+                                                    {
+                                                        this.open_sections
+                                                            .insert(key_for_click.to_string());
+                                                    }
+                                                    cx.notify();
+                                                });
+                                            }),
+                                    ),
+                            )
+                            .child(
+                                // Wraps rather than `whitespace_nowrap()` like the
+                                // YAML view: the structured view scrolls vertically
+                                // only, so an unwrapped deep ownership path would
+                                // push the panel wider than it is.
+                                Collapsible::new().open(open).content(
+                                    div()
+                                        .font_family(theme.mono_font_family.clone())
+                                        .text_sm()
+                                        .child(entry.fields_json.clone()),
+                                ),
+                            )
+                            .into_any_element()
+                    }))
+                    .into_any_element(),
+            };
 
         div()
             .flex()
@@ -1267,7 +1307,17 @@ impl PodDetailPanel {
     /// fetch, not from `pod_fields`'s projection of the pod object itself.
     fn render_events(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
-        let events = format_events(self.events().to_vec(), Timestamp::now());
+        let events = match self.events() {
+            Some(Ok(events)) => format_events(events, Timestamp::now()),
+            Some(Err(reason)) => {
+                return div()
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+                    .child(format!("Could not list events: {reason}"))
+                    .into_any_element();
+            }
+            None => Vec::new(),
+        };
         if events.is_empty() {
             return div()
                 .text_sm()
@@ -1565,8 +1615,10 @@ mod tests {
     // Not `use super::*`: `gpui_kit::*` re-exports its own `test` macro, which
     // would shadow `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
-        BadgeTone, DetailSection, DetailView, PodDetailPanel, PodDetailState, PodFetch, PodField,
-        PodFieldValue, SelectContainersTab, fetch_pod, pod_fields,
+        BadgeTone, DetailSection, DetailView, K8sEvent, ManagedFieldEntry, PodDetailPanel,
+        PodDetailState, PodEvent, PodFetch, PodField, PodFieldValue, SelectContainersTab,
+        SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab, SelectVolumesTab,
+        events_selector, fetch_pod, format_age, format_events, managed_field_entry, pod_fields,
     };
     use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
     use crate::ui::nav::{NavTarget, PodRef};
@@ -1574,10 +1626,10 @@ mod tests {
     use gpui_kit::{AppContext as _, TestAppContext};
     use jiff::Timestamp;
     use k8s_openapi::api::core::v1::{
-        Container, HostIP, Pod, PodCondition, PodIP, PodSpec, PodStatus, Toleration,
+        Container, EventSeries, HostIP, Pod, PodCondition, PodIP, PodSpec, PodStatus, Toleration,
     };
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{
-        ManagedFieldsEntry, ObjectMeta, OwnerReference, Time,
+        FieldsV1, ManagedFieldsEntry, MicroTime, ObjectMeta, OwnerReference, Time,
     };
 
     fn field<'a>(fields: &'a [PodField], label: &str) -> Option<&'a PodField> {
@@ -2065,6 +2117,118 @@ mod tests {
         );
     }
 
+    fn at(second: i64) -> Timestamp {
+        Timestamp::from_second(second).unwrap()
+    }
+
+    #[test]
+    fn events_sort_newest_first_across_legacy_and_series_timestamps() {
+        let legacy = K8sEvent {
+            reason: Some("Pulled".into()),
+            message: Some("Container image already present".into()),
+            type_: Some("Normal".into()),
+            count: Some(2),
+            first_timestamp: Some(Time(at(50))),
+            last_timestamp: Some(Time(at(100))),
+            ..Default::default()
+        };
+        // Written through events.k8s.io/v1: no legacy timestamps or count, only
+        // `eventTime` and a series.
+        let series = K8sEvent {
+            reason: Some("BackOff".into()),
+            message: Some("Back-off restarting failed container".into()),
+            type_: Some("Warning".into()),
+            event_time: Some(MicroTime(at(200))),
+            series: Some(EventSeries {
+                count: Some(4),
+                last_observed_time: Some(MicroTime(at(300))),
+            }),
+            ..Default::default()
+        };
+        let undated = K8sEvent {
+            reason: None,
+            ..Default::default()
+        };
+
+        let events = format_events(&[undated, legacy, series], at(400));
+
+        assert_eq!(
+            events,
+            vec![
+                PodEvent {
+                    reason: "BackOff".into(),
+                    message: "Back-off restarting failed container".into(),
+                    count: 4,
+                    age: format_age(100),
+                    tone: BadgeTone::Warning,
+                },
+                PodEvent {
+                    reason: "Pulled".into(),
+                    message: "Container image already present".into(),
+                    count: 2,
+                    age: format_age(300),
+                    tone: BadgeTone::Good,
+                },
+                PodEvent {
+                    reason: "Unknown".into(),
+                    message: String::new(),
+                    count: 1,
+                    age: "unknown".into(),
+                    tone: BadgeTone::Unknown,
+                },
+            ],
+            "newest first by series time, then legacy time; undated last"
+        );
+    }
+
+    #[test]
+    fn a_managed_fields_entry_pretty_prints_what_it_owns() {
+        let ownership = serde_json::json!({ "f:metadata": { "f:labels": { "f:app": {} } } });
+        let entry = managed_field_entry(&ManagedFieldsEntry {
+            manager: Some("kubectl-client-side-apply".into()),
+            operation: Some("Update".into()),
+            fields_v1: Some(FieldsV1(ownership.clone())),
+            ..Default::default()
+        });
+
+        assert_eq!(
+            entry,
+            ManagedFieldEntry {
+                manager: "kubectl-client-side-apply".into(),
+                operation: "Update".into(),
+                fields_json: serde_json::to_string_pretty(&ownership).unwrap(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_bare_managed_fields_entry_is_kept_and_says_what_is_missing() {
+        let entry = managed_field_entry(&ManagedFieldsEntry::default());
+
+        assert_eq!(entry.manager, "unknown manager");
+        assert_eq!(entry.operation, "unknown operation");
+        assert_eq!(entry.fields_json, "(no field ownership recorded)");
+    }
+
+    #[test]
+    fn the_events_selector_pins_kind_and_uid() {
+        let mut pod = rich_pod();
+        pod.metadata.uid = Some("pod-uid-1".into());
+        assert_eq!(
+            events_selector(&pod, "staging", "api-7d9f-ftg5t"),
+            "involvedObject.kind=Pod,involvedObject.namespace=staging,\
+             involvedObject.name=api-7d9f-ftg5t,involvedObject.uid=pod-uid-1"
+        );
+
+        pod.metadata.uid = None;
+        assert_eq!(
+            events_selector(&pod, "staging", "api-7d9f-ftg5t"),
+            "involvedObject.kind=Pod,involvedObject.namespace=staging,\
+             involvedObject.name=api-7d9f-ftg5t",
+            "a pod with no UID yet is still matched by kind and name"
+        );
+    }
+
     fn stub_panel(
         cx: &mut TestAppContext,
         state: ConnectionState,
@@ -2132,7 +2296,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
                 cx.notify();
             })
             .unwrap();
@@ -2184,7 +2348,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
                 panel.set_view(DetailView::Yaml, cx);
             })
             .unwrap();
@@ -2211,7 +2375,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
                 cx.notify();
             })
             .unwrap();
@@ -2255,7 +2419,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
                 cx.notify();
             })
             .unwrap();
@@ -2268,20 +2432,35 @@ mod tests {
             DetailSection::Overview
         );
 
-        window
-            .update(cx, |panel, window, cx| {
-                panel.focus_handle.clone().focus(window, cx);
-                window.dispatch_action(Box::new(SelectContainersTab), cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        assert_eq!(
+        // Every tab, not just one: each has its own action, and an action with
+        // no `on_action` listener fails silently rather than to compile. Ends
+        // back on Overview so its binding is exercised from another tab.
+        let steps: [(Box<dyn gpui_kit::Action>, DetailSection); 5] = [
+            (Box::new(SelectContainersTab), DetailSection::Containers),
+            (Box::new(SelectVolumesTab), DetailSection::Volumes),
+            (Box::new(SelectEventsTab), DetailSection::Events),
+            (
+                Box::new(SelectManagedFieldsTab),
+                DetailSection::ManagedFields,
+            ),
+            (Box::new(SelectOverviewTab), DetailSection::Overview),
+        ];
+        for (action, expected) in steps {
             window
-                .update(cx, |panel, _window, _cx| panel.active_tab())
-                .unwrap(),
-            DetailSection::Containers
-        );
+                .update(cx, |panel, window, cx| {
+                    panel.focus_handle.clone().focus(window, cx);
+                    window.dispatch_action(action, cx);
+                })
+                .unwrap();
+            cx.run_until_parked();
+
+            assert_eq!(
+                window
+                    .update(cx, |panel, _window, _cx| panel.active_tab())
+                    .unwrap(),
+                expected
+            );
+        }
     }
 
     /// Section 4.4: a pod that is gone is reported as gone - its own state, not
@@ -2332,8 +2511,24 @@ mod tests {
                 .await
                 .expect("a 200 is not a failure");
             match found {
-                PodFetch::Found(pod, _events) => {
-                    assert_eq!(pod.metadata.name.as_deref(), Some("present"))
+                PodFetch::Found(pod, events) => {
+                    assert_eq!(pod.metadata.name.as_deref(), Some("present"));
+                    let events = events.expect("the server lists this pod's events");
+                    assert_eq!(events.len(), 1);
+                    assert_eq!(events[0].reason.as_deref(), Some("Scheduled"));
+                }
+                PodFetch::NotFound => panic!("the server serves this pod"),
+            }
+
+            // A pod readable by a user who may not list events still loads;
+            // the events failure is carried alongside it, not swallowed.
+            let forbidden = fetch_pod(client.clone(), "staging".into(), "events-forbidden".into())
+                .await
+                .expect("an events failure does not fail the pod");
+            match forbidden {
+                PodFetch::Found(pod, events) => {
+                    assert_eq!(pod.metadata.name.as_deref(), Some("events-forbidden"));
+                    assert!(events.is_err(), "the 403 is reported, not an empty list");
                 }
                 PodFetch::NotFound => panic!("the server serves this pod"),
             }
@@ -2361,11 +2556,41 @@ mod tests {
                     let mut buffer = vec![0u8; 4096];
                     let read = stream.read(&mut buffer).await.unwrap_or(0);
                     let request = String::from_utf8_lossy(&buffer[..read]).to_string();
-                    let (status, body) = if request.contains("/pods/present") {
+                    // Only the request line: a header could name the pod too.
+                    let request_line = request.lines().next().unwrap_or_default();
+                    let (status, body) = if request_line.contains("/events?") {
+                        if request_line.contains("events-forbidden") {
+                            let status = serde_json::json!({
+                                "kind": "Status",
+                                "apiVersion": "v1",
+                                "status": "Failure",
+                                "message": "events is forbidden",
+                                "reason": "Forbidden",
+                                "code": 403,
+                            });
+                            ("403 Forbidden", status.to_string())
+                        } else {
+                            let events = serde_json::json!({
+                                "apiVersion": "v1",
+                                "kind": "EventList",
+                                "metadata": {},
+                                "items": [{
+                                    "metadata": { "name": "present.1", "namespace": "staging" },
+                                    "involvedObject": { "kind": "Pod", "name": "present" },
+                                    "reason": "Scheduled",
+                                    "type": "Normal",
+                                }],
+                            });
+                            ("200 OK", events.to_string())
+                        }
+                    } else if let Some(name) = ["present", "events-forbidden"]
+                        .into_iter()
+                        .find(|name| request_line.contains(&format!("/pods/{name} ")))
+                    {
                         let pod = serde_json::json!({
                             "apiVersion": "v1",
                             "kind": "Pod",
-                            "metadata": { "name": "present", "namespace": "staging" },
+                            "metadata": { "name": name, "namespace": "staging" },
                         });
                         ("200 OK", pod.to_string())
                     } else {
