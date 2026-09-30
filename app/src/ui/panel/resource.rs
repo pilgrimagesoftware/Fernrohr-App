@@ -288,6 +288,7 @@ impl ResourcePanel {
         // One row: "Resources" on the left, the context (a dropdown once the window
         // holds several) in the right corner, sharing the label's text baseline.
         div()
+            .w_full()
             .flex()
             .items_baseline()
             .justify_between()
@@ -299,19 +300,26 @@ impl ResourcePanel {
                     .text_color(theme.sidebar_foreground)
                     .child("Resources"),
             )
-            .child(if self.shows_cluster_dropdown() {
-                self.cluster_dropdown(cx)
-            } else {
+            // `ml_auto` as well as `justify_between`: the selector stays in the right
+            // corner even if the sidebar's header slot doesn't stretch this row.
+            .child(
                 div()
+                    .ml_auto()
                     .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(self.context_name.clone())
-                    .into_any_element()
-            })
+                    .child(if self.shows_cluster_dropdown() {
+                        self.cluster_dropdown(cx)
+                    } else {
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(self.context_name.clone())
+                            .into_any_element()
+                    }),
+            )
             .into_any_element()
     }
 
