@@ -50,6 +50,7 @@ mod panel_focus;
 mod panels;
 mod persist;
 mod render;
+mod tabs;
 mod test_hooks;
 #[cfg(test)]
 mod test_support;

@@ -62,9 +62,8 @@ impl Render for MainWindow {
                 .child(status_bar.clone())
                 .into_any_element(),
         };
-        div()
-            .size_full()
-            .track_focus(&self.focus_handle)
+        let root = div().size_full().track_focus(&self.focus_handle);
+        Self::with_tab_actions(root, cx)
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
             })
