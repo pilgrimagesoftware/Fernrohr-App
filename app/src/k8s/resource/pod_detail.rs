@@ -996,7 +996,15 @@ impl Render for PodDetailPanel {
             .p_2()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(div().text_sm().child(if yaml { "YAML" } else { "Fields" }))
+            .gap_2()
+            .child(panel_title::item_heading(
+                self.pod.name.clone(),
+                panel_title::heading_context(
+                    &self.scope,
+                    crate::util::shell::window_context_count(window, cx),
+                ),
+                cx.theme().muted_foreground,
+            ))
             .child(
                 div()
                     .flex()
@@ -1047,11 +1055,8 @@ impl BasePanel for PodDetailPanel {
 /// No namespace picker: the panel is over one pod, not a namespace-scoped list,
 /// so there is no scope for a picker to change.
 impl Panel for PodDetailPanel {
-    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let contexts = crate::util::shell::window_context_count(window, cx);
-        let text =
-            panel_title::with_context(panel_title::title(&self.scope), &self.scope, contexts);
-        panel_title::title_element(&self.scope, text)
+    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {

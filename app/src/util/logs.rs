@@ -433,6 +433,16 @@ impl Render for LogsPanel {
                 })
         });
 
+        let heading = self.current.as_ref().map(|(_, pod, container)| {
+            panel_title::item_heading(
+                format!("{pod} / {container}"),
+                panel_title::heading_context(
+                    &self.scope,
+                    crate::util::shell::window_context_count(window, cx),
+                ),
+                cx.theme().muted_foreground,
+            )
+        });
         let control_bar =
             (self.current.is_some() && view.terminal_message().is_none()).then(|| {
                 let line_count = view.lines().len();
@@ -442,11 +452,13 @@ impl Render for LogsPanel {
                 div()
                     .flex()
                     .items_center()
-                    .justify_end()
                     .gap_1()
                     .p_2()
                     .border_b_1()
                     .border_color(cx.theme().border)
+                    // "pod / container" (plus the context in a multi-context window) on
+                    // the left; the controls take the rest of the row on the right.
+                    .child(div().flex_1().min_w_0().children(heading))
                     .children(container_picker)
                     .child(
                         Button::new("logs-jump-top")
@@ -555,10 +567,8 @@ impl LogsPanel {
 }
 
 impl Panel for LogsPanel {
-    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let contexts = crate::util::shell::window_context_count(window, cx);
-        let text = panel_title::with_context(self.streaming_title(), &self.scope, contexts);
-        panel_title::title_element(&self.scope, text)
+    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title_element(&self.scope, self.streaming_title())
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {

@@ -112,17 +112,39 @@ pub fn title(scope: &PanelScope) -> String {
     scope.target.item_label()
 }
 
-/// `label` with " · <context>" appended when the window uses more than one context -
-/// for panels over one pod (Pod detail, Logs), where two windows' worth of the same
-/// pod name would otherwise be indistinguishable. `window_contexts` is the window's
-/// live count (`util::shell::window_context_count`), not the count baked into the
-/// scope when the panel opened, so the suffix follows add and disconnect.
-pub fn with_context(label: String, scope: &PanelScope, window_contexts: usize) -> String {
-    if window_contexts > 1 {
-        format!("{label} · {}", scope.context_name)
-    } else {
-        label
-    }
+/// A pod-scoped panel's content heading: the item (pod, or pod / container) in a
+/// title font, then "(<context>)" in a subtitle font when `context` is given - the
+/// caller passes it only while the window uses more than one context
+/// (`util::shell::window_context_count`). Tab titles never carry the context.
+pub fn item_heading(name: String, context: Option<String>, muted: Hsla) -> impl IntoElement {
+    div()
+        .flex()
+        .items_baseline()
+        .gap_2()
+        .min_w_0()
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_lg()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(name),
+        )
+        .children(context.map(|context| {
+            div()
+                .flex_shrink_0()
+                .text_sm()
+                .text_color(muted)
+                .child(format!("({context})"))
+        }))
+}
+
+/// The context to show beside an item heading: the scope's context while the window
+/// uses more than one, otherwise none.
+pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<String> {
+    (window_contexts > 1).then(|| scope.context_name.clone())
 }
 
 /// `text` as the panel's title element, with a "Context: <name>" tooltip. The dock
@@ -330,16 +352,13 @@ mod tests {
         assert_eq!(title(&scope(kind("Deployment", true), 3)), "Deployments");
     }
 
-    /// Pod-scoped panels name the context only while the window uses several.
+    /// An item heading names the context only while the window uses several.
     #[test]
-    fn with_context_appends_the_context_only_for_several() {
-        use super::with_context;
+    fn a_heading_names_the_context_only_for_several() {
+        use super::heading_context;
         let pod = scope(NavTarget::pod("default", "web-1"), 1);
-        assert_eq!(with_context("Pod: web-1".into(), &pod, 1), "Pod: web-1");
-        assert_eq!(
-            with_context("Pod: web-1".into(), &pod, 2),
-            "Pod: web-1 · kind-dev"
-        );
+        assert_eq!(heading_context(&pod, 1), None);
+        assert_eq!(heading_context(&pod, 2), Some("kind-dev".to_string()));
     }
 
     /// The Logs view is a target of its own and gets the same rule.
