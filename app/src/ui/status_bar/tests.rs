@@ -4,6 +4,7 @@
 // sits in the same module.
 use super::{Clock, StatusBarView};
 use crate::consts::STATUS_TICK_INTERVAL;
+use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::context_health::{ContextHealth, Severity};
 use crate::k8s::cluster::health::HealthTransition;
 use crate::k8s::cluster::session::ClusterRegistry;
@@ -23,6 +24,20 @@ fn init(cx: &mut TestAppContext) {
     });
 }
 
+/// Subscribes to `context_name`'s Pods watch through a session whose connection is
+/// fixed at `Connected`, so no real connect for the fixture context can finish later
+/// and flip the health to `Failed` mid-test.
+fn subscribe_connected(cx: &mut TestAppContext, context_name: &str, client: Client) {
+    cx.update(|cx| {
+        ClusterRegistry::insert_test_session(
+            cx,
+            context_name,
+            ConnectionState::Connected(client.clone()),
+        );
+        ClusterRegistry::subscribe_pods(cx, context_name, client);
+    });
+}
+
 fn test_client(cx: &mut TestAppContext) -> Client {
     let handle = cx.update(|cx| crate::runtime::handle(cx));
     let _guard = handle.enter();
@@ -35,8 +50,8 @@ async fn non_connected_items_sort_before_connected_ones(cx: &mut TestAppContext)
     init(cx);
     let client_a = test_client(cx);
     let client_b = test_client(cx);
-    cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "carefulcrab", client_a));
-    cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "greedygoat", client_b));
+    subscribe_connected(cx, "carefulcrab", client_a);
+    subscribe_connected(cx, "greedygoat", client_b);
     cx.update(|cx| {
         ClusterRegistry::apply_health_transition(
             cx,
@@ -79,7 +94,7 @@ async fn non_connected_items_sort_before_connected_ones(cx: &mut TestAppContext)
 async fn closing_the_last_panel_for_a_context_keeps_its_status_item(cx: &mut TestAppContext) {
     init(cx);
     let client = test_client(cx);
-    cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
+    subscribe_connected(cx, "kind-dev", client);
 
     let bar = cx.update(|cx| cx.new(|cx| StatusBarView::new(vec!["kind-dev".to_string()], cx)));
     assert_eq!(cx.update(|cx| bar.read(cx).items(cx).len()), 1);
@@ -131,7 +146,7 @@ fn icon_and_text_differ_per_state() {
 async fn elapsed_time_advances_and_escalates_with_the_injected_clock(cx: &mut TestAppContext) {
     init(cx);
     let client = test_client(cx);
-    cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
+    subscribe_connected(cx, "kind-dev", client);
     cx.update(|cx| {
         ClusterRegistry::apply_health_transition(
             cx,
@@ -194,7 +209,7 @@ async fn elapsed_time_advances_and_escalates_with_the_injected_clock(cx: &mut Te
 async fn the_tick_runs_while_unhealthy_and_stops_once_connected(cx: &mut TestAppContext) {
     init(cx);
     let client = test_client(cx);
-    cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
+    subscribe_connected(cx, "kind-dev", client);
     cx.update(|cx| {
         ClusterRegistry::apply_health_transition(
             cx,

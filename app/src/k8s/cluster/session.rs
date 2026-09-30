@@ -42,6 +42,12 @@ impl ClusterRegistry {
             return;
         }
         let connection = ClusterConnection::connect(cx, Some(context_name.to_string()));
+        Self::insert_session(cx, context_name, connection);
+    }
+
+    /// Registers `context_name`'s session around an already-built `connection`,
+    /// driving pause/resume off its forward's state when it has one.
+    fn insert_session(cx: &mut App, context_name: &str, connection: Entity<ClusterConnection>) {
         let pods = cx.new(|_| PodsTable::default());
         let health = connection.read(cx).forward_state().map(|state_rx| {
             let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
@@ -125,6 +131,23 @@ impl ClusterRegistry {
                 }
             }
         }
+    }
+
+    /// Registers `context_name` with a connection fixed at `state`, so tests never race
+    /// a real `ClusterConnection::connect` finishing (and overwriting the state with
+    /// `Failed`) at an arbitrary point. Call before anything else looks the context up.
+    #[cfg(test)]
+    pub(crate) fn insert_test_session(
+        cx: &mut App,
+        context_name: &str,
+        state: super::connection::ConnectionState,
+    ) -> Entity<ClusterConnection> {
+        if !cx.has_global::<Self>() {
+            cx.set_global(Self::default());
+        }
+        let connection = cx.new(|_| ClusterConnection::test_with_state(state));
+        Self::insert_session(cx, context_name, connection.clone());
+        connection
     }
 
     /// Returns `context_name`'s cluster connection, connecting lazily on first use.
@@ -298,6 +321,13 @@ mod tests {
         cx.update(crate::runtime::init);
 
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         let table_a =
             cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client.clone()));
         let table_b = cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
@@ -385,6 +415,13 @@ mod tests {
         cx.update(crate::runtime::init);
 
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
         assert!(cx.update(|cx| {
             cx.global::<ClusterRegistry>().sessions["kind-dev"]
@@ -435,6 +472,13 @@ mod tests {
         cx.update(crate::runtime::init);
 
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
         cx.update(|cx| {
             ClusterRegistry::apply_health_transition(
@@ -470,6 +514,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         assert_eq!(
@@ -483,6 +534,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         let connection = cx.update(|cx| {
@@ -508,6 +566,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         let connection = cx.update(|cx| {
@@ -533,6 +598,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         cx.update(|cx| {
@@ -556,6 +628,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         cx.update(|cx| {
@@ -583,6 +662,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         cx.update(|cx| {
@@ -615,6 +701,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         let connection = cx.update(|cx| {
@@ -663,6 +756,13 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(crate::runtime::init);
         let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                "kind-dev",
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         cx.update(|cx| ClusterRegistry::subscribe_pods(cx, "kind-dev", client));
 
         let notifications = Rc::new(Cell::new(0));

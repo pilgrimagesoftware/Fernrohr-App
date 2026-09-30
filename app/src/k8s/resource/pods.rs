@@ -1889,6 +1889,16 @@ mod tests {
                 .unwrap()
         };
         let context_name = "status-bar-paused";
+        // Registered up front with a fixed `Connected` state: otherwise the registry's
+        // lookup below starts a real connect for this fixture context, which fails and
+        // (failed outranking paused) turns the health `Failed` whenever it lands first.
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(
+                cx,
+                context_name,
+                ConnectionState::Connected(client.clone()),
+            )
+        });
         // A bare entity, not a window: `PodsPanel::render`'s `Connected` branch draws a
         // real `DataTable`, and driving that through an actual window paint pass is its
         // own can of worms unrelated to this test - every other `Connected`-branch check
