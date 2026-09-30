@@ -9,3 +9,6 @@ mod fetch;
 mod fixtures;
 mod overview;
 mod panel;
+mod secrets;
+mod sections;
+mod workloads;
