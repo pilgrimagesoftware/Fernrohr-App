@@ -10,30 +10,48 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
 
-/// "↵ Connect  ⌘⇧B Tunnel  ⌘⇧T Manage tunnels", using whatever keys are bound now.
+/// The actions with no button of their own: "↑↓ Select  ⌘⇧B Tunnel". Connect and
+/// Manage tunnels show their keys beside their buttons ([`with_key`]), so nothing is
+/// listed twice.
 pub fn key_hints(window: &mut Window, cx: &App) -> impl IntoElement {
-    let hint = |key: Option<Kbd>, label: &'static str| {
-        div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .children(key)
-            .child(label)
-    };
-    let enter = Kbd::new(Keystroke::parse("enter").expect("valid keystroke"));
+    let arrows = div()
+        .flex()
+        .gap_0p5()
+        .child(Kbd::new(Keystroke::parse("up").expect("valid keystroke")))
+        .child(Kbd::new(Keystroke::parse("down").expect("valid keystroke")));
     div()
         .flex()
         .flex_wrap()
         .gap_3()
         .text_sm()
         .text_color(cx.theme().muted_foreground)
-        .child(hint(Some(enter), "Connect"))
-        .child(hint(
-            Kbd::binding_for_action(&SetContextTunnel, None, window),
-            "Tunnel",
-        ))
-        .child(hint(
-            Kbd::binding_for_action(&TunnelsManage, None, window),
-            "Manage tunnels",
-        ))
+        .child(hint(arrows.into_any_element(), "Select"))
+        .children(
+            Kbd::binding_for_action(&SetContextTunnel, None, window)
+                .map(|key| hint(key.into_any_element(), "Tunnel")),
+        )
+}
+
+/// `button` with its shortcut shown beside it, when it has one.
+pub fn with_key(button: impl IntoElement, key: Option<Kbd>) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(button)
+        .children(key)
+}
+
+/// Enter, the key that confirms the highlighted context.
+pub fn enter_key() -> Kbd {
+    Kbd::new(Keystroke::parse("enter").expect("valid keystroke"))
+}
+
+/// Whatever `tunnels.manage` is bound to now.
+pub fn manage_tunnels_key(window: &mut Window) -> Option<Kbd> {
+    Kbd::binding_for_action(&TunnelsManage, None, window)
+}
+
+fn hint(key: AnyElement, label: &'static str) -> impl IntoElement {
+    div().flex().items_center().gap_1().child(key).child(label)
 }

@@ -506,6 +506,8 @@ fn context_row(
             .child(
                 div()
                     .flex()
+                    .flex_1()
+                    .min_w_0()
                     .items_center()
                     .gap_2()
                     .child(
@@ -513,9 +515,24 @@ fn context_row(
                             .size(px(16.))
                             .text_color(theme.muted_foreground),
                     )
-                    .child(context_name.clone()),
+                    // Long names (`gke_<project>_<region>_<cluster>`) are cut with an
+                    // ellipsis, full name on hover, so the tunnel selector stays visible.
+                    .child({
+                        let full = context_name.clone();
+                        div()
+                            .id(SharedString::from(format!("picker-name-{context_name}")))
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .child(context_name.clone())
+                            .tooltip(move |window, cx| {
+                                gpui_kit::component::tooltip::Tooltip::new(full.clone())
+                                    .build(window, cx)
+                            })
+                    }),
             )
-            .child(selector)
+            .child(div().flex_shrink_0().child(selector))
             .into_any_element()
     }
 }
@@ -528,7 +545,6 @@ fn manage_tunnels_control() -> impl IntoElement {
         .icon(IconName::Settings)
         .xsmall()
         .ghost()
-        .tab_stop(false)
         .on_click(|_event, _window, cx| crate::ui::tunnels::open_or_focus(cx))
 }
 
@@ -679,8 +695,14 @@ impl Render for ClusterPicker {
                         .flex()
                         .items_center()
                         .justify_between()
-                        .child(connect_button(connect_disabled, this.clone()))
-                        .child(manage_tunnels_control()),
+                        .child(crate::ui::picker_keys::with_key(
+                            connect_button(connect_disabled, this.clone()),
+                            Some(crate::ui::picker_keys::enter_key()),
+                        ))
+                        .child(crate::ui::picker_keys::with_key(
+                            manage_tunnels_control(),
+                            crate::ui::picker_keys::manage_tunnels_key(window),
+                        )),
                 )
                 .child(crate::ui::picker_keys::key_hints(window, cx))
                 .track_focus(&self.focus_handle)

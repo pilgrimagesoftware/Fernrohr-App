@@ -104,35 +104,10 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     register_commands(&mut registry);
     let keymap = keymap::load(keymap_path, &registry);
 
-    let new_window_binding =
-        keymap::resolve(NEW_WINDOW_COMMAND_ID, NEW_WINDOW_DEFAULT_BINDING, &keymap);
-    let palette_binding = keymap::resolve(
-        TOGGLE_PALETTE_COMMAND_ID,
-        TOGGLE_PALETTE_DEFAULT_BINDING,
-        &keymap,
-    );
-    let show_pods_binding = keymap::resolve(
-        nav::SHOW_PODS_COMMAND_ID,
-        nav::SHOW_PODS_DEFAULT_BINDING,
-        &keymap,
-    );
-    let show_logs_binding = keymap::resolve(
-        nav::SHOW_LOGS_COMMAND_ID,
-        nav::SHOW_LOGS_DEFAULT_BINDING,
-        &keymap,
-    );
-    let set_context_tunnel_binding = keymap::resolve(
-        SET_CONTEXT_TUNNEL_COMMAND_ID,
-        SET_CONTEXT_TUNNEL_DEFAULT_BINDING,
-        &keymap,
-    );
-    cx.bind_keys([
-        KeyBinding::new(&new_window_binding, NewWindow, None),
-        KeyBinding::new(&palette_binding, ToggleCommandPalette, None),
-        KeyBinding::new(&show_pods_binding, ShowPods, None),
-        KeyBinding::new(&show_logs_binding, ShowLogs, None),
-        KeyBinding::new(&set_context_tunnel_binding, SetContextTunnel, None),
-    ]);
+    // Every registered command, from the registry itself - not a hand-kept list,
+    // which is how `tunnels.manage` ended up with a menu item but no key.
+    let bindings = keymap::bindings(&registry, &keymap, cx.keyboard_mapper().as_ref());
+    cx.bind_keys(bindings);
     // The panels' own shortcuts, each in its own key context. A panel naming a
     // key in its hint bar has not bound that key: without this the hint bar
     // prints letters no keystroke resolves to, and the shortcut does nothing.
