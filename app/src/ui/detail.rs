@@ -7,7 +7,12 @@
 //! model; this module only draws.
 
 use crate::k8s::resource::events::EventSummary;
+use crate::k8s::resource::secret_value::{Reveal, RevealError};
+use gpui_kit::assets::IconName;
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::Sizable as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::*;
 
 /// A status's color, decided by the status rather than looked up at render
@@ -200,5 +205,76 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
                 )
                 .child(div().text_sm().child(event.message.clone()))
         }))
+        .into_any_element()
+}
+
+/// One Secret key: its name, its size, a Show/Hide button (a tab stop, so
+/// Enter or Space works on it), and - while revealed - its value.
+///
+/// `reveal` is the key's current reveal, if any; `on_toggle` runs on the
+/// button. `value_id` identifies the revealed value's element, for tests. The
+/// value is read out of its `SecretValue` here and nowhere else in the view.
+pub fn secret_key_row(
+    key: &str,
+    size: usize,
+    reveal: Option<&Reveal>,
+    button_id: ElementId,
+    value_id: ElementId,
+    on_toggle: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let theme = cx.theme();
+    let shown = reveal.is_some();
+    let button = Button::new(button_id)
+        .icon(if shown {
+            IconName::EyeOff
+        } else {
+            IconName::Eye
+        })
+        .label(if shown { "Hide" } else { "Show" })
+        .xsmall()
+        .ghost()
+        .on_click(move |_event, window, cx| on_toggle(window, cx));
+    let value = reveal.map(|reveal| {
+        let text = match reveal {
+            Reveal::Pending => "Revealing…".to_string(),
+            Reveal::Shown(value) if value.is_empty() => "(empty)".to_string(),
+            // The one place a value is read out of a `SecretValue`.
+            Reveal::Shown(value) => match value.expose() {
+                Some(text) => text.to_string(),
+                None => format!("binary, {} bytes", value.len()),
+            },
+            Reveal::Failed(RevealError::Missing) => "It no longer exists.".to_string(),
+            Reveal::Failed(RevealError::Failed(message)) => format!("Could not read it: {message}"),
+        };
+        div()
+            .id(value_id)
+            .font_family(theme.mono_font_family.clone())
+            .text_sm()
+            .child(text)
+            .test_support()
+    });
+    div()
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_sm()
+                .child(
+                    div()
+                        .font_family(theme.mono_font_family.clone())
+                        .child(key.to_string()),
+                )
+                .child(
+                    div()
+                        .text_color(theme.muted_foreground)
+                        .child(format!("{size} bytes")),
+                )
+                .child(button),
+        )
+        .children(value)
         .into_any_element()
 }

@@ -1,6 +1,8 @@
-use super::TunnelEditor;
+// NAMED imports only (no `use super::*;`): a glob of `gpui_kit::*` next to
+// `#[gpui_kit::test]` shadows the builtin `#[test]` and blows the macro-expansion budget.
 use crate::config::tunnels::{TunnelAuth, TunnelsConfig};
 use crate::tunnel::store::{TunnelFieldError, TunnelStore};
+use crate::ui::tunnels::editor::TunnelEditor;
 use gpui_kit::TestAppContext;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -62,6 +62,12 @@ pub enum FieldValue {
     Lines(Vec<String>),
     /// Key/value pairs with room for a long value - a ConfigMap's data.
     KeyValues(Vec<(String, String)>),
+    /// A Secret's keys with their sizes, each revealable one at a time - the
+    /// values themselves are never here.
+    SecretKeys {
+        secret: ObjectRef,
+        keys: Vec<(String, usize)>,
+    },
 }
 
 impl FieldValue {
@@ -93,6 +99,11 @@ impl FieldValue {
                 .map(|(key, value)| format!("{key}={value}"))
                 .collect::<Vec<_>>()
                 .join(", "),
+            FieldValue::SecretKeys { keys, .. } => keys
+                .iter()
+                .map(|(key, size)| format!("{key}: {size} bytes"))
+                .collect::<Vec<_>>()
+                .join(", "),
         }
     }
 }
@@ -112,7 +123,8 @@ pub fn go_to_entries(sections: &[ObjectSection]) -> Vec<GoToEntry> {
             | FieldValue::Chips(_)
             | FieldValue::Badges(_)
             | FieldValue::Lines(_)
-            | FieldValue::KeyValues(_) => Vec::new(),
+            | FieldValue::KeyValues(_)
+            | FieldValue::SecretKeys { .. } => Vec::new(),
         })
         .collect()
 }
