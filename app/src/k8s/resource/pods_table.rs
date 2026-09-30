@@ -340,3 +340,6 @@ pub(super) fn reselect(
         None => {}
     }
 }
+
+#[cfg(test)]
+mod tests;
