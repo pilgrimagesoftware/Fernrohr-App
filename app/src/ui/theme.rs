@@ -70,6 +70,7 @@ pub fn watch_window(window: &mut Window, cx: &mut App) {
             .observe_window_appearance(|window, cx| {
                 Theme::sync_system_appearance(Some(window), cx);
                 apply_fonts(cx);
+                crate::ui::accent::refresh(cx);
             })
             .detach();
     }
@@ -82,6 +83,8 @@ fn apply(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App)
         ThemePreference::System => Theme::sync_system_appearance(window, cx),
     }
     apply_fonts(cx);
+    // The system accent colour resolves differently in light and dark mode.
+    crate::ui::accent::refresh(cx);
 }
 
 /// Sets both chosen font families on the global theme. Called after every

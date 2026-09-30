@@ -281,7 +281,7 @@ impl Render for PodDetailPanel {
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
-        let body = div()
+        div()
             .size_full()
             .key_context(key_context())
             .on_action(cx.listener(Self::on_action_go_to))
@@ -295,9 +295,7 @@ impl Render for PodDetailPanel {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(content));
-
-        panel_title::focus_frame(body, &self.focus_handle, window, cx)
+            .child(div().flex_1().min_h_0().child(content))
     }
 }
 

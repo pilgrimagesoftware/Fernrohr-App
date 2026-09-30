@@ -223,3 +223,30 @@ async fn a_logs_panel_ignores_a_selection_from_a_different_context(cx: &mut Test
         );
     });
 }
+
+/// A click inside the panel focuses it - the focus its tab's underline follows.
+/// Without `track_focus` on the body a click landed nowhere, and the panel
+/// could never be marked as the focused one.
+#[gpui_kit::test]
+async fn a_click_focuses_the_logs_panel(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        ClusterRegistry::insert_test_session(cx, "a", ConnectionState::Connecting);
+    });
+    let (panel, cx) = cx.add_window_view(|_window, cx| {
+        LogsPanel::new(PanelScope::new(NavTarget::Logs, "a".to_string()), cx)
+    });
+    cx.run_until_parked();
+    let focused = |cx: &mut gpui_kit::VisualTestContext| {
+        cx.update(|window, cx| panel.read(cx).focus_handle.contains_focused(window, cx))
+    };
+    assert!(!focused(cx), "nothing has focused the panel yet");
+
+    cx.simulate_click(
+        gpui_kit::point(gpui_kit::px(200.), gpui_kit::px(200.)),
+        gpui_kit::Modifiers::none(),
+    );
+    cx.run_until_parked();
+    assert!(focused(cx), "the click focuses the panel");
+}
