@@ -1,8 +1,10 @@
-//! GPUI-free coverage for section 1's category lookup - no window needed,
-//! which is what keeps it fast and exhaustive. `super::kind` (this module's
-//! parent, `resource::tests`) builds the fixtures.
+//! GPUI-free coverage for section 1's category lookup and section 2's
+//! grouping - no window needed, which is what keeps it fast and exhaustive.
+//! `super::kind` (this module's parent, `resource::tests`) builds the
+//! fixtures.
 
 use super::kind;
+use crate::k8s::cluster::discovery::DiscoveredKind;
 
 type Category = super::super::category::Category;
 
@@ -64,4 +66,35 @@ fn every_section_is_reachable_by_a_built_in_kind() {
             "{group}/{plural} should be {expected}"
         );
     }
+}
+
+/// Section 2.1: kinds spanning several sections, plus a duplicate-free CRD,
+/// partition into sections in the fixed order with no kind lost.
+#[test]
+fn group_kinds_orders_sections_and_loses_no_kind() {
+    let kinds = vec![
+        kind("apps", "Deployment"),
+        kind("", "Pod"),
+        kind("", "Service"),
+        kind("ferns.example.com", "Fern"),
+    ];
+
+    let sections = super::super::section::group_kinds(&kinds);
+
+    let order: Vec<String> = sections
+        .iter()
+        .map(|section| section.category.to_string())
+        .collect();
+    assert_eq!(order, vec!["Workloads", "Network", "Custom Resources"]);
+
+    let total: usize = sections.iter().map(|section| section.kinds.len()).sum();
+    assert_eq!(total, kinds.len(), "no kind lost across sections");
+}
+
+/// An empty discovery result partitions into no sections at all - nothing to
+/// render, rather than a spurious empty header for every category.
+#[test]
+fn grouping_no_kinds_yields_no_sections() {
+    let kinds: Vec<DiscoveredKind> = Vec::new();
+    assert!(super::super::section::group_kinds(&kinds).is_empty());
 }

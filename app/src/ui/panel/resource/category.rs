@@ -6,13 +6,8 @@
 //! kinds from every category (`Pod` is Workloads, `Service` is Network,
 //! `ConfigMap` is Config, ...), so a group-only map cannot represent it. This
 //! module owns the table and the lookup; it does not decide what a cluster
-//! actually has - that is a later section's grouping step's job.
+//! actually has - that is [`super::section::group_kinds`]'s job.
 
-// UNWIRED(resource-panel-grouping section 2): section 1 adds the taxonomy
-// ahead of its consumer, per `tasks.md`'s own ordering. Nothing outside this
-// module's own tests calls it yet; section 2's grouped rendering is the first
-// real caller.
-#[allow(dead_code)]
 /// One of the Resource panel's sections, in the fixed display order design.md
 /// specifies - declaration order here *is* that order, since [`Self::ALL`]
 /// reads off it.
@@ -30,12 +25,10 @@ pub(super) enum Category {
     CustomResources,
 }
 
-// UNWIRED(resource-panel-grouping section 2): see the enum's own note above.
-#[allow(dead_code)]
 impl Category {
-    /// Every section, in fixed display order - what a later section's
-    /// grouping step iterates to build sections in that order rather than
-    /// alphabetically.
+    /// Every section, in fixed display order - what
+    /// [`super::section::group_kinds`] iterates to build sections in that
+    /// order rather than alphabetically.
     pub(super) const ALL: [Category; 7] = [
         Category::Workloads,
         Category::Config,
@@ -89,8 +82,6 @@ impl std::fmt::Display for Category {
 /// enumerates every core-group kind's section, which is the one fact this
 /// lookup exists to hold; the taxonomy list is a display-order outline that
 /// happens to repeat it.
-// UNWIRED(resource-panel-grouping section 2): see the enum's own note above.
-#[allow(dead_code)]
 const TABLE: &[(&str, &str, Category)] = &[
     // Workloads
     ("", "pods", Category::Workloads),

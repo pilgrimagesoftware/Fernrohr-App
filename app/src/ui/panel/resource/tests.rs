@@ -10,9 +10,11 @@ use crate::ui::nav::{NavTarget, has_concrete_panel};
 use gpui_kit::{AppContext as _, TestAppContext, WindowHandle};
 use kube::core::GroupVersionKind;
 
-// `resource-panel-grouping` section 1: the category lookup's own pure tests,
-// which need no window - a child of this module rather than this file's own
+// `resource-panel-grouping`: section 1/2's pure category/grouping tests need
+// no window (`logic`); section 2.2/2.3's collapse behavior needs a live
+// panel (`grouping`). Children of this module rather than this file's own
 // line count, per `.claude/rules/rust-structure.md`.
+mod grouping;
 mod logic;
 
 fn kind(group: &str, kind: &str) -> DiscoveredKind {
