@@ -118,41 +118,62 @@ pub fn title(scope: &PanelScope) -> String {
 /// caller passes it only while the window uses more than one context
 /// (`util::shell::window_context_count`). Tab titles never carry the context.
 ///
-/// The name ellipsizes when the panel is too narrow for it, and then - only
-/// then - carries the full name in a tooltip.
+/// The name and the context each ellipsize when the panel is too narrow for
+/// them - shrinking in proportion to their widths, so neither is squeezed out
+/// by the other - and then, only then, carry their full text in a tooltip.
 pub fn item_heading(name: String, context: Option<String>, muted: Hsla) -> impl IntoElement {
-    let text = StyledText::new(name.clone());
-    // Shares its state with the element's own layout, so by the time a hover
-    // asks for a tooltip it holds the text as drawn: the full name, or the
-    // ellipsized one.
-    let layout = text.layout().clone();
-    let name_text = InteractiveText::new(SharedString::from(format!("item-heading-{name}")), text)
-        .tooltip(move |_index, window, cx| {
-            is_truncated(&layout, &name).then(|| Tooltip::new(name.clone()).build(window, cx))
-        });
     div()
         .flex()
         .items_baseline()
         .gap_2()
         .min_w_0()
-        .child(heading_name_box().child(name_text))
+        .overflow_hidden()
+        .child(
+            heading_name_box()
+                .debug_selector(|| "item-heading-name".into())
+                .child(ellipsized_text(
+                    SharedString::from(format!("item-heading-{name}")),
+                    name,
+                )),
+        )
         .children(context.map(|context| {
-            div()
-                .flex_shrink_0()
+            ellipsizing_box()
+                .debug_selector(|| "item-heading-context".into())
                 .text_sm()
                 .text_color(muted)
-                .child(format!("({context})"))
+                .child(ellipsized_text(
+                    SharedString::from(format!("item-heading-context-{context}")),
+                    format!("({context})"),
+                ))
         }))
 }
 
-/// The box an item heading's name sits in: one line, in the title font,
-/// ellipsized once it is narrower than the name.
-fn heading_name_box() -> Div {
+/// `text` for an [`ellipsizing_box`], with a tooltip of the full text that
+/// appears only while the box has ellipsized it.
+fn ellipsized_text(id: SharedString, text: String) -> InteractiveText {
+    let styled = StyledText::new(text.clone());
+    // Shares its state with the element's own layout, so by the time a hover
+    // asks for a tooltip it holds the text as drawn: the full text, or the
+    // ellipsized one.
+    let layout = styled.layout().clone();
+    InteractiveText::new(id, styled).tooltip(move |_index, window, cx| {
+        is_truncated(&layout, &text).then(|| Tooltip::new(text.clone()).build(window, cx))
+    })
+}
+
+/// One line that may shrink below its text's width, ellipsizing it.
+fn ellipsizing_box() -> Div {
     div()
         .min_w_0()
         .overflow_hidden()
         .whitespace_nowrap()
         .text_ellipsis()
+}
+
+/// The box an item heading's name sits in: an [`ellipsizing_box`] in the
+/// title font.
+fn heading_name_box() -> Div {
+    ellipsizing_box()
         .text_lg()
         .font_weight(FontWeight::SEMIBOLD)
 }
@@ -386,11 +407,15 @@ pub enum ScopeEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::{PanelScope, heading_name_box, is_truncated, label_for, namespaces_offered, title};
+    use super::{
+        PanelScope, heading_name_box, is_truncated, item_heading, label_for, namespaces_offered,
+        title,
+    };
     use crate::k8s::cluster::discovery::DiscoveredKind;
     use crate::ui::nav::NavTarget;
     use gpui_kit::{
-        AvailableSpace, Pixels, StyledText, TestAppContext, TextLayout, point, px, size,
+        AvailableSpace, Context, IntoElement, Pixels, Render, StyledText, TestAppContext,
+        TextLayout, Window, black, div, point, px, size,
     };
     use gpui_kit::{ParentElement as _, Styled as _};
     use kube::core::GroupVersionKind;
@@ -420,6 +445,45 @@ mod tests {
 
         let wide = draw_heading_name(cx, name, px(2000.));
         assert!(!is_truncated(&wide, name), "drawn as {:?}", wide.text());
+    }
+
+    /// In a heading too narrow for both, the name and the context share the
+    /// width: neither is squeezed to nothing, and the context stays inside the
+    /// heading rather than drawing over whatever sits beside it.
+    /// A view drawing only an item heading, 128px wide.
+    struct NarrowHeading;
+
+    impl Render for NarrowHeading {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(128.)).child(item_heading(
+                "gke-metrics-agent-bl7vc".to_string(),
+                Some("carefulcrab-staging-us-west1".to_string()),
+                black(),
+            ))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_narrow_heading_keeps_name_and_context_inside_it(cx: &mut TestAppContext) {
+        let width = px(128.);
+        // A view rather than `draw`: the heading's text is stateful
+        // (`InteractiveText`), and element state lives under a view.
+        let (_view, cx) = cx.add_window_view(|_window, _cx| NarrowHeading);
+        cx.run_until_parked();
+
+        let name = cx.debug_bounds("item-heading-name").expect("name drawn");
+        let context = cx
+            .debug_bounds("item-heading-context")
+            .expect("context drawn");
+        assert!(name.size.width >= width / 4., "name squeezed out: {name:?}");
+        assert!(
+            context.size.width > px(0.),
+            "context squeezed out: {context:?}"
+        );
+        assert!(
+            context.right() <= width,
+            "context overflows the heading: {context:?}"
+        );
     }
 
     fn kind(kind: &str, namespaced: bool) -> NavTarget {
