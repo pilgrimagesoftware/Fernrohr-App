@@ -92,6 +92,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     nav::register_commands(registry);
     tunnels::register_commands(registry);
     crate::k8s::resource::pod_detail::register_commands(registry);
+    crate::ui::link::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to

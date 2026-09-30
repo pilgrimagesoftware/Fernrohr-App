@@ -78,3 +78,103 @@ async fn a_namespace_reference_is_a_link_and_an_owner_with_no_viewer_is_not(
         "a reference with no viewer is plain text"
     );
 }
+
+/// The panel as the app hosts it: inside a `Root`, under a view that draws the
+/// dialog layer the "Go to…" picker opens in.
+struct Host {
+    panel: gpui_kit::Entity<crate::k8s::resource::pod_detail::panel::PodDetailPanel>,
+}
+
+impl gpui_kit::Render for Host {
+    fn render(
+        &mut self,
+        window: &mut gpui_kit::Window,
+        cx: &mut gpui_kit::Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
+        use gpui_kit::{ParentElement as _, Styled as _};
+        gpui_kit::div()
+            .size_full()
+            .child(self.panel.clone())
+            .children(gpui_kit::component::Root::render_dialog_layer(window, cx))
+    }
+}
+
+/// 4.1 and 4.2 on the real panel: the `g` hint shows only once there is a
+/// followable reference, and `g` then Enter follows it.
+#[gpui_kit::test]
+async fn g_opens_the_picker_on_a_pod_and_enter_follows_its_namespace(cx: &mut TestAppContext) {
+    use crate::command::CommandRegistry;
+    use crate::k8s::cluster::connection::ClusterConnection;
+    use crate::k8s::resource::pod_detail::model::DetailView;
+    use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
+    use crate::keymap::{self, KeymapConfig};
+    use crate::ui::nav::{NavTarget, PodRef};
+    use crate::ui::panel_title::PanelScope;
+    use gpui_kit::VisualTestContext;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        let mut registry = CommandRegistry::new();
+        crate::ui::link::register_commands(&mut registry);
+        let bindings = keymap::bindings(
+            &registry,
+            &KeymapConfig::default(),
+            cx.keyboard_mapper().as_ref(),
+        );
+        cx.bind_keys(bindings);
+    });
+    let followed = record_follows(cx);
+    let connection =
+        cx.update(|cx| cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting)));
+    let mut panel = None;
+    let window = cx.add_window(|window, cx| {
+        let pod = PodRef {
+            namespace: "staging".into(),
+            name: "api-7d9f-ftg5t".into(),
+        };
+        let scope = PanelScope::new(
+            NavTarget::pod("staging", "api-7d9f-ftg5t"),
+            "kind-dev".into(),
+        );
+        let built = cx.new(|cx| {
+            PodDetailPanel::with_connection(pod, scope, DetailView::Structured, connection, cx)
+        });
+        panel = Some(built.clone());
+        let host = cx.new(|_| Host { panel: built });
+        gpui_kit::component::Root::new(host, window, cx)
+    });
+    let panel = panel.expect("the window built its panel");
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+
+    let hint_shown = |vcx: &mut VisualTestContext| {
+        vcx.update_window(window.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.try_find("go-to-hint").is_some()
+        })
+        .unwrap()
+    };
+    assert!(!hint_shown(&mut vcx), "nothing loaded, nothing to go to");
+
+    window
+        .update(&mut vcx, |_, window, cx| {
+            panel.update(cx, |panel, cx| panel.test_set_loaded(rich_pod(), cx));
+            panel.read(cx).focus_handle.clone().focus(window, cx);
+        })
+        .unwrap();
+    vcx.run_until_parked();
+    assert!(hint_shown(&mut vcx), "the namespace is followable");
+
+    vcx.simulate_keystrokes("g");
+    vcx.run_until_parked();
+    vcx.simulate_keystrokes("enter");
+    vcx.run_until_parked();
+
+    assert_eq!(
+        *followed.borrow(),
+        vec![FollowReference {
+            context_name: "kind-dev".into(),
+            target: ObjectRef::cluster_scoped("", "Namespace", "staging"),
+        }]
+    );
+}

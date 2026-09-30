@@ -5,8 +5,9 @@
 //! Kept apart from `fields`, which decides which rows exist; this decides what
 //! each row points at.
 
-use super::model::VolumeRow;
+use super::model::{PodField, PodFieldValue, VolumeRow};
 use crate::k8s::object_ref::ObjectRef;
+use crate::ui::link::GoToEntry;
 use k8s_openapi::api::core::v1::{Container, Pod, Volume};
 
 /// One reference per owner, in the order `metadata.ownerReferences` lists
@@ -138,4 +139,41 @@ pub(super) fn env_sources(container: &Container, namespace: &str) -> Vec<ObjectR
         }
     }
     references
+}
+
+/// Every reference the structured view shows, with the field it's shown in -
+/// what the "Go to…" picker lists, built from the same fields the view renders
+/// so the two can't disagree. Unfollowable ones are filtered out by the
+/// picker's caller, not here.
+pub(super) fn go_to_entries(fields: &[PodField]) -> Vec<GoToEntry> {
+    let mut entries = Vec::new();
+    for field in fields {
+        match &field.value {
+            PodFieldValue::References { targets, .. } => entries.extend(
+                targets
+                    .iter()
+                    .map(|target| GoToEntry::new(target.clone(), field.label)),
+            ),
+            PodFieldValue::Volumes(volumes) => {
+                for volume in volumes {
+                    entries.extend(volume.references.iter().map(|target| {
+                        GoToEntry::new(target.clone(), format!("Volume {}", volume.name))
+                    }));
+                }
+            }
+            PodFieldValue::Containers(containers) => {
+                for container in containers {
+                    entries.extend(container.env_sources.iter().map(|target| {
+                        GoToEntry::new(target.clone(), format!("{} env", container.name))
+                    }));
+                }
+            }
+            PodFieldValue::Text(_)
+            | PodFieldValue::Chips(_)
+            | PodFieldValue::Badges(_)
+            | PodFieldValue::Collapsed(_)
+            | PodFieldValue::ManagedFields(_) => {}
+        }
+    }
+    entries
 }
