@@ -521,8 +521,9 @@ fn set_context_tunnel_and_close(
     window: &mut Window,
     cx: &mut App,
 ) {
-    if let Err(error) = write_context_tunnel(tunnels_path, context_name, tunnel_id.as_deref()) {
-        log::warn!("failed to set {context_name}'s tunnel binding: {error:?}");
+    match write_context_tunnel(tunnels_path, context_name, tunnel_id.as_deref()) {
+        Ok(()) => crate::ui::tunnels::notify_tunnels_changed(cx),
+        Err(error) => log::warn!("failed to set {context_name}'s tunnel binding: {error:?}"),
     }
     Root::update(window, cx, |root, window, cx| {
         root.close_dialog(window, cx);

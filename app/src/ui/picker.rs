@@ -9,6 +9,7 @@ use crate::k8s::cluster::kubeconfig;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::tunnel::store::TunnelStore;
 use crate::ui::picker_tunnel::{self, TunnelChoice};
+use crate::ui::tunnels::TunnelsRevision;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -57,6 +58,8 @@ pub struct ClusterPicker {
     /// Context name -> bound tunnel id, for each row's selector label and current
     /// choice. Same caching rule as `tunnel_choices`.
     tunnel_bindings: BTreeMap<String, String>,
+    /// Reloads the two caches above whenever any view writes `tunnels.toml`.
+    _tunnels_observation: Subscription,
     /// Test-only stand-in for `ClusterRegistry::connection`. Real connections spawn
     /// tokio work on a runtime worker thread, which gpui's test scheduler rejects
     /// as cross-thread nondeterminism - so tests substitute a stub instead of
@@ -69,6 +72,12 @@ impl ClusterPicker {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
         let (tunnel_choices, tunnel_bindings) = load_tunnels(&tunnels_path);
+        let tunnels_observation = cx.observe_global::<TunnelsRevision>(|this, cx| {
+            let (choices, bindings) = load_tunnels(&this.tunnels_path);
+            this.tunnel_choices = choices;
+            this.tunnel_bindings = bindings;
+            cx.notify();
+        });
         Self {
             contexts: kubeconfig::list_context_names(None).map_err(|error| error.to_string()),
             command_state: cx.new(|cx| CommandState::new(window, cx)),
@@ -77,6 +86,7 @@ impl ClusterPicker {
             tunnels_path,
             tunnel_choices,
             tunnel_bindings,
+            _tunnels_observation: tunnels_observation,
             #[cfg(test)]
             connection_factory: None,
         }
@@ -100,10 +110,9 @@ impl ClusterPicker {
             log::warn!("failed to update {context_name}'s tunnel binding: {error:?}");
             return;
         }
-        let (choices, bindings) = load_tunnels(&self.tunnels_path);
-        self.tunnel_choices = choices;
-        self.tunnel_bindings = bindings;
-        cx.notify();
+        // The `TunnelsRevision` observer reloads this picker's caches along with every
+        // other open picker's.
+        crate::ui::tunnels::notify_tunnels_changed(cx);
     }
 
     /// The connection a [`Self::select`] attempt should observe. Production always

@@ -194,6 +194,7 @@ impl TunnelEditor {
         match store.delete(&id) {
             Ok(_unbound) => {
                 self.confirming_delete = false;
+                super::notify_tunnels_changed(cx);
                 cx.emit(TunnelEditorEvent::Deleted);
             }
             Err(error) => {
@@ -243,6 +244,7 @@ impl TunnelEditor {
                 self.general_error = None;
                 self.key_material
                     .update(cx, |state, cx| state.set_value("", window, cx));
+                super::notify_tunnels_changed(cx);
                 cx.emit(TunnelEditorEvent::Saved);
             }
             Err(TunnelStoreError::Invalid(errors)) => {

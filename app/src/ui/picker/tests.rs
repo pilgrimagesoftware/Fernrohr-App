@@ -312,3 +312,62 @@ async fn set_tunnel_binds_and_unbinds_through_the_store(cx: &mut gpui_kit::TestA
 
     let _ = std::fs::remove_file(&tunnels_path);
 }
+
+/// A tunnel created elsewhere (the Tunnels window) reaches an already-open picker's
+/// row dropdown once the write bumps `TunnelsRevision`, without the picker writing
+/// anything itself.
+#[gpui_kit::test]
+async fn a_tunnel_created_elsewhere_appears_in_an_open_picker(cx: &mut gpui_kit::TestAppContext) {
+    use super::ClusterPicker;
+    use crate::config::tunnels::{TunnelAuth, TunnelConfig};
+    use crate::tunnel::store::TunnelStore;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let tunnels_path = std::env::temp_dir().join(format!(
+        "fernrohr-picker-revision-test-{}.toml",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&tunnels_path);
+
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, _cx| {
+            // Test-only override, as above: never read this machine's real file.
+            picker.tunnels_path = tunnels_path.clone();
+            picker.tunnel_choices.clear();
+        })
+        .unwrap();
+
+    TunnelStore::new(tunnels_path.clone())
+        .create(
+            "qa-bastion",
+            TunnelConfig {
+                name: "QA".into(),
+                bastion_user: "ops".into(),
+                bastion_host: "bastion.example.com".into(),
+                bastion_port: 22,
+                jump_hosts: Vec::new(),
+                auth: TunnelAuth::default(),
+            },
+            None,
+        )
+        .unwrap();
+    cx.update(crate::ui::tunnels::notify_tunnels_changed);
+    cx.run_until_parked();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            assert!(
+                picker
+                    .tunnel_choices
+                    .iter()
+                    .any(|choice| choice.id == "qa-bastion"),
+                "the new tunnel should be offered without reopening the picker"
+            );
+        })
+        .unwrap();
+    let _ = std::fs::remove_file(&tunnels_path);
+}

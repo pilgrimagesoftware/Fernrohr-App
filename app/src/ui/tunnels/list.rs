@@ -122,6 +122,10 @@ impl TunnelsWindow {
         };
         this.refresh(cx);
         this.watch_running_state(cx);
+        // A binding changed from a picker or `context.set_tunnel` moves this window's
+        // usage counts, so re-read on every write, not only this window's own.
+        cx.observe_global::<super::TunnelsRevision>(|this, cx| this.refresh(cx))
+            .detach();
         let _ = window;
         this
     }
@@ -202,7 +206,9 @@ impl TunnelsWindow {
     /// the row disappears the moment its binding is gone.
     fn remove_stale(&mut self, context_name: String, cx: &mut Context<Self>) {
         let store = TunnelStore::new(self.tunnels_path.clone());
-        let _ = store.unbind(&context_name);
+        if store.unbind(&context_name).is_ok() {
+            super::notify_tunnels_changed(cx);
+        }
         self.refresh(cx);
     }
 }

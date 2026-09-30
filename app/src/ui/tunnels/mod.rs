@@ -11,5 +11,7 @@
 
 mod editor;
 mod list;
+mod revision;
 
 pub use list::{TunnelsManage, open_or_focus, register_commands};
+pub use revision::{TunnelsRevision, notify_tunnels_changed};
