@@ -2,7 +2,8 @@
 //! rules, and the heading's ellipsis/tooltip layout.
 
 use super::{
-    PanelScope, heading_name_box, is_truncated, item_heading, label_for, namespaces_offered, title,
+    PanelScope, focus_underline, heading_name_box, is_truncated, item_heading, label_for,
+    namespaces_offered, title,
 };
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::nav::NavTarget;
@@ -205,4 +206,14 @@ fn scoping_changes_only_the_namespace() {
     assert_eq!(scoped.target, s.target);
     assert_eq!(scoped.context_name, s.context_name);
     assert_eq!(scoped.connection_count, s.connection_count);
+}
+
+/// The focused panel's title is underlined in the accent colour; every other
+/// panel's underline is there but invisible, so labels don't shift as focus
+/// moves.
+#[test]
+fn only_the_focused_panel_underlines_its_title() {
+    let accent = gpui_kit::hsla(0.6, 0.9, 0.6, 1.);
+    assert_eq!(focus_underline(true, accent), accent);
+    assert_eq!(focus_underline(false, accent).a, 0.);
 }

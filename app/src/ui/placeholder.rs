@@ -99,7 +99,7 @@ impl EventEmitter<PanelEvent> for PlaceholderPanel {}
 impl EventEmitter<ScopeEvent> for PlaceholderPanel {}
 
 impl Render for PlaceholderPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names();
@@ -120,51 +120,49 @@ impl Render for PlaceholderPanel {
                     .child(picker)
             });
 
-        panel_title::focus_frame(
-            div()
-                .size_full()
-                .flex()
-                .flex_col()
-                .children(namespace_bar)
-                .child(
-                    div()
-                        .flex_1()
-                        .min_h_0()
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .justify_center()
-                        .gap_2()
-                        .p_6()
-                        .child(
-                            div()
-                                .text_lg()
-                                .text_color(theme.foreground)
-                                .child(self.kind.label()),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(theme.muted_foreground)
-                                .child(format!(
-                                    "{} has no panel implementation yet.",
-                                    self.kind.gvk.api_version()
-                                )),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(theme.muted_foreground)
-                                .child(format!(
-                                    "Discovered from cluster {}.",
-                                    self.scope.context_name
-                                )),
-                        ),
-                ),
-            &self.focus_handle,
-            window,
-            cx,
-        )
+        div()
+            .size_full()
+            // Tracked so a click focuses the panel, which is what lights
+            // its tab's focus underline.
+            .track_focus(&self.focus_handle)
+            .flex()
+            .flex_col()
+            .children(namespace_bar)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap_2()
+                    .p_6()
+                    .child(
+                        div()
+                            .text_lg()
+                            .text_color(theme.foreground)
+                            .child(self.kind.label()),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                            .child(format!(
+                                "{} has no panel implementation yet.",
+                                self.kind.gvk.api_version()
+                            )),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                            .child(format!(
+                                "Discovered from cluster {}.",
+                                self.scope.context_name
+                            )),
+                    ),
+            )
     }
 }
 
@@ -197,8 +195,13 @@ impl BasePanel for PlaceholderPanel {
 /// Section 10: the title bar. The dock draws it and lays the parts out - this
 /// only supplies them, so a placeholder and a concrete panel get the same bar.
 impl Panel for PlaceholderPanel {
-    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
+    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title_element(
+            &self.scope,
+            panel_title::title(&self.scope),
+            self.focus_handle.contains_focused(window, cx),
+            cx,
+        )
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
@@ -226,8 +229,13 @@ mod tests {
     use crate::ui::nav::NavTarget;
     use crate::ui::panel_title::PanelScope;
     use gpui_kit::AppContext as _;
-    use gpui_kit::TestAppContext;
+    use gpui_kit::component::dock::{DockArea, DockPlacement, DockSkin, panel_handle};
+    use gpui_kit::{
+        Context, Entity, IntoElement, Modifiers, ParentElement as _, Render, Styled as _,
+        TestAppContext, VisualTestContext, Window, div, point, px,
+    };
     use kube::core::GroupVersionKind;
+    use std::rc::Rc;
 
     fn kind(group: &str, kind: &str) -> DiscoveredKind {
         DiscoveredKind {
@@ -265,5 +273,120 @@ mod tests {
                 assert_eq!(panel.kind().plural, "Ferns");
             })
             .unwrap();
+    }
+
+    /// A click inside the panel focuses it - the focus its tab's underline
+    /// follows. Without `track_focus` on the body a click landed nowhere, and
+    /// the panel could never be marked as the focused one.
+    #[gpui_kit::test]
+    async fn a_click_focuses_the_placeholder(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        let (panel, cx) = cx.add_window_view(|_window, cx| {
+            PlaceholderPanel::with_namespaces(
+                kind("ferns.example.com", "Fern"),
+                PanelScope::new(
+                    NavTarget::Kind(kind("ferns.example.com", "Fern")),
+                    "kind-dev".into(),
+                ),
+                cx.new(|_| NamespaceList::empty()),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let focused = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.update(|window, cx| panel.read(cx).focus_handle.contains_focused(window, cx))
+        };
+        assert!(!focused(cx), "nothing has focused the panel yet");
+
+        cx.simulate_click(point(px(200.), px(200.)), Modifiers::none());
+        cx.run_until_parked();
+        assert!(focused(cx), "the click focuses the panel");
+    }
+
+    /// The app's dock, hosting whatever is added to it.
+    struct DockHost {
+        area: Entity<DockArea>,
+        _skin: Rc<DockSkin>,
+    }
+
+    impl Render for DockHost {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(self.area.clone())
+        }
+    }
+
+    /// Whether the dock drew `title`'s tab label in the given focus state.
+    fn title_drawn(cx: &mut VisualTestContext, title: &str, focused: bool) -> bool {
+        let state = if focused { "focused" } else { "unfocused" };
+        // `debug_bounds` wants a `'static` selector; leaking a test's few
+        // short strings is harmless.
+        let selector: &'static str = format!("panel-title-{title}-{state}").leak();
+        cx.debug_bounds(selector).is_some()
+    }
+
+    /// The tab strip draws each panel's own title element, so the focused
+    /// panel's tab - and only it - carries the focus underline, and the
+    /// underline moves when a click on the other tab moves focus there.
+    #[gpui_kit::test]
+    async fn the_focused_panels_tab_is_the_one_underlined(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        let (host, cx) = cx.add_window_view(|window, cx| {
+            let (area, skin) = DockSkin::dock_area("focus-test", Some(1), window, cx);
+            DockHost { area, _skin: skin }
+        });
+        let area = cx.update(|_window, cx| host.read(cx).area.clone());
+        let placeholder = |kind_name: &'static str, cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                let panel = cx.new(|cx| {
+                    PlaceholderPanel::with_namespaces(
+                        kind("", kind_name),
+                        PanelScope::new(NavTarget::Kind(kind("", kind_name)), "kind-dev".into()),
+                        cx.new(|_| NamespaceList::empty()),
+                        cx,
+                    )
+                });
+                area.update(cx, |area, cx| {
+                    area.add_panel_view(
+                        panel_handle(panel.clone()),
+                        DockPlacement::Center,
+                        None,
+                        window,
+                        cx,
+                    )
+                });
+                panel
+            })
+        };
+        let _fern = placeholder("Fern", cx);
+        let moss = placeholder("Moss", cx);
+        cx.run_until_parked();
+
+        cx.update(|window, cx| {
+            let handle = moss.read(cx).focus_handle.clone();
+            handle.focus(window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            title_drawn(cx, "Mosss", true),
+            "the focused panel's tab is underlined"
+        );
+        assert!(title_drawn(cx, "Ferns", false), "the other tab is not");
+
+        let fern_tab = cx
+            .debug_bounds("panel-title-Ferns-unfocused")
+            .expect("Fern's tab is drawn");
+        cx.simulate_click(fern_tab.center(), Modifiers::none());
+        cx.run_until_parked();
+        assert!(
+            title_drawn(cx, "Ferns", true),
+            "the underline follows focus to Fern"
+        );
+        assert!(title_drawn(cx, "Mosss", false), "and leaves Moss");
     }
 }

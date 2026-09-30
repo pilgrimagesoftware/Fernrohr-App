@@ -19,29 +19,6 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::*;
 use std::rc::Rc;
 
-/// Wraps dock-panel content.
-///
-/// Previously drew a bordered box inset within the panel as a focus
-/// indicator; dropped per Paul's review (2026-09-29) - a border framing the
-/// content read as unwanted "inner framing" (visible in a Logs panel
-/// screenshot: a boxed rule around the log lines, separate from the panel's
-/// own edge). The real replacement - coloring the panel's own tab when it has
-/// focus - needs a per-tab style hook the dock's tab strip does not expose:
-/// `Panel::title_style` only applies to the single-panel, no-tab-strip case
-/// (`TabPanel::render_title`, not `render_tabs`), confirmed by reading the
-/// vendored `gpui-component` 0.6.6 source. Tracked alongside the per-tab
-/// close button finding in `openspec/changes/per-tab-close-button`, since
-/// both are the same "the tab strip isn't per-panel customizable" gap in the
-/// same vendored crate.
-pub fn focus_frame(
-    content: impl IntoElement,
-    _focus_handle: &FocusHandle,
-    _window: &Window,
-    _cx: &App,
-) -> impl IntoElement {
-    div().size_full().child(content)
-}
-
 /// Everything a panel needs to draw its title bar, and everything the window
 /// keys an open panel on.
 ///
@@ -192,16 +169,44 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 
 /// `text` as the panel's title element, with a "Context: <name>" tooltip. The dock
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
-pub fn title_element(scope: &PanelScope, text: String) -> AnyElement {
+///
+/// It is also the panel's focus indicator: underlined in the accent colour
+/// while `focused`. Pass `focus_handle.contains_focused(..)`, not `is_focused`:
+/// a panel whose content takes focus itself (a table row, a text input) moves
+/// the window's focus to that child, and an indicator lit only while the
+/// panel's own handle held focus would go dark the moment the panel was used.
+///
+/// The tab is the one place the dock lets a panel mark itself: the tab strip
+/// draws this element, but reads no per-panel style (`Panel::title_style` only
+/// reaches the single-panel title bar), so the tab's own background can't be
+/// coloured from here.
+pub fn title_element(scope: &PanelScope, text: String, focused: bool, cx: &App) -> AnyElement {
     let tooltip = format!("Context: {}", scope.context_name);
     div()
         .id(SharedString::from(format!(
             "panel-title-{}-{text}",
             scope.context_name
         )))
+        // The underline's width is reserved while unfocused too, so moving
+        // focus between panels doesn't shift any tab's label.
+        .border_b_2()
+        .border_color(focus_underline(focused, cx.theme().blue))
+        .debug_selector(|| {
+            let state = if focused { "focused" } else { "unfocused" };
+            format!("panel-title-{text}-{state}")
+        })
         .child(text)
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .into_any_element()
+}
+
+/// The colour of a title's focus underline: `accent` while its panel holds
+/// focus, otherwise nothing visible.
+///
+/// `blue` rather than the theme's `primary`: the default themes' `primary`
+/// is the selected tab's own text colour, so it would mark nothing.
+fn focus_underline(focused: bool, accent: Hsla) -> Hsla {
+    if focused { accent } else { transparent_black() }
 }
 
 /// The "Context: <name>" line a panel shows at the top of its content, truncated

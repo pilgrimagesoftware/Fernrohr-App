@@ -767,17 +767,14 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
-            .child(panel_title::focus_frame(
+            .child(
                 div()
                     .size_full()
                     .flex()
                     .flex_col()
                     .child(header)
                     .child(div().flex_1().min_h_0().child(content)),
-                &self.focus_handle,
-                window,
-                cx,
-            ))
+            )
     }
 }
 
@@ -801,8 +798,13 @@ impl BasePanel for PodsPanel {
 /// Section 10: the title bar, supplied to the dock rather than drawn here, so
 /// this panel and a placeholder get an identical bar.
 impl Panel for PodsPanel {
-    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title_element(&self.scope, panel_title::title(&self.scope))
+    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title_element(
+            &self.scope,
+            panel_title::title(&self.scope),
+            self.focus_handle.contains_focused(window, cx),
+            cx,
+        )
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
