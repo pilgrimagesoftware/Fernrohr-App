@@ -24,8 +24,10 @@ use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use jiff::Timestamp;
+use k8s_openapi::api::core::v1::Event as K8sEvent;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
+use kube::api::ListParams;
 
 actions!(
     pod_detail,
@@ -33,7 +35,9 @@ actions!(
         ToggleDetailView,
         SelectOverviewTab,
         SelectContainersTab,
-        SelectConditionsTab
+        SelectVolumesTab,
+        SelectEventsTab,
+        SelectManagedFieldsTab
     ]
 );
 
@@ -45,12 +49,14 @@ pub const PANEL_KEY_CONTEXT: &str = "PodDetailPanel";
 const TOGGLE_VIEW_KEY: &str = "y";
 const OVERVIEW_TAB_KEY: &str = "1";
 const CONTAINERS_TAB_KEY: &str = "2";
-const CONDITIONS_TAB_KEY: &str = "3";
+const VOLUMES_TAB_KEY: &str = "3";
+const EVENTS_TAB_KEY: &str = "4";
+const MANAGED_FIELDS_TAB_KEY: &str = "5";
 
 /// The panel's own keybindings. Registered with the window's keymap the same
 /// way `pods::panel_bindings` is - printing a key in a hint bar does not
 /// bind it.
-pub fn panel_bindings() -> [KeyBinding; 4] {
+pub fn panel_bindings() -> [KeyBinding; 6] {
     [
         KeyBinding::new(TOGGLE_VIEW_KEY, ToggleDetailView, Some(PANEL_KEY_CONTEXT)),
         KeyBinding::new(OVERVIEW_TAB_KEY, SelectOverviewTab, Some(PANEL_KEY_CONTEXT)),
@@ -59,9 +65,11 @@ pub fn panel_bindings() -> [KeyBinding; 4] {
             SelectContainersTab,
             Some(PANEL_KEY_CONTEXT),
         ),
+        KeyBinding::new(VOLUMES_TAB_KEY, SelectVolumesTab, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new(EVENTS_TAB_KEY, SelectEventsTab, Some(PANEL_KEY_CONTEXT)),
         KeyBinding::new(
-            CONDITIONS_TAB_KEY,
-            SelectConditionsTab,
+            MANAGED_FIELDS_TAB_KEY,
+            SelectManagedFieldsTab,
             Some(PANEL_KEY_CONTEXT),
         ),
     ]
@@ -71,21 +79,35 @@ pub fn panel_bindings() -> [KeyBinding; 4] {
 /// as a plain enum walked by [`DetailSection::ALL`] rather than deriving from
 /// the label string at render time, so a field's tab membership is decided
 /// once, at projection time, in `pod_fields`.
+///
+/// `ManagedFields` is rightmost per feedback on the first cut of this panel -
+/// it is the section a reader reaches for least often, being about who wrote
+/// a field rather than what the pod is doing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DetailSection {
     Overview,
     Containers,
-    Conditions,
+    Volumes,
+    Events,
+    ManagedFields,
 }
 
 impl DetailSection {
-    pub const ALL: [DetailSection; 3] = [Self::Overview, Self::Containers, Self::Conditions];
+    pub const ALL: [DetailSection; 5] = [
+        Self::Overview,
+        Self::Containers,
+        Self::Volumes,
+        Self::Events,
+        Self::ManagedFields,
+    ];
 
     fn label(self) -> &'static str {
         match self {
             DetailSection::Overview => "Overview",
             DetailSection::Containers => "Containers",
-            DetailSection::Conditions => "Conditions",
+            DetailSection::Volumes => "Volumes",
+            DetailSection::Events => "Events",
+            DetailSection::ManagedFields => "Managed Fields",
         }
     }
 }
@@ -118,9 +140,18 @@ pub enum PodFieldValue {
     /// Rows behind a disclosure, collapsed by default so a long list does not
     /// push the fields the user came for off screen.
     Collapsed(Vec<String>),
+    /// Rows always shown - for a field important enough to have its own tab,
+    /// where a Show/Hide toggle would just be an extra click to see the thing
+    /// the tab exists for.
+    List(Vec<String>),
     /// One card per container - the section a pod detail view exists to show
     /// and a single screenshot never had room to demonstrate in full.
     Containers(Vec<ContainerSummary>),
+    /// One block per manager, each independently collapsible: the manager's
+    /// name and operation, and (when expanded) the raw `fieldsV1` ownership
+    /// tree it wrote - the "who owns what" detail a flat "manager
+    /// (operation)" line cannot show.
+    ManagedFields(Vec<ManagedFieldEntry>),
 }
 
 impl PodFieldValue {
@@ -138,14 +169,40 @@ impl PodFieldValue {
                 .map(|badge| format!("{}={}", badge.condition, badge.status))
                 .collect::<Vec<_>>()
                 .join(", "),
-            PodFieldValue::Collapsed(rows) => rows.join(", "),
+            PodFieldValue::Collapsed(rows) | PodFieldValue::List(rows) => rows.join(", "),
             PodFieldValue::Containers(containers) => containers
                 .iter()
                 .map(|c| c.name.clone())
                 .collect::<Vec<_>>()
                 .join(", "),
+            PodFieldValue::ManagedFields(entries) => entries
+                .iter()
+                .map(|entry| format!("{} ({})", entry.manager, entry.operation))
+                .collect::<Vec<_>>()
+                .join(", "),
         }
     }
+}
+
+/// One manager's ownership entry from `metadata.managedFields`: who wrote
+/// what, and the raw ownership tree it claimed - pretty-printed once here
+/// rather than at render time, so the render side has no JSON to reason
+/// about.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedFieldEntry {
+    pub manager: String,
+    pub operation: String,
+    pub fields_json: String,
+}
+
+/// One event from the cluster naming this pod, newest first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PodEvent {
+    pub reason: String,
+    pub message: String,
+    pub count: i32,
+    pub age: String,
+    pub tone: BadgeTone,
 }
 
 /// One container's summary: spec (image, ports, resources) joined with its
@@ -275,8 +332,8 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     if !volumes.is_empty() {
         push(
             "Volumes",
-            DetailSection::Containers,
-            PodFieldValue::Collapsed(volumes),
+            DetailSection::Volumes,
+            PodFieldValue::List(volumes),
         );
     }
     if let Some(labels) = non_empty_map(&pod.metadata.labels) {
@@ -312,29 +369,18 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             PodFieldValue::Link(owners.join(", ")),
         );
     }
-    let managed_fields: Vec<String> = pod
+    let managed_fields: Vec<ManagedFieldEntry> = pod
         .metadata
         .managed_fields
         .iter()
         .flatten()
-        .map(|entry| match non_empty(&entry.manager) {
-            Some(manager) => match non_empty(&entry.operation) {
-                Some(operation) => format!("{manager} ({operation})"),
-                None => manager.to_string(),
-            },
-            // A managed-fields entry with no manager still names a manager the
-            // API just did not record; say so rather than dropping the row.
-            None => entry
-                .operation
-                .clone()
-                .unwrap_or_else(|| "unknown manager".to_string()),
-        })
+        .map(managed_field_entry)
         .collect();
     if !managed_fields.is_empty() {
         push(
             "Managed Fields",
-            DetailSection::Overview,
-            PodFieldValue::Collapsed(managed_fields),
+            DetailSection::ManagedFields,
+            PodFieldValue::ManagedFields(managed_fields),
         );
     }
     if let Some(phase) = pod
@@ -412,7 +458,7 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     if !tolerations.is_empty() {
         push(
             "Tolerations",
-            DetailSection::Conditions,
+            DetailSection::Overview,
             PodFieldValue::Collapsed(tolerations),
         );
     }
@@ -430,12 +476,76 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     if !conditions.is_empty() {
         push(
             "Conditions",
-            DetailSection::Conditions,
+            DetailSection::Overview,
             PodFieldValue::Badges(conditions),
         );
     }
 
     fields
+}
+
+/// One `managedFields` entry, with its `fieldsV1` ownership tree
+/// pretty-printed - or a placeholder noting there was none to print, since an
+/// entry missing a manager name still names an operation worth showing rather
+/// than being dropped.
+fn managed_field_entry(
+    entry: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ManagedFieldsEntry,
+) -> ManagedFieldEntry {
+    let manager = non_empty(&entry.manager)
+        .map(str::to_string)
+        .unwrap_or_else(|| "unknown manager".to_string());
+    let operation = non_empty(&entry.operation)
+        .map(str::to_string)
+        .unwrap_or_else(|| "unknown operation".to_string());
+    let fields_json = entry
+        .fields_v1
+        .as_ref()
+        .and_then(|fields| serde_json::to_string_pretty(&fields.0).ok())
+        .unwrap_or_else(|| "(no field ownership recorded)".to_string());
+    ManagedFieldEntry {
+        manager,
+        operation,
+        fields_json,
+    }
+}
+
+/// One event's age-and-tone summary, newest first. `Warning`-type events read
+/// as a warning tone; anything else (chiefly `Normal`) reads as good, since
+/// an event with no type at all is not itself a sign of trouble.
+fn format_events(mut events: Vec<K8sEvent>, now: Timestamp) -> Vec<PodEvent> {
+    events.sort_by(|a, b| {
+        let time = |event: &K8sEvent| {
+            event
+                .last_timestamp
+                .as_ref()
+                .or(event.first_timestamp.as_ref())
+                .map(|time| time.0)
+        };
+        time(b).cmp(&time(a))
+    });
+    events
+        .iter()
+        .map(|event| {
+            let age = event
+                .last_timestamp
+                .as_ref()
+                .or(event.first_timestamp.as_ref())
+                .map(|time| format_age(now.duration_since(time.0).as_secs_f64() as i64))
+                .unwrap_or_else(|| "unknown".to_string());
+            let tone = match event.type_.as_deref() {
+                Some("Warning") => BadgeTone::Warning,
+                Some(_) => BadgeTone::Good,
+                None => BadgeTone::Unknown,
+            };
+            PodEvent {
+                reason: non_empty(&event.reason).unwrap_or("Unknown").to_string(),
+                message: non_empty(&event.message).unwrap_or_default().to_string(),
+                count: event.count.unwrap_or(1),
+                age,
+                tone,
+            }
+        })
+        .collect()
 }
 
 /// Joins `spec.containers` (or `spec.init_containers`) with their matching
@@ -635,7 +745,7 @@ pub enum DetailView {
 /// What the panel knows about the pod it is scoped to.
 enum PodDetailState {
     Loading,
-    Loaded(Box<Pod>),
+    Loaded(Box<Pod>, Vec<K8sEvent>),
     /// The pod is gone. Its own state rather than an error: a detail panel that
     /// outlives its pod is a normal thing to have left open, not a failure.
     NotFound,
@@ -645,21 +755,34 @@ enum PodDetailState {
 /// One fetch's outcome, so a 404 is told apart from every other error before it
 /// reaches the panel's state.
 enum PodFetch {
-    Found(Box<Pod>),
+    Found(Box<Pod>, Vec<K8sEvent>),
     NotFound,
 }
 
+/// Fetches the pod and, alongside it, the events naming it - a single round
+/// trip's worth of state rather than a second fetch lifecycle to manage, since
+/// the Events tab has nothing to show until the pod itself has loaded anyway.
+/// A 404 on the pod skips the events lookup entirely: there is nothing left to
+/// name events by.
 async fn fetch_pod(
     client: kube::Client,
     namespace: String,
     name: String,
 ) -> Result<PodFetch, String> {
-    let api: Api<Pod> = Api::namespaced(client, &namespace);
-    match api.get(&name).await {
-        Ok(pod) => Ok(PodFetch::Found(Box::new(pod))),
-        Err(kube::Error::Api(status)) if status.code == 404 => Ok(PodFetch::NotFound),
-        Err(error) => Err(error.to_string()),
-    }
+    let api: Api<Pod> = Api::namespaced(client.clone(), &namespace);
+    let pod = match api.get(&name).await {
+        Ok(pod) => pod,
+        Err(kube::Error::Api(status)) if status.code == 404 => return Ok(PodFetch::NotFound),
+        Err(error) => return Err(error.to_string()),
+    };
+    let events_api: Api<K8sEvent> = Api::namespaced(client, &namespace);
+    let selector = format!("involvedObject.name={name},involvedObject.namespace={namespace}");
+    let events = events_api
+        .list(&ListParams::default().fields(&selector))
+        .await
+        .map(|list| list.items)
+        .unwrap_or_default();
+    Ok(PodFetch::Found(Box::new(pod), events))
 }
 
 pub fn register_restore(cx: &mut gpui_kit::App) {
@@ -706,7 +829,7 @@ pub struct PodDetailPanel {
     /// Volumes, ...) are expanded, keyed by field label. Absent means
     /// collapsed - the default for a long list the user came for something
     /// else in.
-    open_sections: std::collections::HashSet<&'static str>,
+    open_sections: std::collections::HashSet<String>,
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
     fetching: bool,
@@ -786,7 +909,7 @@ impl PodDetailPanel {
                 let _ = this.update(cx, |this, cx| {
                     this.fetching = false;
                     this.state = match result {
-                        Ok(PodFetch::Found(pod)) => PodDetailState::Loaded(pod),
+                        Ok(PodFetch::Found(pod, events)) => PodDetailState::Loaded(pod, events),
                         Ok(PodFetch::NotFound) => PodDetailState::NotFound,
                         Err(error) => PodDetailState::Failed(error),
                     };
@@ -829,8 +952,18 @@ impl PodDetailPanel {
     /// The loaded pod, if the fetch has landed. Read by tests and by render.
     fn pod(&self) -> Option<&Pod> {
         match &self.state {
-            PodDetailState::Loaded(pod) => Some(pod),
+            PodDetailState::Loaded(pod, _) => Some(pod),
             _ => None,
+        }
+    }
+
+    /// The events naming this pod, if the fetch has landed. Empty rather than
+    /// absent when the pod loaded but had none - the Events tab reads "no
+    /// events" the same way either way.
+    fn events(&self) -> &[K8sEvent] {
+        match &self.state {
+            PodDetailState::Loaded(_, events) => events,
+            _ => &[],
         }
     }
 
@@ -915,7 +1048,7 @@ impl PodDetailPanel {
                                 .on_click(move |_event, _window, cx| {
                                     let _ = this.update(cx, |this: &mut Self, cx| {
                                         if !this.open_sections.remove(label) {
-                                            this.open_sections.insert(label);
+                                            this.open_sections.insert(label.to_string());
                                         }
                                         cx.notify();
                                     });
@@ -928,6 +1061,11 @@ impl PodDetailPanel {
                         ))
                         .into_any_element()
                 }
+                PodFieldValue::List(rows) => div()
+                    .flex()
+                    .flex_col()
+                    .children(rows.iter().map(|row| div().text_sm().child(row.clone())))
+                    .into_any_element(),
                 PodFieldValue::Containers(containers) => {
                     div()
                         .flex()
@@ -998,6 +1136,63 @@ impl PodDetailPanel {
                         }))
                         .into_any_element()
                 }
+                PodFieldValue::ManagedFields(entries) => div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(entries.iter().enumerate().map(|(index, entry)| {
+                        // Keyed by index, not manager name: two entries can
+                        // share a manager (a status subresource update versus
+                        // the main resource), and collapsing them onto one key
+                        // would toggle both at once.
+                        let key: SharedString = format!("mf-{index}").into();
+                        let open = self.open_sections.contains(key.as_ref());
+                        let this = cx.weak_entity();
+                        let key_for_click = key.clone();
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .p_2()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(theme.border)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(format!("{}: {}", entry.manager, entry.operation))
+                                    .child(
+                                        Button::new(key)
+                                            .label(if open { "Hide" } else { "Show" })
+                                            .xsmall()
+                                            .ghost()
+                                            .tab_stop(false)
+                                            .on_click(move |_event, _window, cx| {
+                                                let _ = this.update(cx, |this: &mut Self, cx| {
+                                                    if this.open_sections.remove(key_for_click.as_ref())
+                                                    {
+                                                        // removed above
+                                                    } else {
+                                                        this.open_sections
+                                                            .insert(key_for_click.to_string());
+                                                    }
+                                                    cx.notify();
+                                                });
+                                            }),
+                                    ),
+                            )
+                            .child(Collapsible::new().open(open).content(
+                                div()
+                                    .font_family(theme.mono_font_family.clone())
+                                    .text_sm()
+                                    .whitespace_nowrap()
+                                    .child(entry.fields_json.clone()),
+                            ))
+                            .into_any_element()
+                    }))
+                    .into_any_element(),
             };
 
         div()
@@ -1041,18 +1236,80 @@ impl PodDetailPanel {
                     .iter()
                     .map(|section| Tab::new().label(section.label())),
             );
-        div()
-            .flex()
-            .flex_col()
-            .child(tabs)
-            .child(
-                div().flex().flex_col().pt_2().children(
+        let content = if active_tab == DetailSection::Events {
+            self.render_events(cx)
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .children(
                     fields
                         .iter()
                         .filter(|field| field.section == active_tab)
                         .map(|field| self.render_field(field, cx)),
-                ),
-            )
+                )
+                .into_any_element()
+        };
+        div()
+            .flex()
+            .flex_col()
+            .child(tabs)
+            .child(div().flex().flex_col().pt_2().child(content))
+            .into_any_element()
+    }
+
+    /// The Events tab: every event naming this pod, newest first. Its own
+    /// render path rather than a `PodField` - events come from a separate
+    /// fetch, not from `pod_fields`'s projection of the pod object itself.
+    fn render_events(&self, cx: &Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let events = format_events(self.events().to_vec(), Timestamp::now());
+        if events.is_empty() {
+            return div()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child("No events.")
+                .into_any_element();
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .children(events.iter().map(|event| {
+                let reason_color = match event.tone {
+                    BadgeTone::Good => theme.foreground,
+                    BadgeTone::Warning => theme.warning,
+                    BadgeTone::Unknown => theme.muted_foreground,
+                };
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .p_2()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.border)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(reason_color)
+                                    .child(event.reason.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.muted_foreground)
+                                    .child(format!("{} · x{}", event.age, event.count)),
+                            ),
+                    )
+                    .child(div().text_sm().child(event.message.clone()))
+                    .into_any_element()
+            }))
             .into_any_element()
     }
 
@@ -1109,13 +1366,31 @@ impl PodDetailPanel {
         self.set_active_tab(DetailSection::Containers, cx);
     }
 
-    fn on_action_select_conditions_tab(
+    fn on_action_select_volumes_tab(
         &mut self,
-        _: &SelectConditionsTab,
+        _: &SelectVolumesTab,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_active_tab(DetailSection::Conditions, cx);
+        self.set_active_tab(DetailSection::Volumes, cx);
+    }
+
+    fn on_action_select_events_tab(
+        &mut self,
+        _: &SelectEventsTab,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_active_tab(DetailSection::Events, cx);
+    }
+
+    fn on_action_select_managed_fields_tab(
+        &mut self,
+        _: &SelectManagedFieldsTab,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_active_tab(DetailSection::ManagedFields, cx);
     }
 }
 
@@ -1137,7 +1412,7 @@ impl Render for PodDetailPanel {
                 .p_3()
                 .child(format!("Could not read pod: {reason}"))
                 .into_any_element(),
-            PodDetailState::Loaded(_) => match self.viewing {
+            PodDetailState::Loaded(_, _) => match self.viewing {
                 // Field values wrap to the panel's width rather than
                 // overflowing it - vertical-only scroll, so nothing pushes
                 // the layout wider than the panel actually is.
@@ -1174,29 +1449,29 @@ impl Render for PodDetailPanel {
             .gap_1()
             .child(toggle_key)
             .child(if yaml { "Show fields" } else { "Show YAML" });
-        let overview_key =
-            Kbd::binding_for_action(&SelectOverviewTab, Some(PANEL_KEY_CONTEXT), window)
-                .unwrap_or_else(|| {
-                    Kbd::new(Keystroke::parse(OVERVIEW_TAB_KEY).expect("valid keybinding"))
-                });
-        let containers_key =
-            Kbd::binding_for_action(&SelectContainersTab, Some(PANEL_KEY_CONTEXT), window)
-                .unwrap_or_else(|| {
-                    Kbd::new(Keystroke::parse(CONTAINERS_TAB_KEY).expect("valid keybinding"))
-                });
-        let conditions_key =
-            Kbd::binding_for_action(&SelectConditionsTab, Some(PANEL_KEY_CONTEXT), window)
-                .unwrap_or_else(|| {
-                    Kbd::new(Keystroke::parse(CONDITIONS_TAB_KEY).expect("valid keybinding"))
-                });
+        let tab_key = |section: DetailSection| -> Kbd {
+            let (action, literal): (&dyn Action, &str) = match section {
+                DetailSection::Overview => (&SelectOverviewTab as &dyn Action, OVERVIEW_TAB_KEY),
+                DetailSection::Containers => {
+                    (&SelectContainersTab as &dyn Action, CONTAINERS_TAB_KEY)
+                }
+                DetailSection::Volumes => (&SelectVolumesTab as &dyn Action, VOLUMES_TAB_KEY),
+                DetailSection::Events => (&SelectEventsTab as &dyn Action, EVENTS_TAB_KEY),
+                DetailSection::ManagedFields => (
+                    &SelectManagedFieldsTab as &dyn Action,
+                    MANAGED_FIELDS_TAB_KEY,
+                ),
+            };
+            Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| Kbd::new(Keystroke::parse(literal).expect("valid keybinding")))
+        };
         let header = div()
             .flex()
             .items_center()
-            .justify_between()
+            .justify_end()
             .p_2()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(div().text_sm().child(if yaml { "YAML" } else { "Fields" }))
             .child(
                 div()
                     .flex()
@@ -1204,30 +1479,14 @@ impl Render for PodDetailPanel {
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .when(!yaml, |this| {
-                        this.child(
+                        this.children(DetailSection::ALL.iter().map(|section| {
                             div()
                                 .flex()
                                 .items_center()
                                 .gap_1()
-                                .child(overview_key)
-                                .child(DetailSection::Overview.label()),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .child(containers_key)
-                                .child(DetailSection::Containers.label()),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .child(conditions_key)
-                                .child(DetailSection::Conditions.label()),
-                        )
+                                .child(tab_key(*section))
+                                .child(section.label())
+                        }))
                     })
                     .child(toggle_hint),
             );
@@ -1239,7 +1498,9 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
             .on_action(cx.listener(Self::on_action_select_containers_tab))
-            .on_action(cx.listener(Self::on_action_select_conditions_tab))
+            .on_action(cx.listener(Self::on_action_select_volumes_tab))
+            .on_action(cx.listener(Self::on_action_select_events_tab))
+            .on_action(cx.listener(Self::on_action_select_managed_fields_tab))
             .flex()
             .flex_col()
             .child(header)
@@ -1462,13 +1723,20 @@ mod tests {
             PodFieldValue::Link("ReplicaSet/api-7d9f".into())
         );
         assert_eq!(field(&fields, "Status").unwrap().value.text(), "Running");
+        let PodFieldValue::ManagedFields(managed) = &field(&fields, "Managed Fields").unwrap().value
+        else {
+            panic!("managed fields render as PodFieldValue::ManagedFields");
+        };
         assert_eq!(
-            field(&fields, "Managed Fields").unwrap().value,
-            PodFieldValue::Collapsed(vec![
-                "kubelet (Update)".into(),
-                "kube-controller-manager (Update)".into(),
-            ]),
-            "one row per manager, behind a disclosure"
+            managed
+                .iter()
+                .map(|entry| format!("{} ({})", entry.manager, entry.operation))
+                .collect::<Vec<_>>(),
+            vec![
+                "kubelet (Update)".to_string(),
+                "kube-controller-manager (Update)".to_string(),
+            ],
+            "one entry per manager"
         );
         assert_eq!(field(&fields, "Node").unwrap().value.text(), "node-a");
         assert_eq!(field(&fields, "Host IPs").unwrap().value.text(), "10.0.0.1");
@@ -1508,7 +1776,7 @@ mod tests {
             ("Labels", DetailSection::Overview),
             ("Annotations", DetailSection::Overview),
             ("Controlled By", DetailSection::Overview),
-            ("Managed Fields", DetailSection::Overview),
+            ("Managed Fields", DetailSection::ManagedFields),
             ("Status", DetailSection::Overview),
             ("Node", DetailSection::Overview),
             ("Host IPs", DetailSection::Overview),
@@ -1516,8 +1784,8 @@ mod tests {
             ("Service Account", DetailSection::Overview),
             ("QoS Class", DetailSection::Overview),
             ("Termination Grace Period", DetailSection::Overview),
-            ("Tolerations", DetailSection::Conditions),
-            ("Conditions", DetailSection::Conditions),
+            ("Tolerations", DetailSection::Overview),
+            ("Conditions", DetailSection::Overview),
         ];
         for (label, section) in expected {
             assert_eq!(
@@ -1676,8 +1944,8 @@ mod tests {
         ]);
 
         let fields = pod_fields(&pod, Timestamp::from_second(0).unwrap());
-        let PodFieldValue::Collapsed(volumes) = &field(&fields, "Volumes").unwrap().value else {
-            panic!("volumes render as PodFieldValue::Collapsed");
+        let PodFieldValue::List(volumes) = &field(&fields, "Volumes").unwrap().value else {
+            panic!("volumes render as PodFieldValue::List");
         };
 
         assert_eq!(
@@ -1859,7 +2127,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
                 cx.notify();
             })
             .unwrap();
@@ -1888,9 +2156,9 @@ mod tests {
                 assert!(
                     matches!(
                         field(&fields, "Managed Fields").unwrap().value,
-                        PodFieldValue::Collapsed(_)
+                        PodFieldValue::ManagedFields(_)
                     ),
-                    "managed fields start collapsed"
+                    "managed fields render as per-manager blocks"
                 );
             })
             .unwrap();
@@ -1911,7 +2179,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
                 panel.set_view(DetailView::Yaml, cx);
             })
             .unwrap();
@@ -1938,7 +2206,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
                 cx.notify();
             })
             .unwrap();
@@ -1954,17 +2222,17 @@ mod tests {
                     .map(|f| f.label)
                     .collect();
                 assert!(overview_only.contains(&"Name"));
-                assert!(!overview_only.contains(&"Conditions"));
+                assert!(overview_only.contains(&"Conditions"));
+                assert!(!overview_only.contains(&"Containers"));
 
-                panel.set_active_tab(DetailSection::Conditions, cx);
-                let conditions_only: Vec<&str> = all
+                panel.set_active_tab(DetailSection::Containers, cx);
+                let containers_only: Vec<&str> = all
                     .iter()
                     .filter(|f| f.section == panel.active_tab())
                     .map(|f| f.label)
                     .collect();
-                assert!(conditions_only.contains(&"Conditions"));
-                assert!(conditions_only.contains(&"Tolerations"));
-                assert!(!conditions_only.contains(&"Name"));
+                assert!(containers_only.contains(&"Containers"));
+                assert!(!containers_only.contains(&"Name"));
             })
             .unwrap();
     }
@@ -1982,7 +2250,7 @@ mod tests {
 
         window
             .update(cx, |panel, _window, cx| {
-                panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Vec::new());
                 cx.notify();
             })
             .unwrap();
@@ -2059,7 +2327,9 @@ mod tests {
                 .await
                 .expect("a 200 is not a failure");
             match found {
-                PodFetch::Found(pod) => assert_eq!(pod.metadata.name.as_deref(), Some("present")),
+                PodFetch::Found(pod, _events) => {
+                    assert_eq!(pod.metadata.name.as_deref(), Some("present"))
+                }
                 PodFetch::NotFound => panic!("the server serves this pod"),
             }
 
