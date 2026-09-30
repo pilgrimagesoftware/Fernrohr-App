@@ -8,9 +8,9 @@
 //! reconnects.
 //!
 //! `resource-panel-grouping` groups the flat list into fixed-order category
-//! sections ([`category`]/[`section`]), collapsible per window, with a
-//! bottom-pinned filter (section 3). [`render`] draws it; this file stays
-//! wiring and state.
+//! sections ([`category`]/[`section`]) with a bottom-pinned filter, and makes
+//! the whole thing keyboard-operable ([`keyboard`]/[`actions`]). This file stays
+//! wiring and state; [`render`] draws it and [`actions`] answers the keyboard.
 
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
@@ -21,9 +21,19 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 use std::collections::HashSet;
 
+mod actions;
 mod category;
+mod keyboard;
 mod render;
 mod section;
+
+pub(crate) use actions::register_commands;
+
+/// The panel's own keybindings (Up/Down/Enter/Left/Right), in its own key
+/// context - `/` is not here, see `actions::register_commands`'s doc comment.
+pub fn panel_bindings() -> [KeyBinding; 5] {
+    keyboard::panel_bindings()
+}
 
 /// Emitted when the user picks a row, so the window can open that kind's
 /// panel. Which panel that is stays [`NavTarget`]'s decision - the Resource
@@ -62,17 +72,26 @@ pub struct ResourcePanel {
     /// The kind the window's active panel is showing, so its row is marked
     /// active. Set by the window whenever it switches panels.
     selected: Option<NavTarget>,
+    /// The row the keyboard cursor is on and the last click landed on -
+    /// `.claude/rules/keyboard-first.md`'s "one selection model", distinct
+    /// from `selected` (the window's *open* panel): a row can be highlighted
+    /// without being open yet, and Enter opens whatever is highlighted.
+    highlighted: Option<NavTarget>,
     /// Categories the user collapsed, this window only. Section 2.3: default
     /// expanded, never written to the preference file.
     collapsed: HashSet<Category>,
     /// The bottom-pinned filter box's text field (section 3.1).
     filter_input: Entity<InputState>,
+    focus_handle: FocusHandle,
     /// Kept, rather than `.detach()`ed, so [`Self::set_active_context`] can
     /// replace it: switching the active context means observing a *different*
     /// connection, and the old subscription must stop firing into a state that
     /// no longer describes what `header` shows.
     _connection_observation: Subscription,
-    /// Re-renders on every keystroke in the filter.
+    /// Re-renders on every keystroke in the filter. `InputState::set_value`
+    /// (used to clear it on Escape - see `actions::on_action_clear_filter`)
+    /// does not emit `InputEvent::Change`, so that path calls `cx.notify()`
+    /// itself instead of relying on this.
     _filter_observation: Subscription,
 }
 
@@ -120,8 +139,10 @@ impl ResourcePanel {
             state: ResourceState::WaitingForConnection,
             loading: false,
             selected: None,
+            highlighted: None,
             collapsed: HashSet::new(),
             filter_input,
+            focus_handle: cx.focus_handle(),
             _connection_observation: observation,
             _filter_observation: filter_observation,
         };
@@ -160,6 +181,7 @@ impl ResourcePanel {
         self.state = ResourceState::WaitingForConnection;
         self.loading = false;
         self.selected = None;
+        self.highlighted = None;
         let connection = ClusterRegistry::connection(cx, &self.context_name);
         self._connection_observation = Self::observe(&connection, cx);
         self.sync(&connection, cx);
@@ -191,6 +213,16 @@ impl ResourcePanel {
         cx.notify();
     }
 
+    /// Moves the keyboard/click cursor to `target` without opening anything -
+    /// what a single click and Up/Down both do (section 4.1's "one selection").
+    fn set_highlighted(&mut self, target: Option<NavTarget>, cx: &mut Context<Self>) {
+        if self.highlighted == target {
+            return;
+        }
+        self.highlighted = target;
+        cx.notify();
+    }
+
     /// The kinds currently listed. Read by the tests, which assert the list
     /// rather than the rendered rows - the rows themselves are only reachable
     /// by simulating a click.
@@ -200,6 +232,66 @@ impl ResourcePanel {
             ResourceState::Loaded(kinds) => Some(kinds),
             _ => None,
         }
+    }
+
+    /// The currently highlighted row, if any - what a keystroke test asserts
+    /// moved.
+    #[cfg(test)]
+    pub(crate) fn highlighted(&self) -> Option<&NavTarget> {
+        self.highlighted.as_ref()
+    }
+
+    /// Whether `kind`'s own section is collapsed right now - the stored
+    /// collapse state a test reads after Left/Right or a header click, kept
+    /// separate from what a filter is currently forcing `render` to show.
+    #[cfg(test)]
+    pub(crate) fn is_section_collapsed(&self, kind: &DiscoveredKind) -> bool {
+        self.collapsed
+            .contains(&Category::for_gvk(&kind.gvk.group, &kind.plural))
+    }
+
+    fn loaded_kinds(&self) -> &[DiscoveredKind] {
+        match &self.state {
+            ResourceState::Loaded(kinds) => kinds,
+            _ => &[],
+        }
+    }
+
+    fn filter_text(&self, cx: &App) -> String {
+        self.filter_input.read(cx).value().to_string()
+    }
+
+    /// The sections to render right now: `loaded_kinds` partitioned by
+    /// category, with the current filter and collapse state applied. The
+    /// single source both `render` and the keyboard handlers read, so Up/Down
+    /// can never step through a row `render` would not draw.
+    fn visible_sections(&self, cx: &App) -> Vec<section::VisibleSection> {
+        section::visible_sections(self.loaded_kinds(), &self.collapsed, &self.filter_text(cx))
+    }
+
+    /// The kind `highlighted` points at, or `None` when nothing is
+    /// highlighted - every row this panel lists is a [`NavTarget::Kind`], so
+    /// this is the one match arm that can ever be `Some`.
+    fn highlighted_kind(&self) -> Option<DiscoveredKind> {
+        match &self.highlighted {
+            Some(NavTarget::Kind(kind)) => Some(kind.clone()),
+            _ => None,
+        }
+    }
+
+    /// The highlighted row's own section - what Left/Right collapse or expand.
+    fn highlighted_category(&self) -> Option<Category> {
+        self.highlighted_kind()
+            .map(|kind| Category::for_gvk(&kind.gvk.group, &kind.plural))
+    }
+
+    /// Flips `category`'s collapsed state - the section header's click route,
+    /// mirroring Left/Right's direction-specific `actions` handlers.
+    fn toggle_section(&mut self, category: Category, cx: &mut Context<Self>) {
+        if !self.collapsed.remove(&category) {
+            self.collapsed.insert(category);
+        }
+        cx.notify();
     }
 
     /// Starts discovery as soon as the window's context has a client. A no-op
@@ -251,39 +343,15 @@ impl ResourcePanel {
             .collect()
     }
 
-    /// Asks the window to show `target`. The single request path behind both
-    /// ways of opening a row: the double-click (9.1) and the context menu's
-    /// "Open" (9.2). They differ only in how they get here, which is what
-    /// makes them equivalent.
+    /// Asks the window to show `target`. The single request path behind every
+    /// way of opening a row: the double-click (9.1), the context menu's "Open"
+    /// (9.2), and now `Enter` (section 4.1) - they differ only in how they get
+    /// here, which is what makes them equivalent. Also marks `target`
+    /// highlighted, so opening a row from the context menu leaves the
+    /// keyboard cursor pointing at the panel it just opened.
     fn request_open(&mut self, target: NavTarget, cx: &mut Context<Self>) {
+        self.highlighted = Some(target.clone());
         cx.emit(ResourceEvent::Open(target));
-        cx.notify();
-    }
-
-    fn loaded_kinds(&self) -> &[DiscoveredKind] {
-        match &self.state {
-            ResourceState::Loaded(kinds) => kinds,
-            _ => &[],
-        }
-    }
-
-    fn filter_text(&self, cx: &App) -> String {
-        self.filter_input.read(cx).value().to_string()
-    }
-
-    /// The sections to render right now: `loaded_kinds` partitioned by
-    /// category, with the current filter and collapse state applied - the
-    /// single source `render` reads, so what shows and what a test asserts
-    /// can never drift apart.
-    fn visible_sections(&self, cx: &App) -> Vec<section::VisibleSection> {
-        section::visible_sections(self.loaded_kinds(), &self.collapsed, &self.filter_text(cx))
-    }
-
-    /// Flips `category`'s collapsed state - a section header's click.
-    fn toggle_section(&mut self, category: Category, cx: &mut Context<Self>) {
-        if !self.collapsed.remove(&category) {
-            self.collapsed.insert(category);
-        }
         cx.notify();
     }
 }
@@ -295,6 +363,6 @@ impl EventEmitter<ResourceEvent> for ResourcePanel {}
 // and a `#[gpui_kit::test]`-annotated item, blows this toolchain's macro-expansion
 // budget - the same crash `ui/status_bar.rs` documents. Split into a sibling
 // `resource/tests.rs` (rather than kept inline) once `window-context-bar`'s
-// `set_active_context` tests pushed this file toward the 700-line cap.
+// `set_active_context` tests pushed this file toward the line cap.
 #[cfg(test)]
 mod tests;

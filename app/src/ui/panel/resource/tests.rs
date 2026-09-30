@@ -12,11 +12,13 @@ use kube::core::GroupVersionKind;
 
 // `resource-panel-grouping`: section 1/2/3's pure category/grouping/filter
 // tests need no window (`logic`); section 2.2/2.3's collapse behavior and
-// section 3's live filter box each need a real panel (`grouping`, `filter`).
+// section 3's live filter box each need a real panel (`grouping`, `filter`);
+// section 4's keyboard route needs real keystrokes (`keyboard_panel`).
 // Children of this module rather than this file's own line count, per
 // `.claude/rules/rust-structure.md`.
 mod filter;
 mod grouping;
+mod keyboard_panel;
 mod logic;
 
 fn kind(group: &str, kind: &str) -> DiscoveredKind {

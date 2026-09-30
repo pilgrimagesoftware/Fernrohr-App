@@ -3,9 +3,8 @@
 //! and per-window collapse state.
 //!
 //! GPUI-free by design: [`visible_sections`] is the one function `resource.rs`
-//! calls from `render` and (from section 4 on) the keyboard handlers, so the
-//! two can never compute two different answers for "what is on screen right
-//! now".
+//! calls from `render` and from the keyboard handlers, so the two can never
+//! compute two different answers for "what is on screen right now".
 
 use super::category::Category;
 use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -65,9 +64,9 @@ pub(super) fn matches_filter(kind: &DiscoveredKind, query: &str) -> bool {
 pub(super) struct VisibleSection {
     pub(super) category: Category,
     /// How many kinds the category holds, filter aside - the header keeps
-    /// reporting this even while collapsed (section 2.2's "still says how
-    /// much is inside it"), and while filtered (design.md does not ask the
-    /// count to track the filter, only the row list).
+    /// reporting this even while collapsed (spec's "still says how much is
+    /// inside it"), and while filtered (design.md does not ask the count to
+    /// track the filter, only the row list).
     pub(super) total: usize,
     /// The category's kinds that currently pass the filter, in discovery
     /// order. Every kind when there is no filter.

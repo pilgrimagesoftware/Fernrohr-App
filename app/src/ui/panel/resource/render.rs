@@ -1,6 +1,7 @@
 //! Everything the Resource panel draws: the header/cluster dropdown, the
 //! grouped, filterable kind list, and the status views (connecting, loading,
-//! empty, failed).
+//! empty, failed). [`super::actions`] answers the keyboard; this file only
+//! draws what `super::ResourcePanel`'s state says is true right now.
 
 use super::section::VisibleSection;
 use super::{ResourcePanel, ResourceState};
@@ -23,8 +24,10 @@ impl ResourcePanel {
         SidebarMenuItem::new(label).disable(true)
     }
 
-    /// One row's `SidebarMenuItem`: a double click - or the context menu's
-    /// "Open" - opens it through [`ResourcePanel::request_open`] (9.1/9.2).
+    /// One row's `SidebarMenuItem`: a click sets it highlighted (section
+    /// 4.1's "a click selects the same way"), and a second click - or the
+    /// context menu's "Open" - opens it through the same [`Self::request_open`]
+    /// path `Enter` uses.
     fn kind_item(
         &self,
         label: String,
@@ -33,20 +36,20 @@ impl ResourcePanel {
         cx: &Context<Self>,
     ) -> SidebarMenuItem {
         let this = cx.weak_entity();
-        let dbl = this.clone();
-        let opened = target.clone();
+        let click_target = target.clone();
         let menu_target = target.clone();
         let menu_panel = this.clone();
+        let highlighted = self.highlighted.as_ref() == Some(&target);
         SidebarMenuItem::new(label)
             .icon(target.icon())
-            .active(active)
-            // A single click only arms the row; the second click of a
-            // double-click opens the panel (9.1).
+            .active(active || highlighted)
             .on_click(move |event, _window, cx| {
-                if event.click_count() < 2 {
-                    return;
-                }
-                let _ = dbl.update(cx, |this, cx| this.request_open(opened.clone(), cx));
+                let _ = this.update(cx, |this, cx| {
+                    this.set_highlighted(Some(click_target.clone()), cx);
+                    if event.click_count() >= 2 {
+                        this.request_open(click_target.clone(), cx);
+                    }
+                });
             })
             .context_menu(move |menu, _window, _cx| {
                 let target = menu_target.clone();
@@ -59,10 +62,8 @@ impl ResourcePanel {
             })
     }
 
-    /// One category's header - name, running count, and a click that
-    /// collapses or expands its rows (section 2.2) - over its rows, when
-    /// expanded. `expanded` already accounts for an active filter (design.md:
-    /// a match forces its section open regardless of stored collapse state).
+    /// One category's header - name, running count, and a click that toggles
+    /// its collapse the same way Left/Right do - over its rows, when expanded.
     fn render_section(
         &self,
         section: &VisibleSection,
@@ -127,11 +128,11 @@ impl ResourcePanel {
     }
 
     /// The grouped, filterable list: a scrollable stack of sections over a
-    /// bottom-pinned filter box. Rows are rendered directly rather than
-    /// through `Sidebar`'s own virtualized list, since that list takes one
-    /// homogeneous item type and cannot interleave a section header between
-    /// two rows - not a cost worth paying at the couple-hundred-row scale a
-    /// cluster's discovery reports.
+    /// bottom-pinned filter box and keyboard hint row. Rows are rendered
+    /// directly rather than through `Sidebar`'s own virtualized list, since
+    /// that list takes one homogeneous item type and cannot interleave a
+    /// section header between two rows - not a cost worth paying at the
+    /// couple-hundred-row scale a cluster's discovery reports.
     fn render_kinds(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let filter = self.filter_text(cx);
@@ -164,7 +165,11 @@ impl ResourcePanel {
                     .py_2()
                     .border_t_1()
                     .border_color(theme.sidebar_border)
-                    .child(Input::new(&self.filter_input)),
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(Input::new(&self.filter_input))
+                    .child(super::keyboard::hint_row(window, cx)),
             );
 
         self.with_header(body.into_any_element(), cx)
@@ -272,7 +277,7 @@ impl ResourcePanel {
 
 impl Render for ResourcePanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        match &self.state {
+        let content = match &self.state {
             ResourceState::Loaded(kinds) if kinds.is_empty() => {
                 self.render_status("This cluster reported no resource kinds.".to_string(), cx)
             }
@@ -286,6 +291,19 @@ impl Render for ResourcePanel {
             ResourceState::Failed(reason) => {
                 self.render_status(format!("Could not discover resource kinds: {reason}"), cx)
             }
-        }
+        };
+
+        div()
+            .size_full()
+            .key_context(super::keyboard::PANEL_KEY_CONTEXT)
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::on_action_select_next))
+            .on_action(cx.listener(Self::on_action_select_previous))
+            .on_action(cx.listener(Self::on_action_open_selected))
+            .on_action(cx.listener(Self::on_action_collapse_section))
+            .on_action(cx.listener(Self::on_action_expand_section))
+            .on_action(cx.listener(Self::on_action_focus_filter))
+            .on_action(cx.listener(Self::on_action_clear_filter))
+            .child(content)
     }
 }
