@@ -2,12 +2,14 @@
 //! tab, in which order. The per-field formatting it leans on is `format`'s.
 
 use super::format::{
-    IpSource, format_toleration, format_volume, ips_of, managed_field_entry, non_empty,
-    non_empty_map, summarize_containers,
+    IpSource, format_toleration, ips_of, managed_field_entry, non_empty, non_empty_map,
+    summarize_containers,
 };
 use super::model::{
     ConditionBadge, DetailSection, ManagedFieldEntry, PodField, PodFieldValue, chip, condition_tone,
 };
+use super::references::{image_pull_secrets, owners, volume_row};
+use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::pods::format_age;
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
@@ -40,11 +42,16 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             PodFieldValue::Text(name.to_string()),
         );
     }
-    if let Some(namespace) = non_empty(&pod.metadata.namespace) {
+    // Every bare name in the spec resolves in the pod's own namespace.
+    let namespace = non_empty(&pod.metadata.namespace).unwrap_or_default();
+    if !namespace.is_empty() {
         push(
             "Namespace",
             DetailSection::Overview,
-            PodFieldValue::Link(namespace.to_string()),
+            references(
+                vec![ObjectRef::cluster_scoped("", "Namespace", namespace)],
+                false,
+            ),
         );
     }
     let containers = summarize_containers(
@@ -53,6 +60,7 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             .map(|spec| spec.containers.as_slice())
             .unwrap_or_default(),
         pod.status.as_ref(),
+        namespace,
     );
     if !containers.is_empty() {
         push(
@@ -67,6 +75,7 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             .and_then(|spec| spec.init_containers.as_deref())
             .unwrap_or_default(),
         pod.status.as_ref(),
+        namespace,
     );
     if !init_containers.is_empty() {
         push(
@@ -75,18 +84,18 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             PodFieldValue::Containers(init_containers),
         );
     }
-    let volumes: Vec<String> = pod
+    let volumes: Vec<_> = pod
         .spec
         .as_ref()
         .into_iter()
         .flat_map(|spec| spec.volumes.iter().flatten())
-        .map(format_volume)
+        .map(|volume| volume_row(volume, namespace))
         .collect();
     if !volumes.is_empty() {
         push(
             "Volumes",
             DetailSection::Volumes,
-            PodFieldValue::List(volumes),
+            PodFieldValue::Volumes(volumes),
         );
     }
     if let Some(labels) = non_empty_map(&pod.metadata.labels) {
@@ -108,18 +117,12 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             ),
         );
     }
-    let owners: Vec<String> = pod
-        .metadata
-        .owner_references
-        .iter()
-        .flatten()
-        .map(|owner| format!("{}/{}", owner.kind, owner.name))
-        .collect();
+    let owners = owners(pod);
     if !owners.is_empty() {
         push(
             "Controlled By",
             DetailSection::Overview,
-            PodFieldValue::Link(owners.join(", ")),
+            references(owners, true),
         );
     }
     let managed_fields: Vec<ManagedFieldEntry> = pod
@@ -155,7 +158,7 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         push(
             "Node",
             DetailSection::Overview,
-            PodFieldValue::Link(node.to_string()),
+            references(vec![ObjectRef::cluster_scoped("", "Node", node)], false),
         );
     }
     if let Some(ips) = ips_of(pod, IpSource::Host) {
@@ -176,7 +179,18 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         push(
             "Service Account",
             DetailSection::Overview,
-            PodFieldValue::Link(account.to_string()),
+            references(
+                vec![ObjectRef::core("ServiceAccount", namespace, account)],
+                false,
+            ),
+        );
+    }
+    let pull_secrets = image_pull_secrets(pod, namespace);
+    if !pull_secrets.is_empty() {
+        push(
+            "Image Pull Secrets",
+            DetailSection::Overview,
+            references(pull_secrets, false),
         );
     }
     if let Some(qos) = pod
@@ -235,4 +249,8 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     }
 
     fields
+}
+
+fn references(targets: Vec<ObjectRef>, qualified: bool) -> PodFieldValue {
+    PodFieldValue::References { targets, qualified }
 }

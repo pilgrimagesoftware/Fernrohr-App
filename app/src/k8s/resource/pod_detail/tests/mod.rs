@@ -11,3 +11,4 @@ mod fetch;
 mod fixtures;
 mod panel;
 mod projection;
+mod references;

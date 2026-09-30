@@ -1,6 +1,7 @@
 //! The `Pod` -> field-list projection.
 
 use super::fixtures::{field, rich_pod};
+use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::pod_detail::fields::pod_fields;
 use crate::k8s::resource::pod_detail::model::{BadgeTone, DetailSection, PodFieldValue};
 use jiff::Timestamp;
@@ -58,7 +59,15 @@ fn every_structured_field_is_projected_in_order() {
     );
     assert_eq!(
         field(&fields, "Controlled By").unwrap().value,
-        PodFieldValue::Link("ReplicaSet/api-7d9f".into())
+        PodFieldValue::References {
+            targets: vec![ObjectRef::namespaced(
+                "apps",
+                "ReplicaSet",
+                "staging",
+                "api-7d9f"
+            )],
+            qualified: true,
+        }
     );
     assert_eq!(field(&fields, "Status").unwrap().value.text(), "Running");
     let PodFieldValue::ManagedFields(managed) = &field(&fields, "Managed Fields").unwrap().value
@@ -245,54 +254,6 @@ fn a_container_with_no_status_yet_still_gets_a_row() {
     assert_eq!(containers[0].restart_count, 0);
     assert_eq!(containers[0].state, "Waiting");
 }
-
-/// Volumes name and type each source a pod actually uses.
-#[test]
-fn volumes_are_named_and_typed() {
-    use k8s_openapi::api::core::v1::{
-        ConfigMapVolumeSource, EmptyDirVolumeSource, PersistentVolumeClaimVolumeSource, Volume,
-    };
-
-    let mut pod = rich_pod();
-    pod.spec.as_mut().unwrap().volumes = Some(vec![
-        Volume {
-            name: "config".into(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: "app-config".into(),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        Volume {
-            name: "data".into(),
-            persistent_volume_claim: Some(PersistentVolumeClaimVolumeSource {
-                claim_name: "app-data".into(),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        Volume {
-            name: "scratch".into(),
-            empty_dir: Some(EmptyDirVolumeSource::default()),
-            ..Default::default()
-        },
-    ]);
-
-    let fields = pod_fields(&pod, Timestamp::from_second(0).unwrap());
-    let PodFieldValue::List(volumes) = &field(&fields, "Volumes").unwrap().value else {
-        panic!("volumes render as PodFieldValue::List");
-    };
-
-    assert_eq!(
-        volumes,
-        &vec![
-            "config: ConfigMap: app-config".to_string(),
-            "data: PersistentVolumeClaim: app-data".to_string(),
-            "scratch: EmptyDir".to_string(),
-        ]
-    );
-}
-
 /// A condition the cluster did not resolve reads as neither good nor bad.
 #[test]
 fn an_unresolved_condition_is_neither_good_nor_a_warning() {
