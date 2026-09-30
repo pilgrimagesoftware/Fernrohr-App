@@ -23,6 +23,7 @@ use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, IndexPath, Sizable as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -102,10 +103,9 @@ impl ClusterPicker {
             cx.notify();
         });
         let contexts = kubeconfig::list_context_names(None).map_err(|error| error.to_string());
-        let selected_context = contexts
-            .as_ref()
-            .ok()
-            .and_then(|names| names.first().cloned());
+        // Nothing is selected until the user clicks a row: the Connect button stays
+        // disabled rather than pointing at a context nobody chose.
+        let selected_context = None;
         Self {
             contexts,
             command_state: cx.new(|cx| CommandState::new(window, cx)),
@@ -215,22 +215,6 @@ impl ClusterPicker {
         self.select(context_name, cx);
     }
 
-    /// What `Command`'s own `on_select`, wired in `render`, calls whenever the
-    /// keyboard or hover highlight moves: keeps `selected_context` following it, so
-    /// [`Self::connect_button`] targets whatever is currently highlighted, not only
-    /// a row's own click (see [`Self::handle_row_click`]). Reads `self.contexts`
-    /// fresh rather than a `Vec` the caller captured at its own last render, since
-    /// `Command`'s installed model can lag a context list this picker just changed
-    /// (`exclude`, or a test fixture).
-    pub(crate) fn highlight_row(&mut self, row_index: usize, cx: &mut Context<Self>) {
-        self.selected_context = self
-            .contexts
-            .as_ref()
-            .ok()
-            .and_then(|contexts| contexts.get(row_index).cloned());
-        cx.notify();
-    }
-
     /// What [`Self::connect_button`]'s click handler calls: connects the currently
     /// highlighted context, or does nothing if none is highlighted. The button
     /// itself is disabled in that case, but a click that slips through must still
@@ -287,15 +271,14 @@ impl ClusterPicker {
             return;
         };
         contexts.retain(|name| !used.contains(name));
-        // The previously-highlighted context may itself have just been filtered out
-        // (used by another window already) - fall back to the new first context, or
-        // to nothing if the list is now empty.
+        // A selected context that was just filtered out (another window uses it)
+        // is no longer selectable here: clear it rather than pick one for the user.
         if !self
             .selected_context
             .as_ref()
             .is_some_and(|name| contexts.contains(name))
         {
-            self.selected_context = contexts.first().cloned();
+            self.selected_context = None;
         }
     }
 }
@@ -457,6 +440,7 @@ fn header(cx: &App) -> impl IntoElement {
 fn context_row(
     context_name: String,
     row_index: usize,
+    selected: bool,
     bound_id: Option<String>,
     choices: Vec<TunnelChoice>,
     picker: WeakEntity<ClusterPicker>,
@@ -487,6 +471,11 @@ fn context_row(
             .items_center()
             .justify_between()
             .gap_2()
+            .px_1()
+            .rounded(theme.radius)
+            // The clicked selection, drawn by the row itself: `Command`'s own
+            // highlight follows the mouse, which must not move what Connect targets.
+            .when(selected, |row| row.bg(theme.selection))
             .on_click(move |event, window, cx| {
                 cx.stop_propagation();
                 let _ = picker_for_click.update(cx, |this, cx| {
@@ -536,7 +525,6 @@ fn manage_tunnels_control() -> impl IntoElement {
 fn connect_button(disabled: bool, picker: WeakEntity<ClusterPicker>) -> impl IntoElement {
     Button::new("picker-connect")
         .label("Connect")
-        .icon(IconName::Plug)
         .primary()
         .disabled(disabled)
         .on_click(move |_event, _window, cx| {
@@ -604,6 +592,7 @@ impl Render for ClusterPicker {
         let this = cx.weak_entity();
         let tunnel_choices = self.tunnel_choices.clone();
         let tunnel_bindings = self.tunnel_bindings.clone();
+        let selected = self.selected_context.clone();
         let items: Vec<CommandItem> = contexts
             .iter()
             .enumerate()
@@ -612,6 +601,7 @@ impl Render for ClusterPicker {
                 CommandItem::new().label(name.clone()).child(context_row(
                     name.clone(),
                     row_index,
+                    selected.as_deref() == Some(name.as_str()),
                     bound_id,
                     tunnel_choices.clone(),
                     this.clone(),
@@ -621,16 +611,6 @@ impl Render for ClusterPicker {
         let command = Command::new(&self.command_state)
             .items(items)
             .placeholder("Search contexts...")
-            // Keeps `selected_context` following the highlight for hover and
-            // keyboard navigation too, not just `handle_row_click`'s own clicks -
-            // the Connect button and Enter should always target whatever is
-            // currently highlighted, however it got highlighted.
-            .on_select({
-                let this = this.clone();
-                move |index_path, _window, cx| {
-                    let _ = this.update(cx, |this, cx| this.highlight_row(index_path.row, cx));
-                }
-            })
             .on_confirm({
                 let this = this.clone();
                 move |index_path, _window, cx| {

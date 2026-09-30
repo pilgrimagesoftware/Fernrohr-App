@@ -665,3 +665,42 @@ async fn confirm_row_connects_the_highlighted_context(cx: &mut gpui_kit::TestApp
         })
         .unwrap();
 }
+
+/// Hover moves `Command`'s own highlight (its `select`), which must not move what
+/// Connect targets: only a click selects. A fresh picker starts with nothing
+/// selected, so Connect is disabled until the user picks a row.
+#[gpui_kit::test]
+async fn hover_highlight_never_changes_the_selection(cx: &mut gpui_kit::TestAppContext) {
+    use super::ClusterPicker;
+    use gpui_kit::component::IndexPath;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, _cx| {
+            assert_eq!(picker.selected_context, None, "nothing selected at start");
+            picker.contexts = Ok(vec!["kind-dev".to_string(), "staging".to_string()]);
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    window
+        .update(cx, |picker, window, cx| {
+            picker.handle_row_click("kind-dev".to_string(), 0, 1, window, cx);
+            // What a hover over the second row does inside `Command`.
+            picker.command_state.update(cx, |state, cx| {
+                state.set_selected_index(Some(IndexPath::new(1)), window, cx)
+            });
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    window
+        .update(cx, |picker, _window, _cx| {
+            assert_eq!(picker.selected_context.as_deref(), Some("kind-dev"));
+        })
+        .unwrap();
+}
