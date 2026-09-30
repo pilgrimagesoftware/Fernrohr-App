@@ -533,7 +533,14 @@ enum PodDetailState {
     /// The pod is gone. Its own state rather than an error: a detail panel that
     /// outlives its pod is a normal thing to have left open, not a failure.
     NotFound,
-    Failed(String),
+    /// `message` is what the panel shows by default - readable prose, not a
+    /// client library's `Debug` dump (`1-window-context-bar` bug 2); `detail`
+    /// is that same failure's full technical rendering, kept alongside rather
+    /// than discarded.
+    Failed {
+        message: String,
+        detail: String,
+    },
 }
 
 /// One fetch's outcome, so a 404 is told apart from every other error before it
@@ -543,16 +550,22 @@ enum PodFetch {
     NotFound,
 }
 
+/// `message`/`detail` on failure - see `PodDetailState::Failed`'s doc comment.
+/// A 404 is handled before this, as `PodFetch::NotFound`, so what reaches the
+/// `Err` arm is always some other failure.
 async fn fetch_pod(
     client: kube::Client,
     namespace: String,
     name: String,
-) -> Result<PodFetch, String> {
+) -> Result<PodFetch, (String, String)> {
     let api: Api<Pod> = Api::namespaced(client, &namespace);
     match api.get(&name).await {
         Ok(pod) => Ok(PodFetch::Found(Box::new(pod))),
         Err(kube::Error::Api(status)) if status.code == 404 => Ok(PodFetch::NotFound),
-        Err(error) => Err(error.to_string()),
+        Err(error) => Err((
+            crate::k8s::error::describe(&error),
+            crate::k8s::error::detail(&error),
+        )),
     }
 }
 
@@ -676,7 +689,7 @@ impl PodDetailPanel {
                     this.state = match result {
                         Ok(PodFetch::Found(pod)) => PodDetailState::Loaded(pod),
                         Ok(PodFetch::NotFound) => PodDetailState::NotFound,
-                        Err(error) => PodDetailState::Failed(error),
+                        Err((message, detail)) => PodDetailState::Failed { message, detail },
                     };
                     cx.notify();
                 });
@@ -953,11 +966,12 @@ impl Render for PodDetailPanel {
                 .p_3()
                 .child("This pod no longer exists.")
                 .into_any_element(),
-            PodDetailState::Failed(reason) => div()
-                .size_full()
-                .p_3()
-                .child(format!("Could not read pod: {reason}"))
-                .into_any_element(),
+            PodDetailState::Failed { message, detail } => panel_title::error_content(
+                format!("Could not read pod: {message}"),
+                Some(detail.clone()),
+                cx,
+            )
+            .into_any_element(),
             PodDetailState::Loaded(_) => match self.viewing {
                 // Field values wrap to the panel's width rather than
                 // overflowing it - vertical-only scroll, so nothing pushes

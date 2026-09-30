@@ -11,6 +11,7 @@
 
 use crate::ui::nav::NavTarget;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -302,6 +303,33 @@ pub fn namespace_picker(
 /// control beside it.
 pub fn toolbar_buttons() -> Option<Vec<Button>> {
     Some(vec![close_button()])
+}
+
+/// A panel's failure content: a human-readable message, then - when there is
+/// one - the failure's full technical detail underneath it, muted and
+/// monospace. Both render through `gpui-component`'s own selectable
+/// [`gpui_kit::component::text::TextView`] (`.selectable(true)`), the same
+/// primitive its own dialogs and message views use for copyable prose - not a
+/// hand-rolled selection - so a user can drag-select either line and press
+/// `Cmd+C`/`Ctrl+C` (the component's own binding, `text::state::CONTEXT`) to
+/// copy it. `1-window-context-bar` bug 2: a raw `{error:?}` dump was neither
+/// readable nor selectable; this is Logs' and Pod detail's shared fix for
+/// both halves at once, so the two panels cannot drift back apart on either.
+pub fn error_content(message: String, detail: Option<String>, cx: &App) -> impl IntoElement {
+    div()
+        .size_full()
+        .p_3()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(gpui_kit::component::text::markdown(message).selectable(true))
+        .children(detail.map(|detail| {
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .font_family(cx.theme().mono_font_family.clone())
+                .child(gpui_kit::component::text::markdown(detail).selectable(true))
+        }))
 }
 
 /// A panel changed the scope it shows.

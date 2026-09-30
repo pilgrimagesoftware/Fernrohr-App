@@ -8,8 +8,15 @@ pub enum LogEvent {
     Line(String),
     /// The stream ended normally (e.g. the pod was deleted).
     Ended,
-    /// The stream never started (e.g. the container hasn't started yet).
-    RequestFailed(String),
+    /// The stream never started (e.g. the container hasn't started yet), or
+    /// broke while reading it. `message` is what a person reads - readable
+    /// prose, never a client library's `Debug` dump; `detail` is that same
+    /// failure's full technical rendering, kept alongside rather than
+    /// discarded, for a report that needs more than the summary.
+    RequestFailed {
+        message: String,
+        detail: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +36,10 @@ pub struct LogsView {
     #[allow(dead_code)]
     selected_container: String,
     terminal_message: Option<String>,
+    /// The failure's full technical detail, alongside `terminal_message` - set
+    /// only for [`LogEvent::RequestFailed`], never for the plain "stream
+    /// ended" state, which has no error behind it to detail.
+    terminal_detail: Option<String>,
 }
 
 impl LogsView {
@@ -41,6 +52,7 @@ impl LogsView {
             containers,
             selected_container,
             terminal_message: None,
+            terminal_detail: None,
         }
     }
 
@@ -62,6 +74,12 @@ impl LogsView {
 
     pub fn terminal_message(&self) -> Option<&str> {
         self.terminal_message.as_deref()
+    }
+
+    /// The full technical detail behind [`Self::terminal_message`], when the
+    /// terminal state is a failure rather than a plain "stream ended."
+    pub fn terminal_detail(&self) -> Option<&str> {
+        self.terminal_detail.as_deref()
     }
 
     /// Whether a container picker needs to be shown at all - a single
@@ -96,15 +114,20 @@ impl LogsView {
         self.selected_container = container.to_string();
         self.lines.clear();
         self.terminal_message = None;
+        self.terminal_detail = None;
         true
     }
 
     pub fn apply(&mut self, event: LogEvent) {
         match event {
             LogEvent::Line(line) => self.append_line(line),
-            LogEvent::Ended => self.terminal_message = Some("Log stream ended.".into()),
-            LogEvent::RequestFailed(reason) => {
-                self.terminal_message = Some(format!("Couldn't start log stream: {reason}"));
+            LogEvent::Ended => {
+                self.terminal_message = Some("Log stream ended.".into());
+                self.terminal_detail = None;
+            }
+            LogEvent::RequestFailed { message, detail } => {
+                self.terminal_message = Some(format!("Couldn't start log stream: {message}"));
+                self.terminal_detail = Some(detail);
             }
         }
     }
@@ -140,16 +163,40 @@ where
     })
 }
 
+/// The readable half of a failure to *start* a pod's log stream: a plain
+/// sentence for the API's 404 - which `kube::Error`'s own `Display` renders as
+/// the unreadable `ApiError: pods "..." not found (...)` at the root of
+/// `1-window-context-bar` bug 2 - and [`crate::k8s::error::describe`]'s general
+/// rendering for every other [`kube::Error`]. A stream that *breaks* after it
+/// started (below, the `std::io::Error` branch) has no pod/namespace/context to
+/// name this precisely for, so that path keeps the error's own `Display`.
+fn describe_log_stream_error(
+    error: &kube::Error,
+    pod_name: &str,
+    namespace: &str,
+    context_name: &str,
+) -> String {
+    match error {
+        kube::Error::Api(status) if status.code == 404 => {
+            format!("Pod {pod_name} not found in namespace {namespace} on {context_name}.")
+        }
+        other => crate::k8s::error::describe(other),
+    }
+}
+
 /// Streams `container`'s logs in `namespace`/`pod_name` on `client`, line by
 /// line, until the stream ends or the returned `Task` is dropped. A failure
 /// to start the stream (e.g. the container hasn't started yet) reports
 /// through the same channel as [`LogEvent::RequestFailed`] rather than
 /// erroring the caller, matching [`LogsView`]'s own terminal-state handling.
+/// `context_name` names the failure only - `client` already carries the
+/// context to stream from.
 pub fn stream_container_logs(
     client: kube::Client,
     namespace: String,
     pod_name: String,
     container: String,
+    context_name: String,
     view: gpui_kit::Entity<LogsView>,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::Task<()> {
@@ -168,7 +215,10 @@ pub fn stream_container_logs(
         let stream = match api.log_stream(&pod_name, &lp).await {
             Ok(stream) => stream,
             Err(error) => {
-                let _ = tx.send(LogEvent::RequestFailed(error.to_string())).await;
+                let message =
+                    describe_log_stream_error(&error, &pod_name, &namespace, &context_name);
+                let detail = crate::k8s::error::detail(&error);
+                let _ = tx.send(LogEvent::RequestFailed { message, detail }).await;
                 return;
             }
         };
@@ -185,7 +235,9 @@ pub fn stream_container_logs(
                     break;
                 }
                 Some(Err(error)) => {
-                    let _ = tx.send(LogEvent::RequestFailed(error.to_string())).await;
+                    let message = error.to_string();
+                    let detail = format!("{error:?}");
+                    let _ = tx.send(LogEvent::RequestFailed { message, detail }).await;
                     break;
                 }
             }
@@ -283,7 +335,7 @@ impl LogsPanel {
             namespace,
             name,
             containers,
-            ..
+            context_name,
         } = selection;
         let container = containers.first().cloned().unwrap_or_default();
         let key = (namespace.clone(), name.clone(), container.clone());
@@ -308,6 +360,7 @@ impl LogsPanel {
             namespace,
             name,
             container,
+            context_name,
             view.clone(),
             cx,
         ));
@@ -348,6 +401,7 @@ impl LogsPanel {
             namespace,
             name,
             container,
+            self.scope.context_name.clone(),
             view.clone(),
             cx,
         ));
@@ -369,11 +423,9 @@ impl Render for LogsPanel {
         let view = self.view.read(cx);
         let following = view.follow_state() == FollowState::Following;
         let content = if let Some(message) = view.terminal_message() {
-            div()
-                .size_full()
-                .p_3()
-                .child(message.to_string())
-                .into_any_element()
+            let message = message.to_string();
+            let detail = view.terminal_detail().map(str::to_string);
+            panel_title::error_content(message, detail, cx).into_any_element()
         } else if self.current.is_none() {
             div()
                 .size_full()

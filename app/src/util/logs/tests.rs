@@ -1,10 +1,14 @@
-//! Unit tests for `util::logs`: the pure `LogsView` state machine and
+//! Unit tests for `util::logs`: the pure `LogsView` state machine, the
+//! readable-message/technical-detail split behind a failed stream, and
 //! `LogsPanel`'s filtering of the app-scoped `SelectedPod` global by context.
 //!
 //! Not `use super::*`: `logs.rs` pulls in `gpui_kit::*`, whose own `test`
 //! attribute macro would shadow `core::prelude::v1::test` for the plain
 //! synchronous tests below.
-use super::{FollowState, LogEvent, LogsPanel, LogsView, start_stream, streaming_title};
+use super::{
+    FollowState, LogEvent, LogsPanel, LogsView, describe_log_stream_error, start_stream,
+    streaming_title,
+};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::{PodSelection, SelectedPod};
@@ -81,6 +85,9 @@ fn multi_container_fixture_switches_streams_on_selection() {
     assert!(!unchanged, "reselecting the current container is a no-op");
 }
 
+/// `1-window-context-bar` bug 2: the terminal state now carries a readable
+/// message *and* the failure's full technical detail, rather than folding the
+/// latter into the former (or discarding it).
 #[test]
 fn deleted_pod_and_not_started_container_show_distinct_terminal_messages() {
     let mut stream_ended = LogsView::new(vec!["app".into()]);
@@ -88,7 +95,10 @@ fn deleted_pod_and_not_started_container_show_distinct_terminal_messages() {
     stream_ended.apply(LogEvent::Ended);
 
     let mut request_failed = LogsView::new(vec!["app".into()]);
-    request_failed.apply(LogEvent::RequestFailed("container not started".into()));
+    request_failed.apply(LogEvent::RequestFailed {
+        message: "container not started".into(),
+        detail: "RequestFailed(...)".into(),
+    });
 
     let ended_message = stream_ended.terminal_message().unwrap();
     let failed_message = request_failed.terminal_message().unwrap();
@@ -98,6 +108,15 @@ fn deleted_pod_and_not_started_container_show_distinct_terminal_messages() {
         failed_message
             .to_lowercase()
             .contains("container not started")
+    );
+    assert!(
+        stream_ended.terminal_detail().is_none(),
+        "a normal end has no technical detail to show"
+    );
+    assert_eq!(
+        request_failed.terminal_detail(),
+        Some("RequestFailed(...)"),
+        "the full technical detail stays available alongside the readable message"
     );
 }
 
@@ -123,10 +142,51 @@ async fn mock_stream_populates_history_line_by_line(cx: &mut TestAppContext) {
     assert_eq!(lines, vec!["line one", "line two", "line three"]);
 }
 
+/// A fixture `kube::Error::Api` with `code`, `reason`, and `message` filled in
+/// - the shape `describe_log_stream_error` reads.
+fn api_error(code: u16, reason: &str, message: &str) -> kube::Error {
+    kube::Error::Api(Box::new(kube::core::response::Status {
+        code,
+        reason: reason.to_string(),
+        message: message.to_string(),
+        ..Default::default()
+    }))
+}
+
+/// `1-window-context-bar` bug 2: `kube::Error`'s own `Display` for a 404 is
+/// `ApiError: pods "clamav-plc9g" not found (Api(Status { ... }))` - readable to
+/// a developer, not a user. The pod-not-found case reads as a plain sentence
+/// naming the pod, its namespace, and the context instead.
+#[test]
+fn describe_log_stream_error_names_the_pod_for_a_404() {
+    let error = api_error(404, "NotFound", "pods \"clamav-plc9g\" not found");
+
+    assert_eq!(
+        describe_log_stream_error(&error, "clamav-plc9g", "default", "carefulcrab"),
+        "Pod clamav-plc9g not found in namespace default on carefulcrab."
+    );
+}
+
+/// Every other `ApiError` reads as `<reason>: <message>` - the API's own words,
+/// not the client library's `ApiError: <msg> (<Debug>)` wrapper around them.
+#[test]
+fn describe_log_stream_error_reads_reason_and_message_for_other_api_errors() {
+    let error = api_error(
+        403,
+        "Forbidden",
+        "pods is forbidden: User \"x\" cannot list resource",
+    );
+
+    assert_eq!(
+        describe_log_stream_error(&error, "web-1", "default", "carefulcrab"),
+        "Forbidden: pods is forbidden: User \"x\" cannot list resource"
+    );
+}
+
 /// `1-window-context-bar` bug 1's third root cause: `LogsPanel::sync` used to
-/// re-sync to *any* `SelectedPod`, from any context - streaming whichever
-/// pod's row was clicked last against its own scope's context regardless of
-/// where that pod actually lived. A selection published by a different
+/// re-sync to *any* `SelectedPod`, from any context - streaming whichever pod's
+/// row was clicked last against its own scope's context, regardless of which
+/// context actually held that pod. A selection published by a different
 /// context must leave this panel exactly as it was: nothing selected, nothing
 /// streamed.
 ///
