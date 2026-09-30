@@ -44,3 +44,6 @@ impl MainWindow {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

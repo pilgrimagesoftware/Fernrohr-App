@@ -1,10 +1,10 @@
 //! Following references through the window: `resource-links` 3.1-3.3.
 
-use super::super::tests::connected_window;
 use super::super::{MainWindow, OpenPanel, WindowMode};
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::link::FollowReference;
 use crate::ui::nav::{NavTarget, OpenedPanel};
+use crate::util::shell::test_support::connected_window;
 use gpui_kit::component::dock::{DockPlacement, PaneRef, PanelId};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, ElementId, TestAppContext, WindowHandle};
