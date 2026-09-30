@@ -95,6 +95,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pods::register_commands(registry);
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
+    crate::k8s::resource::object_detail::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
 }
 
@@ -131,6 +132,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.set_global(registry);
     crate::k8s::resource::pods::register_restore(cx);
     crate::k8s::resource::pod_detail::register_restore(cx);
+    crate::k8s::resource::object_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
@@ -430,6 +432,10 @@ fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
                 .to_string(),
             data["pod_name"].as_str().unwrap_or_default().to_string(),
         ),
+        "ObjectDetail" => match crate::k8s::resource::object_detail::target_from_state(data) {
+            Some(object) => NavTarget::Object(object),
+            None => return keys,
+        },
         "Resource" => NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind {
             gvk: GroupVersionKind::gvk(
                 data["group"].as_str().unwrap_or_default(),
@@ -940,7 +946,7 @@ impl MainWindow {
             // A pod's detail panel shows one pod rather than a namespace-
             // filterable list of many, so it carries no picker and never
             // re-scopes.
-            nav::OpenedPanel::PodDetail(_) => {}
+            nav::OpenedPanel::PodDetail(_) | nav::OpenedPanel::ObjectDetail(_) => {}
         }
     }
 
@@ -1131,6 +1137,7 @@ impl MainWindow {
                 OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::ObjectDetail(panel) => area.remove_panel(panel, window, cx),
             });
         }
 

@@ -45,6 +45,19 @@ pub enum NavTarget {
     /// own. `Kind(DiscoveredKind::pods())` and this are never the same panel,
     /// which is the point - one is the list, the other a row of it.
     Pod(PodRef),
+    /// One object of any other discovered kind - the generic object viewer
+    /// (`resource-links` section 5). Pod keeps its own variant and panel.
+    Object(ObjectTarget),
+}
+
+/// One object of a discovered kind: the kind as discovery reported it (so the
+/// viewer knows the version, plural and scope to read it with), and which
+/// object. `namespace` is `None` exactly when the kind is cluster-scoped.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ObjectTarget {
+    pub kind: DiscoveredKind,
+    pub namespace: Option<String>,
+    pub name: String,
 }
 
 /// A pod's identity, at the granularity a panel keyed on it needs: which pod
@@ -86,6 +99,7 @@ impl NavTarget {
             NavTarget::Kind(kind) => kind.label(),
             NavTarget::Logs => "Logs".to_string(),
             NavTarget::Pod(_) => Self::pod_kind().label(),
+            NavTarget::Object(object) => object.kind.label(),
         }
     }
 
@@ -95,7 +109,7 @@ impl NavTarget {
     pub fn list_label(&self) -> String {
         match self {
             NavTarget::Kind(kind) => kind.plural_label(),
-            NavTarget::Logs | NavTarget::Pod(_) => self.label(),
+            NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => self.label(),
         }
     }
 
@@ -105,13 +119,14 @@ impl NavTarget {
     pub fn item_label(&self) -> String {
         match self {
             NavTarget::Pod(pod) => format!("{}: {}", self.label(), pod.name),
+            NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
             _ => self.list_label(),
         }
     }
 
     pub fn icon(&self) -> IconName {
         match self {
-            NavTarget::Kind(_) | NavTarget::Pod(_) => IconName::Box,
+            NavTarget::Kind(_) | NavTarget::Pod(_) | NavTarget::Object(_) => IconName::Box,
             NavTarget::Logs => IconName::ScrollText,
         }
     }
@@ -168,6 +183,7 @@ pub enum OpenedPanel {
     Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
     Logs(Entity<crate::util::logs::LogsPanel>),
     PodDetail(Entity<crate::k8s::resource::pod_detail::PodDetailPanel>),
+    ObjectDetail(Entity<crate::k8s::resource::object_detail::ObjectDetailPanel>),
 }
 
 impl OpenedPanel {
@@ -179,6 +195,7 @@ impl OpenedPanel {
             OpenedPanel::Placeholder(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::PodDetail(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::ObjectDetail(panel) => PanelId::from(panel.entity_id()),
         }
     }
 }
@@ -203,6 +220,7 @@ pub fn opened_panel_for(
         "Logs" => OpenedPanel::Logs(Entity::from(view.as_ref())),
         "Resource" => OpenedPanel::Placeholder(Entity::from(view.as_ref())),
         "PodDetail" => OpenedPanel::PodDetail(Entity::from(view.as_ref())),
+        "ObjectDetail" => OpenedPanel::ObjectDetail(Entity::from(view.as_ref())),
         _ => return None,
     })
 }
@@ -291,6 +309,25 @@ pub fn add_panel(
                 cx,
             );
             (id, OpenedPanel::PodDetail(panel))
+        }
+        // One object of any other discovered kind, read the same way.
+        NavTarget::Object(object) => {
+            let panel = cx.new(|cx| {
+                crate::k8s::resource::object_detail::ObjectDetailPanel::new(
+                    object.clone(),
+                    scope.clone(),
+                    cx,
+                )
+            });
+            let id = PanelId::from(panel.entity_id());
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
+            (id, OpenedPanel::ObjectDetail(panel))
         }
     }
 }

@@ -10,6 +10,8 @@ use super::fetch::{PodDetailState, PodEvents, PodFetch, fetch_pod};
 use super::fields::pod_fields;
 use super::model::{DetailSection, DetailView, PodField};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::k8s::cluster::discovery_registry::{DiscoveredKinds, DiscoveryRegistry};
 use crate::ui::link::{self, GoToEntry, GoToReference};
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::{self, PanelScope};
@@ -55,6 +57,9 @@ pub struct PodDetailPanel {
     pub(super) pod: PodRef,
     pub(super) scope: PanelScope,
     pub(super) connection: Entity<ClusterConnection>,
+    /// The context's discovered kinds, which decide which references are
+    /// links. Observed, so references turn into links when discovery lands.
+    pub(super) discovery: Entity<DiscoveredKinds>,
     pub(super) state: PodDetailState,
     pub(super) viewing: DetailView,
     /// Which tab of the structured view is showing. Irrelevant while
@@ -79,11 +84,14 @@ impl PodDetailPanel {
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
+        let discovery = DiscoveryRegistry::kinds(cx, &scope.context_name);
+        cx.observe(&discovery, |_, _, cx| cx.notify()).detach();
 
         let mut this = Self {
             pod,
             scope,
             connection,
+            discovery,
             state: PodDetailState::Loading,
             viewing: view,
             active_tab: DetailSection::Overview,
@@ -108,10 +116,12 @@ impl PodDetailPanel {
     ) -> Self {
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
+        let discovery = cx.new(|_| DiscoveredKinds::loaded(Vec::new()));
         let mut this = Self {
             pod,
             scope,
             connection,
+            discovery,
             state: PodDetailState::Loading,
             viewing: view,
             active_tab: DetailSection::Overview,
@@ -222,10 +232,24 @@ impl PodDetailPanel {
     /// The references the "Go to…" picker offers: every followable one the
     /// structured view shows. Empty while nothing has loaded, which is also
     /// what hides the `g` hint.
-    pub(super) fn followable(&self) -> Vec<GoToEntry> {
-        link::followable(super::references::go_to_entries(
-            &self.fields(Timestamp::now()),
-        ))
+    pub(super) fn followable(&self, cx: &App) -> Vec<GoToEntry> {
+        link::followable(
+            super::references::go_to_entries(&self.fields(Timestamp::now())),
+            self.kinds(cx),
+        )
+    }
+
+    /// The discovered kinds references are resolved against.
+    pub(super) fn kinds<'a>(&self, cx: &'a App) -> Option<&'a [DiscoveredKind]> {
+        self.discovery.read(cx).kinds()
+    }
+
+    /// Replaces the discovered kinds, for tests that need a kind to be
+    /// followable.
+    #[cfg(test)]
+    pub(crate) fn test_set_kinds(&mut self, kinds: Vec<DiscoveredKind>, cx: &mut Context<Self>) {
+        self.discovery = cx.new(|_| DiscoveredKinds::loaded(kinds));
+        cx.notify();
     }
 
     /// The raw manifest, or nothing while there is no pod to render. Shared by
@@ -252,7 +276,7 @@ impl PodDetailPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let entries = self.followable();
+        let entries = self.followable(cx);
         if entries.is_empty() {
             return;
         }

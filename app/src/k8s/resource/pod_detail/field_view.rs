@@ -1,9 +1,10 @@
 //! One structured-view row: a field's label and its value, drawn according to
 //! the value's shape.
 
-use super::model::{BadgeTone, PodField, PodFieldValue, reference_text};
+use super::model::{PodField, PodFieldValue, reference_text};
 use super::panel::PodDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
+use crate::ui::detail;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -19,40 +20,13 @@ impl PodDetailPanel {
             PodFieldValue::References { targets, qualified } => {
                 self.render_references(field.label, targets, *qualified, cx)
             }
-            PodFieldValue::Chips(chips) => div()
-                .flex()
-                .flex_wrap()
-                .gap_1()
-                .children(chips.iter().map(|chip| {
-                    div()
-                        .px_2()
-                        .py_0p5()
-                        .rounded_md()
-                        .bg(theme.muted)
-                        .text_sm()
-                        .child(chip.clone())
-                }))
-                .into_any_element(),
-            PodFieldValue::Badges(badges) => div()
-                .flex()
-                .flex_wrap()
-                .gap_1()
-                .children(badges.iter().map(|badge| {
-                    let color = match badge.tone {
-                        BadgeTone::Good => theme.success,
-                        BadgeTone::Warning => theme.warning,
-                        BadgeTone::Unknown => theme.muted_foreground,
-                    };
-                    div()
-                        .px_2()
-                        .py_0p5()
-                        .rounded_full()
-                        .bg(color)
-                        .text_color(theme.background)
-                        .text_sm()
-                        .child(badge.condition.clone())
-                }))
-                .into_any_element(),
+            PodFieldValue::Chips(chips) => detail::chips(chips, cx),
+            PodFieldValue::Badges(badges) => detail::badges(
+                badges
+                    .iter()
+                    .map(|badge| (badge.condition.as_str(), badge.tone)),
+                cx,
+            ),
             PodFieldValue::Collapsed(rows) => {
                 // Bound before the closure: the id is used twice and the
                 // closure is `'static`, so it cannot borrow `field`.
@@ -263,23 +237,7 @@ impl PodDetailPanel {
                 .into_any_element(),
         };
 
-        div()
-            .flex()
-            .gap_3()
-            .py_1()
-            .child(
-                div()
-                    .w(px(180.))
-                    .flex_none()
-                    .text_color(theme.muted_foreground)
-                    .child(field.label),
-            )
-            // `min_w_0()`: without it a flex child sized by its own content
-            // (a long annotation value, an unbroken image reference) refuses
-            // to shrink below that content's width and pushes the row - and
-            // the panel - wider instead of wrapping.
-            .child(div().flex_1().min_w_0().child(value))
-            .into_any_element()
+        detail::row(field.label, value, cx)
     }
 
     /// A run of references, each a link when it can be followed - see
@@ -296,6 +254,7 @@ impl PodDetailPanel {
             targets,
             |target| reference_text(target, qualified),
             &self.scope.context_name,
+            self.kinds(cx),
             cx,
         )
     }

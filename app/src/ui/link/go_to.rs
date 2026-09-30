@@ -9,6 +9,7 @@
 
 use super::FollowReference;
 use crate::command::{Command, CommandRegistry};
+use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::viewer::viewer_for;
 use gpui_kit::component::Root;
@@ -64,12 +65,15 @@ impl GoToEntry {
     }
 }
 
-/// The entries the picker can follow: those `viewer_for` resolves, each
-/// object once (its first field wins).
-pub fn followable(entries: impl IntoIterator<Item = GoToEntry>) -> Vec<GoToEntry> {
+/// The entries the picker can follow: those `viewer_for` resolves against
+/// `kinds`, each object once (its first field wins).
+pub fn followable(
+    entries: impl IntoIterator<Item = GoToEntry>,
+    kinds: Option<&[DiscoveredKind]>,
+) -> Vec<GoToEntry> {
     let mut followable: Vec<GoToEntry> = Vec::new();
     for entry in entries {
-        if viewer_for(&entry.target).is_some()
+        if viewer_for(&entry.target, kinds).is_some()
             && !followable.iter().any(|seen| seen.target == entry.target)
         {
             followable.push(entry);

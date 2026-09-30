@@ -141,16 +141,6 @@ pub struct ManagedFieldEntry {
     pub fields_json: String,
 }
 
-/// One event from the cluster naming this pod, newest first.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PodEvent {
-    pub reason: String,
-    pub message: String,
-    pub count: i32,
-    pub age: String,
-    pub tone: BadgeTone,
-}
-
 /// One container's summary: spec (image, ports, resources) joined with its
 /// live status (ready, restart count, current state) by container name - the
 /// two live on different parts of the `Pod` object and only line up by name.
@@ -213,18 +203,7 @@ pub(crate) fn reference_text(target: &ObjectRef, qualified: bool) -> String {
     }
 }
 
-/// A condition's badge color, decided by the condition rather than looked up at
-/// render time - so "True is good, anything else is not" is testable without a
-/// theme, and the renderer only maps tone to a color.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BadgeTone {
-    /// The condition holds.
-    Good,
-    /// The condition does not hold - a warning to notice, not a failure.
-    Warning,
-    /// The cluster did not say either way.
-    Unknown,
-}
+pub use crate::ui::detail::BadgeTone;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConditionBadge {

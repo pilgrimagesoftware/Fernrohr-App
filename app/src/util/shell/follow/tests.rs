@@ -235,3 +235,53 @@ async fn clicking_a_reference_in_a_pod_panel_opens_its_target(cx: &mut TestAppCo
     assert_eq!(scoped.len(), 1, "the namespace's Pods list opened");
     assert!(is_showing(cx, &window, scoped[0].0), "and took focus");
 }
+
+/// 5.4: once the context's discovery reports ReplicaSets, following a
+/// ReplicaSet reference opens the generic object viewer over it - one panel,
+/// focused again rather than duplicated when followed a second time.
+#[gpui_kit::test]
+async fn following_a_discovered_kind_opens_one_object_panel(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
+    use kube::core::GroupVersionKind;
+
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    let replica_sets = DiscoveredKind {
+        gvk: GroupVersionKind::gvk("apps", "v1", "ReplicaSet"),
+        plural: "replicasets".into(),
+        namespaced: true,
+    };
+    cx.update(|cx| DiscoveryRegistry::insert_test(cx, "kind-dev", vec![replica_sets.clone()]));
+    let owner = ObjectRef::namespaced("apps", "ReplicaSet", "staging", "web-7d9f");
+    let is_owner_panel = |open: &OpenPanel| {
+        open.key.target
+            == NavTarget::Object(crate::ui::nav::ObjectTarget {
+                kind: replica_sets.clone(),
+                namespace: Some("staging".into()),
+                name: "web-7d9f".into(),
+            })
+    };
+
+    follow(cx, &window, "kind-dev", owner.clone());
+    let opened = open_matching(cx, &window, is_owner_panel);
+    assert_eq!(opened.len(), 1, "the ReplicaSet's panel opened");
+    let panel = opened[0].0;
+
+    follow(
+        cx,
+        &window,
+        "kind-dev",
+        ObjectRef::cluster_scoped("", "Namespace", "staging"),
+    );
+    follow(cx, &window, "kind-dev", owner);
+    assert_eq!(
+        open_matching(cx, &window, is_owner_panel).len(),
+        1,
+        "no second panel for the same object"
+    );
+    assert!(
+        is_showing(cx, &window, panel),
+        "the existing panel is focused"
+    );
+}

@@ -1,6 +1,7 @@
 //! One reference as an element: a link that dispatches [`FollowReference`]
 //! when `ui::viewer` has a panel for its kind, plain text otherwise.
 
+use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::viewer::viewer_for;
 use gpui_kit::base::TestSupportExt as _;
@@ -33,10 +34,11 @@ fn reference(
     target: &ObjectRef,
     text: impl Into<SharedString>,
     context_name: &str,
+    kinds: Option<&[DiscoveredKind]>,
     cx: &App,
 ) -> AnyElement {
     let text = text.into();
-    if viewer_for(target).is_none() {
+    if viewer_for(target, kinds).is_none() {
         return div().id(id).child(text).test_support().into_any_element();
     }
     let action = FollowReference {
@@ -58,12 +60,14 @@ fn reference(
 
 /// A run of references, comma-separated, each its own [`reference`] - ids
 /// `(id_prefix, index)`. `label` says how each reads (`Kind/name` or the bare
-/// name).
+/// name); `kinds` is the source panel's context's discovery, which decides
+/// which of them are links.
 pub fn references(
     id_prefix: impl Into<SharedString>,
     targets: &[ObjectRef],
     label: impl Fn(&ObjectRef) -> String,
     context_name: &str,
+    kinds: Option<&[DiscoveredKind]>,
     cx: &App,
 ) -> AnyElement {
     let id_prefix = id_prefix.into();
@@ -78,6 +82,7 @@ pub fn references(
                 target,
                 label(target),
                 context_name,
+                kinds,
                 cx,
             );
             div()
