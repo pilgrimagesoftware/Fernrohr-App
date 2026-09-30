@@ -254,6 +254,21 @@ mod tests {
         dir
     }
 
+    /// Waits for `pid`'s group to vanish. A killed orphan belongs to init (or a
+    /// CI runner's subreaper), which reaps it on its own schedule, and until then
+    /// it's a zombie that `kill -0` still finds - so right after the SIGKILL it can
+    /// look alive for a moment.
+    fn group_gone_within(pid: u32, timeout: std::time::Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        while process_group_alive(pid) {
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        true
+    }
+
     fn write_pidfile(dir: &Path, pid: u32) -> PathBuf {
         let path = dir.join(format!("{pid}.pid"));
         fs::write(&path, pid.to_string()).expect("pidfile should be writable");
@@ -438,7 +453,7 @@ mod tests {
         assert_eq!(sweep_dir(&dir, looks_like_orphaned_forward), 1);
         assert!(!pidfile_path.exists());
         assert!(
-            !process_group_alive(pid),
+            group_gone_within(pid, std::time::Duration::from_secs(5)),
             "the orphaned stand-in should be dead after the sweep"
         );
 
