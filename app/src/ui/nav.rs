@@ -139,6 +139,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SHOW_PODS_DEFAULT_BINDING,
         context: None,
         action: Box::new(ShowPods),
+        menu: Some(crate::command::MenuSlot::Navigate),
     });
     registry.register(Command {
         id: SHOW_LOGS_COMMAND_ID,
@@ -146,6 +147,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SHOW_LOGS_DEFAULT_BINDING,
         context: None,
         action: Box::new(ShowLogs),
+        menu: Some(crate::command::MenuSlot::Navigate),
     });
 }
 

@@ -1,5 +1,30 @@
 use gpui_kit::Action;
 
+/// The application menu's seven top-level menus. A command names at most
+/// one - the menu is a curated subset of commands, not every command sorted
+/// into a bucket, so most commands (panel-scoped shortcuts especially) carry
+/// `None` and stay palette/keymap-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuSlot {
+    // UNWIRED: no command is assigned here yet - the App menu's current
+    // items (About, Quit) are platform affordances built directly in
+    // `ui::menu::init`, not registry commands. Reserved for the first
+    // command that belongs there (e.g. a future Preferences).
+    #[allow(dead_code)]
+    App,
+    /// This app's stand-in for a conventional File menu: there are no
+    /// documents to open/save/close, but there is a cluster context to pick
+    /// and switch - see `app-menu-and-fonts/design.md` on why this is named
+    /// `Context` rather than forcing a `File` label onto content that isn't
+    /// files.
+    Context,
+    Edit,
+    View,
+    Navigate,
+    Window,
+    Help,
+}
+
 /// A registered command: metadata (for the palette and keymap) plus the
 /// GPUI [`Action`] it dispatches. Wraps GPUI's action system rather than
 /// replacing it - see design D4.
@@ -13,6 +38,8 @@ pub struct Command {
     /// windows/views with that `KeyContext` active.
     pub context: Option<&'static str>,
     pub action: Box<dyn Action>,
+    /// Which top-level application menu shows this command, if any.
+    pub menu: Option<MenuSlot>,
 }
 
 impl Command {
@@ -58,6 +85,15 @@ impl CommandRegistry {
         self.commands
             .iter()
             .filter(|command| command.is_available(active_contexts))
+            .collect()
+    }
+
+    /// Commands assigned to `slot`, in registration order - the same order
+    /// the palette lists them, so the menu and the palette agree.
+    pub fn for_menu(&self, slot: MenuSlot) -> Vec<&Command> {
+        self.commands
+            .iter()
+            .filter(|command| command.menu == Some(slot))
             .collect()
     }
 
@@ -134,6 +170,7 @@ mod tests {
             default_binding: "cmd-t",
             context,
             action: Box::new(TestAction),
+            menu: None,
         });
         registry
     }
@@ -183,6 +220,7 @@ mod tests {
             default_binding: "cmd-g",
             context: None,
             action: Box::new(TestAction),
+            menu: None,
         });
         registry.register(Command {
             id: "scoped.command",
@@ -190,6 +228,7 @@ mod tests {
             default_binding: "cmd-s",
             context: Some("Editor"),
             action: Box::new(TestAction),
+            menu: None,
         });
 
         assert_eq!(super::build_items(&registry, &[]).len(), 1);
