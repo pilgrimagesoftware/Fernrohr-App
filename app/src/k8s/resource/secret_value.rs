@@ -63,6 +63,15 @@ pub enum RevealError {
     Failed(String),
 }
 
+/// One Secret key's reveal, while it's pending or shown - the state both the
+/// Configuration tab and the object viewer keep per revealed key.
+#[derive(Debug)]
+pub enum Reveal {
+    Pending,
+    Shown(SecretValue),
+    Failed(RevealError),
+}
+
 /// Reads Secret `namespace/name` afresh and keeps only `key`'s value.
 ///
 /// Everything else in the response - the other keys' values, the manifest's

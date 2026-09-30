@@ -1,16 +1,11 @@
 //! Drawing the Configuration tab: one card per referenced ConfigMap or Secret
 //! - its link, its uses, its contents - with a reveal button per Secret key.
 
-use super::state::{CardContents, Reveal};
+use super::state::CardContents;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
-use crate::k8s::resource::secret_value::RevealError;
 use crate::ui::detail;
-use gpui_kit::assets::IconName;
-use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::*;
 
 /// The id of the reveal button for key `index` of card `card` - what a click
@@ -141,71 +136,20 @@ impl PodDetailPanel {
         size: usize,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let theme = cx.theme();
-        let reveal = self.configuration.reveal_of(secret, key);
-        let shown = reveal.is_some();
         let this = cx.weak_entity();
         let (target, owned_key) = (secret.clone(), key.to_string());
-        let button = Button::new(reveal_button_id(card, index))
-            .icon(if shown {
-                IconName::EyeOff
-            } else {
-                IconName::Eye
-            })
-            .label(if shown { "Hide" } else { "Show" })
-            .xsmall()
-            .ghost()
-            .on_click(move |_event, _window, cx| {
+        detail::secret_key_row(
+            key,
+            size,
+            self.configuration.reveal_of(secret, key),
+            reveal_button_id(card, index),
+            ElementId::NamedInteger(format!("revealed-{card}").into(), index as u64),
+            move |_window, cx| {
                 let _ = this.update(cx, |this: &mut Self, cx| {
                     this.toggle_reveal(target.clone(), owned_key.clone(), cx)
                 });
-            });
-        let value = reveal.map(|reveal| {
-            let text = match reveal {
-                Reveal::Pending => "Revealing…".to_string(),
-                // The one place a value is read out of a `SecretValue`.
-                Reveal::Shown(value) if value.is_empty() => "(empty)".to_string(),
-                Reveal::Shown(value) => match value.expose() {
-                    Some(text) => text.to_string(),
-                    None => format!("binary, {} bytes", value.len()),
-                },
-                Reveal::Failed(RevealError::Missing) => "It no longer exists.".to_string(),
-                Reveal::Failed(RevealError::Failed(message)) => {
-                    format!("Could not read it: {message}")
-                }
-            };
-            div()
-                .id(ElementId::NamedInteger(
-                    format!("revealed-{card}").into(),
-                    index as u64,
-                ))
-                .font_family(theme.mono_font_family.clone())
-                .text_sm()
-                .child(text)
-                .test_support()
-        });
-        div()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_sm()
-                    .child(
-                        div()
-                            .font_family(theme.mono_font_family.clone())
-                            .child(key.to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_color(theme.muted_foreground)
-                            .child(format!("{size} bytes")),
-                    )
-                    .child(button),
-            )
-            .children(value)
-            .into_any_element()
+            },
+            cx,
+        )
     }
 }

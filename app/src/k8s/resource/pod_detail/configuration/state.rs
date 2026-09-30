@@ -2,7 +2,7 @@
 //! values currently revealed.
 
 use crate::k8s::object_ref::ObjectRef;
-use crate::k8s::resource::secret_value::{RevealError, SecretValue};
+pub(in crate::k8s::resource::pod_detail) use crate::k8s::resource::secret_value::Reveal;
 use std::collections::HashMap;
 
 /// One card's contents, as far as they've loaded. A Secret's are its type and
@@ -20,14 +20,6 @@ pub(in crate::k8s::resource::pod_detail) enum CardContents {
     },
     NotFound,
     Failed(String),
-}
-
-/// One Secret key's reveal, while it's pending or shown.
-#[derive(Debug)]
-pub(in crate::k8s::resource::pod_detail) enum Reveal {
-    Pending,
-    Shown(SecretValue),
-    Failed(RevealError),
 }
 
 /// The tab's state on one panel. `Debug` prints revealed values through

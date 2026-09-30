@@ -19,6 +19,7 @@ mod panel;
 mod redact;
 mod render;
 mod restore;
+mod reveal;
 mod sections;
 #[cfg(test)]
 mod tests;
