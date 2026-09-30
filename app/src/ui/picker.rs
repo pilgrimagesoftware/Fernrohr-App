@@ -27,7 +27,13 @@ pub enum PickerEvent {
 /// One read of `tunnels.toml`'s choices and bindings, for [`ClusterPicker::new`] and
 /// every [`ClusterPicker::set_tunnel`] afterward - kept as one function so the two
 /// call sites can't drift into reading it two different ways.
-fn load_tunnels(tunnels_path: &std::path::Path) -> (Vec<TunnelChoice>, BTreeMap<String, String>) {
+///
+/// `pub(crate)`: `ui/context_bar.rs`'s chips read the same cache for their tunnel
+/// name, refreshed on the same [`TunnelsRevision`] signal - one read of the file's
+/// shape, not two.
+pub(crate) fn load_tunnels(
+    tunnels_path: &std::path::Path,
+) -> (Vec<TunnelChoice>, BTreeMap<String, String>) {
     let store = TunnelStore::new(tunnels_path.to_path_buf());
     let choices = picker_tunnel::tunnel_choices(&store);
     let bindings = store.bindings().into_iter().collect();
@@ -167,6 +173,16 @@ impl ClusterPicker {
 
     pub fn command_focus_handle(&self, cx: &App) -> FocusHandle {
         self.command_state.read(cx).focus_handle(cx)
+    }
+
+    /// `window-context-bar` section 3.2's "+" popover: the same picker, minus the
+    /// contexts `used` already names. Filtering post-construction, rather than a
+    /// second contexts source, is what keeps every other rule - tunnel bindings,
+    /// search, the connect flow - identical to the picker window's own.
+    pub(crate) fn exclude(&mut self, used: &[String]) {
+        if let Ok(contexts) = &mut self.contexts {
+            contexts.retain(|name| !used.contains(name));
+        }
     }
 }
 
