@@ -248,6 +248,37 @@ fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorkspace {
     }
 }
 
+/// Remembers a closing main window's layout so `save` still writes it after the window
+/// is gone (see [`ClosedWindowLayouts`]).
+fn record_closing_layout(window_id: WindowId, window: &mut Window, cx: &mut App) {
+    let bounds = window.bounds();
+    let live = workspace_contexts(window, cx);
+    let layout = layout_from_bounds(bounds, live);
+    if !cx.has_global::<ClosedWindowLayouts>() {
+        cx.set_global(ClosedWindowLayouts::default());
+    }
+    cx.global_mut::<ClosedWindowLayouts>()
+        .0
+        .insert(window_id, layout);
+}
+
+/// Closes `window` the way its close button does. `remove_window` skips the
+/// platform's should-close hook, so a main window's layout is recorded here first;
+/// other windows (Tunnels, About) have no layout to keep.
+pub(crate) fn close_window(window: &mut Window, cx: &mut App) {
+    let is_main = window.root::<Root>().flatten().is_some_and(|root| {
+        root.read(cx)
+            .view()
+            .clone()
+            .downcast::<MainWindow>()
+            .is_ok()
+    });
+    if is_main {
+        record_closing_layout(window.window_handle().window_id(), window, cx);
+    }
+    window.remove_window();
+}
+
 /// How many contexts the window currently uses, read live from its `MainWindow` - 1
 /// for a picker-mode window or one this module didn't open. Read, not cached: the
 /// count changes on add and disconnect, and dock panels are drawn after
@@ -534,15 +565,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
 
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
-                let bounds = window.bounds();
-                let live = workspace_contexts(window, cx);
-                let layout = layout_from_bounds(bounds, live);
-                if !cx.has_global::<ClosedWindowLayouts>() {
-                    cx.set_global(ClosedWindowLayouts::default());
-                }
-                cx.global_mut::<ClosedWindowLayouts>()
-                    .0
-                    .insert(window_id, layout);
+                record_closing_layout(window_id, window, cx);
                 true
             });
 

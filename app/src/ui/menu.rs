@@ -11,13 +11,36 @@
 use crate::command::{CommandRegistry, MenuSlot};
 use gpui_kit::*;
 
-actions!(app_menu, [Quit, About, Minimize, Zoom]);
+actions!(
+    app_menu,
+    [
+        Quit,
+        About,
+        Minimize,
+        Zoom,
+        Hide,
+        HideOthers,
+        ShowAll,
+        CloseWindow
+    ]
+);
 
 /// Builds the seven-menu bar from `registry` and installs it via
 /// `cx.set_menus`. Called once at startup, after every command is
 /// registered and before the registry is moved into its global slot.
 pub fn init(registry: &CommandRegistry, cx: &mut App) {
+    cx.bind_keys(platform_bindings());
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
+    cx.on_action(|_: &Hide, cx: &mut App| cx.hide());
+    cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());
+    cx.on_action(|_: &ShowAll, cx: &mut App| cx.unhide_other_apps());
+    cx.on_action(|_: &CloseWindow, cx: &mut App| {
+        if let Some(window) = cx.active_window() {
+            let _ = window.update(cx, |_, window, cx| {
+                crate::util::shell::close_window(window, cx)
+            });
+        }
+    });
     cx.on_action(|_: &About, cx: &mut App| about_window(cx));
     cx.on_action(|_: &Minimize, cx: &mut App| {
         if let Some(window) = cx.active_window() {
@@ -34,6 +57,12 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
         Menu::new("App").items(vec![
             MenuItem::action("About Fernrohr", About),
             MenuItem::separator(),
+            MenuItem::os_submenu("Services", SystemMenuType::Services),
+            MenuItem::separator(),
+            MenuItem::action("Hide Fernrohr", Hide),
+            MenuItem::action("Hide Others", HideOthers),
+            MenuItem::action("Show All", ShowAll),
+            MenuItem::separator(),
             MenuItem::action("Quit Fernrohr", Quit),
         ]),
         menu_from_registry("Context", MenuSlot::Context, registry),
@@ -45,10 +74,31 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
             items.push(MenuItem::separator());
             items.push(MenuItem::action("Minimize", Minimize));
             items.push(MenuItem::action("Zoom", Zoom));
+            items.push(MenuItem::separator());
+            items.push(MenuItem::action("Close Window", CloseWindow));
             items
         }),
         menu_from_registry("Help", MenuSlot::Help, registry),
     ]);
+}
+
+/// The platform's standard shortcuts for the App and Window menu items above. A menu
+/// item shows (and answers to) whatever key its action is bound to, so without these
+/// the items had no shortcuts and ⌘Q did nothing.
+fn platform_bindings() -> Vec<KeyBinding> {
+    #[cfg(target_os = "macos")]
+    return vec![
+        KeyBinding::new("cmd-q", Quit, None),
+        KeyBinding::new("cmd-h", Hide, None),
+        KeyBinding::new("alt-cmd-h", HideOthers, None),
+        KeyBinding::new("cmd-m", Minimize, None),
+        KeyBinding::new("cmd-w", CloseWindow, None),
+    ];
+    #[cfg(not(target_os = "macos"))]
+    return vec![
+        KeyBinding::new("ctrl-q", Quit, None),
+        KeyBinding::new("ctrl-w", CloseWindow, None),
+    ];
 }
 
 fn menu_from_registry(name: &'static str, slot: MenuSlot, registry: &CommandRegistry) -> Menu {
@@ -119,11 +169,38 @@ impl Render for AboutView {
 
 #[cfg(test)]
 mod tests {
-    use super::{About, MenuSlot, Quit, registry_items};
+    use super::{
+        About, CloseWindow, Hide, MenuSlot, Minimize, Quit, platform_bindings, registry_items,
+    };
     use crate::command::{Command, CommandRegistry};
     use gpui_kit::{Action, actions};
 
     actions!(menu_test, [TestAction]);
+
+    /// The App and Window menu items answer to the platform's standard shortcuts -
+    /// without these bindings the items showed no keys and ⌘Q did nothing.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn platform_items_have_their_standard_shortcuts() {
+        let bindings = platform_bindings();
+        let key_for = |action: &dyn Action| {
+            bindings
+                .iter()
+                .find(|binding| binding.action().partial_eq(action))
+                .map(|binding| {
+                    binding
+                        .keystrokes()
+                        .iter()
+                        .map(|keystroke| keystroke.unparse())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+        };
+        assert_eq!(key_for(&Quit).as_deref(), Some("cmd-q"));
+        assert_eq!(key_for(&Hide).as_deref(), Some("cmd-h"));
+        assert_eq!(key_for(&Minimize).as_deref(), Some("cmd-m"));
+        assert_eq!(key_for(&CloseWindow).as_deref(), Some("cmd-w"));
+    }
 
     #[test]
     fn registry_items_only_returns_the_requested_slot() {
