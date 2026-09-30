@@ -4,7 +4,6 @@
 //! or re-shown panel taking focus. The stop order itself is tested in
 //! `ui::panel::focus`.
 
-use super::{MainWindow, NavTarget, OpenedPanel, WindowMode, init, register_commands};
 use crate::command::{CommandRegistry, MenuSlot};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -13,6 +12,7 @@ use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::{PodSelection, SelectedPod};
 use crate::ui::panel_title::PanelScope;
 use crate::ui::placeholder::PlaceholderPanel;
+use crate::util::shell::{MainWindow, NavTarget, OpenedPanel, WindowMode, init, register_commands};
 use gpui_kit::component::dock::{DockLayout, DockPlacement, panel_handle};
 use gpui_kit::{
     AppContext as _, Entity, FocusHandle, Focusable as _, TestAppContext, VisualTestContext,
@@ -24,8 +24,8 @@ use kube::core::GroupVersionKind;
 /// its Resource panel the way `resource.focus` leaves it.
 fn workspace(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
     cx.executor().allow_parking();
-    let path = super::tests::temp_workspace_path();
-    let keymap_path = super::tests::temp_workspace_path();
+    let path = crate::util::shell::test_support::temp_workspace_path();
+    let keymap_path = crate::util::shell::test_support::temp_workspace_path();
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
