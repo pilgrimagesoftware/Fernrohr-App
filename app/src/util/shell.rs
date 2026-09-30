@@ -653,6 +653,46 @@ fn tunnel_dialog_option(
     .into_any_element()
 }
 
+/// The "Set tunnel for <context>" chooser: Direct plus every tunnel, the current
+/// binding checked. Shared by `context.set_tunnel` in a workspace and in the picker.
+fn open_tunnel_dialog(context_name: String, window: &mut Window, cx: &mut App) {
+    let tunnels_path = paths::preference_dir().join("tunnels.toml");
+    let store = TunnelStore::new(tunnels_path.clone());
+    let choices = picker_tunnel::tunnel_choices(&store);
+    let current = store.binding_for(&context_name);
+
+    Root::update(window, cx, |root, window, cx| {
+        root.open_dialog(
+            move |dialog, _window, _cx| {
+                let mut options: Vec<AnyElement> = Vec::new();
+                options.push(tunnel_dialog_option(
+                    "Direct".to_string(),
+                    current.is_none(),
+                    tunnels_path.clone(),
+                    context_name.clone(),
+                    None,
+                ));
+                for choice in &choices {
+                    let checked = current.as_deref() == Some(choice.id.as_str());
+                    options.push(tunnel_dialog_option(
+                        choice.name.clone(),
+                        checked,
+                        tunnels_path.clone(),
+                        context_name.clone(),
+                        Some(choice.id.clone()),
+                    ));
+                }
+                dialog
+                    .title(format!("Set tunnel for {context_name}"))
+                    .w(px(360.))
+                    .child(div().flex().flex_col().gap_1().children(options))
+            },
+            window,
+            cx,
+        );
+    });
+}
+
 /// Section 3.2's actual write: binds (`Some`) or unbinds (`None`) `context_name`
 /// through the same `TunnelStore` `ui/picker_tunnel.rs`'s row selector uses. Free of
 /// any GPUI context, so it's testable without a `Root` (which `open_dialog`/
@@ -1127,48 +1167,19 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let WindowMode::Workspace {
-            contexts, active, ..
-        } = &self.mode
-        else {
-            return;
+        // The window's active context in a workspace; in the picker, the context the
+        // user selected there - so the binding can be set from the keyboard before
+        // connecting, not only from a row's dropdown.
+        let context_name = match &self.mode {
+            WindowMode::Workspace {
+                contexts, active, ..
+            } => contexts[*active].clone(),
+            WindowMode::Picker(picker) => match picker.read(cx).selected_context() {
+                Some(context_name) => context_name,
+                None => return,
+            },
         };
-        let context_name = contexts[*active].clone();
-        let tunnels_path = paths::preference_dir().join("tunnels.toml");
-        let store = TunnelStore::new(tunnels_path.clone());
-        let choices = picker_tunnel::tunnel_choices(&store);
-        let current = store.binding_for(&context_name);
-
-        Root::update(window, cx, |root, window, cx| {
-            root.open_dialog(
-                move |dialog, _window, _cx| {
-                    let mut options: Vec<AnyElement> = Vec::new();
-                    options.push(tunnel_dialog_option(
-                        "Direct".to_string(),
-                        current.is_none(),
-                        tunnels_path.clone(),
-                        context_name.clone(),
-                        None,
-                    ));
-                    for choice in &choices {
-                        let checked = current.as_deref() == Some(choice.id.as_str());
-                        options.push(tunnel_dialog_option(
-                            choice.name.clone(),
-                            checked,
-                            tunnels_path.clone(),
-                            context_name.clone(),
-                            Some(choice.id.clone()),
-                        ));
-                    }
-                    dialog
-                        .title(format!("Set tunnel for {context_name}"))
-                        .w(px(360.))
-                        .child(div().flex().flex_col().gap_1().children(options))
-                },
-                window,
-                cx,
-            );
-        });
+        open_tunnel_dialog(context_name, window, cx);
     }
 
     /// Opens the selected pod's detail panel on the field list. Emitted by a

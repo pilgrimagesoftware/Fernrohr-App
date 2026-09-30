@@ -704,3 +704,38 @@ async fn hover_highlight_never_changes_the_selection(cx: &mut gpui_kit::TestAppC
         })
         .unwrap();
 }
+
+/// Arrow keys move the selection, like a click does: keyboard navigation reaches
+/// Connect and `context.set_tunnel` without the mouse.
+#[gpui_kit::test]
+async fn arrow_keys_move_the_selection(cx: &mut gpui_kit::TestAppContext) {
+    use super::ClusterPicker;
+    use gpui_kit::VisualTestContext;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, window, cx| {
+            picker.contexts = Ok(vec!["kind-dev".to_string(), "staging".to_string()]);
+            cx.notify();
+            let focus = picker.command_focus_handle(cx);
+            window.focus(&focus, cx);
+        })
+        .unwrap();
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+
+    vcx.simulate_keystrokes("down");
+    vcx.run_until_parked();
+
+    let selected = window
+        .update(&mut vcx, |picker, _window, _cx| picker.selected_context())
+        .unwrap();
+    assert!(
+        selected.is_some(),
+        "a keyboard move selects a context, so Connect and the tunnel shortcut can act on it"
+    );
+}

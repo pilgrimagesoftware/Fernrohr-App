@@ -215,6 +215,21 @@ impl ClusterPicker {
         self.select(context_name, cx);
     }
 
+    /// The context the user selected - by click or keyboard - if any.
+    pub(crate) fn selected_context(&self) -> Option<String> {
+        self.selected_context.clone()
+    }
+
+    /// Keyboard navigation moved `Command`'s highlight to `row_index`: select it.
+    fn follow_keyboard(&mut self, row_index: usize, cx: &mut Context<Self>) {
+        self.selected_context = self
+            .contexts
+            .as_ref()
+            .ok()
+            .and_then(|contexts| contexts.get(row_index).cloned());
+        cx.notify();
+    }
+
     /// What [`Self::connect_button`]'s click handler calls: connects the currently
     /// highlighted context, or does nothing if none is highlighted. The button
     /// itself is disabled in that case, but a click that slips through must still
@@ -533,7 +548,7 @@ fn connect_button(disabled: bool, picker: WeakEntity<ClusterPicker>) -> impl Int
 }
 
 impl Render for ClusterPicker {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         // The logo sits outside the card so it reads as app branding rather than
         // as part of the command-palette chrome the card deliberately mimics.
@@ -611,6 +626,18 @@ impl Render for ClusterPicker {
         let command = Command::new(&self.command_state)
             .items(items)
             .placeholder("Search contexts...")
+            // Keyboard navigation (arrows, or typing to filter) moves the selection;
+            // hover moves only `Command`'s own highlight. Both a click and the
+            // keyboard select, so Connect and `context.set_tunnel` follow either.
+            .on_select({
+                let this = this.clone();
+                move |index_path, window, cx| {
+                    if !window.last_input_was_keyboard() {
+                        return;
+                    }
+                    let _ = this.update(cx, |this, cx| this.follow_keyboard(index_path.row, cx));
+                }
+            })
             .on_confirm({
                 let this = this.clone();
                 move |index_path, _window, cx| {
@@ -655,6 +682,7 @@ impl Render for ClusterPicker {
                         .child(connect_button(connect_disabled, this.clone()))
                         .child(manage_tunnels_control()),
                 )
+                .child(crate::ui::picker_keys::key_hints(window, cx))
                 .track_focus(&self.focus_handle)
                 .into_any_element(),
         )
