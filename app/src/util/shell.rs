@@ -410,6 +410,49 @@ fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
     keys
 }
 
+/// The cluster context a Logs or Pod-detail panel should scope itself to: the
+/// context that published the currently selected pod ([`SelectedPod`]), when
+/// `contexts` - this window's own - includes it; [`contexts[active]`](usize)
+/// while nothing is selected yet (a bare `nav.show_logs` before any pod has
+/// been clicked, or a restored panel with no live selection at all). Every
+/// other target is not pod-scoped and always reads `contexts[active]`.
+///
+/// A selection published by a context this window does not hold is refused
+/// rather than opened against `active` instead - that silent substitution
+/// (`1-window-context-bar` bug 1) is what streamed a pod selected in one
+/// context's Pods panel against a *different* context, turning a real pod
+/// into a 404. [`MainWindow::open_target_with_view`] no-ops on `None`, after
+/// this has logged why.
+fn pod_scoped_context(
+    target: &NavTarget,
+    contexts: &[String],
+    active: usize,
+    cx: &App,
+) -> Option<String> {
+    if !matches!(target, NavTarget::Logs | NavTarget::Pod(_)) {
+        return Some(contexts[active].clone());
+    }
+    match cx
+        .try_global::<SelectedPod>()
+        .and_then(|selected| selected.0.as_ref())
+    {
+        None => Some(contexts[active].clone()),
+        Some(selection) if contexts.iter().any(|held| held == &selection.context_name) => {
+            Some(selection.context_name.clone())
+        }
+        Some(selection) => {
+            log::warn!(
+                "selected pod {}/{} belongs to context {:?}, which this window does not hold \
+                 ({contexts:?}); not opening {target:?}",
+                selection.namespace,
+                selection.name,
+                selection.context_name,
+            );
+            None
+        }
+    }
+}
+
 /// A window's body: the cluster picker (no connected context yet) or a connected
 /// workspace. A window opens in `Picker` whenever it has no restored panels, per the
 /// `cluster-picker` and `app-shell` specs.
@@ -1209,7 +1252,10 @@ impl MainWindow {
             return;
         };
         let connection_count = contexts.len();
-        let context_name = contexts[*active].clone();
+        let Some(context_name) = pod_scoped_context(&target, contexts.as_slice(), *active, cx)
+        else {
+            return;
+        };
         // Set only when a panel was actually built, so the subscription below
         // is not made for a panel the dock already had.
         let mut watch_scope = None;

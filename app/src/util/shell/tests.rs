@@ -3,7 +3,7 @@
 // synchronous test below.
 use super::{
     ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor, PanelKey,
-    SET_CONTEXT_TUNNEL_COMMAND_ID, SavedDockLayouts, ShowPodDetail, ToggleCommandPalette,
+    SET_CONTEXT_TUNNEL_COMMAND_ID, SavedDockLayouts, ShowLogs, ShowPodDetail, ToggleCommandPalette,
     WindowLayout, WindowMode, WorkspaceConfig, config, init, open_saved_or_default, open_window,
     register_commands, restorable_panels, restored_contexts, restored_resource_width, save,
     watch_picker, write_context_tunnel,
@@ -329,6 +329,7 @@ async fn a_requested_pod_detail_opens_its_panel(cx: &mut TestAppContext) {
             namespace: "prod".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            context_name: "kind-dev".into(),
         })));
     });
     window
@@ -416,6 +417,7 @@ async fn asking_for_yaml_opens_and_switches_the_pod_panel_to_yaml(cx: &mut TestA
             namespace: "prod".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            context_name: "kind-dev".into(),
         })));
     });
 
@@ -1297,6 +1299,7 @@ async fn a_pods_panel_shortcut_key_reaches_the_window(cx: &mut TestAppContext) {
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            context_name: "kind-dev".into(),
         })));
     });
 
@@ -1860,4 +1863,174 @@ async fn set_active_context_to_an_unused_context_is_a_no_op(cx: &mut TestAppCont
             assert_eq!(*active, 0);
         })
         .unwrap();
+}
+
+/// `1-window-context-bar` bug 1: a pod selected from one context's Pods panel
+/// must open Logs/Pod-detail against *that* context, not whichever context this
+/// window's Resource panel dropdown currently shows. This was the bug's exact
+/// shape - `open_target_with_view` built the new panel's scope from
+/// `contexts[active]` regardless of which context the selected pod actually
+/// came from, turning a real pod into `pods "..." not found`.
+///
+/// Two pre-seeded sessions (never a real connect - see `pod_scoped_context`'s
+/// doc comment and `MainWindow::test_workspace`'s), the second context's pod
+/// selected while the first stays active.
+#[gpui_kit::test]
+async fn show_logs_and_pod_detail_use_the_selected_pods_context_not_the_active_one(
+    cx: &mut TestAppContext,
+) {
+    use crate::k8s::cluster::connection::ConnectionState;
+    use crate::k8s::resource::pods::{PodSelection, SelectedPod};
+
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        ClusterRegistry::insert_test_session(cx, "carefulcrab", ConnectionState::Connecting);
+        ClusterRegistry::insert_test_session(cx, "other-context", ConnectionState::Connecting);
+    });
+
+    let window = cx.add_window(|window, cx| {
+        MainWindow::test_workspace(
+            vec!["carefulcrab".to_string(), "other-context".to_string()],
+            window,
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        window
+            .update(cx, |main_window, _window, _cx| {
+                main_window.test_active_context_name()
+            })
+            .unwrap(),
+        Some("carefulcrab".to_string()),
+        "the window opens on its first context"
+    );
+
+    // The pod was selected from the *other* context's Pods panel - active stays
+    // `carefulcrab` throughout, matching the bug report exactly.
+    cx.update(|cx| {
+        cx.set_global(SelectedPod(Some(PodSelection {
+            namespace: "default".into(),
+            name: "clamav-plc9g".into(),
+            containers: vec!["clamav".into()],
+            context_name: "other-context".into(),
+        })));
+    });
+
+    window
+        .update(cx, |main_window, window, cx| {
+            main_window.focus_handle.clone().focus(window, cx);
+            window.dispatch_action(Box::new(ShowLogs), cx);
+            window.dispatch_action(Box::new(ShowPodDetail), cx);
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    window
+        .update(cx, |main_window, _window, _cx| {
+            let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            let logs = open_panels
+                .iter()
+                .find(|open| open.key.target == NavTarget::Logs)
+                .expect("ShowLogs opened a panel");
+            assert_eq!(
+                logs.key.context_name, "other-context",
+                "Logs must stream from the context that published the selected pod, \
+                 not the window's active one"
+            );
+
+            let detail = open_panels
+                .iter()
+                .find(|open| open.key.target == NavTarget::pod("default", "clamav-plc9g"))
+                .expect("ShowPodDetail opened a panel");
+            assert_eq!(
+                detail.key.context_name, "other-context",
+                "the pod's detail panel must read from the context that selected it"
+            );
+        })
+        .unwrap();
+}
+
+/// The other half of `pod_scoped_context`'s contract: a selection from a
+/// context this window does not hold at all (a stale global, or a pod picked in
+/// a window that has since disconnected that context) must not silently open
+/// against the active context instead - it is refused and logged.
+#[gpui_kit::test]
+async fn show_logs_no_ops_when_the_selected_pods_context_is_not_open_here(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::connection::ConnectionState;
+    use crate::k8s::resource::pods::{PodSelection, SelectedPod};
+
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);
+    });
+    let window =
+        cx.add_window(|window, cx| MainWindow::test_workspace(vec!["kind-dev".into()], window, cx));
+    cx.run_until_parked();
+
+    cx.update(|cx| {
+        cx.set_global(SelectedPod(Some(PodSelection {
+            namespace: "default".into(),
+            name: "web-1".into(),
+            containers: vec!["web".into()],
+            context_name: "never-added".into(),
+        })));
+    });
+
+    window
+        .update(cx, |main_window, window, cx| {
+            main_window.focus_handle.clone().focus(window, cx);
+            window.dispatch_action(Box::new(ShowLogs), cx);
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    window
+        .update(cx, |main_window, _window, _cx| {
+            let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            assert!(
+                !open_panels
+                    .iter()
+                    .any(|open| open.key.target == NavTarget::Logs),
+                "a selection from a context this window doesn't hold must not open Logs \
+                 against the active context instead"
+            );
+        })
+        .unwrap();
+}
+
+/// `PanelKey`'s dedup has to tell two contexts' panels over the same target
+/// apart, or a pod (or Logs) opened on one context would focus the other
+/// context's panel instead of opening its own - the structural half of
+/// `show_logs_and_pod_detail_use_the_selected_pods_context_not_the_active_one`'s
+/// end-to-end proof.
+#[test]
+fn panel_key_distinguishes_two_contexts_over_the_same_target() {
+    let pods_a = PanelKey::from(&PanelScope::new(NavTarget::pods(), "a".to_string()));
+    let pods_b = PanelKey::from(&PanelScope::new(NavTarget::pods(), "b".to_string()));
+    assert_ne!(
+        pods_a, pods_b,
+        "the same target on two contexts must be two different keys"
+    );
+
+    let pod_a = PanelKey::from(&PanelScope::new(
+        NavTarget::pod("default", "web-1"),
+        "a".to_string(),
+    ));
+    let pod_b = PanelKey::from(&PanelScope::new(
+        NavTarget::pod("default", "web-1"),
+        "b".to_string(),
+    ));
+    assert_ne!(
+        pod_a, pod_b,
+        "the same pod's detail panel on two contexts must be two different keys"
+    );
 }
