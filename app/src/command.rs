@@ -6,11 +6,8 @@ use gpui_kit::Action;
 /// `None` and stay palette/keymap-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuSlot {
-    // UNWIRED: no command is assigned here yet - the App menu's current
-    // items (About, Quit) are platform affordances built directly in
-    // `ui::menu::init`, not registry commands. Reserved for the first
-    // command that belongs there (e.g. a future Preferences).
-    #[allow(dead_code)]
+    /// Between About and Services: Settings… (`settings.open`). About, Hide
+    /// and Quit are platform items `ui::menu` builds itself.
     App,
     /// This app's stand-in for a conventional File menu: there are no
     /// documents to open/save/close, but there is a cluster context to pick
@@ -69,9 +66,6 @@ impl CommandRegistry {
         self.commands.push(command);
     }
 
-    // UNWIRED: no caller looks a command up by id outside `dispatch` (also
-    // unwired) and this module's own tests yet.
-    #[allow(dead_code)]
     pub fn get(&self, id: &str) -> Option<&Command> {
         self.commands.iter().find(|command| command.id == id)
     }

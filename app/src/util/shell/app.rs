@@ -71,6 +71,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
+    crate::ui::settings::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -87,7 +88,10 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // which is how `tunnels.manage` ended up with a menu item but no key.
     let bindings = keymap::bindings(&registry, &keymap, cx.keyboard_mapper().as_ref());
     cx.bind_keys(bindings);
+    // Kept for the keybindings editor, which edits it live (`keymap::apply`).
+    cx.set_global(keymap::LiveKeymap::new(keymap_path.to_path_buf(), keymap));
     cx.bind_keys(crate::ui::resource_panel::panel_bindings());
+    crate::ui::settings::init(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
     });
