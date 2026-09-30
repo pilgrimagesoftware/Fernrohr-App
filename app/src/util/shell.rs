@@ -167,6 +167,13 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         if let Some(layouts) = cx.try_global::<SavedDockLayouts>() {
             let _ = crate::config::dock_layouts::save(&dock_layouts_path, &layouts.0);
         }
+        // GPUI's quit path tears down windows but never runs the `Drop` glue on
+        // app-scoped globals - `ClusterRegistry`, and so every live `RegistryHandle`/
+        // `SshTunnel`/`SshTransport` it holds - so nothing would otherwise kill this
+        // run's own `ssh` forwards before the process exits. Runs synchronously here,
+        // not inside the returned future, so it's done before this observer even
+        // returns rather than racing GPUI's shutdown timeout. See `util::pidfile`.
+        crate::util::pidfile::kill_live_forwards();
         async {}
     })
     .detach();
