@@ -102,6 +102,20 @@ impl ResourcePanel {
         window.focus(&self.focus_handle, cx);
     }
 
+    /// The panel's focus handle: the one Focus Next / Previous Panel steps to,
+    /// and which the filter field sits inside.
+    pub(crate) fn focus_handle(&self) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+
+    /// Test-only: shows `kinds` as discovered, so a test outside this module
+    /// gets the loaded panel - list and filter field - without a cluster.
+    #[cfg(test)]
+    pub(crate) fn test_show_kinds(&mut self, kinds: Vec<DiscoveredKind>, cx: &mut Context<Self>) {
+        self.state = ResourceState::Loaded(kinds);
+        cx.notify();
+    }
+
     /// Whether the kind list holds keyboard focus.
     #[cfg(test)]
     pub(crate) fn is_list_focused(&self, window: &Window) -> bool {
