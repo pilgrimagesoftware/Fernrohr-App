@@ -247,6 +247,73 @@ mod tests {
 
     actions!(menu_test, [TestAction]);
 
+    /// After a keymap edit and `rebuild_menus`, the menu bar is re-installed
+    /// with the command still in it, and the key the native menu shows - the
+    /// action's earliest binding that no `Unbind` cancelled - is the new one.
+    /// Rebuilding doesn't register handlers again: About still opens exactly
+    /// one window.
+    #[gpui_kit::test]
+    fn rebuilt_menus_show_the_new_key_and_fire_once(cx: &mut gpui_kit::TestAppContext) {
+        use crate::keymap::{Edit, apply};
+        use crate::ui::panel::focus::FocusNextPanel;
+
+        cx.executor().allow_parking();
+        let dir = std::env::temp_dir();
+        let n = std::process::id();
+        let (workspace, keymap) = (
+            dir.join(format!("fernrohr-menu-workspace-{n}.toml")),
+            dir.join(format!("fernrohr-menu-keymap-{n}.toml")),
+        );
+        let _ = std::fs::remove_file(&keymap);
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            crate::util::shell::init(cx, workspace.clone(), &keymap);
+
+            apply(cx, "panel.focus_next", Edit::Set("cmd-shift-j".into())).expect("saved");
+            super::rebuild_menus(cx);
+            super::rebuild_menus(cx);
+
+            let menus = cx.get_menus().expect("a menu bar is installed");
+            let navigate = menus
+                .iter()
+                .find(|menu| menu.name.as_ref() == "Navigate")
+                .expect("a Navigate menu");
+            assert!(
+                navigate.items.iter().any(|item| matches!(
+                    item,
+                    gpui_kit::OwnedMenuItem::Action { name, .. } if name == "Focus Next Panel"
+                )),
+                "the command is still in its menu"
+            );
+            let shown = cx
+                .key_bindings()
+                .borrow()
+                .bindings_for_action(&FocusNextPanel)
+                .next()
+                .map(|binding| {
+                    binding
+                        .keystrokes()
+                        .iter()
+                        .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
+                        .collect::<Vec<_>>()
+                });
+            let expected = gpui_kit::Keystroke::parse("cmd-shift-j").unwrap().unparse();
+            assert_eq!(shown, Some(vec![expected]), "the menu shows the new key");
+        });
+
+        let before = cx.update(|cx| cx.windows().len());
+        cx.update(|cx| cx.dispatch_action(&About));
+        cx.run_until_parked();
+        assert_eq!(
+            cx.update(|cx| cx.windows().len()),
+            before + 1,
+            "About's handler ran once, not once per rebuild"
+        );
+        let _ = std::fs::remove_file(&workspace);
+        let _ = std::fs::remove_file(&keymap);
+    }
+
     /// Settings… sits in the App menu, between About and Services, once the
     /// registry has it - `MenuSlot::App`'s first command.
     #[test]

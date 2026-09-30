@@ -90,7 +90,7 @@ pub fn open_or_focus(cx: &mut App) {
 
 /// Test-only: the open Settings window, if any.
 #[cfg(test)]
-pub(crate) fn test_window(cx: &App) -> Option<WindowHandle<Root>> {
+fn test_window(cx: &App) -> Option<WindowHandle<Root>> {
     cx.try_global::<SettingsWindowHandle>()?.0
 }
 
@@ -107,7 +107,7 @@ impl SettingsWindow {
 
     /// Test-only: the Keyboard Shortcuts section.
     #[cfg(test)]
-    pub(crate) fn shortcuts(&self) -> Entity<ShortcutsSection> {
+    fn shortcuts(&self) -> Entity<ShortcutsSection> {
         self.shortcuts.clone()
     }
 }
