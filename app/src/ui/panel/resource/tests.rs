@@ -10,6 +10,11 @@ use crate::ui::nav::{NavTarget, has_concrete_panel};
 use gpui_kit::{AppContext as _, TestAppContext, WindowHandle};
 use kube::core::GroupVersionKind;
 
+// `resource-panel-grouping` section 1: the category lookup's own pure tests,
+// which need no window - a child of this module rather than this file's own
+// line count, per `.claude/rules/rust-structure.md`.
+mod logic;
+
 fn kind(group: &str, kind: &str) -> DiscoveredKind {
     DiscoveredKind {
         gvk: GroupVersionKind::gvk(group, "v1", kind),

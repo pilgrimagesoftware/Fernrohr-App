@@ -6,6 +6,10 @@
 //! the window's context through [`ClusterRegistry`], so the list and the panels
 //! it opens all share one `ClusterSession` and switching between them never
 //! reconnects.
+//!
+//! `resource-panel-grouping` section 1 adds [`category`]: the fixed taxonomy a
+//! later section groups the flat list below into. Nothing here consumes it
+//! yet - that starts with section 2's grouped rendering.
 
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
@@ -17,6 +21,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::sidebar::{Sidebar, SidebarMenuItem};
 use gpui_kit::*;
+
+mod category;
 
 /// Emitted when the user picks a row, so the window can open that kind's
 /// panel. Which panel that is stays [`NavTarget`]'s decision - the Resource
