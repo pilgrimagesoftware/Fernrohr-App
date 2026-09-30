@@ -1442,30 +1442,7 @@ impl MainWindow {
 /// `CommandState` is created per open (not reused across opens) since the
 /// palette's own query/selection state should reset each time it's summoned.
 fn open_command_palette(window: &mut Window, cx: &mut App) {
-    let Some(Some(root)) = window.root::<gpui_kit::component::Root>() else {
-        return;
-    };
-    let items = cx.global::<CommandRegistry>();
-    let items = crate::command::build_items(items, &[]);
-    let state = cx.new(|cx| gpui_kit::component::command::CommandState::new(window, cx));
-
-    root.update(cx, |root, cx| {
-        root.open_dialog(
-            move |dialog, _window, _cx| {
-                let state = state.clone();
-                let items = items.clone();
-                dialog.content(move |content, _window, _cx| {
-                    content.child(
-                        gpui_kit::component::command::Command::new(&state)
-                            .items(items.clone())
-                            .placeholder("Type a command..."),
-                    )
-                })
-            },
-            window,
-            cx,
-        );
-    });
+    crate::util::palette::open(window, cx);
 }
 
 impl Render for MainWindow {
