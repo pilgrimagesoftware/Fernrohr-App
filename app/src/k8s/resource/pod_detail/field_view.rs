@@ -17,7 +17,7 @@ impl PodDetailPanel {
         let value = match &field.value {
             PodFieldValue::Text(text) => div().child(text.clone()).into_any_element(),
             PodFieldValue::References { targets, qualified } => {
-                self.render_references(targets, *qualified, cx)
+                self.render_references(field.label, targets, *qualified, cx)
             }
             PodFieldValue::Chips(chips) => div()
                 .flex()
@@ -102,6 +102,7 @@ impl PodDetailPanel {
                         })
                         .when(!volume.references.is_empty(), |this| {
                             this.child(":").child(self.render_references(
+                                format!("volume-{}", volume.name),
                                 &volume.references,
                                 false,
                                 cx,
@@ -189,6 +190,7 @@ impl PodDetailPanel {
                                         div().text_color(theme.muted_foreground).child("Env from:"),
                                     )
                                     .child(self.render_references(
+                                        format!("env-{}", container.name),
                                         &container.env_sources,
                                         true,
                                         cx,
@@ -280,28 +282,21 @@ impl PodDetailPanel {
             .into_any_element()
     }
 
-    /// A run of references, comma-separated. Drawn as link-styled text until
-    /// `ui::link` makes them followable.
+    /// A run of references, each a link when it can be followed - see
+    /// `ui::link`. `id_prefix` keeps each row's reference ids distinct.
     pub(super) fn render_references(
         &self,
+        id_prefix: impl Into<SharedString>,
         targets: &[ObjectRef],
         qualified: bool,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let theme = cx.theme();
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_x_1()
-            .children(targets.iter().enumerate().map(|(index, target)| {
-                let text = reference_text(target, qualified);
-                let text = if index + 1 < targets.len() {
-                    format!("{text},")
-                } else {
-                    text
-                };
-                div().text_color(theme.primary).child(text)
-            }))
-            .into_any_element()
+        crate::ui::link::references(
+            id_prefix,
+            targets,
+            |target| reference_text(target, qualified),
+            &self.scope.context_name,
+            cx,
+        )
     }
 }

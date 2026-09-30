@@ -9,6 +9,7 @@
 mod events;
 mod fetch;
 mod fixtures;
+mod links;
 mod panel;
 mod projection;
 mod references;

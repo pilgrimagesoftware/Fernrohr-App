@@ -15,7 +15,7 @@ use crate::ui::panel_title::PanelScope;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 use jiff::Timestamp;
 
-fn stub_panel(
+pub(super) fn stub_panel(
     cx: &mut TestAppContext,
     state: ConnectionState,
 ) -> gpui_kit::WindowHandle<PodDetailPanel> {

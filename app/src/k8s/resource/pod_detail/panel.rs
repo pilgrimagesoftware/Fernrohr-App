@@ -172,6 +172,14 @@ impl PodDetailPanel {
         self.viewing
     }
 
+    /// Lands `pod` as if a fetch had returned it, for tests outside this module
+    /// that need a loaded panel without a cluster (the window's link tests).
+    #[cfg(test)]
+    pub(crate) fn test_set_loaded(&mut self, pod: Pod, cx: &mut Context<Self>) {
+        self.state = PodDetailState::Loaded(Box::new(pod), Ok(Vec::new()));
+        cx.notify();
+    }
+
     /// Switches the active tab of the structured view.
     pub(super) fn set_active_tab(&mut self, section: DetailSection, cx: &mut Context<Self>) {
         self.active_tab = section;
