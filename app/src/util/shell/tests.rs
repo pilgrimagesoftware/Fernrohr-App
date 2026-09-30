@@ -2082,3 +2082,56 @@ fn panel_key_distinguishes_two_contexts_over_the_same_target() {
         "the same pod's detail panel on two contexts must be two different keys"
     );
 }
+
+/// Keyboard entry into the Resource panel: the Focus Resources key moves focus onto
+/// its list with no click first, so the panel's own keys work straight away.
+#[gpui_kit::test]
+async fn the_focus_resources_key_focuses_the_resource_panel(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::connection::ConnectionState;
+    use gpui_kit::VisualTestContext;
+
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+        ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);
+    });
+    let window = cx.add_window(|window, cx| {
+        MainWindow::test_workspace(vec!["kind-dev".to_string()], window, cx)
+    });
+    // Something has focus in a real window from launch (`focus_initial`); a key only
+    // dispatches along the focused element's path, so give this one the same start.
+    window
+        .update(cx, |main_window, window, cx| {
+            window.focus(&main_window.focus_handle, cx);
+        })
+        .unwrap();
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+
+    let key = gpui_kit::Keystroke::parse("cmd-0")
+        .expect("valid")
+        .unparse();
+    vcx.simulate_keystrokes(&key);
+    vcx.run_until_parked();
+
+    let focused = window
+        .update(&mut vcx, |main_window, window, cx| {
+            main_window
+                .test_resource_panel()
+                .expect("a workspace window has a Resource panel")
+                .read(cx)
+                .is_list_focused(window)
+        })
+        .unwrap();
+    assert!(
+        focused,
+        "the Focus Resources key puts focus on the Resource panel"
+    );
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}
