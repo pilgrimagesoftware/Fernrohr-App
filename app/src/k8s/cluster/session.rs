@@ -99,11 +99,10 @@ impl ClusterRegistry {
     /// drops the session entirely - its connection (and so, via `ClusterConnection`'s
     /// own `Drop`, its tunnel forward) and its watches. A no-op if the context has no
     /// session, or `window_id` wasn't holding it.
-    // UNWIRED(window-context-bar section 3): the per-context release a chip's
-    // Disconnect action will call. Closing a window releases through
-    // `release_window` instead, so this has no production caller yet - only this
-    // module's own hold/release tests.
-    #[allow(dead_code)]
+    ///
+    /// `window-context-bar` section 3.3's Disconnect calls this directly for the one
+    /// context being disconnected; closing a window releases every context it holds
+    /// at once, through [`Self::release_window`] instead.
     pub fn release(cx: &mut App, context_name: &str, window_id: WindowId) {
         if !cx.has_global::<Self>() {
             return;
@@ -143,11 +142,8 @@ impl ClusterRegistry {
 
     /// How many windows currently hold `context_name` - `0` for a context with no
     /// session (never held, or its last holder already released it). The disconnect
-    /// confirmation (`window-context-bar` section 3) reads this minus one (itself) for
-    /// "stays connected in N other windows".
-    // UNWIRED(window-context-bar section 3): no production caller until the
-    // disconnect confirmation reads it - only this module's own tests today.
-    #[allow(dead_code)]
+    /// confirmation (`window-context-bar` section 3.3) reads this minus one (itself)
+    /// for "stays connected in N other windows".
     pub fn holder_count(cx: &App, context_name: &str) -> usize {
         cx.try_global::<Self>()
             .and_then(|registry| registry.sessions.get(context_name))
