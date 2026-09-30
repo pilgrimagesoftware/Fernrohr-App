@@ -1,3 +1,8 @@
-pub mod panel_title;
+pub mod nav;
+pub mod panel;
 pub mod picker;
-pub mod resource_panel;
+pub mod placeholder;
+pub mod theme;
+
+pub use panel::resource as resource_panel;
+pub use panel::title as panel_title;

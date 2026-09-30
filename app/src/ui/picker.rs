@@ -4,9 +4,9 @@
 //! `ClusterRegistry`, and emits [`PickerEvent::Connected`] on success so `shell::MainWindow`
 //! can switch that window into its normal panel workspace.
 
-use crate::cluster::connection::{ClusterConnection, ConnectionState};
-use crate::cluster::kubeconfig;
-use crate::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+use crate::k8s::cluster::kubeconfig;
+use crate::k8s::cluster::session::ClusterRegistry;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
@@ -23,6 +23,7 @@ pub enum PickerEvent {
 struct Attempt {
     context_name: String,
     connection: Entity<ClusterConnection>,
+    connected: bool,
 }
 
 pub struct ClusterPicker {
@@ -35,7 +36,7 @@ pub struct ClusterPicker {
     /// as cross-thread nondeterminism - so tests substitute a stub instead of
     /// driving a real connect.
     #[cfg(test)]
-    connection_factory: Option<fn(&mut App, &str) -> Entity<ClusterConnection>>,
+    pub(crate) connection_factory: Option<fn(&mut App, &str) -> Entity<ClusterConnection>>,
 }
 
 impl ClusterPicker {
@@ -64,16 +65,11 @@ impl ClusterPicker {
         ClusterRegistry::connection(cx, context_name)
     }
 
-    fn select(&mut self, context_name: String, cx: &mut Context<Self>) {
+    pub(crate) fn select(&mut self, context_name: String, cx: &mut Context<Self>) {
         let connection = self.new_connection(&context_name, cx);
         cx.observe(&connection, {
-            let context_name = context_name.clone();
-            move |_this: &mut Self, connection, cx| {
-                if let ConnectionState::Connected(_) = &connection.read(cx).state {
-                    cx.emit(PickerEvent::Connected {
-                        context_name: context_name.clone(),
-                    });
-                }
+            move |this: &mut Self, _connection, cx| {
+                this.emit_connected(cx);
                 cx.notify();
             }
         })
@@ -81,8 +77,28 @@ impl ClusterPicker {
         self.attempt = Some(Attempt {
             context_name,
             connection,
+            connected: false,
         });
+        self.emit_connected(cx);
         cx.notify();
+    }
+
+    fn emit_connected(&mut self, cx: &mut Context<Self>) {
+        let Some(attempt) = &mut self.attempt else {
+            return;
+        };
+        if attempt.connected
+            || !matches!(
+                &attempt.connection.read(cx).state,
+                ConnectionState::Connected(_)
+            )
+        {
+            return;
+        }
+        attempt.connected = true;
+        cx.emit(PickerEvent::Connected {
+            context_name: attempt.context_name.clone(),
+        });
     }
 
     pub fn command_focus_handle(&self, cx: &App) -> FocusHandle {
@@ -352,7 +368,7 @@ mod tests {
         CARD_CHROME_HEIGHT, CARD_LIST_MAX_HEIGHT, CARD_WIDTH, LOGO_HEIGHT, LOGO_WIDTH,
         MIN_WINDOW_SIZE, PICKER_CONTENT_GAP,
     };
-    use crate::cluster::kubeconfig;
+    use crate::k8s::cluster::kubeconfig;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -511,7 +527,7 @@ users:
         cx: &mut gpui_kit::TestAppContext,
     ) {
         use super::{Attempt, ClusterPicker};
-        use crate::cluster::connection::{ClusterConnection, ConnectionState};
+        use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
         use gpui_kit::{AppContext as _, Entity};
 
         /// Stands in for `ClusterRegistry::connection`: hands back a connection in a
@@ -540,6 +556,7 @@ users:
                             "connection refused".to_string(),
                         ))
                     }),
+                    connected: false,
                 });
                 cx.notify();
             })
