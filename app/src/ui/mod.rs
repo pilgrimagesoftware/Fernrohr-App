@@ -9,6 +9,7 @@ pub mod picker;
 pub mod picker_keys;
 pub mod picker_tunnel;
 pub mod placeholder;
+pub mod settings;
 pub mod status_bar;
 pub mod theme;
 pub mod tunnels;
