@@ -135,9 +135,12 @@ impl TunnelsWindow {
         tunnels.sort_by(|a, b| a.1.name.cmp(&b.1.name).then_with(|| a.0.cmp(&b.0)));
         self.tunnels = tunnels;
         self.usage = store.usage_counts();
-        let contexts =
-            kubeconfig::list_context_names(self.kubeconfig_path.as_deref()).unwrap_or_default();
-        self.stale = store.stale_bindings(&contexts);
+        // An unreadable kubeconfig means the context list is unknown, not empty: treating
+        // it as empty would flag every binding stale and invite removing good ones.
+        self.stale = match kubeconfig::list_context_names(self.kubeconfig_path.as_deref()) {
+            Ok(contexts) => store.stale_bindings(&contexts),
+            Err(_) => Vec::new(),
+        };
         cx.notify();
     }
 
@@ -563,5 +566,36 @@ mod tests {
 
         let _ = std::fs::remove_file(&tunnels_path);
         let _ = std::fs::remove_file(&kubeconfig_path);
+    }
+
+    /// An unreadable kubeconfig leaves the context list unknown, so no binding is
+    /// offered for removal - otherwise every good binding would look stale.
+    #[gpui_kit::test]
+    async fn an_unreadable_kubeconfig_flags_nothing_stale(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        let tunnels_path = temp_tunnels_path();
+        let store = TunnelStore::new(tunnels_path.clone());
+        store
+            .create("qa-bastion", sample_tunnel("QA"), None)
+            .unwrap();
+        store.bind("greedygoat", "qa-bastion").unwrap();
+        let missing = std::env::temp_dir().join(format!(
+            "fernrohr-tunnels-window-test-missing-kubeconfig-{}.yaml",
+            std::process::id()
+        ));
+
+        let window = cx.add_window({
+            let tunnels_path = tunnels_path.clone();
+            move |window, cx| TunnelsWindow::new(tunnels_path, Some(missing), window, cx)
+        });
+        window
+            .update(cx, |this, _window, _cx| assert!(this.stale.is_empty()))
+            .unwrap();
+
+        let _ = std::fs::remove_file(&tunnels_path);
     }
 }
