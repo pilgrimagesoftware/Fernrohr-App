@@ -152,3 +152,138 @@ async fn a_closed_kind_is_opened_again_rather_than_focused(cx: &mut TestAppConte
         .unwrap();
     cx.run_until_parked();
 }
+
+/// Splits the centre into an upper group (holding the workspace's Pods list) and
+/// a lower group (holding a second panel), and returns the lower panel's id.
+fn split_with_a_lower_panel(
+    main_window: &mut crate::util::shell::MainWindow,
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::Context<crate::util::shell::MainWindow>,
+) -> gpui_kit::component::dock::PanelId {
+    use gpui_kit::component::dock::InsertTarget;
+
+    main_window.open_target(NavTarget::Kind(crd_kind()), window, cx);
+    let WindowMode::Workspace {
+        dock_area,
+        open_panels,
+        ..
+    } = &main_window.mode
+    else {
+        panic!("a connected window is in workspace mode")
+    };
+    let lower = open_panels
+        .iter()
+        .find(|open| open.key.target == NavTarget::Kind(crd_kind()))
+        .expect("the kind's panel opened")
+        .id;
+    dock_area.update(cx, |area, cx| {
+        let tree = area.layout(DockPlacement::Center).expect("a centre");
+        let group = tree.find_panel_node(lower).expect("docked");
+        let split = InsertTarget::Split {
+            node: group,
+            placement: gpui_kit::base::Placement::Bottom,
+            size: None,
+        };
+        area.move_panel(lower, split, window, cx);
+    });
+    lower
+}
+
+/// The tab group `id` is in.
+fn group_of(
+    main_window: &crate::util::shell::MainWindow,
+    id: gpui_kit::component::dock::PanelId,
+    cx: &gpui_kit::App,
+) -> gpui_kit::component::dock::NodeId {
+    let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+        panic!("a connected window is in workspace mode")
+    };
+    dock_area
+        .read(cx)
+        .layout(DockPlacement::Center)
+        .expect("a centre")
+        .find_panel_node(id)
+        .expect("docked")
+}
+
+fn opened_id(
+    main_window: &crate::util::shell::MainWindow,
+    target: &NavTarget,
+) -> gpui_kit::component::dock::PanelId {
+    let WindowMode::Workspace { open_panels, .. } = &main_window.mode else {
+        panic!("a connected window is in workspace mode")
+    };
+    open_panels
+        .iter()
+        .find(|open| &open.key.target == target)
+        .expect("the target's panel opened")
+        .id
+}
+
+/// A panel opened while another has focus - the double-click or `g` it came
+/// from - joins that panel's tab group: from the lower half of a split, the new
+/// panel opens in the lower half, not the dock's first group.
+#[gpui_kit::test]
+async fn a_panel_opened_from_a_lower_split_opens_beside_it(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+
+    window
+        .update(cx, |main_window, window, cx| {
+            let lower = split_with_a_lower_panel(main_window, window, cx);
+            let lower_group = group_of(main_window, lower, cx);
+            let pods = opened_id(main_window, &NavTarget::pods());
+            assert_ne!(
+                group_of(main_window, pods, cx),
+                lower_group,
+                "the split put the two panels in different groups"
+            );
+
+            // Focus inside the lower panel, as a double-click there leaves it.
+            let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                unreachable!()
+            };
+            let handle = dock_area
+                .read(cx)
+                .panel(lower)
+                .expect("docked")
+                .focus_handle(cx);
+            window.focus(&handle, cx);
+
+            let pod = NavTarget::pod("staging", "web-1");
+            main_window.open_target(pod.clone(), window, cx);
+            let opened = opened_id(main_window, &pod);
+            assert_eq!(
+                group_of(main_window, opened, cx),
+                lower_group,
+                "the pod opened in the group it was opened from"
+            );
+        })
+        .unwrap();
+}
+
+/// With focus outside the dock (the Resource panel, or nowhere), a new panel
+/// goes where it always did: the dock's first group.
+#[gpui_kit::test]
+async fn a_panel_opened_from_outside_the_dock_uses_the_first_group(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+
+    window
+        .update(cx, |main_window, window, cx| {
+            let lower = split_with_a_lower_panel(main_window, window, cx);
+            let pods = opened_id(main_window, &NavTarget::pods());
+            let upper_group = group_of(main_window, pods, cx);
+            main_window.focus_handle.clone().focus(window, cx);
+
+            let pod = NavTarget::pod("staging", "web-1");
+            main_window.open_target(pod.clone(), window, cx);
+            let opened = opened_id(main_window, &pod);
+            assert_eq!(group_of(main_window, opened, cx), upper_group);
+            assert_ne!(
+                group_of(main_window, opened, cx),
+                group_of(main_window, lower, cx)
+            );
+        })
+        .unwrap();
+}

@@ -9,7 +9,7 @@
 //! no per-group bounds to base it on.
 
 use crate::command::{Command, CommandRegistry, MenuSlot};
-use gpui_kit::component::dock::{DockArea, DockPlacement, PaneRef, PanelId};
+use gpui_kit::component::dock::{DockArea, DockPlacement, NodeId, PaneRef, PanelId};
 use gpui_kit::{App, Entity, FocusHandle, Window, actions};
 
 actions!(panel_focus, [FocusNextPanel, FocusPreviousPanel]);
@@ -115,6 +115,22 @@ pub fn dock_stops(area: &DockArea, cx: &App) -> Vec<PanelId> {
         });
     }
     stops
+}
+
+/// The tab group holding the displayed dock panel that has keyboard focus
+/// (anywhere inside it, as [`move_focus`] counts it), or `None` when focus is
+/// outside the dock - the Resource panel, or nothing.
+///
+/// This is where a request made *from* a panel came from: a double-clicked row
+/// or a followed link, whose new panel belongs in the same group.
+pub fn focused_group(area: &DockArea, window: &Window, cx: &App) -> Option<NodeId> {
+    let focused = dock_stops(area, cx).into_iter().find(|&panel| {
+        area.panel(panel)
+            .is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
+    })?;
+    REGION_ORDER
+        .iter()
+        .find_map(|&placement| area.layout(placement)?.find_panel_node(focused))
 }
 
 /// Moves keyboard focus one stop in `direction`: the Resource panel (`resource`,
