@@ -34,9 +34,12 @@ jobs:
       - name: Build
         run: cargo build --workspace --locked
 
+      # `--include-ignored` keeps the real-keychain tests (`#[ignore]`d so a plain
+      # `cargo test` never pops a macOS Keychain access prompt) running here, since
+      # macOS is the only runner with a real keychain daemon to test against.
       - name: Test
         if: runner.os != 'Linux'
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked -- --include-ignored
 
       # The ubuntu-latest runner has repeatedly died mid-test-run ("lost communication
       # with the server") on this branch specifically, long before the base suite's own

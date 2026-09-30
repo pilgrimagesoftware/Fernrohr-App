@@ -79,10 +79,21 @@ pub struct TunnelStore {
 }
 
 impl TunnelStore {
+    /// Test builds (`cfg(test)`) never touch the real OS keychain: every `TunnelStore`,
+    /// whether built directly by this module's own tests or indirectly through the
+    /// tunnel editor and connect-path code those tests exercise, gets
+    /// [`TunnelSecretStore::new_in_memory_only`] instead of the real keychain-backed
+    /// store, so a plain `cargo test` never triggers a macOS Keychain access prompt.
+    /// Production (`cfg(not(test))`) behavior is unchanged.
     pub fn new(config_path: PathBuf) -> Self {
+        #[cfg(test)]
+        let secrets = TunnelSecretStore::new_in_memory_only();
+        #[cfg(not(test))]
+        let secrets = TunnelSecretStore::new();
+
         Self {
             config_path,
-            secrets: TunnelSecretStore::new(),
+            secrets,
         }
     }
 

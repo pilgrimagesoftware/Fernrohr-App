@@ -37,9 +37,40 @@ pub fn smoke_test(account: &str, secret: &str) -> keyring::Result<bool> {
 mod tests {
     use super::*;
 
+    /// Unique per process *and* per run: a run interrupted before `smoke_test`'s own
+    /// cleanup (or this test's guard) runs must not leave behind an account a later
+    /// run could collide with.
+    fn unique_account() -> String {
+        let pid = std::process::id();
+        let nanos = jiff::Timestamp::now().as_nanosecond();
+        format!("keychain-smoke-test-account-{pid}-{nanos}")
+    }
+
+    /// Deletes `account`'s entry on drop, even if the test panics partway through -
+    /// covers the case where `smoke_test` itself already stored the secret but a
+    /// later step (its own read-back, or this test's assertion) fails before its
+    /// internal `delete_credential` call runs.
+    struct CleanupGuard {
+        account: String,
+    }
+
+    impl Drop for CleanupGuard {
+        fn drop(&mut self) {
+            if let Ok(entry) = Entry::new(SMOKE_SERVICE, &self.account) {
+                let _ = entry.delete_credential();
+            }
+        }
+    }
+
     #[test]
+    #[ignore = "touches the real OS keychain; run with `cargo test -- --ignored`"]
     fn round_trips_or_reports_no_backend() {
-        match smoke_test("keychain-smoke-test-account", "s3cr3t-value") {
+        let account = unique_account();
+        let _cleanup = CleanupGuard {
+            account: account.clone(),
+        };
+
+        match smoke_test(&account, "s3cr3t-value") {
             Ok(matched) => assert!(matched, "stored secret did not match on read-back"),
             Err(err) => panic!("keyring backend present but operation failed: {err:?}"),
         }
