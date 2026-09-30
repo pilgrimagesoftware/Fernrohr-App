@@ -237,7 +237,8 @@ fn orphaned_forward_predicate_kills_an_orphaned_stand_in_and_removes_its_pidfile
     assert_eq!(sweep_dir(&dir, looks_like_orphaned_forward), 1);
     assert!(!pidfile_path.exists());
     // SIGKILL is delivered asynchronously, and the killed orphan lingers as a
-    // zombie - which `kill -0` still finds - until init reaps it.
+    // zombie - which `kill -0` still finds - until init (or a CI runner's
+    // subreaper) reaps it on its own schedule.
     assert!(
         eventually(|| !process_group_alive(pid)),
         "the orphaned stand-in should be dead after the sweep"
