@@ -337,7 +337,18 @@ enum WindowMode {
         /// Keeps the dock's renderer alive. The default skin uses GPUI focus
         /// state for active panel chrome and provides its zoom control.
         _dock_skin: Rc<DockSkin>,
-        context_name: String,
+        /// Every context this window uses, in the order they were added
+        /// (`window-context-bar` design.md decision 1). One entry today -
+        /// adding a second is that change's own later sections' job - but
+        /// `connection_count` (how many cluster connections the window holds,
+        /// which section 10.1's title bar reads) is always `contexts.len()`
+        /// rather than a field of its own, so the two can never disagree.
+        contexts: Vec<String>,
+        /// Index into `contexts` naming which one the Resource panel's cluster
+        /// dropdown currently shows, and which one a window-wide action (like
+        /// `SetContextTunnel`) applies to. Always `0` while `contexts` has one
+        /// entry.
+        active: usize,
         /// The discovered-kind list in the window's left edge. It reads the
         /// same `ClusterSession` as `dock_area`, so picking a kind opens a
         /// panel without reconnecting.
@@ -351,12 +362,6 @@ enum WindowMode {
         /// dock's active panel once the user clicks tabs directly (section 12
         /// tracks that).
         nav: Box<NavTarget>,
-        /// How many cluster connections this window holds. One today: adding a
-        /// second connection to an already-connected window is an explicit
-        /// non-goal of this change (`design.md`), so the count is the window's
-        /// to state and pass on rather than something panels assume. Section
-        /// 10.1's title bar reads it.
-        connection_count: usize,
         /// `connection-status-bar`: one item per context this window uses, shown along
         /// the workspace's bottom edge. Absent in `Picker` mode - the picker already
         /// shows its own connect progress (proposal.md's non-goals).
@@ -450,13 +455,13 @@ fn watch_workspace(
             if !matches!(event, DockEvent::LayoutChanged) {
                 return;
             }
-            if let WindowMode::Workspace { context_name, .. } = &this.mode
+            if let WindowMode::Workspace { contexts, .. } = &this.mode
                 && cx.has_global::<SavedDockLayouts>()
             {
                 let state = dock_area.read(cx).dump(cx);
                 cx.global_mut::<SavedDockLayouts>()
                     .0
-                    .insert(context_name.clone(), state);
+                    .insert(contexts[0].clone(), state);
             }
             this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
@@ -623,11 +628,11 @@ impl MainWindow {
         self.mode = WindowMode::Workspace {
             dock_area,
             _dock_skin: dock_skin,
-            context_name,
+            contexts: vec![context_name],
+            active: 0,
             resource_panel,
             open_panels,
             nav: Box::new(NavTarget::pods()),
-            connection_count: CONNECTIONS,
             status_bar,
         };
         if !restored {
@@ -726,10 +731,13 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let WindowMode::Workspace { context_name, .. } = &self.mode else {
+        let WindowMode::Workspace {
+            contexts, active, ..
+        } = &self.mode
+        else {
             return;
         };
-        let context_name = context_name.clone();
+        let context_name = contexts[*active].clone();
         let tunnels_path = paths::preference_dir().join("tunnels.toml");
         let store = TunnelStore::new(tunnels_path.clone());
         let choices = picker_tunnel::tunnel_choices(&store);
@@ -844,23 +852,24 @@ impl MainWindow {
     ) {
         let WindowMode::Workspace {
             dock_area,
-            context_name,
+            contexts,
+            active,
             resource_panel,
             open_panels,
             nav,
-            connection_count,
             ..
         } = &mut self.mode
         else {
             return;
         };
-        let connection_count = *connection_count;
+        let connection_count = contexts.len();
+        let context_name = contexts[*active].clone();
         // Set only when a panel was actually built, so the subscription below
         // is not made for a panel the dock already had.
         let mut watch_scope = None;
         let scope = PanelScope {
             connection_count,
-            ..PanelScope::new(target.clone(), context_name.clone())
+            ..PanelScope::new(target.clone(), context_name)
         };
         let key = PanelKey::from(&scope);
         match open_panels.iter().find(|open| open.key == key) {
