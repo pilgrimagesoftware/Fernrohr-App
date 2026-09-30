@@ -269,58 +269,68 @@ impl ResourcePanel {
                     })
             })
             .collect();
-        Sidebar::new("resources")
+        let sidebar = Sidebar::new("resources")
             .w_full()
+            .border_r_0()
             .collapsible(false)
-            .header(self.header(cx))
             .children(items)
+            .into_any_element();
+        self.with_header(sidebar, cx)
+    }
+
+    /// The panel's frame: [`Self::header`] drawn here, above a header-less sidebar,
+    /// rather than in `Sidebar`'s own header slot. That slot is a padded row this panel
+    /// can't size, which clipped the selector at the right edge and let it collapse to
+    /// nothing when the panel was narrowed. The frame carries the sidebar's background
+    /// and right border (the sidebar's own is turned off) so the two read as one panel.
+    fn with_header(&self, sidebar: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme().clone();
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(theme.tokens.sidebar)
+            .border_r_1()
+            .border_color(theme.sidebar_border)
+            .child(div().w_full().px_3().pt_3().child(self.header(cx)))
+            .child(div().flex_1().min_h_0().child(sidebar))
             .into_any_element()
     }
 
-    /// The sidebar's header: which cluster's resources these rows are, and - once
-    /// the window holds more than one - a real dropdown of every context this
-    /// window uses (`window-context-bar` design.md decision 4). Picking a different
-    /// one only *asks*: it emits [`ResourceEvent::SwitchContext`] rather than
-    /// switching locally, so `active` is always written in exactly one place,
-    /// `MainWindow`, whether the request came from here or from a chip click.
+    /// The header row: which cluster's resources these rows are, and - once the window
+    /// holds more than one - a dropdown of every context it uses (`window-context-bar`
+    /// design.md decision 4). Picking one only *asks*: it emits
+    /// [`ResourceEvent::SwitchContext`], so `active` is written in one place,
+    /// `MainWindow`. "Resources" gives way (ellipsized) before the selector does, and
+    /// the selector sits in the right corner on the label's text baseline.
     fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
-        // One row: "Resources" on the left, the context (a dropdown once the window
-        // holds several) in the right corner, sharing the label's text baseline.
-        // `flex_1` + `min_w_0`, not `w_full`: the sidebar puts this inside a padded
-        // `h_flex`, where `w_full` takes the container's whole width and pushes the
-        // selector past the panel's right edge.
+        let selector = if self.shows_cluster_dropdown() {
+            self.cluster_dropdown(cx)
+        } else {
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(self.context_name.clone())
+                .into_any_element()
+        };
         div()
-            .flex_1()
-            .min_w_0()
+            .w_full()
             .flex()
             .items_baseline()
-            .justify_between()
             .gap_2()
             .child(
                 div()
-                    .flex_shrink_0()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
                     .text_sm()
                     .text_color(theme.sidebar_foreground)
                     .child("Resources"),
             )
-            // `ml_auto` as well as `justify_between`: the selector stays in the right
-            // corner even if the sidebar's header slot doesn't stretch this row.
-            .child(div().ml_auto().min_w_0().overflow_hidden().child(
-                if self.shows_cluster_dropdown() {
-                    self.cluster_dropdown(cx)
-                } else {
-                    div()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child(self.context_name.clone())
-                        .into_any_element()
-                },
-            ))
+            .child(div().flex_shrink_0().child(selector))
             .into_any_element()
     }
 
@@ -355,6 +365,17 @@ impl ResourcePanel {
             })
             .into_any_element()
     }
+
+    /// A status-only sidebar (no kinds yet, or none to show), framed like the list.
+    fn render_status(&self, message: String, cx: &mut Context<Self>) -> AnyElement {
+        let sidebar = Sidebar::new("resources")
+            .w_full()
+            .border_r_0()
+            .collapsible(false)
+            .child(Self::status_row(message))
+            .into_any_element();
+        self.with_header(sidebar, cx)
+    }
 }
 
 impl EventEmitter<ResourceEvent> for ResourcePanel {}
@@ -362,37 +383,19 @@ impl EventEmitter<ResourceEvent> for ResourcePanel {}
 impl Render for ResourcePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match &self.state {
-            ResourceState::Loaded(kinds) if kinds.is_empty() => Sidebar::new("resources")
-                .w_full()
-                .collapsible(false)
-                .header(self.header(cx))
-                .child(Self::status_row(
-                    "This cluster reported no resource kinds.".to_string(),
-                ))
-                .into_any_element(),
+            ResourceState::Loaded(kinds) if kinds.is_empty() => {
+                self.render_status("This cluster reported no resource kinds.".to_string(), cx)
+            }
             ResourceState::Loaded(kinds) => self.render_kinds(kinds, cx),
-            ResourceState::WaitingForConnection => Sidebar::new("resources")
-                .w_full()
-                .collapsible(false)
-                .header(self.header(cx))
-                .child(Self::status_row("Connecting...".to_string()))
-                .into_any_element(),
-            ResourceState::Loading => Sidebar::new("resources")
-                .w_full()
-                .collapsible(false)
-                .header(self.header(cx))
-                .child(Self::status_row(
-                    "Discovering resource kinds...".to_string(),
-                ))
-                .into_any_element(),
-            ResourceState::Failed(reason) => Sidebar::new("resources")
-                .w_full()
-                .collapsible(false)
-                .header(self.header(cx))
-                .child(Self::status_row(format!(
-                    "Could not discover resource kinds: {reason}"
-                )))
-                .into_any_element(),
+            ResourceState::WaitingForConnection => {
+                self.render_status("Connecting...".to_string(), cx)
+            }
+            ResourceState::Loading => {
+                self.render_status("Discovering resource kinds...".to_string(), cx)
+            }
+            ResourceState::Failed(reason) => {
+                self.render_status(format!("Could not discover resource kinds: {reason}"), cx)
+            }
         }
     }
 }
