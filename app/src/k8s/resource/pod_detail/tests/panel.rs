@@ -8,12 +8,20 @@ use crate::k8s::resource::pod_detail::commands::PANEL_KEY_CONTEXT;
 use crate::k8s::resource::pod_detail::fetch::PodDetailState;
 use crate::k8s::resource::pod_detail::model::{DetailSection, DetailView, PodFieldValue};
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
-use crate::k8s::resource::pod_detail::{panel_bindings, register_commands};
+use crate::k8s::resource::pod_detail::register_commands;
 use crate::keymap::KeymapConfig;
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 use jiff::Timestamp;
+
+/// The panel's bindings as the app builds them: from its registered commands,
+/// through `keymap::bindings`, with `keymap`'s overrides.
+fn registered_bindings(keymap: &KeymapConfig, cx: &gpui_kit::App) -> Vec<gpui_kit::KeyBinding> {
+    let mut registry = CommandRegistry::new();
+    register_commands(&mut registry);
+    crate::keymap::bindings(&registry, keymap, cx.keyboard_mapper().as_ref())
+}
 
 pub(super) fn stub_panel(
     cx: &mut TestAppContext,
@@ -200,7 +208,7 @@ async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
-        cx.bind_keys(panel_bindings(&KeymapConfig::default()));
+        cx.bind_keys(registered_bindings(&KeymapConfig::default(), cx));
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
@@ -279,7 +287,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
-        cx.bind_keys(panel_bindings(&keymap));
+        cx.bind_keys(registered_bindings(&keymap, cx));
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
