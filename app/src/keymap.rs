@@ -74,6 +74,11 @@ pub fn bindings(
                 .ok()
             };
             let chosen = resolve(command.id, command.default_binding, keymap);
+            // A command with no default and no override is palette-only
+            // (About, Zoom): nothing to bind, and nothing to warn about.
+            if chosen.trim().is_empty() {
+                return None;
+            }
             load(&chosen).or_else(|| {
                 log::warn!("keymap.toml: invalid binding {chosen:?} for {}", command.id);
                 load(command.default_binding)
@@ -177,9 +182,10 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Every registered command gets a key - `tunnels.manage` once had a menu item and
-    /// palette entry but no binding, because keys came from a hand-kept list. A
-    /// command missing from an older `keymap.toml` still gets its default.
+    /// Every registered command with a default gets a key - `tunnels.manage` once
+    /// had a menu item and palette entry but no binding, because keys came from a
+    /// hand-kept list. A command missing from an older `keymap.toml` still gets its
+    /// default. A palette-only command (no default, like About) gets none.
     #[test]
     fn every_registered_command_is_bound() {
         let mut registry = CommandRegistry::new();
@@ -189,8 +195,17 @@ mod tests {
         let bound = bindings(&registry, &keymap, &gpui_kit::DummyKeyboardMapper);
         assert_eq!(
             bound.len(),
-            registry.iter().count(),
-            "one binding per command"
+            registry
+                .iter()
+                .filter(|command| !command.default_binding.is_empty())
+                .count(),
+            "one binding per command that has a default"
+        );
+        assert!(
+            registry
+                .iter()
+                .any(|command| command.default_binding.is_empty()),
+            "palette-only commands exist, so the filter above is exercised"
         );
         let manage = bound
             .iter()
