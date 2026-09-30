@@ -84,7 +84,12 @@ fn spawn_ssh_stand_in() -> std::process::Child {
 /// the launcher by design - would keep the launcher's stdout pipe open for the
 /// full 20 seconds of [`SSH_STAND_IN_SCRIPT`], and `Command::output` (below) reads
 /// that pipe until EOF, not just until the launcher itself exits.
-/// Returns the stand-in's pid, which is also its pgid.
+/// Returns the stand-in's pid, which is also its pgid - but only once the stand-in
+/// is observably what the sweep looks for. `$!` is printed right after the fork,
+/// before the backgrounded subshell has run its `exec -a ssh`, so until then `ps`
+/// still shows the launcher's own `bash -c ...` command line; and the reparenting
+/// to pid 1 lands only when the launcher exits. Sweeping before both have settled
+/// is a race the sweep loses on a loaded Linux runner.
 fn spawn_orphaned_ssh_stand_in() -> u32 {
     let script = format!(
         "set -m; exec -a ssh bash -c '{SSH_STAND_IN_SCRIPT}' -N -L >/dev/null 2>&1 & echo $!"
@@ -95,10 +100,34 @@ fn spawn_orphaned_ssh_stand_in() -> u32 {
         .stderr(Stdio::null())
         .output()
         .expect("launcher should run");
-    String::from_utf8_lossy(&output.stdout)
+    let pid = String::from_utf8_lossy(&output.stdout)
         .trim()
         .parse()
-        .expect("launcher should print the stand-in's pid")
+        .expect("launcher should print the stand-in's pid");
+    assert!(
+        eventually(|| looks_like_orphaned_forward(pid)),
+        "the stand-in never settled into an orphaned ssh forward: ppid {:?}, command {:?}",
+        process_ppid(pid),
+        process_command(pid),
+    );
+    pid
+}
+
+/// Polls `condition` until it holds or a deadline passes, for process state that
+/// the kernel settles asynchronously (an `exec`, a reparenting, a reaped kill).
+/// The deadline is generous because it only bounds a failure; a passing run
+/// returns as soon as the state lands.
+fn eventually(condition: impl Fn() -> bool) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if condition() {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 #[test]
@@ -207,8 +236,10 @@ fn orphaned_forward_predicate_kills_an_orphaned_stand_in_and_removes_its_pidfile
 
     assert_eq!(sweep_dir(&dir, looks_like_orphaned_forward), 1);
     assert!(!pidfile_path.exists());
+    // SIGKILL is delivered asynchronously, and the killed orphan lingers as a
+    // zombie - which `kill -0` still finds - until init reaps it.
     assert!(
-        !process_group_alive(pid),
+        eventually(|| !process_group_alive(pid)),
         "the orphaned stand-in should be dead after the sweep"
     );
 
