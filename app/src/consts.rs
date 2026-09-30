@@ -33,3 +33,9 @@ pub(crate) const STATUS_ESCALATE_AFTER: Duration = Duration::from_secs(30);
 /// Idle (fully connected) windows run no timer at all, so this only ever wakes a window
 /// with a problem to show.
 pub(crate) const STATUS_TICK_INTERVAL: Duration = Duration::from_secs(1);
+
+/// The Resource panel's starting width, and how far its divider may be dragged. The
+/// minimum keeps kind names readable; the maximum keeps the dock usable.
+pub const RESOURCE_PANEL_WIDTH: gpui_kit::Pixels = gpui_kit::px(255.);
+pub const RESOURCE_PANEL_MIN_WIDTH: gpui_kit::Pixels = gpui_kit::px(180.);
+pub const RESOURCE_PANEL_MAX_WIDTH: gpui_kit::Pixels = gpui_kit::px(520.);

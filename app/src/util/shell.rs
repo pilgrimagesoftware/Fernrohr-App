@@ -3,6 +3,7 @@ use crate::config::{
     self,
     workspace::{PanelDescriptor, WindowLayout, WorkspaceConfig},
 };
+use crate::consts::{RESOURCE_PANEL_MAX_WIDTH, RESOURCE_PANEL_MIN_WIDTH, RESOURCE_PANEL_WIDTH};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::resource::pods::SelectedPod;
@@ -22,6 +23,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::{
     DockArea, DockEvent, DockPlacement, DockSkin, PanelId, PanelInfo, PanelState,
 };
+use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::*;
 use kube::core::GroupVersionKind;
 use std::collections::HashMap;
@@ -1332,12 +1334,18 @@ impl Render for MainWindow {
                 .flex_col()
                 .child(context_bar.clone())
                 .child(
-                    div()
-                        .flex_1()
-                        .min_h_0()
-                        .flex()
-                        .child(resource_panel.clone())
-                        .child(dock_area.clone().into_any_element()),
+                    // The Resource panel is a resizable split, not a fixed-width
+                    // column: drag the divider to trade list width for dock space.
+                    div().flex_1().min_h_0().child(
+                        h_resizable("workspace-split")
+                            .child(
+                                resizable_panel()
+                                    .size(RESOURCE_PANEL_WIDTH)
+                                    .size_range(RESOURCE_PANEL_MIN_WIDTH..RESOURCE_PANEL_MAX_WIDTH)
+                                    .child(resource_panel.clone()),
+                            )
+                            .child(resizable_panel().child(dock_area.clone().into_any_element())),
+                    ),
                 )
                 .child(status_bar.clone())
                 .into_any_element(),

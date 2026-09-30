@@ -270,6 +270,7 @@ impl ResourcePanel {
             })
             .collect();
         Sidebar::new("resources")
+            .w_full()
             .collapsible(false)
             .header(self.header(cx))
             .children(items)
@@ -284,12 +285,16 @@ impl ResourcePanel {
     /// `MainWindow`, whether the request came from here or from a chip click.
     fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
+        // One row: "Resources" on the left, the context (a dropdown once the window
+        // holds several) in the right corner, sharing the label's text baseline.
         div()
             .flex()
-            .flex_col()
-            .gap_1()
+            .items_baseline()
+            .justify_between()
+            .gap_2()
             .child(
                 div()
+                    .flex_shrink_0()
                     .text_sm()
                     .text_color(theme.sidebar_foreground)
                     .child("Resources"),
@@ -298,6 +303,10 @@ impl ResourcePanel {
                 self.cluster_dropdown(cx)
             } else {
                 div()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
                     .text_xs()
                     .text_color(theme.muted_foreground)
                     .child(self.context_name.clone())
@@ -345,6 +354,7 @@ impl Render for ResourcePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match &self.state {
             ResourceState::Loaded(kinds) if kinds.is_empty() => Sidebar::new("resources")
+                .w_full()
                 .collapsible(false)
                 .header(self.header(cx))
                 .child(Self::status_row(
@@ -353,11 +363,13 @@ impl Render for ResourcePanel {
                 .into_any_element(),
             ResourceState::Loaded(kinds) => self.render_kinds(kinds, cx),
             ResourceState::WaitingForConnection => Sidebar::new("resources")
+                .w_full()
                 .collapsible(false)
                 .header(self.header(cx))
                 .child(Self::status_row("Connecting...".to_string()))
                 .into_any_element(),
             ResourceState::Loading => Sidebar::new("resources")
+                .w_full()
                 .collapsible(false)
                 .header(self.header(cx))
                 .child(Self::status_row(
@@ -365,6 +377,7 @@ impl Render for ResourcePanel {
                 ))
                 .into_any_element(),
             ResourceState::Failed(reason) => Sidebar::new("resources")
+                .w_full()
                 .collapsible(false)
                 .header(self.header(cx))
                 .child(Self::status_row(format!(
