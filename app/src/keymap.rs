@@ -68,6 +68,7 @@ mod tests {
             default_binding: "cmd-t",
             context: None,
             action: Box::new(TestAction),
+            menu: None,
         });
         registry
     }

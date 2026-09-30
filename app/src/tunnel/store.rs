@@ -254,11 +254,23 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn temp_config_path() -> PathBuf {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("fernrohr-tunnel-store-test-{n}.toml"));
+        let path =
+            std::env::temp_dir().join(format!("fernrohr-tunnel-store-test-{}.toml", next_id()));
         let _ = std::fs::remove_file(&path);
         path
+    }
+
+    /// A counter-derived id, unique per test run within this process. Tests
+    /// that write a real keychain secret use this instead of a fixed literal
+    /// ("stable-id", "prod-bastion") - a fixed account name means a run that
+    /// panics or is killed before its own cleanup leaves a real keychain
+    /// entry behind, and the *next* run then either collides with it or
+    /// (for update_renames_..., previously the actual cause of a machine-wide
+    /// test hang) silently asserts against stale state from a prior run
+    /// instead of its own.
+    fn next_id() -> u64 {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        COUNTER.fetch_add(1, Ordering::Relaxed)
     }
 
     fn sample_tunnel(name: &str) -> TunnelConfig {
@@ -274,18 +286,18 @@ mod tests {
 
     #[test]
     fn create_writes_config_and_secret() {
+        let id = format!("prod-bastion-{}", next_id());
         let store = TunnelStore::new(temp_config_path());
         store
-            .create("prod-bastion", sample_tunnel("Prod"), Some("s3cr3t"))
+            .create(&id, sample_tunnel("Prod"), Some("s3cr3t"))
             .unwrap();
 
         let listed = store.list();
         assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].0, "prod-bastion");
-        assert_eq!(
-            store.secrets.read("prod-bastion").unwrap(),
-            Some("s3cr3t".to_string())
-        );
+        assert_eq!(listed[0].0, id);
+        assert_eq!(store.secrets.read(&id).unwrap(), Some("s3cr3t".to_string()));
+
+        store.secrets.delete(&id).unwrap();
     }
 
     #[test]
@@ -300,24 +312,25 @@ mod tests {
 
     #[test]
     fn update_renames_without_changing_id_or_stored_secret_when_none_passed() {
+        let id = format!("stable-id-{}", next_id());
         let store = TunnelStore::new(temp_config_path());
         store
-            .create("stable-id", sample_tunnel("Old Name"), Some("s3cr3t"))
+            .create(&id, sample_tunnel("Old Name"), Some("s3cr3t"))
             .unwrap();
 
-        store
-            .update("stable-id", sample_tunnel("New Name"), None)
-            .unwrap();
+        store.update(&id, sample_tunnel("New Name"), None).unwrap();
 
         let listed = store.list();
         assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].0, "stable-id");
+        assert_eq!(listed[0].0, id);
         assert_eq!(listed[0].1.name, "New Name");
         assert_eq!(
-            store.secrets.read("stable-id").unwrap(),
+            store.secrets.read(&id).unwrap(),
             Some("s3cr3t".to_string()),
             "update without a secret must not clear the previously stored one"
         );
+
+        store.secrets.delete(&id).unwrap();
     }
 
     #[test]
