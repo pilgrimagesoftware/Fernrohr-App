@@ -7,6 +7,7 @@
 //! new logic.
 
 use super::MainWindow;
+use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
 use crate::ui::link::FollowReference;
 use crate::ui::viewer::viewer_for;
 use gpui_kit::*;
@@ -22,7 +23,9 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(destination) = viewer_for(&action.target) else {
+        let discovery = DiscoveryRegistry::kinds(cx, &action.context_name);
+        let destination = viewer_for(&action.target, discovery.read(cx).kinds());
+        let Some(destination) = destination else {
             log::debug!("no viewer for followed reference {:?}", action.target);
             return;
         };

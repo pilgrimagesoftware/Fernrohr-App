@@ -148,14 +148,17 @@ fn the_go_to_command_is_registered_and_gated() {
 /// Only followable references reach the picker, each object once.
 #[test]
 fn the_picker_lists_followable_references_once_each() {
-    let entries = followable([
-        GoToEntry::new(namespace("staging"), "Namespace"),
-        GoToEntry::new(
-            ObjectRef::namespaced("apps", "ReplicaSet", "staging", "web"),
-            "Controlled By",
-        ),
-        GoToEntry::new(namespace("staging"), "Again"),
-    ]);
+    let entries = followable(
+        [
+            GoToEntry::new(namespace("staging"), "Namespace"),
+            GoToEntry::new(
+                ObjectRef::namespaced("apps", "ReplicaSet", "staging", "web"),
+                "Controlled By",
+            ),
+            GoToEntry::new(namespace("staging"), "Again"),
+        ],
+        None,
+    );
     assert_eq!(
         entries,
         vec![GoToEntry::new(namespace("staging"), "Namespace")]

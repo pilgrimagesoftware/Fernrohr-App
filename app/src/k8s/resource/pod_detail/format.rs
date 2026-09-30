@@ -1,10 +1,8 @@
 //! Formatting helpers for the projection: one API sub-object (a container, a
 //! volume, a toleration, an event) in, the display shape the model wants out.
 
-use super::model::{BadgeTone, ContainerSummary, ManagedFieldEntry, PodEvent};
+use super::model::{ContainerSummary, ManagedFieldEntry};
 use crate::k8s::resource::pods::format_age;
-use jiff::Timestamp;
-use k8s_openapi::api::core::v1::Event as K8sEvent;
 use k8s_openapi::api::core::v1::Pod;
 
 /// One `managedFields` entry, with its `fieldsV1` ownership tree
@@ -30,66 +28,6 @@ pub(super) fn managed_field_entry(
         operation,
         fields_json,
     }
-}
-
-/// When an event last happened. The legacy `lastTimestamp`/`firstTimestamp`
-/// pair is empty on events written through `events.k8s.io/v1` (the scheduler's
-/// `Scheduled`, among others), which record `series.lastObservedTime` and
-/// `eventTime` instead - reading only the legacy pair would sort those last and
-/// age them "unknown".
-pub(super) fn event_time(event: &K8sEvent) -> Option<Timestamp> {
-    event
-        .last_timestamp
-        .as_ref()
-        .map(|time| time.0)
-        .or_else(|| {
-            event
-                .series
-                .as_ref()
-                .and_then(|series| series.last_observed_time.as_ref())
-                .map(|time| time.0)
-        })
-        .or_else(|| event.event_time.as_ref().map(|time| time.0))
-        .or_else(|| event.first_timestamp.as_ref().map(|time| time.0))
-}
-
-/// One event's age-and-tone summary, newest first. `Warning`-type events read
-/// as a warning tone and any other type (chiefly `Normal`) as good; an event
-/// with no type at all is `Unknown`, neither good nor a warning.
-pub(super) fn format_events(events: &[K8sEvent], now: Timestamp) -> Vec<PodEvent> {
-    let mut events: Vec<(&K8sEvent, Option<Timestamp>)> = events
-        .iter()
-        .map(|event| (event, event_time(event)))
-        .collect();
-    // `Option`'s ordering puts `None` first, so reversing it sorts newest
-    // first and leaves undated events at the end.
-    events.sort_by(|(_, a), (_, b)| b.cmp(a));
-    events
-        .into_iter()
-        .map(|(event, time)| {
-            let age = time
-                .map(|time| format_age(now.duration_since(time).as_secs()))
-                .unwrap_or_else(|| "unknown".to_string());
-            let tone = match event.type_.as_deref() {
-                Some("Warning") => BadgeTone::Warning,
-                Some(_) => BadgeTone::Good,
-                None => BadgeTone::Unknown,
-            };
-            // Like the timestamps, a series-style event counts its repeats on
-            // `series.count` rather than the legacy `count`.
-            let count = event
-                .count
-                .or_else(|| event.series.as_ref().and_then(|series| series.count))
-                .unwrap_or(1);
-            PodEvent {
-                reason: non_empty(&event.reason).unwrap_or("Unknown").to_string(),
-                message: non_empty(&event.message).unwrap_or_default().to_string(),
-                count,
-                age,
-                tone,
-            }
-        })
-        .collect()
 }
 
 /// Joins `spec.containers` (or `spec.init_containers`) with their matching

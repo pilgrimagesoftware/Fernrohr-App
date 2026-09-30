@@ -2,10 +2,10 @@
 //! panel moves through while and after that happens.
 
 use super::format::non_empty;
+use crate::k8s::resource::events::{self, InvolvedObject};
 use k8s_openapi::api::core::v1::Event as K8sEvent;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
-use kube::api::ListParams;
 
 /// The events naming a pod, or why they could not be listed. Kept apart from
 /// the pod's own fetch result: a user allowed to `get` pods but not to `list`
@@ -59,25 +59,15 @@ pub(super) async fn fetch_pod(
             ));
         }
     };
-    let events_api: Api<K8sEvent> = Api::namespaced(client, &namespace);
-    let events = events_api
-        .list(&ListParams::default().fields(&events_selector(&pod, &namespace, &name)))
-        .await
-        .map(|list| list.items)
-        .map_err(|error| error.to_string());
+    let events = events::list(
+        client,
+        &InvolvedObject {
+            kind: "Pod",
+            namespace: Some(&namespace),
+            name: &name,
+            uid: non_empty(&pod.metadata.uid),
+        },
+    )
+    .await;
     Ok(PodFetch::Found(Box::new(pod), events))
-}
-
-/// The field selector for this pod's events. Name and namespace alone are not
-/// enough: a Service or ReplicaSet can share the pod's name, and a StatefulSet
-/// pod is recreated under the same name - so the selector also pins the kind
-/// and, when the pod has one, its UID, keeping a predecessor's events out.
-pub(super) fn events_selector(pod: &Pod, namespace: &str, name: &str) -> String {
-    let mut selector = format!(
-        "involvedObject.kind=Pod,involvedObject.namespace={namespace},involvedObject.name={name}"
-    );
-    if let Some(uid) = non_empty(&pod.metadata.uid) {
-        selector.push_str(&format!(",involvedObject.uid={uid}"));
-    }
-    selector
 }

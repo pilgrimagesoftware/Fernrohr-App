@@ -63,8 +63,8 @@ async fn a_namespace_reference_is_a_link_and_an_owner_with_no_viewer_is_not(
         "clicking the namespace follows it, from the panel's own context"
     );
 
-    // The owner is a ReplicaSet, which has no viewer yet: it is on screen,
-    // and clicking it follows nothing.
+    // The owner is a ReplicaSet, which this context's discovery (empty here)
+    // doesn't report: it is on screen, and clicking it follows nothing.
     cx.update_window(window.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(window.try_find(reference_id("Controlled By", 0)).is_some());
@@ -76,6 +76,51 @@ async fn a_namespace_reference_is_a_link_and_an_owner_with_no_viewer_is_not(
         followed.borrow().len(),
         1,
         "a reference with no viewer is plain text"
+    );
+}
+
+/// `resource-links`' "a kind gains a viewer": the same owner reference that
+/// was plain text above becomes a link once the context's discovery reports
+/// ReplicaSets - nothing in pod detail changes, only what `viewer_for` knows.
+#[gpui_kit::test]
+async fn an_owner_becomes_a_link_once_its_kind_is_discovered(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use kube::core::GroupVersionKind;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let followed = record_follows(cx);
+    let window = stub_panel(cx, ConnectionState::Connecting);
+    window
+        .update(cx, |panel, _window, cx| {
+            panel.test_set_loaded(rich_pod(), cx);
+            panel.test_set_kinds(
+                vec![DiscoveredKind {
+                    gvk: GroupVersionKind::gvk("apps", "v1", "ReplicaSet"),
+                    plural: "replicasets".into(),
+                    namespaced: true,
+                }],
+                cx,
+            );
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    cx.update_window(window.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(reference_id("Controlled By", 0), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+
+    assert_eq!(
+        *followed.borrow(),
+        vec![FollowReference {
+            context_name: "kind-dev".into(),
+            target: ObjectRef::namespaced("apps", "ReplicaSet", "staging", "api-7d9f"),
+        }]
     );
 }
 

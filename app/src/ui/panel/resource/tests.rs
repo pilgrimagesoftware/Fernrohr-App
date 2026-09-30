@@ -134,7 +134,9 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
                 let opened = match target {
                     NavTarget::Kind(kind) => kind,
                     NavTarget::Logs => panic!("a discovered kind, not Logs"),
-                    NavTarget::Pod(_) => panic!("a discovered kind, not a pod's detail"),
+                    NavTarget::Pod(_) | NavTarget::Object(_) => {
+                        panic!("a discovered kind, not one object's detail")
+                    }
                 };
                 // Whether or not this build has a concrete panel, the row
                 // resolves to a target `build_layout` can render.
@@ -144,12 +146,12 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
             let (_, fern_target, _) = &rows[0];
             assert!(!has_concrete_panel(match fern_target {
                 NavTarget::Kind(kind) => kind,
-                NavTarget::Logs | NavTarget::Pod(_) => unreachable!(),
+                NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => unreachable!(),
             }));
             let (_, pod_target, _) = &rows[1];
             assert!(has_concrete_panel(match pod_target {
                 NavTarget::Kind(kind) => kind,
-                NavTarget::Logs | NavTarget::Pod(_) => unreachable!(),
+                NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => unreachable!(),
             }));
         })
         .unwrap();
