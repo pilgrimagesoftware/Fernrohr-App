@@ -20,13 +20,22 @@ use gpui_kit::component::dock::{
 };
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
 
-actions!(pod_detail, [ToggleDetailView]);
+actions!(
+    pod_detail,
+    [
+        ToggleDetailView,
+        SelectOverviewTab,
+        SelectContainersTab,
+        SelectConditionsTab
+    ]
+);
 
 /// This panel's own key context - distinct from `PodsPanel`'s, so the two
 /// panels can each bind `y` to a different meaning without conflict (there
@@ -34,16 +43,51 @@ actions!(pod_detail, [ToggleDetailView]);
 /// view").
 pub const PANEL_KEY_CONTEXT: &str = "PodDetailPanel";
 const TOGGLE_VIEW_KEY: &str = "y";
+const OVERVIEW_TAB_KEY: &str = "1";
+const CONTAINERS_TAB_KEY: &str = "2";
+const CONDITIONS_TAB_KEY: &str = "3";
 
-/// The panel's own keybinding. Registered with the window's keymap the same
+/// The panel's own keybindings. Registered with the window's keymap the same
 /// way `pods::panel_bindings` is - printing a key in a hint bar does not
 /// bind it.
-pub fn panel_bindings() -> [KeyBinding; 1] {
-    [KeyBinding::new(
-        TOGGLE_VIEW_KEY,
-        ToggleDetailView,
-        Some(PANEL_KEY_CONTEXT),
-    )]
+pub fn panel_bindings() -> [KeyBinding; 4] {
+    [
+        KeyBinding::new(TOGGLE_VIEW_KEY, ToggleDetailView, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new(OVERVIEW_TAB_KEY, SelectOverviewTab, Some(PANEL_KEY_CONTEXT)),
+        KeyBinding::new(
+            CONTAINERS_TAB_KEY,
+            SelectContainersTab,
+            Some(PANEL_KEY_CONTEXT),
+        ),
+        KeyBinding::new(
+            CONDITIONS_TAB_KEY,
+            SelectConditionsTab,
+            Some(PANEL_KEY_CONTEXT),
+        ),
+    ]
+}
+
+/// Which tab a structured field belongs to, and the tab strip itself. Kept
+/// as a plain enum walked by [`DetailSection::ALL`] rather than deriving from
+/// the label string at render time, so a field's tab membership is decided
+/// once, at projection time, in `pod_fields`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DetailSection {
+    Overview,
+    Containers,
+    Conditions,
+}
+
+impl DetailSection {
+    pub const ALL: [DetailSection; 3] = [Self::Overview, Self::Containers, Self::Conditions];
+
+    fn label(self) -> &'static str {
+        match self {
+            DetailSection::Overview => "Overview",
+            DetailSection::Containers => "Containers",
+            DetailSection::Conditions => "Conditions",
+        }
+    }
 }
 
 /// The label of a field row, and a value shaped so the renderer knows how to
@@ -55,6 +99,7 @@ pub fn panel_bindings() -> [KeyBinding; 1] {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PodField {
     pub label: &'static str,
+    pub section: DetailSection,
     pub value: PodFieldValue,
 }
 
@@ -162,22 +207,35 @@ fn chip(key: &str, value: &str) -> String {
 /// owner references has no "Controlled By" row, it does not have an empty one.
 pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     let mut fields = Vec::new();
-    let mut push = |label: &'static str, value: PodFieldValue| {
-        fields.push(PodField { label, value });
+    let mut push = |label: &'static str, section: DetailSection, value: PodFieldValue| {
+        fields.push(PodField {
+            label,
+            section,
+            value,
+        });
     };
 
     if let Some(created) = &pod.metadata.creation_timestamp {
         let age_secs = now.duration_since(created.0).as_secs_f64() as i64;
         push(
             "Created",
+            DetailSection::Overview,
             PodFieldValue::Text(format!("{} ({})", format_age(age_secs), created.0)),
         );
     }
     if let Some(name) = non_empty(&pod.metadata.name) {
-        push("Name", PodFieldValue::Text(name.to_string()));
+        push(
+            "Name",
+            DetailSection::Overview,
+            PodFieldValue::Text(name.to_string()),
+        );
     }
     if let Some(namespace) = non_empty(&pod.metadata.namespace) {
-        push("Namespace", PodFieldValue::Link(namespace.to_string()));
+        push(
+            "Namespace",
+            DetailSection::Overview,
+            PodFieldValue::Link(namespace.to_string()),
+        );
     }
     let containers = summarize_containers(
         pod.spec
@@ -187,7 +245,11 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         pod.status.as_ref(),
     );
     if !containers.is_empty() {
-        push("Containers", PodFieldValue::Containers(containers));
+        push(
+            "Containers",
+            DetailSection::Containers,
+            PodFieldValue::Containers(containers),
+        );
     }
     let init_containers = summarize_containers(
         pod.spec
@@ -199,6 +261,7 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     if !init_containers.is_empty() {
         push(
             "Init Containers",
+            DetailSection::Containers,
             PodFieldValue::Containers(init_containers),
         );
     }
@@ -210,17 +273,23 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         .map(format_volume)
         .collect();
     if !volumes.is_empty() {
-        push("Volumes", PodFieldValue::Collapsed(volumes));
+        push(
+            "Volumes",
+            DetailSection::Containers,
+            PodFieldValue::Collapsed(volumes),
+        );
     }
     if let Some(labels) = non_empty_map(&pod.metadata.labels) {
         push(
             "Labels",
+            DetailSection::Overview,
             PodFieldValue::Chips(labels.iter().map(|(key, value)| chip(key, value)).collect()),
         );
     }
     if let Some(annotations) = non_empty_map(&pod.metadata.annotations) {
         push(
             "Annotations",
+            DetailSection::Overview,
             PodFieldValue::Chips(
                 annotations
                     .iter()
@@ -237,7 +306,11 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         .map(|owner| format!("{}/{}", owner.kind, owner.name))
         .collect();
     if !owners.is_empty() {
-        push("Controlled By", PodFieldValue::Link(owners.join(", ")));
+        push(
+            "Controlled By",
+            DetailSection::Overview,
+            PodFieldValue::Link(owners.join(", ")),
+        );
     }
     let managed_fields: Vec<String> = pod
         .metadata
@@ -258,41 +331,65 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         })
         .collect();
     if !managed_fields.is_empty() {
-        push("Managed Fields", PodFieldValue::Collapsed(managed_fields));
+        push(
+            "Managed Fields",
+            DetailSection::Overview,
+            PodFieldValue::Collapsed(managed_fields),
+        );
     }
     if let Some(phase) = pod
         .status
         .as_ref()
         .and_then(|status| non_empty(&status.phase))
     {
-        push("Status", PodFieldValue::Text(phase.to_string()));
+        push(
+            "Status",
+            DetailSection::Overview,
+            PodFieldValue::Text(phase.to_string()),
+        );
     }
     if let Some(node) = pod
         .spec
         .as_ref()
         .and_then(|spec| non_empty(&spec.node_name))
     {
-        push("Node", PodFieldValue::Link(node.to_string()));
+        push(
+            "Node",
+            DetailSection::Overview,
+            PodFieldValue::Link(node.to_string()),
+        );
     }
     if let Some(ips) = ips_of(pod, IpSource::Host) {
-        push("Host IPs", PodFieldValue::Text(ips));
+        push(
+            "Host IPs",
+            DetailSection::Overview,
+            PodFieldValue::Text(ips),
+        );
     }
     if let Some(ips) = ips_of(pod, IpSource::Pod) {
-        push("Pod IPs", PodFieldValue::Text(ips));
+        push("Pod IPs", DetailSection::Overview, PodFieldValue::Text(ips));
     }
     if let Some(account) = pod
         .spec
         .as_ref()
         .and_then(|spec| non_empty(&spec.service_account_name))
     {
-        push("Service Account", PodFieldValue::Link(account.to_string()));
+        push(
+            "Service Account",
+            DetailSection::Overview,
+            PodFieldValue::Link(account.to_string()),
+        );
     }
     if let Some(qos) = pod
         .status
         .as_ref()
         .and_then(|status| non_empty(&status.qos_class))
     {
-        push("QoS Class", PodFieldValue::Text(qos.to_string()));
+        push(
+            "QoS Class",
+            DetailSection::Overview,
+            PodFieldValue::Text(qos.to_string()),
+        );
     }
     if let Some(grace) = pod
         .spec
@@ -301,6 +398,7 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
     {
         push(
             "Termination Grace Period",
+            DetailSection::Overview,
             PodFieldValue::Text(format_age(grace)),
         );
     }
@@ -312,7 +410,11 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         .map(format_toleration)
         .collect();
     if !tolerations.is_empty() {
-        push("Tolerations", PodFieldValue::Collapsed(tolerations));
+        push(
+            "Tolerations",
+            DetailSection::Conditions,
+            PodFieldValue::Collapsed(tolerations),
+        );
     }
     let conditions: Vec<ConditionBadge> = pod
         .status
@@ -326,7 +428,11 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         })
         .collect();
     if !conditions.is_empty() {
-        push("Conditions", PodFieldValue::Badges(conditions));
+        push(
+            "Conditions",
+            DetailSection::Conditions,
+            PodFieldValue::Badges(conditions),
+        );
     }
 
     fields
@@ -592,6 +698,10 @@ pub struct PodDetailPanel {
     connection: Entity<ClusterConnection>,
     state: PodDetailState,
     viewing: DetailView,
+    /// Which tab of the structured view is showing. Irrelevant while
+    /// `viewing` is `Yaml`, but kept regardless so switching back to
+    /// Structured returns to the tab the user left, not always Overview.
+    active_tab: DetailSection,
     /// Which `Collapsed`-value sections (Managed Fields, Tolerations,
     /// Volumes, ...) are expanded, keyed by field label. Absent means
     /// collapsed - the default for a long list the user came for something
@@ -617,6 +727,7 @@ impl PodDetailPanel {
             connection,
             state: PodDetailState::Loading,
             viewing: view,
+            active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
             focus_handle: cx.focus_handle(),
@@ -644,6 +755,7 @@ impl PodDetailPanel {
             connection,
             state: PodDetailState::Loading,
             viewing: view,
+            active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
             focus_handle: cx.focus_handle(),
@@ -700,6 +812,18 @@ impl PodDetailPanel {
     #[cfg(test)]
     pub fn view(&self) -> DetailView {
         self.viewing
+    }
+
+    /// Switches the active tab of the structured view.
+    fn set_active_tab(&mut self, section: DetailSection, cx: &mut Context<Self>) {
+        self.active_tab = section;
+        cx.notify();
+    }
+
+    /// The active tab. Test-only, like [`Self::view`].
+    #[cfg(test)]
+    pub fn active_tab(&self) -> DetailSection {
+        self.active_tab
     }
 
     /// The loaded pod, if the fetch has landed. Read by tests and by render.
@@ -897,10 +1021,38 @@ impl PodDetailPanel {
 
     fn render_structured(&self, cx: &Context<Self>) -> AnyElement {
         let fields = self.fields(Timestamp::now());
+        let active_tab = self.active_tab;
+        let this = cx.weak_entity();
+        let tabs = TabBar::new("pod-detail-tabs")
+            .selected_index(
+                DetailSection::ALL
+                    .iter()
+                    .position(|section| *section == active_tab)
+                    .unwrap_or(0),
+            )
+            .on_click(move |ix, _window, cx| {
+                let Some(section) = DetailSection::ALL.get(*ix).copied() else {
+                    return;
+                };
+                let _ = this.update(cx, |this: &mut Self, cx| this.set_active_tab(section, cx));
+            })
+            .children(
+                DetailSection::ALL
+                    .iter()
+                    .map(|section| Tab::new().label(section.label())),
+            );
         div()
             .flex()
             .flex_col()
-            .children(fields.iter().map(|field| self.render_field(field, cx)))
+            .child(tabs)
+            .child(
+                div().flex().flex_col().pt_2().children(
+                    fields
+                        .iter()
+                        .filter(|field| field.section == active_tab)
+                        .map(|field| self.render_field(field, cx)),
+                ),
+            )
             .into_any_element()
     }
 
@@ -937,6 +1089,33 @@ impl PodDetailPanel {
             DetailView::Yaml => DetailView::Structured,
         };
         self.set_view(next, cx);
+    }
+
+    fn on_action_select_overview_tab(
+        &mut self,
+        _: &SelectOverviewTab,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_active_tab(DetailSection::Overview, cx);
+    }
+
+    fn on_action_select_containers_tab(
+        &mut self,
+        _: &SelectContainersTab,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_active_tab(DetailSection::Containers, cx);
+    }
+
+    fn on_action_select_conditions_tab(
+        &mut self,
+        _: &SelectConditionsTab,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_active_tab(DetailSection::Conditions, cx);
     }
 }
 
@@ -989,6 +1168,27 @@ impl Render for PodDetailPanel {
                 .unwrap_or_else(|| {
                     Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
                 });
+        let toggle_hint = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(toggle_key)
+            .child(if yaml { "Show fields" } else { "Show YAML" });
+        let overview_key =
+            Kbd::binding_for_action(&SelectOverviewTab, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| {
+                    Kbd::new(Keystroke::parse(OVERVIEW_TAB_KEY).expect("valid keybinding"))
+                });
+        let containers_key =
+            Kbd::binding_for_action(&SelectContainersTab, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| {
+                    Kbd::new(Keystroke::parse(CONTAINERS_TAB_KEY).expect("valid keybinding"))
+                });
+        let conditions_key =
+            Kbd::binding_for_action(&SelectConditionsTab, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| {
+                    Kbd::new(Keystroke::parse(CONDITIONS_TAB_KEY).expect("valid keybinding"))
+                });
         let header = div()
             .flex()
             .items_center()
@@ -1000,12 +1200,36 @@ impl Render for PodDetailPanel {
             .child(
                 div()
                     .flex()
-                    .items_center()
-                    .gap_1()
+                    .gap_3()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child(toggle_key)
-                    .child(if yaml { "Show fields" } else { "Show YAML" }),
+                    .when(!yaml, |this| {
+                        this.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(overview_key)
+                                .child(DetailSection::Overview.label()),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(containers_key)
+                                .child(DetailSection::Containers.label()),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(conditions_key)
+                                .child(DetailSection::Conditions.label()),
+                        )
+                    })
+                    .child(toggle_hint),
             );
 
         let body = div()
@@ -1013,6 +1237,9 @@ impl Render for PodDetailPanel {
             .key_context(PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
+            .on_action(cx.listener(Self::on_action_select_overview_tab))
+            .on_action(cx.listener(Self::on_action_select_containers_tab))
+            .on_action(cx.listener(Self::on_action_select_conditions_tab))
             .flex()
             .flex_col()
             .child(header)
@@ -1073,8 +1300,8 @@ mod tests {
     // Not `use super::*`: `gpui_kit::*` re-exports its own `test` macro, which
     // would shadow `core::prelude::v1::test` for these plain synchronous tests.
     use super::{
-        BadgeTone, DetailView, PodDetailPanel, PodDetailState, PodFetch, PodField, PodFieldValue,
-        fetch_pod, pod_fields,
+        BadgeTone, DetailSection, DetailView, PodDetailPanel, PodDetailState, PodFetch, PodField,
+        PodFieldValue, SelectContainersTab, fetch_pod, pod_fields,
     };
     use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
     use crate::ui::nav::{NavTarget, PodRef};
@@ -1264,6 +1491,45 @@ mod tests {
         assert_eq!(
             field(&fields, "Tolerations").unwrap().value,
             PodFieldValue::Collapsed(vec!["dedicated=api: NoSchedule".into()])
+        );
+    }
+
+    /// Section 1.1: every field's section matches design.md's grouping table,
+    /// and every field the projection produces lands in exactly one tab.
+    #[test]
+    fn every_field_is_grouped_into_its_designed_section() {
+        let fields = pod_fields(&rich_pod(), Timestamp::from_second(90).unwrap());
+
+        let expected: &[(&str, DetailSection)] = &[
+            ("Created", DetailSection::Overview),
+            ("Name", DetailSection::Overview),
+            ("Namespace", DetailSection::Overview),
+            ("Containers", DetailSection::Containers),
+            ("Labels", DetailSection::Overview),
+            ("Annotations", DetailSection::Overview),
+            ("Controlled By", DetailSection::Overview),
+            ("Managed Fields", DetailSection::Overview),
+            ("Status", DetailSection::Overview),
+            ("Node", DetailSection::Overview),
+            ("Host IPs", DetailSection::Overview),
+            ("Pod IPs", DetailSection::Overview),
+            ("Service Account", DetailSection::Overview),
+            ("QoS Class", DetailSection::Overview),
+            ("Termination Grace Period", DetailSection::Overview),
+            ("Tolerations", DetailSection::Conditions),
+            ("Conditions", DetailSection::Conditions),
+        ];
+        for (label, section) in expected {
+            assert_eq!(
+                field(&fields, label).unwrap().section,
+                *section,
+                "{label} is in the wrong tab"
+            );
+        }
+        assert_eq!(
+            fields.len(),
+            expected.len(),
+            "every projected field is accounted for above"
         );
     }
 
@@ -1658,6 +1924,91 @@ mod tests {
                 assert!(yaml.contains("api-7d9f-ftg5t"), "the manifest is the pod's");
             })
             .unwrap();
+    }
+
+    /// Section 2.2: switching tabs shows only that tab's fields - the other
+    /// tabs' fields are gone from the rendered set, not merely reordered.
+    #[gpui_kit::test]
+    async fn switching_tabs_shows_only_that_tabs_fields(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+        });
+        let window = stub_panel(cx, ConnectionState::Connecting);
+
+        window
+            .update(cx, |panel, _window, cx| {
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
+                cx.notify();
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        window
+            .update(cx, |panel, _window, cx| {
+                assert_eq!(panel.active_tab(), DetailSection::Overview);
+                let all = panel.fields(Timestamp::from_second(90).unwrap());
+                let overview_only: Vec<&str> = all
+                    .iter()
+                    .filter(|f| f.section == DetailSection::Overview)
+                    .map(|f| f.label)
+                    .collect();
+                assert!(overview_only.contains(&"Name"));
+                assert!(!overview_only.contains(&"Conditions"));
+
+                panel.set_active_tab(DetailSection::Conditions, cx);
+                let conditions_only: Vec<&str> = all
+                    .iter()
+                    .filter(|f| f.section == panel.active_tab())
+                    .map(|f| f.label)
+                    .collect();
+                assert!(conditions_only.contains(&"Conditions"));
+                assert!(conditions_only.contains(&"Tolerations"));
+                assert!(!conditions_only.contains(&"Name"));
+            })
+            .unwrap();
+    }
+
+    /// Section 2.3: the tab-switch keybinding is not only printed in the hint
+    /// bar - dispatching it actually moves the active tab.
+    #[gpui_kit::test]
+    async fn the_tab_switch_keybinding_changes_the_active_tab(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            cx.bind_keys(super::panel_bindings());
+        });
+        let window = stub_panel(cx, ConnectionState::Connecting);
+
+        window
+            .update(cx, |panel, _window, cx| {
+                panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
+                cx.notify();
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            window
+                .update(cx, |panel, _window, _cx| panel.active_tab())
+                .unwrap(),
+            DetailSection::Overview
+        );
+
+        window
+            .update(cx, |panel, window, cx| {
+                panel.focus_handle.clone().focus(window, cx);
+                window.dispatch_action(Box::new(SelectContainersTab), cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            window
+                .update(cx, |panel, _window, _cx| panel.active_tab())
+                .unwrap(),
+            DetailSection::Containers
+        );
     }
 
     /// Section 4.4: a pod that is gone is reported as gone - its own state, not
