@@ -116,11 +116,29 @@ impl<K: Eq + Hash> WatchRegistry<K> {
             .is_some_and(|entry| entry.paused.is_some())
     }
 
-    /// Why `key` is paused and how long it's been that way, for section 7.4's
-    /// panel display. `None` for an active or untracked key.
+    // UNWIRED on the non-test bin target: `connection-status-bar` moved the one
+    // production caller (`ClusterRegistry::pods_pause_info`) over to `first_paused`
+    // above, so only this module's own tests call the single-key form now.
+    #[allow(dead_code)]
+    /// Why `key` is paused and how long it's been that way. `None` for an active or
+    /// untracked key.
     pub fn pause_info(&self, key: &K) -> Option<(PauseReason, Duration)> {
         let (reason, since) = self.entries.get(key)?.paused?;
         Some((reason, since.elapsed()))
+    }
+
+    /// The earliest-paused entry across every key, regardless of which key it is.
+    /// `ClusterRegistry::health` (`connection-status-bar` design.md decision 1) uses this
+    /// rather than a hardcoded `"pods"` lookup, so pausing a watch kind added later is
+    /// picked up automatically. `None` when nothing is paused. When more than one key is
+    /// paused at once, the one paused first wins - the ordering a user watching the
+    /// status bar would expect, and deterministic regardless of this map's iteration
+    /// order.
+    pub fn first_paused(&self) -> Option<(PauseReason, Instant)> {
+        self.entries
+            .values()
+            .filter_map(|entry| entry.paused)
+            .min_by_key(|(_, since)| *since)
     }
 }
 
@@ -235,6 +253,31 @@ mod tests {
         assert!(!registry.pause(&"pods", PauseReason::Reconnecting));
         assert!(!registry.resume(&"pods"));
         assert!(!registry.is_paused(&"pods"));
+    }
+
+    #[test]
+    fn first_paused_is_none_when_nothing_is_paused() {
+        let mut registry = WatchRegistry::new();
+        registry.subscribe("pods");
+        assert!(registry.first_paused().is_none());
+    }
+
+    #[test]
+    fn first_paused_reports_the_earliest_paused_key_regardless_of_which_key_it_is() {
+        let mut registry = WatchRegistry::new();
+        registry.subscribe("pods");
+        registry.subscribe("events");
+
+        // "events" pauses first, so it must win even though "pods" is the key every
+        // other production caller happens to use today. A tiny real sleep (not a fake
+        // clock - this is a plain synchronous unit test) guarantees a strictly later
+        // `Instant::now()` for the second pause even on a coarse system clock.
+        registry.pause(&"events", PauseReason::CredentialRefresh);
+        std::thread::sleep(Duration::from_millis(1));
+        registry.pause(&"pods", PauseReason::Reconnecting);
+
+        let (reason, _since) = registry.first_paused().expect("one key is paused");
+        assert_eq!(reason, PauseReason::CredentialRefresh);
     }
 
     #[test]
