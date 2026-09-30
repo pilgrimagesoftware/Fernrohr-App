@@ -6,17 +6,34 @@
 //! the window's context through [`ClusterRegistry`], so the list and the panels
 //! it opens all share one `ClusterSession` and switching between them never
 //! reconnects.
+//!
+//! `resource-panel-grouping` groups the flat list into fixed-order category
+//! sections ([`category`]/[`section`]) with a bottom-pinned filter, and makes
+//! the whole thing keyboard-operable ([`keyboard`]/[`actions`]). This file stays
+//! wiring and state; [`render`] draws it and [`actions`] answers the keyboard.
 
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::ui::nav::NavTarget;
-use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::sidebar::{Sidebar, SidebarMenuItem};
+use category::Category;
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
+use std::collections::HashSet;
+
+mod actions;
+mod category;
+mod keyboard;
+mod render;
+mod section;
+
+pub(crate) use actions::{FocusResources, register_commands};
+
+/// The panel's own keybindings (Up/Down/Enter/Left/Right), in its own key
+/// context - `/` is not here, see `actions::register_commands`'s doc comment.
+pub fn panel_bindings() -> [KeyBinding; 2] {
+    keyboard::panel_bindings()
+}
 
 /// Emitted when the user picks a row, so the window can open that kind's
 /// panel. Which panel that is stays [`NavTarget`]'s decision - the Resource
@@ -55,20 +72,53 @@ pub struct ResourcePanel {
     /// The kind the window's active panel is showing, so its row is marked
     /// active. Set by the window whenever it switches panels.
     selected: Option<NavTarget>,
+    /// The row the keyboard cursor is on and the last click landed on -
+    /// `.claude/rules/keyboard-first.md`'s "one selection model", distinct
+    /// from `selected` (the window's *open* panel): a row can be highlighted
+    /// without being open yet, and Enter opens whatever is highlighted.
+    highlighted: Option<NavTarget>,
+    /// Categories the user collapsed, this window only. Section 2.3: default
+    /// expanded, never written to the preference file.
+    collapsed: HashSet<Category>,
+    /// The bottom-pinned filter box's text field (section 3.1).
+    filter_input: Entity<InputState>,
+    focus_handle: FocusHandle,
     /// Kept, rather than `.detach()`ed, so [`Self::set_active_context`] can
     /// replace it: switching the active context means observing a *different*
     /// connection, and the old subscription must stop firing into a state that
     /// no longer describes what `header` shows.
     _connection_observation: Subscription,
+    /// Re-renders on every keystroke in the filter. `InputState::set_value`
+    /// (used to clear it on Escape - see `actions::on_action_clear_filter`)
+    /// does not emit `InputEvent::Change`, so that path calls `cx.notify()`
+    /// itself instead of relying on this.
+    _filter_observation: Subscription,
 }
 
 impl ResourcePanel {
+    /// Moves keyboard focus onto the kind list, so Up/Down/Enter/Left/Right and `/`
+    /// work without a click first.
+    pub(crate) fn focus_list(&self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus_handle, cx);
+    }
+
+    /// Whether the kind list holds keyboard focus.
+    #[cfg(test)]
+    pub(crate) fn is_list_focused(&self, window: &Window) -> bool {
+        self.focus_handle.is_focused(window)
+    }
+
     /// `contexts` is the window's full context list (`window-context-bar` design.md
     /// decision 4), so the cluster dropdown always lists every context the window
     /// uses, not just the one `context_name` starts on.
-    pub fn new(context_name: String, contexts: Vec<String>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        context_name: String,
+        contexts: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let connection = ClusterRegistry::connection(cx, &context_name);
-        Self::with_connection(context_name, contexts, connection, cx)
+        Self::with_connection(context_name, contexts, connection, window, cx)
     }
 
     /// Construction from an explicit connection, so tests can hand in a stub.
@@ -84,16 +134,29 @@ impl ResourcePanel {
         context_name: String,
         contexts: Vec<String>,
         connection: Entity<ClusterConnection>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let observation = Self::observe(&connection, cx);
+        let filter_input = cx.new(|cx| InputState::new(window, cx).placeholder("Filter kinds..."));
+        let filter_observation =
+            cx.subscribe(&filter_input, |_this: &mut Self, _input, event, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            });
         let mut this = Self {
             context_name,
             contexts,
             state: ResourceState::WaitingForConnection,
             loading: false,
             selected: None,
+            highlighted: None,
+            collapsed: HashSet::new(),
+            filter_input,
+            focus_handle: cx.focus_handle(),
             _connection_observation: observation,
+            _filter_observation: filter_observation,
         };
         this.sync(&connection, cx);
         this
@@ -130,6 +193,7 @@ impl ResourcePanel {
         self.state = ResourceState::WaitingForConnection;
         self.loading = false;
         self.selected = None;
+        self.highlighted = None;
         let connection = ClusterRegistry::connection(cx, &self.context_name);
         self._connection_observation = Self::observe(&connection, cx);
         self.sync(&connection, cx);
@@ -141,9 +205,10 @@ impl ResourcePanel {
         context_name: String,
         contexts: Vec<String>,
         connection: Entity<ClusterConnection>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::with_connection(context_name, contexts, connection, cx)
+        Self::with_connection(context_name, contexts, connection, window, cx)
     }
 
     fn shows_cluster_dropdown(&self) -> bool {
@@ -160,6 +225,16 @@ impl ResourcePanel {
         cx.notify();
     }
 
+    /// Moves the keyboard/click cursor to `target` without opening anything -
+    /// what a single click and Up/Down both do (section 4.1's "one selection").
+    fn set_highlighted(&mut self, target: Option<NavTarget>, cx: &mut Context<Self>) {
+        if self.highlighted == target {
+            return;
+        }
+        self.highlighted = target;
+        cx.notify();
+    }
+
     /// The kinds currently listed. Read by the tests, which assert the list
     /// rather than the rendered rows - the rows themselves are only reachable
     /// by simulating a click.
@@ -169,6 +244,66 @@ impl ResourcePanel {
             ResourceState::Loaded(kinds) => Some(kinds),
             _ => None,
         }
+    }
+
+    /// The currently highlighted row, if any - what a keystroke test asserts
+    /// moved.
+    #[cfg(test)]
+    pub(crate) fn highlighted(&self) -> Option<&NavTarget> {
+        self.highlighted.as_ref()
+    }
+
+    /// Whether `kind`'s own section is collapsed right now - the stored
+    /// collapse state a test reads after Left/Right or a header click, kept
+    /// separate from what a filter is currently forcing `render` to show.
+    #[cfg(test)]
+    pub(crate) fn is_section_collapsed(&self, kind: &DiscoveredKind) -> bool {
+        self.collapsed
+            .contains(&Category::for_gvk(&kind.gvk.group, &kind.plural))
+    }
+
+    fn loaded_kinds(&self) -> &[DiscoveredKind] {
+        match &self.state {
+            ResourceState::Loaded(kinds) => kinds,
+            _ => &[],
+        }
+    }
+
+    fn filter_text(&self, cx: &App) -> String {
+        self.filter_input.read(cx).value().to_string()
+    }
+
+    /// The sections to render right now: `loaded_kinds` partitioned by
+    /// category, with the current filter and collapse state applied. The
+    /// single source both `render` and the keyboard handlers read, so Up/Down
+    /// can never step through a row `render` would not draw.
+    fn visible_sections(&self, cx: &App) -> Vec<section::VisibleSection> {
+        section::visible_sections(self.loaded_kinds(), &self.collapsed, &self.filter_text(cx))
+    }
+
+    /// The kind `highlighted` points at, or `None` when nothing is
+    /// highlighted - every row this panel lists is a [`NavTarget::Kind`], so
+    /// this is the one match arm that can ever be `Some`.
+    fn highlighted_kind(&self) -> Option<DiscoveredKind> {
+        match &self.highlighted {
+            Some(NavTarget::Kind(kind)) => Some(kind.clone()),
+            _ => None,
+        }
+    }
+
+    /// The highlighted row's own section - what Left/Right collapse or expand.
+    fn highlighted_category(&self) -> Option<Category> {
+        self.highlighted_kind()
+            .map(|kind| Category::for_gvk(&kind.gvk.group, &kind.plural))
+    }
+
+    /// Flips `category`'s collapsed state - the section header's click route,
+    /// mirroring Left/Right's direction-specific `actions` handlers.
+    fn toggle_section(&mut self, category: Category, cx: &mut Context<Self>) {
+        if !self.collapsed.remove(&category) {
+            self.collapsed.insert(category);
+        }
+        cx.notify();
     }
 
     /// Starts discovery as soon as the window's context has a client. A no-op
@@ -205,198 +340,57 @@ impl ResourcePanel {
         .detach();
     }
 
-    /// The sidebar's rows while there is nothing to list yet - a plain
-    /// non-interactive row per state, so the panel's width and placement stay
-    /// the same whether or not discovery has landed.
-    fn status_row(label: String) -> SidebarMenuItem {
-        SidebarMenuItem::new(label).disable(true)
-    }
-
     /// The row for each discovered kind: its label, the target selecting it
     /// opens, and whether that target is the one currently showing. Splitting
-    /// this out of `render_kinds` is what makes the list assertable - the
-    /// rendered rows are otherwise only reachable by simulating a click.
+    /// this out of `render`'s row-building is what makes the list assertable -
+    /// the rendered rows are otherwise only reachable by simulating a click.
+    ///
+    /// A row reads just its kind (`Deployment`); the API group lives in the row's
+    /// tooltip ([`api_version_label`]). Only when two kinds in `kinds` share a name
+    /// does each keep its group in the label, so the two rows stay distinct.
     fn rows(&self, kinds: &[DiscoveredKind]) -> Vec<(String, NavTarget, bool)> {
         kinds
             .iter()
             .map(|kind| {
                 let target = NavTarget::Kind(kind.clone());
                 let active = self.selected.as_ref() == Some(&target);
-                (target.label(), target, active)
+                let shared_name = kinds
+                    .iter()
+                    .filter(|other| other.gvk.kind == kind.gvk.kind)
+                    .count()
+                    > 1;
+                let label = if shared_name {
+                    kind.label()
+                } else {
+                    kind.gvk.kind.clone()
+                };
+                (label, target, active)
             })
             .collect()
     }
 
-    /// Asks the window to show `target`. The single request path behind both
-    /// ways of opening a row: the double-click (9.1) and the context menu's
-    /// "Open" (9.2). They differ only in how they get here, which is what
-    /// makes them equivalent.
+    /// Asks the window to show `target`. The single request path behind every
+    /// way of opening a row: the double-click (9.1), the context menu's "Open"
+    /// (9.2), and now `Enter` (section 4.1) - they differ only in how they get
+    /// here, which is what makes them equivalent. Also marks `target`
+    /// highlighted, so opening a row from the context menu leaves the
+    /// keyboard cursor pointing at the panel it just opened.
     fn request_open(&mut self, target: NavTarget, cx: &mut Context<Self>) {
+        self.highlighted = Some(target.clone());
         cx.emit(ResourceEvent::Open(target));
         cx.notify();
-    }
-
-    fn render_kinds(&self, kinds: &[DiscoveredKind], cx: &mut Context<Self>) -> AnyElement {
-        let this = cx.weak_entity();
-        let items: Vec<SidebarMenuItem> = self
-            .rows(kinds)
-            .into_iter()
-            .map(|(label, target, active)| {
-                let dbl = this.clone();
-                let opened = target.clone();
-                let menu_target = target.clone();
-                let menu_panel = this.clone();
-                SidebarMenuItem::new(label)
-                    .icon(target.icon())
-                    .active(active)
-                    // A single click only arms the row; the second click of a
-                    // double-click opens the panel (9.1).
-                    .on_click(move |event, _window, cx| {
-                        if event.click_count() < 2 {
-                            return;
-                        }
-                        let _ = dbl.update(cx, |this, cx| this.request_open(opened.clone(), cx));
-                    })
-                    .context_menu(move |menu, _window, _cx| {
-                        let target = menu_target.clone();
-                        let panel = menu_panel.clone();
-                        menu.item(PopupMenuItem::new("Open").on_click(
-                            move |_event, _window, cx| {
-                                let _ = panel
-                                    .update(cx, |this, cx| this.request_open(target.clone(), cx));
-                            },
-                        ))
-                    })
-            })
-            .collect();
-        let sidebar = Sidebar::new("resources")
-            .w_full()
-            .border_r_0()
-            .collapsible(false)
-            .children(items)
-            .into_any_element();
-        self.with_header(sidebar, cx)
-    }
-
-    /// The panel's frame: [`Self::header`] drawn here, above a header-less sidebar,
-    /// rather than in `Sidebar`'s own header slot. That slot is a padded row this panel
-    /// can't size, which clipped the selector at the right edge and let it collapse to
-    /// nothing when the panel was narrowed. The frame carries the sidebar's background
-    /// and right border (the sidebar's own is turned off) so the two read as one panel.
-    fn with_header(&self, sidebar: AnyElement, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(theme.tokens.sidebar)
-            .border_r_1()
-            .border_color(theme.sidebar_border)
-            .child(div().w_full().px_3().pt_3().child(self.header(cx)))
-            .child(div().flex_1().min_h_0().child(sidebar))
-            .into_any_element()
-    }
-
-    /// The header row: which cluster's resources these rows are, and - once the window
-    /// holds more than one - a dropdown of every context it uses (`window-context-bar`
-    /// design.md decision 4). Picking one only *asks*: it emits
-    /// [`ResourceEvent::SwitchContext`], so `active` is written in one place,
-    /// `MainWindow`. "Resources" gives way (ellipsized) before the selector does, and
-    /// the selector sits in the right corner on the label's text baseline.
-    fn header(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        let selector = if self.shows_cluster_dropdown() {
-            self.cluster_dropdown(cx)
-        } else {
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .child(self.context_name.clone())
-                .into_any_element()
-        };
-        div()
-            .w_full()
-            .flex()
-            .items_baseline()
-            .gap_2()
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .text_sm()
-                    .text_color(theme.sidebar_foreground)
-                    .child("Resources"),
-            )
-            .child(div().flex_shrink_0().child(selector))
-            .into_any_element()
-    }
-
-    fn cluster_dropdown(&self, cx: &mut Context<Self>) -> AnyElement {
-        let this = cx.weak_entity();
-        let contexts = self.contexts.clone();
-        let current = self.context_name.clone();
-        Button::new("resource-cluster")
-            .label(self.context_name.clone())
-            .icon(gpui_kit::assets::IconName::ChevronDown)
-            .xsmall()
-            .ghost()
-            .dropdown_menu(move |menu, _window, _cx| {
-                // Built per open, not hoisted: `PopupMenuItem` is not `Clone`, and
-                // this closure is `Fn` so it can run more than once - the same
-                // shape as `ui/picker_tunnel.rs::selector`.
-                let mut menu = menu;
-                for context_name in &contexts {
-                    let picked = context_name.clone();
-                    let panel = this.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(context_name.clone())
-                            .checked(*context_name == current)
-                            .on_click(move |_event, _window, cx| {
-                                let _ = panel.update(cx, |_panel, cx| {
-                                    cx.emit(ResourceEvent::SwitchContext(picked.clone()));
-                                });
-                            }),
-                    );
-                }
-                menu
-            })
-            .into_any_element()
-    }
-
-    /// A status-only sidebar (no kinds yet, or none to show), framed like the list.
-    fn render_status(&self, message: String, cx: &mut Context<Self>) -> AnyElement {
-        let sidebar = Sidebar::new("resources")
-            .w_full()
-            .border_r_0()
-            .collapsible(false)
-            .child(Self::status_row(message))
-            .into_any_element();
-        self.with_header(sidebar, cx)
     }
 }
 
 impl EventEmitter<ResourceEvent> for ResourcePanel {}
 
-impl Render for ResourcePanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        match &self.state {
-            ResourceState::Loaded(kinds) if kinds.is_empty() => {
-                self.render_status("This cluster reported no resource kinds.".to_string(), cx)
-            }
-            ResourceState::Loaded(kinds) => self.render_kinds(kinds, cx),
-            ResourceState::WaitingForConnection => {
-                self.render_status("Connecting...".to_string(), cx)
-            }
-            ResourceState::Loading => {
-                self.render_status("Discovering resource kinds...".to_string(), cx)
-            }
-            ResourceState::Failed(reason) => {
-                self.render_status(format!("Could not discover resource kinds: {reason}"), cx)
-            }
-        }
+/// A kind's API version for its row tooltip: `apps/v1`, or `v1 (core)` for the core
+/// group, which has no name of its own.
+pub(super) fn api_version_label(kind: &DiscoveredKind) -> String {
+    if kind.gvk.group.is_empty() {
+        format!("{} (core)", kind.gvk.version)
+    } else {
+        format!("{}/{}", kind.gvk.group, kind.gvk.version)
     }
 }
 
@@ -405,6 +399,6 @@ impl Render for ResourcePanel {
 // and a `#[gpui_kit::test]`-annotated item, blows this toolchain's macro-expansion
 // budget - the same crash `ui/status_bar.rs` documents. Split into a sibling
 // `resource/tests.rs` (rather than kept inline) once `window-context-bar`'s
-// `set_active_context` tests pushed this file toward the 700-line cap.
+// `set_active_context` tests pushed this file toward the line cap.
 #[cfg(test)]
 mod tests;

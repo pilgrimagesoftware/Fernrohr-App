@@ -118,7 +118,7 @@ impl CommandRegistry {
 /// Case-insensitive subsequence match: every character of `query`, in
 /// order, appears somewhere in `candidate` (not necessarily contiguous).
 /// This is what makes "new win" match "New Window".
-// UNWIRED: `build_items` below still relies on gpui-component's own
+// UNWIRED: the palette (`util::palette`) still relies on gpui-component's own
 // substring filtering; nothing calls this stronger match yet.
 #[allow(dead_code)]
 pub fn fuzzy_match(query: &str, candidate: &str) -> bool {
@@ -133,11 +133,16 @@ pub fn fuzzy_match(query: &str, candidate: &str) -> bool {
         .all(|q| candidate_chars.any(|c| c == q))
 }
 
+/// Test-only: the palette itself (`util::palette`) builds its rows from
+/// [`CommandRegistry::available`] directly, so it can dispatch where focus was; these
+/// tests pin that same context gating.
+///
 /// Builds palette items for every command available in `active_contexts`,
 /// using gpui-component's own `Command` palette - it already does
 /// substring filtering and shows each item's active keybinding, so this
 /// just supplies the entries. See [`fuzzy_match`] for the stronger
 /// (subsequence) matching this module contributes on top.
+#[cfg(test)]
 pub fn build_items(
     registry: &CommandRegistry,
     active_contexts: &[&str],
