@@ -2047,6 +2047,7 @@ dependencies = [
  "kube",
  "kube-runtime",
  "log",
+ "objc2-app-kit 0.3.2",
  "parking_lot",
  "rcgen",
  "rust-i18n",

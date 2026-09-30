@@ -576,18 +576,16 @@ impl Render for LogsPanel {
                     )
             });
 
-        panel_title::focus_frame(
-            div()
-                .size_full()
-                .flex()
-                .flex_col()
-                .children(control_bar)
-                .child(div().flex_1().min_h_0().child(content)),
-            &self.focus_handle,
-            window,
-            cx,
-        )
-        .into_any_element()
+        div()
+            .size_full()
+            // Tracked so a click focuses the panel, which is what lights its
+            // tab's focus underline.
+            .track_focus(&self.focus_handle)
+            .flex()
+            .flex_col()
+            .children(control_bar)
+            .child(div().flex_1().min_h_0().child(content))
+            .into_any_element()
     }
 }
 
@@ -629,8 +627,13 @@ impl LogsPanel {
 }
 
 impl Panel for LogsPanel {
-    fn title(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        panel_title::title_element(&self.scope, self.streaming_title())
+    fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        panel_title::title_element(
+            &self.scope,
+            self.streaming_title(),
+            self.focus_handle.contains_focused(window, cx),
+            cx,
+        )
     }
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
