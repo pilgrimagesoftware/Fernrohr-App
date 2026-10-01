@@ -3,6 +3,7 @@
 
 use super::model::{ContainerSummary, ManagedFieldEntry};
 use crate::k8s::resource::pods::format_age;
+use crate::ui::detail::BadgeTone;
 use k8s_openapi::api::core::v1::Pod;
 
 /// One `managedFields` entry, with its `fieldsV1` ownership tree
@@ -76,6 +77,9 @@ pub(super) fn summarize_containers(
                     .and_then(|status| status.state.as_ref())
                     .map(format_container_state)
                     .unwrap_or_else(|| "Waiting".to_string()),
+                state_tone: matching
+                    .and_then(|status| status.state.as_ref())
+                    .map_or(BadgeTone::Warning, container_state_tone),
                 ports,
                 requests,
                 limits,
@@ -118,6 +122,36 @@ pub(super) fn format_container_state(state: &k8s_openapi::api::core::v1::Contain
         };
     }
     "Unknown".to_string()
+}
+
+/// How healthy a container's state is - the same reading of waiting reasons
+/// the Pods table's Status colour uses, so the two never disagree.
+pub(super) fn container_state_tone(
+    state: &k8s_openapi::api::core::v1::ContainerState,
+) -> BadgeTone {
+    use crate::k8s::resource::pods::BAD_WAITING_REASONS;
+    if state.running.is_some() {
+        return BadgeTone::Good;
+    }
+    if let Some(waiting) = &state.waiting {
+        let stuck = waiting
+            .reason
+            .as_deref()
+            .is_some_and(|reason| BAD_WAITING_REASONS.contains(&reason));
+        return if stuck {
+            BadgeTone::Bad
+        } else {
+            BadgeTone::Warning
+        };
+    }
+    if let Some(terminated) = &state.terminated {
+        return if terminated.exit_code == 0 {
+            BadgeTone::Unknown
+        } else {
+            BadgeTone::Bad
+        };
+    }
+    BadgeTone::Unknown
 }
 
 /// One toleration, in kubectl's key/operator/value/effect shape. Absent pieces

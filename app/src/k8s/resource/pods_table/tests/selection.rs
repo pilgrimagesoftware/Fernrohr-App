@@ -228,6 +228,8 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
         0,
         crate::k8s::resource::pods_table::PodTableRow {
             row: PodRow {
+                status_tone: crate::ui::style::Tone::Neutral,
+                ready_tone: crate::ui::style::Tone::Neutral,
                 name: "aa-name".into(),
                 namespace: "ns-e".into(),
                 ready: "1/1".into(),

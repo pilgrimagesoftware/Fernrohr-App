@@ -127,7 +127,7 @@ impl Render for SettingsWindow {
                     .px_2()
                     .py_1()
                     .rounded_md()
-                    .bg(theme.accent)
+                    .bg(crate::ui::style::accent_subtle(cx))
                     .child("Keyboard Shortcuts"),
             );
         div()

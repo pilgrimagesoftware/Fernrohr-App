@@ -93,7 +93,9 @@ impl ShortcutsSection {
             .px_2()
             .py_1()
             .rounded_md()
-            .when(selected, |this| this.bg(theme.accent))
+            .when(selected, |this| {
+                this.bg(crate::ui::style::accent_subtle(cx))
+            })
             .on_click({
                 let this = this.clone();
                 move |_event, _window, cx| {
@@ -238,6 +240,10 @@ fn hint_row(window: &mut Window, cx: &mut Context<ShortcutsSection>) -> impl Int
         .flex()
         .flex_wrap()
         .gap_3()
+        .px_2()
+        .py_1()
+        .rounded_md()
+        .bg(crate::ui::style::surface_raised(cx))
         .text_sm()
         .text_color(theme.muted_foreground)
         .child(hint(&RecordShortcut, "Change"))

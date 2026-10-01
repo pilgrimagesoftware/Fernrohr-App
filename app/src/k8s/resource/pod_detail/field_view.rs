@@ -4,7 +4,7 @@
 use super::model::{PodField, PodFieldValue, reference_text};
 use super::panel::PodDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
-use crate::ui::detail;
+use crate::ui::detail::{self, BadgeTone};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -89,17 +89,21 @@ impl PodDetailPanel {
                 .flex_col()
                 .gap_2()
                 .children(containers.iter().map(|container| {
-                    let ready_color = match container.ready {
-                        Some(true) => theme.success,
-                        Some(false) => theme.warning,
-                        None => theme.muted_foreground,
-                    };
+                    let ready_color = detail::tone_color(
+                        match container.ready {
+                            Some(true) => BadgeTone::Good,
+                            Some(false) => BadgeTone::Warning,
+                            None => BadgeTone::Unknown,
+                        },
+                        cx,
+                    );
                     div()
                         .flex()
                         .flex_col()
                         .gap_1()
                         .p_2()
                         .rounded_md()
+                        .bg(crate::ui::style::surface_card(cx))
                         .border_1()
                         .border_color(theme.border)
                         .child(
@@ -116,7 +120,7 @@ impl PodDetailPanel {
                                 .child(
                                     div()
                                         .text_sm()
-                                        .text_color(theme.muted_foreground)
+                                        .text_color(detail::tone_color(container.state_tone, cx))
                                         .child(container.state.clone()),
                                 ),
                         )
@@ -125,7 +129,7 @@ impl PodDetailPanel {
                             this.child(
                                 div()
                                     .text_sm()
-                                    .text_color(theme.warning)
+                                    .text_color(detail::tone_color(BadgeTone::Warning, cx))
                                     .child(format!("{} restarts", container.restart_count)),
                             )
                         })
@@ -192,6 +196,7 @@ impl PodDetailPanel {
                         .gap_1()
                         .p_2()
                         .rounded_md()
+                        .bg(crate::ui::style::surface_card(cx))
                         .border_1()
                         .border_color(theme.border)
                         .child(

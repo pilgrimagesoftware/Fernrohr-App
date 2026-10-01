@@ -11,6 +11,7 @@ pub mod picker_tunnel;
 pub mod placeholder;
 pub mod settings;
 pub mod status_bar;
+pub mod style;
 pub mod theme;
 pub mod tunnels;
 pub mod viewer;

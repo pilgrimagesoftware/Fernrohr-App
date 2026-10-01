@@ -30,13 +30,23 @@ pub fn focus_accent(cx: &App) -> Hsla {
         .unwrap_or(cx.theme().blue)
 }
 
-/// Re-reads the system accent. Returns whether it changed, so a caller knows
-/// whether its window needs redrawing.
+/// Re-reads the system accent and re-applies the theme overrides that use it
+/// ([`crate::ui::style::apply_overrides`]). Runs after every theme change -
+/// which resets those overrides - and on window activation. Returns whether
+/// the accent changed, so a caller knows whether its window needs redrawing.
 pub fn refresh(cx: &mut App) -> bool {
     let accent = SystemAccent(system_accent());
     let changed = cx.try_global::<SystemAccent>() != Some(&accent);
     cx.set_global(accent);
+    crate::ui::style::apply_overrides(cx);
     changed
+}
+
+/// Test-only: stands in for the system accent, then re-applies the overrides.
+#[cfg(test)]
+pub(crate) fn set_for_test(accent: Option<Hsla>, cx: &mut App) {
+    cx.set_global(SystemAccent(accent));
+    crate::ui::style::apply_overrides(cx);
 }
 
 /// Re-reads the accent whenever `window` becomes active, redrawing it if the

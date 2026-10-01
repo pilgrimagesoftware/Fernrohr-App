@@ -65,7 +65,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
                     .px_1()
                     .rounded(cx.theme().radius)
                     .when(selected.get() == Some(row), |el| {
-                        el.bg(cx.theme().selection)
+                        el.bg(crate::ui::style::accent_subtle(cx))
                     })
                     .child(title)
                     .children(key.clone())

@@ -47,7 +47,7 @@ fn reference(
     // Accent-coloured and underlined at rest, so a link reads as one before the
     // pointer finds it. `primary` isn't a hue in the default themes - it's the
     // body text colour - which left links indistinguishable from plain text.
-    let accent = crate::ui::accent::focus_accent(cx);
+    let accent = crate::ui::style::accent(cx);
     let underline = |alpha: f32| UnderlineStyle {
         thickness: px(1.),
         color: Some(accent.opacity(alpha)),

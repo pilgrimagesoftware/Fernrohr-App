@@ -17,6 +17,8 @@ fn compare_orders_rows_by_every_column() {
     // Every field of `a` sorts before the matching field of `b`, so each
     // column's comparator can be checked against the same pair.
     let a = PodRow {
+        status_tone: crate::ui::style::Tone::Neutral,
+        ready_tone: crate::ui::style::Tone::Neutral,
         name: "a-name".into(),
         namespace: "ns-a".into(),
         ready: "0/2".into(),
@@ -28,6 +30,8 @@ fn compare_orders_rows_by_every_column() {
         age_secs: 100,
     };
     let b = PodRow {
+        status_tone: crate::ui::style::Tone::Neutral,
+        ready_tone: crate::ui::style::Tone::Neutral,
         name: "b-name".into(),
         namespace: "ns-b".into(),
         ready: "1/2".into(),
@@ -120,6 +124,8 @@ fn set_rows_keeps_an_active_sort_applied() {
         1,
         crate::k8s::resource::pods_table::PodTableRow {
             row: PodRow {
+                status_tone: crate::ui::style::Tone::Neutral,
+                ready_tone: crate::ui::style::Tone::Neutral,
                 name: "aa-name".into(),
                 namespace: "ns-e".into(),
                 ready: "1/1".into(),
@@ -170,6 +176,8 @@ fn moving_columns_renders_each_visual_position_from_its_own_column() {
     let mut delegate = PodTableDelegate::default();
     delegate.set_rows(vec![crate::k8s::resource::pods_table::PodTableRow {
         row: PodRow {
+            status_tone: crate::ui::style::Tone::Neutral,
+            ready_tone: crate::ui::style::Tone::Neutral,
             name: "web-1".into(),
             namespace: "default".into(),
             ready: "1/1".into(),
