@@ -59,6 +59,44 @@ pub(super) fn matches_filter(kind: &DiscoveredKind, query: &str) -> bool {
     .any(|field| field.to_lowercase().contains(&query))
 }
 
+/// One API group's kinds inside the Custom Resources section
+/// (`custom-resource-grouping`): that section holds every CRD a cluster
+/// serves, which as one flat list mixes unrelated APIs together.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct Subgroup {
+    /// The API group, `""` for the core group.
+    pub(super) group: String,
+    pub(super) kinds: Vec<DiscoveredKind>,
+}
+
+/// Buckets the Custom Resources section's `kinds` by API group: core-group
+/// kinds first (built-ins [`Category::for_gvk`]'s table hasn't named yet),
+/// then the other groups alphabetically. Each group's kinds keep the order
+/// they arrive in - `discover_kinds`' group-then-kind sort, reused rather than
+/// redone - and no kind is dropped or repeated.
+// UNWIRED(custom-resource-grouping §2): subgroup headers render from this;
+// until then only tests call it.
+#[allow(dead_code)]
+pub(super) fn custom_subgroups(kinds: &[DiscoveredKind]) -> Vec<Subgroup> {
+    let mut subgroups: Vec<Subgroup> = Vec::new();
+    for kind in kinds {
+        match subgroups
+            .iter_mut()
+            .find(|subgroup| subgroup.group == kind.gvk.group)
+        {
+            Some(subgroup) => subgroup.kinds.push(kind.clone()),
+            None => subgroups.push(Subgroup {
+                group: kind.gvk.group.clone(),
+                kinds: vec![kind.clone()],
+            }),
+        }
+    }
+    // Core (`""`) sorts first, then by name. Stable, so equal keys - there
+    // are none, each group is one subgroup - would keep their order.
+    subgroups.sort_by(|a, b| (!a.group.is_empty(), &a.group).cmp(&(!b.group.is_empty(), &b.group)));
+    subgroups
+}
+
 /// One section as it should render right now.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct VisibleSection {
