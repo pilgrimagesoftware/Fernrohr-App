@@ -74,6 +74,10 @@ pub struct PodDetailPanel {
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
     pub(super) fetching: bool,
+    /// The Configuration tab's cards and revealed Secret values. Revealed
+    /// values live only here, and only until hidden, the tab is left, or the
+    /// panel closes.
+    pub(super) configuration: super::configuration::ConfigurationState,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -93,6 +97,7 @@ impl PodDetailPanel {
             connection,
             discovery,
             state: PodDetailState::Loading,
+            configuration: Default::default(),
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
@@ -123,6 +128,7 @@ impl PodDetailPanel {
             connection,
             discovery,
             state: PodDetailState::Loading,
+            configuration: Default::default(),
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
@@ -159,6 +165,11 @@ impl PodDetailPanel {
                         Ok(PodFetch::NotFound) => PodDetailState::NotFound,
                         Err((message, detail)) => PodDetailState::Failed { message, detail },
                     };
+                    // Opened straight onto the Configuration tab (or still on
+                    // it across a refetch): load its cards now the pod is in.
+                    if this.active_tab == DetailSection::Configuration {
+                        this.ensure_configuration_loaded(cx);
+                    }
                     cx.notify();
                 });
             })
@@ -193,8 +204,32 @@ impl PodDetailPanel {
 
     /// Switches the active tab of the structured view.
     pub(super) fn set_active_tab(&mut self, section: DetailSection, cx: &mut Context<Self>) {
+        // Leaving the Configuration tab hides every revealed value: one
+        // doesn't sit on screen behind a tab switch.
+        if self.active_tab == DetailSection::Configuration && section != self.active_tab {
+            self.configuration.hide_all();
+        }
         self.active_tab = section;
+        if section == DetailSection::Configuration {
+            self.ensure_configuration_loaded(cx);
+        }
         cx.notify();
+    }
+
+    /// Switches tab from the keyboard, keeping keyboard focus in the panel: a
+    /// focused control inside the old tab (a reveal button) unmounts with it,
+    /// which would otherwise leave nothing focused and the next key dead.
+    pub(super) fn switch_tab(
+        &mut self,
+        section: DetailSection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let had_focus = self.focus_handle.contains_focused(window, cx);
+        self.set_active_tab(section, cx);
+        if had_focus {
+            self.focus_handle.focus(window, cx);
+        }
     }
 
     /// The active tab. Test-only, like [`Self::view`].
@@ -305,46 +340,46 @@ impl PodDetailPanel {
     pub(super) fn on_action_select_overview_tab(
         &mut self,
         _: &SelectOverviewTab,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_active_tab(DetailSection::Overview, cx);
+        self.switch_tab(DetailSection::Overview, window, cx);
     }
 
     pub(super) fn on_action_select_containers_tab(
         &mut self,
         _: &SelectContainersTab,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_active_tab(DetailSection::Containers, cx);
+        self.switch_tab(DetailSection::Containers, window, cx);
     }
 
     pub(super) fn on_action_select_volumes_tab(
         &mut self,
         _: &SelectVolumesTab,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_active_tab(DetailSection::Volumes, cx);
+        self.switch_tab(DetailSection::Volumes, window, cx);
     }
 
     pub(super) fn on_action_select_events_tab(
         &mut self,
         _: &SelectEventsTab,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_active_tab(DetailSection::Events, cx);
+        self.switch_tab(DetailSection::Events, window, cx);
     }
 
     pub(super) fn on_action_select_managed_fields_tab(
         &mut self,
         _: &SelectManagedFieldsTab,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.set_active_tab(DetailSection::ManagedFields, cx);
+        self.switch_tab(DetailSection::ManagedFields, window, cx);
     }
 }
 

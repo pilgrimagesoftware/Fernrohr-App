@@ -15,6 +15,7 @@
 //! that draws it.
 
 mod commands;
+mod configuration;
 mod fetch;
 mod field_view;
 mod fields;

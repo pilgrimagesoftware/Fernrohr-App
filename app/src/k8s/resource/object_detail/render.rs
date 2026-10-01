@@ -44,6 +44,28 @@ impl ObjectDetailPanel {
             }
             FieldValue::Lines(lines) => detail::lines(lines),
             FieldValue::KeyValues(pairs) => detail::key_values(pairs, cx),
+            FieldValue::SecretKeys { secret, keys } => div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .children(keys.iter().enumerate().map(|(index, (key, size))| {
+                    let this = cx.weak_entity();
+                    let (target, owned_key) = (secret.clone(), key.clone());
+                    detail::secret_key_row(
+                        key,
+                        *size,
+                        self.revealed.get(key),
+                        ElementId::NamedInteger("object-reveal".into(), index as u64),
+                        ElementId::NamedInteger("object-revealed".into(), index as u64),
+                        move |_window, cx| {
+                            let _ = this.update(cx, |this: &mut Self, cx| {
+                                this.toggle_reveal(target.clone(), owned_key.clone(), cx)
+                            });
+                        },
+                        cx,
+                    )
+                }))
+                .into_any_element(),
         };
         detail::row(field.label.clone(), value, cx)
     }
@@ -195,6 +217,7 @@ impl Render for ObjectDetailPanel {
             .key_context(key_context())
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
+            .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_go_to))
             .flex()
             .flex_col()

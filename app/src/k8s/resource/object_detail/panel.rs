@@ -26,7 +26,7 @@ pub struct ObjectDetailPanel {
     /// scope's `NavTarget::Object`.
     pub(super) target: ObjectTarget,
     pub(super) scope: PanelScope,
-    connection: Entity<ClusterConnection>,
+    pub(super) connection: Entity<ClusterConnection>,
     /// The context's discovered kinds, which decide which references are
     /// links. Observed, so references turn into links when discovery lands.
     pub(super) discovery: Entity<DiscoveredKinds>,
@@ -35,6 +35,9 @@ pub struct ObjectDetailPanel {
     /// Whether a fetch is in flight, so a flapping connection can't race two
     /// results into `state`.
     fetching: bool,
+    /// Revealed Secret values, by key - only while shown, and never saved.
+    pub(super) revealed:
+        std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -79,6 +82,7 @@ impl ObjectDetailPanel {
             state: ObjectDetailState::Loading,
             viewing: DetailView::Structured,
             fetching: false,
+            revealed: Default::default(),
             focus_handle: cx.focus_handle(),
         };
         this.sync(cx);

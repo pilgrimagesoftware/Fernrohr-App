@@ -46,3 +46,10 @@ pub const TUNNELS_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(720.), gpui_kit::px(560.));
 pub const TUNNELS_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(560.), gpui_kit::px(440.));
+
+/// The Settings window's starting size (centered on screen) and the smallest it may be
+/// resized to: the sections sidebar beside a list of every command and its key.
+pub const SETTINGS_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(820.), gpui_kit::px(600.));
+pub const SETTINGS_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(600.), gpui_kit::px(420.));
