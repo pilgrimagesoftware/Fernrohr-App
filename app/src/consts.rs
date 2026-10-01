@@ -3,6 +3,11 @@
 
 use std::time::Duration;
 
+/// The product name, as every window title and the About window spell it.
+/// Not `env!("CARGO_PKG_NAME")`, which is the lowercase crate name `fernrohr`
+/// (`window-title-and-menu` design.md Risks).
+pub(crate) const APP_NAME: &str = "Fernrohr";
+
 // UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
 // 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
 #[allow(dead_code)]

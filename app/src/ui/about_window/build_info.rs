@@ -5,6 +5,8 @@
 //! the same strings would serve a crash handler or a `--version` flag without
 //! a window existing.
 
+use crate::consts::APP_NAME;
+
 /// Stamped by `build.rs` in place of the commit when there is no repository
 /// to ask - a source tarball, or a machine without `git`. Must match the
 /// `UNKNOWN` constant there.
@@ -41,7 +43,7 @@ fn format_build(date: &str, commit: &str) -> String {
 /// What the copy action puts on the clipboard - everything a bug report
 /// needs about which binary was running, in one line.
 pub(super) fn build_details() -> String {
-    format!("Fernrohr {} ({})", version(), build_identifier())
+    format!("{APP_NAME} {} ({})", version(), build_identifier())
 }
 
 #[cfg(test)]
