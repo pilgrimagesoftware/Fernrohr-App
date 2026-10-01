@@ -5,8 +5,10 @@
 // next to `#[gpui_kit::test]` items blows the macro-expansion budget (see
 // `util/shell.rs`), and would shadow the built-in `#[test]`.
 use super::{initial_title, title_for, title_from};
-use crate::util::shell::MainWindow;
-use gpui_kit::{TestAppContext, WindowHandle};
+use crate::util::shell::test_support::pods_panel_descriptor;
+use crate::util::shell::{MainWindow, WindowLayout, WindowMode, open_window};
+use gpui_kit::component::Root;
+use gpui_kit::{TestAppContext, VisualTestContext, WindowHandle};
 
 fn names(names: &[&str]) -> Vec<String> {
     names.iter().map(ToString::to_string).collect()
@@ -102,4 +104,82 @@ fn initial_title_matches_the_entered_workspace(cx: &mut TestAppContext) {
         initial_title(&names(&["staging", "production"])),
         "2 clusters - Fernrohr"
     );
+}
+
+/// What the window last passed to `set_window_title`. `Window::window_title`
+/// reads the platform back and is empty on the test platform, which only
+/// stores the title for `VisualTestContext` to read.
+fn window_title(window: &WindowHandle<MainWindow>, cx: &mut TestAppContext) -> Option<String> {
+    VisualTestContext::from_window((*window).into(), cx).window_title()
+}
+
+/// 3.1-3.3: both `apply` paths reach the OS window - `enter_workspace` and
+/// `enter_picker` directly, an edit to `contexts` through
+/// `sync_context_children`'s deferred one.
+#[gpui_kit::test]
+fn the_window_title_follows_its_mode(cx: &mut TestAppContext) {
+    init(cx);
+    let window =
+        cx.add_window(|window, cx| MainWindow::test_workspace(names(&["staging"]), window, cx));
+    assert_eq!(
+        window_title(&window, cx).as_deref(),
+        Some("staging - Fernrohr")
+    );
+
+    window
+        .update(cx, |main_window, _, cx| {
+            if let WindowMode::Workspace { contexts, .. } = &mut main_window.mode {
+                contexts.push("production".to_string());
+            }
+            main_window.sync_context_children(cx);
+        })
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        window_title(&window, cx).as_deref(),
+        Some("2 clusters - Fernrohr")
+    );
+
+    window
+        .update(cx, |main_window, window, cx| {
+            main_window.enter_picker(window, cx)
+        })
+        .unwrap();
+    assert_eq!(window_title(&window, cx).as_deref(), Some("Fernrohr"));
+}
+
+/// The same deferred re-title through the real `open_window`, whose root view
+/// is `Root` wrapping the `MainWindow` rather than the `MainWindow` itself.
+#[gpui_kit::test]
+fn a_window_opened_for_real_is_retitled(cx: &mut TestAppContext) {
+    init(cx);
+    let layout = WindowLayout {
+        contexts: names(&["staging"]),
+        panels: vec![pods_panel_descriptor("staging")],
+        ..Default::default()
+    };
+    cx.update(|cx| open_window(cx, layout));
+    cx.run_until_parked();
+    let handle = cx.update(|cx| cx.windows()[0]);
+    let mut vcx = VisualTestContext::from_window(handle, cx);
+    assert_eq!(vcx.window_title().as_deref(), Some("staging - Fernrohr"));
+
+    let main_window = vcx.update(|window, cx| {
+        let root = window.root::<Root>().flatten().expect("a Root window");
+        root.read(cx)
+            .view()
+            .clone()
+            .downcast::<MainWindow>()
+            .unwrap()
+    });
+    vcx.update(|_, cx| {
+        main_window.update(cx, |main_window, cx| {
+            if let WindowMode::Workspace { contexts, .. } = &mut main_window.mode {
+                contexts.push("production".to_string());
+            }
+            main_window.sync_context_children(cx);
+        });
+    });
+    vcx.run_until_parked();
+    assert_eq!(vcx.window_title().as_deref(), Some("2 clusters - Fernrohr"));
 }

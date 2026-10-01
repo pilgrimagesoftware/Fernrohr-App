@@ -6,8 +6,8 @@ impl MainWindow {
     /// Pushes `contexts`/`active` to the Resource panel, the status bar, and the
     /// context bar - the one place that updates all three, so `add_context`,
     /// `disconnect_context`, and `set_active_context` cannot update one and forget
-    /// another (see `WindowMode::Workspace::context_bar`'s doc comment). A no-op in
-    /// `Picker` mode.
+    /// another (see `WindowMode::Workspace::context_bar`'s doc comment), plus the
+    /// window's title. A no-op in `Picker` mode.
     pub(super) fn sync_context_children(&mut self, cx: &mut Context<Self>) {
         let WindowMode::Workspace {
             contexts,
@@ -28,6 +28,7 @@ impl MainWindow {
         let resource_panel = resource_panel.clone();
         let status_bar = status_bar.clone();
         let context_bar = context_bar.clone();
+        let main_window = cx.weak_entity();
         // Deferred: a chip click (`ui/context_bar.rs::ContextBarView::
         // on_chip_clicked`) and the Resource panel's own cluster dropdown
         // (`ResourcePanel::cluster_dropdown`'s `cx.emit`) both reach this
@@ -49,6 +50,9 @@ impl MainWindow {
             context_bar.update(cx, |bar, cx| {
                 bar.set_state(contexts_snapshot, active_index, cx);
             });
+            // After the guards above, so only a workspace with a live active
+            // context is re-titled here (design.md decision 5).
+            window_title::apply_deferred(&main_window, cx);
         });
         cx.notify();
     }
@@ -185,6 +189,9 @@ impl MainWindow {
         let picker = cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx));
         watch_picker(&picker, window, cx);
         self.mode = WindowMode::Picker(picker);
+        // No children to sync, so `sync_context_children` never runs here:
+        // the window drops back to the plain app-name title itself.
+        window_title::apply(&self.mode, window);
         cx.notify();
     }
 }

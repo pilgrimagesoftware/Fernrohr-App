@@ -5,9 +5,6 @@
 use super::*;
 use crate::consts::APP_NAME;
 
-// UNWIRED(#60): `sync_context_children` and `enter_picker` (section 3) are the
-// callers; until they land nothing reads it.
-#[allow(dead_code)]
 /// A window's title, from its mode: the app name alone in the cluster picker,
 /// `"<context> - Fernrohr"` for one context, and `"<n> clusters - Fernrohr"`
 /// for several. A count rather than a list of names, because a window can
@@ -31,6 +28,20 @@ pub(super) fn initial_title(contexts: &[String]) -> String {
     title_from(contexts, 0)
 }
 
+/// Whether `handle` shows the `MainWindow` entity `id`: wrapped in `Root`, as
+/// `open_window` opens it, or as the root view itself, as tests open it.
+fn hosts(handle: AnyWindowHandle, id: EntityId, cx: &App) -> bool {
+    let wrapped = handle
+        .downcast::<Root>()
+        .and_then(|root| root.read(cx).ok())
+        .is_some_and(|root| root.view().entity_id() == id);
+    wrapped
+        || handle
+            .downcast::<MainWindow>()
+            .and_then(|main_window| main_window.entity(cx).ok())
+            .is_some_and(|main_window| main_window.entity_id() == id)
+}
+
 /// [`title_for`] over the parts of a mode it reads, so the strings are
 /// testable without building a window. An `active` past the end of a
 /// one-context list falls back to the app name, the same title a window with
@@ -44,6 +55,35 @@ fn title_from(contexts: &[String], active: usize) -> String {
         ),
         several => format!("{} clusters - {APP_NAME}", several.len()),
     }
+}
+
+/// Pushes `mode`'s title to `window`: the native title bar, the macOS Window
+/// menu entry and the accessibility name, all from one `set_window_title`
+/// (design.md decision 1). For callers holding the window, which always pass
+/// the mode they just set - so the title cannot lag the mode.
+pub(super) fn apply(mode: &WindowMode, window: &mut Window) {
+    window.set_window_title(&title_for(mode));
+}
+
+/// [`apply`] for a caller with no `Window` - `sync_context_children`, from
+/// inside its `cx.defer` (design.md decision 6). Finds the window whose root
+/// view is `main_window` and reads the title off that window's mode as it is
+/// now, not as it was when the defer was queued. A no-op if the window has
+/// closed in between.
+pub(super) fn apply_deferred(main_window: &WeakEntity<MainWindow>, cx: &mut App) {
+    let Some(main_window) = main_window.upgrade() else {
+        return;
+    };
+    let id = main_window.entity_id();
+    let handle = cx
+        .windows()
+        .into_iter()
+        .find(|handle| hosts(*handle, id, cx));
+    let Some(handle) = handle else {
+        return;
+    };
+    let title = title_for(&main_window.read(cx).mode);
+    let _ = handle.update(cx, |_, window, _| window.set_window_title(&title));
 }
 
 #[cfg(test)]

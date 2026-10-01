@@ -135,6 +135,9 @@ impl MainWindow {
             context_bar,
             resource_width: RESOURCE_PANEL_WIDTH,
         };
+        // Entering a workspace doesn't go through `sync_context_children` (its
+        // children are built here already synced), so it titles the window itself.
+        window_title::apply(&self.mode, window);
         if !restored {
             self.watch_scope_changes(first, window, cx);
         }
