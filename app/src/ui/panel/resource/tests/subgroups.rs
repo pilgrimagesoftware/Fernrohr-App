@@ -299,3 +299,64 @@ fn a_filter_shows_only_subgroups_with_a_match() {
         .collect();
     assert_eq!(shown, vec!["alpha.example.com", "beta.example.com"]);
 }
+
+/// 3.2: a filter forces a collapsed subgroup with a match open, without
+/// touching the stored collapsed set, so clearing the filter restores it.
+#[gpui_kit::test]
+async fn a_filter_opens_a_collapsed_subgroup_until_cleared(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = stub_panel(cx);
+    let set_filter = |text: &'static str, cx: &mut TestAppContext| {
+        window
+            .update(cx, |panel, window, cx| {
+                panel
+                    .filter_input
+                    .update(cx, |input, cx| input.set_value(text, window, cx));
+                cx.notify();
+            })
+            .unwrap();
+    };
+    let beta = |cx: &mut TestAppContext| {
+        window
+            .update(cx, |panel, _window, cx| {
+                let subgroups = subgroups_for(
+                    panel.loaded_kinds(),
+                    &panel.collapsed_subgroups,
+                    &panel.filter_text(cx),
+                );
+                (
+                    subgroups
+                        .iter()
+                        .find(|subgroup| subgroup.group == "beta.example.com")
+                        .map(|subgroup| subgroup.expanded),
+                    panel.collapsed_subgroups.contains("beta.example.com"),
+                )
+            })
+            .unwrap()
+    };
+    window
+        .update(cx, |panel, _window, cx| {
+            panel.state = super::super::ResourceState::Loaded(three_groups());
+            panel.collapsed_subgroups.insert("beta.example.com".into());
+            cx.notify();
+        })
+        .unwrap();
+    assert_eq!(beta(cx), (Some(false), true), "collapsed before filtering");
+
+    set_filter("widget", cx);
+    assert_eq!(
+        beta(cx),
+        (Some(true), true),
+        "open while the filter matches, set untouched"
+    );
+
+    set_filter("", cx);
+    assert_eq!(
+        beta(cx),
+        (Some(false), true),
+        "collapsed again once the filter clears"
+    );
+}
