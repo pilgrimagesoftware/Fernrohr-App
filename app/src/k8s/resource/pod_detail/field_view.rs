@@ -83,7 +83,13 @@ impl PodDetailPanel {
                             })
                     }))
                     .into_any_element(),
-                PodFieldValue::Containers(containers) => self.render_containers(containers, cx),
+                // Full width, not a labelled row - see `render_containers`.
+                // The main run is the one the tab is named for, so only the
+                // init containers get a heading.
+                PodFieldValue::Containers(containers) => {
+                    let heading = (field.label != "Containers").then_some(field.label);
+                    return self.render_containers(heading, containers, cx);
+                }
                 PodFieldValue::ManagedFields(entries) => div()
                     .flex()
                     .flex_col()
