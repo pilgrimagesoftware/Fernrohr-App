@@ -17,7 +17,9 @@ use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, ElementId, Modifiers, TestAppContext, VisualTestContext};
+use gpui_kit::{
+    AppContext as _, Bounds, ElementId, Modifiers, Pixels, TestAppContext, VisualTestContext,
+};
 use k8s_openapi::api::core::v1::{Container, EnvVar};
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
@@ -89,6 +91,17 @@ fn drawn(vcx: &mut VisualTestContext, h: &Harness, id: ElementId) -> bool {
     .unwrap()
 }
 
+fn bounds(vcx: &mut VisualTestContext, h: &Harness, id: ElementId) -> Bounds<Pixels> {
+    vcx.update_window(h.window.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(id.clone())
+            .unwrap_or_else(|| panic!("{id:?} is drawn"))
+            .bounds()
+    })
+    .unwrap()
+}
+
 fn click(vcx: &mut VisualTestContext, h: &Harness, id: ElementId) {
     let center = vcx
         .update_window(h.window.into(), |_, window, cx| {
@@ -141,4 +154,25 @@ async fn expanding_one_container_shows_only_its_detail(cx: &mut TestAppContext) 
     click(&mut vcx, &h, container_toggle_id("app"));
     assert!(!drawn(&mut vcx, &h, container_detail_id("app")));
     assert!(drawn(&mut vcx, &h, container_detail_id("sidecar")));
+}
+
+/// The chevron sits in a gutter of its own: the card's text, the expanded
+/// detail included, starts right of it rather than running underneath.
+#[gpui_kit::test]
+async fn the_chevron_has_a_gutter_of_its_own(cx: &mut TestAppContext) {
+    let h = harness(cx);
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    focus_panel(&mut vcx, &h);
+    vcx.simulate_keystrokes("2");
+    vcx.run_until_parked();
+    click(&mut vcx, &h, container_toggle_id("app"));
+
+    let toggle = bounds(&mut vcx, &h, container_toggle_id("app"));
+    let detail = bounds(&mut vcx, &h, container_detail_id("app"));
+    assert!(
+        detail.left() >= toggle.right(),
+        "detail starts at {:?}, inside the chevron's gutter ending {:?}",
+        detail.left(),
+        toggle.right()
+    );
 }

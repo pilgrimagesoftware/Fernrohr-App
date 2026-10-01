@@ -33,15 +33,30 @@ pub(super) fn container_detail_id(name: &str) -> ElementId {
 }
 
 impl PodDetailPanel {
+    /// One run of container cards across the full width of the tab, with no
+    /// label column: the tab already says Containers. `heading` names a
+    /// second run (Init Containers) so it stays apart from the first.
     pub(super) fn render_containers(
         &self,
+        heading: Option<&'static str>,
         containers: &[ContainerSummary],
         cx: &Context<Self>,
     ) -> AnyElement {
+        let theme = cx.theme();
         div()
             .flex()
             .flex_col()
             .gap_2()
+            .py_1()
+            .px_2()
+            .when_some(heading, |this, heading| {
+                this.child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(heading),
+                )
+            })
             .children(
                 containers
                     .iter()
@@ -91,21 +106,20 @@ impl PodDetailPanel {
                 .child(text)
         };
 
-        div()
+        // Two columns: the chevron alone in a gutter, and every line of text
+        // in one column beside it, so the name lines up with the lines
+        // under it rather than sitting indented past the chevron.
+        let body = div()
             .flex()
             .flex_col()
+            .flex_1()
+            .min_w_0()
             .gap_1()
-            .p_2()
-            .rounded_md()
-            .bg(crate::ui::style::surface_card(cx))
-            .border_1()
-            .border_color(theme.border)
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(toggle)
                     .child(div().size(px(8.)).rounded_full().bg(ready_color))
                     .child(
                         div()
@@ -165,7 +179,19 @@ impl PodDetailPanel {
                     &container.detail,
                     cx,
                 ))
-            })
+            });
+
+        div()
+            .flex()
+            .items_start()
+            .gap_1()
+            .p_2()
+            .rounded_md()
+            .bg(crate::ui::style::surface_card(cx))
+            .border_1()
+            .border_color(theme.border)
+            .child(div().flex_none().child(toggle))
+            .child(body)
             .into_any_element()
     }
 }
