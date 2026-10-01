@@ -141,7 +141,9 @@ jobs:
           mnt=$(mktemp -d)
           # The dmg carries LICENSE.md as a license agreement, which hdiutil
           # pages and asks to accept; without the `yes` it cancels the attach.
-          yes | PAGER=cat hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
+          # Fed by process substitution, not a pipe: `yes` dies of SIGPIPE once
+          # hdiutil stops reading, which `pipefail` would report as a failure.
+          PAGER=cat hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" < <(yes) >/dev/null
           trap 'hdiutil detach "$mnt" -quiet || true' EXIT
           codesign --verify --deep --strict --verbose=2 "$mnt/Fernrohr.app"
           codesign -dv "$mnt/Fernrohr.app"
