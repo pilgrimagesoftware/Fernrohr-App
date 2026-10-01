@@ -264,3 +264,38 @@ async fn a_collapsed_subgroups_kinds_leave_the_keyboard_order(cx: &mut TestAppCo
         "other groups stay reachable"
     );
 }
+
+/// Three CRD groups, two of which hold a kind named like `widget`.
+fn three_groups() -> Vec<DiscoveredKind> {
+    vec![
+        kind("alpha.example.com", "Widget"),
+        kind("beta.example.com", "WidgetPolicy"),
+        kind("gamma.example.com", "Gadget"),
+    ]
+}
+
+/// The Custom Resources section's subgroups, as `visible_sections` draws
+/// them, for `filter` and the collapsed-subgroup set.
+fn subgroups_for(
+    kinds: &[DiscoveredKind],
+    collapsed_subgroups: &std::collections::HashSet<String>,
+    filter: &str,
+) -> Vec<super::super::section::VisibleSubgroup> {
+    super::super::section::visible_sections(kinds, &Default::default(), collapsed_subgroups, filter)
+        .into_iter()
+        .find(|section| section.category == Category::CustomResources)
+        .map(|section| section.subgroups)
+        .unwrap_or_default()
+}
+
+/// 3.1: the filter is matched per kind, and a subgroup shows only if one of
+/// its kinds matched - a filter matching kinds in two of three subgroups
+/// yields exactly those two.
+#[test]
+fn a_filter_shows_only_subgroups_with_a_match() {
+    let shown: Vec<String> = subgroups_for(&three_groups(), &Default::default(), "widget")
+        .into_iter()
+        .map(|subgroup| subgroup.group)
+        .collect();
+    assert_eq!(shown, vec!["alpha.example.com", "beta.example.com"]);
+}
