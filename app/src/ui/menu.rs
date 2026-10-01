@@ -56,7 +56,7 @@ fn register_handlers(cx: &mut App) {
             });
         }
     });
-    cx.on_action(|_: &About, cx: &mut App| about_window(cx));
+    crate::ui::about_window::register_about_action(cx);
     cx.on_action(|_: &Minimize, cx: &mut App| {
         if let Some(window) = cx.active_window() {
             let _ = window.update(cx, |_, window, _| window.minimize_window());
@@ -187,54 +187,6 @@ fn registry_items(slot: MenuSlot, registry: &CommandRegistry) -> Vec<MenuItem> {
             disabled: false,
         })
         .collect()
-}
-
-/// A small, fixed-size window naming the app and its build version - real
-/// `CARGO_PKG_*` values, not placeholder text. Not a modal: this app has no
-/// modal/dialog system yet, and building one just for this would be its own
-/// change; a plain window is the smallest honest thing that works.
-fn about_window(cx: &mut App) {
-    let bounds = Bounds::centered(None, size(px(320.), px(180.)), cx);
-    let _ = cx.open_window(
-        WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            window_min_size: Some(size(px(320.), px(180.))),
-            titlebar: None,
-            ..Default::default()
-        },
-        |window, cx| {
-            crate::ui::theme::watch_window(window, cx);
-            cx.new(|cx| AboutView {
-                _cx: cx.entity_id(),
-            })
-        },
-    );
-}
-
-struct AboutView {
-    _cx: EntityId,
-}
-
-impl Render for AboutView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_kit::component::ActiveTheme as _;
-        let theme = cx.theme();
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .bg(theme.background)
-            .child(div().text_lg().child(env!("CARGO_PKG_NAME").to_string()))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
-            )
-    }
 }
 
 #[cfg(test)]
