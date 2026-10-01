@@ -4,9 +4,9 @@
 // Named imports rather than `use super::*`: a glob re-import of `gpui_kit::*`
 // next to `#[gpui_kit::test]` items blows the macro-expansion budget (see
 // `util/shell.rs`), and would shadow the built-in `#[test]`.
-use super::{title_for, title_from};
+use super::{initial_title, title_for, title_from};
 use crate::util::shell::MainWindow;
-use gpui_kit::{AppContext as _, TestAppContext, WindowHandle};
+use gpui_kit::{TestAppContext, WindowHandle};
 
 fn names(names: &[&str]) -> Vec<String> {
     names.iter().map(ToString::to_string).collect()
@@ -76,4 +76,30 @@ fn workspace_windows_are_titled_from_their_contexts(cx: &mut TestAppContext) {
         MainWindow::test_workspace(names(&["staging", "production"]), window, cx)
     });
     assert_eq!(title_of(&two, cx), "2 clusters - Fernrohr");
+}
+
+/// 2.1: the title `open_window` passes before the mode exists is the one
+/// `title_for` gives once the window has entered its workspace, so a restored
+/// window's first-frame title is never replaced by a different one.
+#[gpui_kit::test]
+fn initial_title_matches_the_entered_workspace(cx: &mut TestAppContext) {
+    init(cx);
+    for contexts in [
+        names(&[]),
+        names(&["staging"]),
+        names(&["staging", "production"]),
+    ] {
+        let initial = initial_title(&contexts);
+        let window = if contexts.is_empty() {
+            cx.add_window(MainWindow::test_picker_window)
+        } else {
+            let entered = contexts.clone();
+            cx.add_window(move |window, cx| MainWindow::test_workspace(entered, window, cx))
+        };
+        assert_eq!(title_of(&window, cx), initial, "contexts: {contexts:?}");
+    }
+    assert_eq!(
+        initial_title(&names(&["staging", "production"])),
+        "2 clusters - Fernrohr"
+    );
 }

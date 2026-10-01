@@ -5,8 +5,8 @@
 use super::*;
 use crate::consts::APP_NAME;
 
-// UNWIRED(#60): `open_window` (section 2) and `sync_context_children` /
-// `enter_picker` (section 3) are the callers; until they land nothing reads it.
+// UNWIRED(#60): `sync_context_children` and `enter_picker` (section 3) are the
+// callers; until they land nothing reads it.
 #[allow(dead_code)]
 /// A window's title, from its mode: the app name alone in the cluster picker,
 /// `"<context> - Fernrohr"` for one context, and `"<n> clusters - Fernrohr"`
@@ -20,6 +20,15 @@ pub(super) fn title_for(mode: &WindowMode) -> String {
             contexts, active, ..
         } => title_from(contexts, *active),
     }
+}
+
+/// The title a window opened onto `contexts` starts with, before its mode
+/// exists: `open_window` needs it for `TitlebarOptions`, and the mode is built
+/// inside the window. `enter_workspace` makes the first context active, so this
+/// is what [`title_for`] reads once the window is up - a restored window is
+/// titled from its first frame rather than blank (design.md decision 2).
+pub(super) fn initial_title(contexts: &[String]) -> String {
+    title_from(contexts, 0)
 }
 
 /// [`title_for`] over the parts of a mode it reads, so the strings are
