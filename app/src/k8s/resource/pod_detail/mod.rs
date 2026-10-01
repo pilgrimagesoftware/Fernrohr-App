@@ -9,13 +9,16 @@
 //!
 //! The module is split by concern: [`commands`] owns the panel's actions and
 //! keybindings, [`model`] the view model the projection produces, [`fields`]
-//! and [`format`] the `Pod` -> field-list projection itself, [`references`]
+//! and [`format`] the `Pod` -> field-list projection itself,
+//! [`container_detail`] a container card's expanded fields, [`references`]
 //! the objects that projection points at, [`fetch`] the
-//! one-shot read, and [`panel`], [`field_view`] and [`render`] the dock panel
+//! one-shot read, and [`panel`], [`field_view`], [`container_view`] and [`render`] the dock panel
 //! that draws it.
 
 mod commands;
 mod configuration;
+mod container_detail;
+mod container_view;
 mod fetch;
 mod field_view;
 mod fields;

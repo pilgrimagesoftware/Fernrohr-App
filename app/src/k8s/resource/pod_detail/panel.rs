@@ -67,7 +67,8 @@ pub struct PodDetailPanel {
     /// Structured returns to the tab the user left, not always Overview.
     pub(super) active_tab: DetailSection,
     /// Which disclosures are expanded: `Collapsed`-value fields (Tolerations)
-    /// keyed by field label, and Managed Fields entries keyed `mf-<index>`.
+    /// keyed by field label, Managed Fields entries keyed `mf-<index>`, and
+    /// container cards keyed `container:<name>`.
     /// Absent means collapsed - the default for a long list the user came for
     /// something else in.
     pub(super) open_sections: std::collections::HashSet<String>,

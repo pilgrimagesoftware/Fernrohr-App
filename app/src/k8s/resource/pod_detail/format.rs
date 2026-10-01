@@ -84,6 +84,7 @@ pub(super) fn summarize_containers(
                 requests,
                 limits,
                 env_sources: super::references::env_sources(container, namespace),
+                detail: super::container_detail::container_detail(container),
             }
         })
         .collect()
