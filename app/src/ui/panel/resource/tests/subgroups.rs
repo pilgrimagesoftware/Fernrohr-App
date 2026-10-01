@@ -130,3 +130,110 @@ async fn a_fresh_panel_has_every_subgroup_expanded(cx: &mut TestAppContext) {
         })
         .unwrap();
 }
+
+/// A panel showing `discovered()`, drawn in a window.
+fn loaded_panel(
+    cx: &mut TestAppContext,
+) -> (
+    gpui_kit::WindowHandle<super::super::ResourcePanel>,
+    gpui_kit::VisualTestContext,
+) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = stub_panel(cx);
+    window
+        .update(cx, |panel, _window, cx| {
+            panel.state = super::super::ResourceState::Loaded(discovered());
+            cx.notify();
+        })
+        .unwrap();
+    let vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+    (window, vcx)
+}
+
+fn drawn(cx: &mut gpui_kit::VisualTestContext, selector: &str) -> bool {
+    let selector: &'static str = selector.to_string().leak();
+    cx.debug_bounds(selector).is_some()
+}
+
+/// 2.1: Custom Resources draws a header per API group with its kinds under
+/// it; collapsing one subgroup hides only its rows - its header stays, and
+/// the other subgroups' rows stay.
+#[gpui_kit::test]
+async fn collapsing_one_subgroup_leaves_the_others_visible(cx: &mut TestAppContext) {
+    let (window, mut vcx) = loaded_panel(cx);
+    for group in [
+        "core",
+        "argoproj.io",
+        "cert-manager.io",
+        "networking.istio.io",
+    ] {
+        assert!(
+            drawn(&mut vcx, &format!("resource-subgroup-{group}")),
+            "{group} header"
+        );
+    }
+    assert!(
+        drawn(&mut vcx, "resource-row-subgroup-argoproj.io-1"),
+        "Rollout row"
+    );
+
+    window
+        .update(&mut vcx, |panel, _window, cx| {
+            panel.collapsed_subgroups.insert("argoproj.io".into());
+            cx.notify();
+        })
+        .unwrap();
+    vcx.run_until_parked();
+
+    assert!(
+        drawn(&mut vcx, "resource-subgroup-argoproj.io"),
+        "its header stays"
+    );
+    assert!(
+        !drawn(&mut vcx, "resource-row-subgroup-argoproj.io-0"),
+        "its rows hide"
+    );
+    assert!(
+        drawn(&mut vcx, "resource-row-subgroup-cert-manager.io-0"),
+        "others stay"
+    );
+    assert!(
+        drawn(&mut vcx, "resource-row-subgroup-core-0"),
+        "core stays"
+    );
+}
+
+/// A collapsed subgroup's kinds can't be reached from the keyboard either:
+/// they leave the order Up/Down step through, the same moment they hide.
+#[gpui_kit::test]
+async fn a_collapsed_subgroups_kinds_leave_the_keyboard_order(cx: &mut TestAppContext) {
+    let (window, mut vcx) = loaded_panel(cx);
+    let reachable = |vcx: &mut gpui_kit::VisualTestContext| {
+        window
+            .update(vcx, |panel, _window, cx| {
+                super::super::keyboard::visible_kinds(&panel.visible_sections(cx))
+                    .into_iter()
+                    .map(|kind| kind.gvk.kind.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap()
+    };
+    assert!(reachable(&mut vcx).contains(&"Rollout".to_string()));
+    window
+        .update(&mut vcx, |panel, _window, cx| {
+            panel.collapsed_subgroups.insert("argoproj.io".into());
+            cx.notify();
+        })
+        .unwrap();
+    let after = reachable(&mut vcx);
+    assert!(!after.contains(&"Rollout".to_string()));
+    assert!(!after.contains(&"Application".to_string()));
+    assert!(
+        after.contains(&"Certificate".to_string()),
+        "other groups stay reachable"
+    );
+}

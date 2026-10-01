@@ -56,8 +56,7 @@ pub(super) fn panel_bindings() -> [KeyBinding; 2] {
 pub(super) fn visible_kinds(sections: &[VisibleSection]) -> Vec<&DiscoveredKind> {
     sections
         .iter()
-        .filter(|section| section.expanded)
-        .flat_map(|section| section.matches.iter())
+        .flat_map(VisibleSection::navigable)
         .collect()
 }
 

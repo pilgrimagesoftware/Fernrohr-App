@@ -135,7 +135,8 @@ fn visible_sections_expands_matches_and_hides_the_rest_without_mutating_collapse
     let mut collapsed = std::collections::HashSet::new();
     collapsed.insert(Category::Workloads);
 
-    let filtered = super::super::section::visible_sections(&kinds, &collapsed, "ingress");
+    let filtered =
+        super::super::section::visible_sections(&kinds, &collapsed, &Default::default(), "ingress");
     assert_eq!(filtered.len(), 1, "only the matching section remains");
     assert_eq!(filtered[0].category.to_string(), "Network");
     assert!(
@@ -148,13 +149,19 @@ fn visible_sections_expands_matches_and_hides_the_rest_without_mutating_collapse
         "filtering must not mutate the stored collapse state"
     );
 
-    let no_match = super::super::section::visible_sections(&kinds, &collapsed, "nonesuch");
+    let no_match = super::super::section::visible_sections(
+        &kinds,
+        &collapsed,
+        &Default::default(),
+        "nonesuch",
+    );
     assert!(
         no_match.is_empty(),
         "no sections render when nothing matches"
     );
 
-    let cleared = super::super::section::visible_sections(&kinds, &collapsed, "");
+    let cleared =
+        super::super::section::visible_sections(&kinds, &collapsed, &Default::default(), "");
     assert!(
         cleared
             .iter()

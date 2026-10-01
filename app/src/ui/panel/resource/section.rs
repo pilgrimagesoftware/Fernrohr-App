@@ -74,9 +74,6 @@ pub(super) struct Subgroup {
 /// then the other groups alphabetically. Each group's kinds keep the order
 /// they arrive in - `discover_kinds`' group-then-kind sort, reused rather than
 /// redone - and no kind is dropped or repeated.
-// UNWIRED(custom-resource-grouping §2): subgroup headers render from this;
-// until then only tests call it.
-#[allow(dead_code)]
 pub(super) fn custom_subgroups(kinds: &[DiscoveredKind]) -> Vec<Subgroup> {
     let mut subgroups: Vec<Subgroup> = Vec::new();
     for kind in kinds {
@@ -113,6 +110,45 @@ pub(super) struct VisibleSection {
     /// collapse state, unless a filter is active - then expanded whenever it
     /// has a match, per design.md's "It expands."
     pub(super) expanded: bool,
+    /// Custom Resources' API-group subgroups (`custom-resource-grouping`),
+    /// built from `matches`; empty for every other section, whose rows are
+    /// `matches` directly.
+    pub(super) subgroups: Vec<VisibleSubgroup>,
+}
+
+/// One API group inside Custom Resources, as it should render right now.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct VisibleSubgroup {
+    /// The API group, `""` for the core group.
+    pub(super) group: String,
+    /// The section's kinds in this group that pass the filter.
+    pub(super) matches: Vec<DiscoveredKind>,
+    /// Whether its rows show: not in the per-window collapsed set.
+    pub(super) expanded: bool,
+}
+
+impl VisibleSection {
+    /// The kinds a user can reach right now, in render order: none while
+    /// the section is collapsed; in Custom Resources, only expanded
+    /// subgroups' kinds; elsewhere every match. What the keyboard steps
+    /// through, so a row hidden by collapsing can't be selected.
+    pub(super) fn navigable(&self) -> impl Iterator<Item = &DiscoveredKind> {
+        let shown = self.expanded;
+        let (flat, grouped): (&[DiscoveredKind], &[VisibleSubgroup]) = if self.subgroups.is_empty()
+        {
+            (&self.matches, &[])
+        } else {
+            (&[], &self.subgroups)
+        };
+        flat.iter()
+            .chain(
+                grouped
+                    .iter()
+                    .filter(|subgroup| subgroup.expanded)
+                    .flat_map(|subgroup| subgroup.matches.iter()),
+            )
+            .filter(move |_| shown)
+    }
 }
 
 /// The sections to render, in fixed order, given `collapsed` (per-window
@@ -126,6 +162,7 @@ pub(super) struct VisibleSection {
 pub(super) fn visible_sections(
     kinds: &[DiscoveredKind],
     collapsed: &HashSet<Category>,
+    collapsed_subgroups: &HashSet<String>,
     filter: &str,
 ) -> Vec<VisibleSection> {
     let filtering = !filter.is_empty();
@@ -142,11 +179,24 @@ pub(super) fn visible_sections(
                 return None;
             }
             let expanded = filtering || !collapsed.contains(&section.category);
+            let subgroups = if section.category == Category::CustomResources {
+                custom_subgroups(&matches)
+                    .into_iter()
+                    .map(|subgroup| VisibleSubgroup {
+                        expanded: !collapsed_subgroups.contains(&subgroup.group),
+                        group: subgroup.group,
+                        matches: subgroup.kinds,
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             Some(VisibleSection {
                 category: section.category,
                 total: section.kinds.len(),
                 matches,
                 expanded,
+                subgroups,
             })
         })
         .collect()

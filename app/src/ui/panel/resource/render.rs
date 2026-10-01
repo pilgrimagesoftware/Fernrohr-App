@@ -3,7 +3,7 @@
 //! empty, failed). [`super::actions`] answers the keyboard; this file only
 //! draws what `super::ResourcePanel`'s state says is true right now.
 
-use super::section::VisibleSection;
+use super::section::{VisibleSection, VisibleSubgroup};
 use super::{ResourcePanel, ResourceState};
 use crate::ui::nav::NavTarget;
 use gpui_kit::component::ActiveTheme as _;
@@ -62,6 +62,98 @@ impl ResourcePanel {
             })
     }
 
+    /// `kinds` as rows, ids prefixed with `prefix` so two lists never share one.
+    fn render_rows(
+        &self,
+        kinds: &[crate::k8s::cluster::discovery::DiscoveredKind],
+        prefix: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let mut rows = div().flex().flex_col().w_full();
+        for (index, (label, target, active)) in self.rows(kinds).into_iter().enumerate() {
+            let tooltip = match &target {
+                NavTarget::Kind(kind) => super::api_version_label(kind),
+                _ => String::new(),
+            };
+            let item = self.kind_item(label, target, active, cx);
+            let id = format!("resource-row-{prefix}-{index}");
+            let selector = id.clone();
+            rows = rows.child(
+                div()
+                    .id(SharedString::from(format!("{id}-tip")))
+                    .debug_selector(move || selector.clone())
+                    .child(item.render(id, window, cx))
+                    .tooltip(move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(tooltip.clone())
+                            .build(window, cx)
+                    }),
+            );
+        }
+        rows
+    }
+
+    /// One API group inside Custom Resources: an indented header - chevron,
+    /// group name (`core` for the core group), count - over its rows while
+    /// expanded (`custom-resource-grouping` 2.1).
+    fn render_subgroup(
+        &self,
+        subgroup: &VisibleSubgroup,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme().clone();
+        let group = subgroup.group.clone();
+        let name = if group.is_empty() {
+            "core".to_string()
+        } else {
+            group.clone()
+        };
+        let selector = format!("resource-subgroup-{name}");
+        let header = div()
+            .id(SharedString::from(selector.clone()))
+            .debug_selector(move || selector.clone())
+            .w_full()
+            .flex()
+            .items_center()
+            .justify_between()
+            .pl_4()
+            .pr_2()
+            .h_6()
+            .rounded(theme.radius)
+            .text_xs()
+            .text_color(theme.sidebar_foreground.opacity(0.7))
+            .hover(|el| el.bg(theme.sidebar_accent.opacity(0.5)))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        Icon::new(if subgroup.expanded {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        })
+                        .size_3(),
+                    )
+                    .child(name.clone()),
+            )
+            .child(div().child(subgroup.matches.len().to_string()));
+        let rows = if subgroup.expanded {
+            self.render_rows(&subgroup.matches, &format!("subgroup-{name}"), window, cx)
+        } else {
+            div()
+        };
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(rows)
+            .into_any_element()
+    }
+
     /// One category's header - name, running count, and a click that toggles
     /// its collapse the same way Left/Right do - over its rows, when expanded.
     fn render_section(
@@ -109,25 +201,11 @@ impl ResourcePanel {
             .child(div().child(section.total.to_string()));
 
         let mut rows = div().flex().flex_col().w_full();
-        if expanded {
-            for (index, (label, target, active)) in
-                self.rows(&section.matches).into_iter().enumerate()
-            {
-                let tooltip = match &target {
-                    NavTarget::Kind(kind) => super::api_version_label(kind),
-                    _ => String::new(),
-                };
-                let item = self.kind_item(label, target, active, cx);
-                let id = format!("resource-row-{}-{index}", category.title());
-                rows = rows.child(
-                    div()
-                        .id(SharedString::from(format!("{id}-tip")))
-                        .child(item.render(id, window, cx))
-                        .tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(tooltip.clone())
-                                .build(window, cx)
-                        }),
-                );
+        if expanded && section.subgroups.is_empty() {
+            rows = rows.child(self.render_rows(&section.matches, category.title(), window, cx));
+        } else if expanded {
+            for subgroup in &section.subgroups {
+                rows = rows.child(self.render_subgroup(subgroup, window, cx));
             }
         }
 

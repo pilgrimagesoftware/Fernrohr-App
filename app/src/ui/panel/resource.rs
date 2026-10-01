@@ -83,9 +83,6 @@ pub struct ResourcePanel {
     /// API groups the user collapsed inside Custom Resources
     /// (`custom-resource-grouping`), this window only - beside `collapsed`, and
     /// like it starting empty (every subgroup expanded) and never saved.
-    // UNWIRED(custom-resource-grouping §2): the subgroup header toggle writes
-    // this; until then only tests read it.
-    #[allow(dead_code)]
     collapsed_subgroups: HashSet<String>,
     /// The bottom-pinned filter box's text field (section 3.1).
     filter_input: Entity<InputState>,
@@ -300,7 +297,12 @@ impl ResourcePanel {
     /// single source both `render` and the keyboard handlers read, so Up/Down
     /// can never step through a row `render` would not draw.
     fn visible_sections(&self, cx: &App) -> Vec<section::VisibleSection> {
-        section::visible_sections(self.loaded_kinds(), &self.collapsed, &self.filter_text(cx))
+        section::visible_sections(
+            self.loaded_kinds(),
+            &self.collapsed,
+            &self.collapsed_subgroups,
+            &self.filter_text(cx),
+        )
     }
 
     /// The kind `highlighted` points at, or `None` when nothing is
