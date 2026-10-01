@@ -291,3 +291,78 @@ async fn multi_context_dock_arrangement_round_trips_order_insensitively(cx: &mut
         );
     });
 }
+
+/// Fernrohr#51: `save` writes main windows only. A Settings window open at
+/// quit used to be written as a second, context-less main window, which the
+/// next launch reopened as an empty picker.
+#[gpui_kit::test]
+async fn saving_skips_windows_that_are_not_main_windows(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+        open_window(cx, WindowLayout::default());
+        crate::ui::settings::open_or_focus(cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(cx.update(|cx| cx.windows().len()), 2, "main plus Settings");
+
+    cx.update(|cx| save(cx, &path));
+
+    let saved: WorkspaceConfig = config::load(&path);
+    assert_eq!(saved.windows.len(), 1, "only the main window is saved");
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}
+
+/// Fernrohr#51: resizing a window saves the layout once it has been still for
+/// `BOUNDS_SAVE_DEBOUNCE`, without waiting for quit - so a kill or crash
+/// keeps it. A second resize inside that window restarts the wait, and the
+/// last size is the one written.
+#[gpui_kit::test]
+async fn resizing_saves_the_layout_once_the_window_settles(cx: &mut TestAppContext) {
+    use crate::consts::BOUNDS_SAVE_DEBOUNCE;
+    use gpui_kit::{VisualTestContext, px, size};
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+        open_window(cx, WindowLayout::default());
+    });
+    cx.run_until_parked();
+    let handle = cx.update(|cx| cx.windows()[0]);
+    let vcx = VisualTestContext::from_window(handle, cx);
+    let saved_size = || {
+        let saved: WorkspaceConfig = config::load(&path);
+        saved
+            .windows
+            .first()
+            .map(|window| (window.width, window.height))
+    };
+
+    vcx.simulate_resize(size(px(800.), px(600.)));
+    vcx.executor().advance_clock(BOUNDS_SAVE_DEBOUNCE / 2);
+    vcx.run_until_parked();
+    vcx.simulate_resize(size(px(820.), px(610.)));
+    vcx.executor().advance_clock(BOUNDS_SAVE_DEBOUNCE / 2);
+    vcx.run_until_parked();
+    assert_eq!(saved_size(), None, "nothing written while still resizing");
+
+    vcx.executor().advance_clock(BOUNDS_SAVE_DEBOUNCE);
+    vcx.run_until_parked();
+    assert_eq!(
+        saved_size(),
+        Some((820.0, 610.0)),
+        "the settled size is written"
+    );
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}

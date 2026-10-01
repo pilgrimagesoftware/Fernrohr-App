@@ -28,6 +28,24 @@ pub(super) fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixel
     }
 }
 
+/// The geometry a save records, from a live window's outer `frame`
+/// (`window.bounds()`) and its `content` size (`window.viewport_size()`): the
+/// frame's top-left origin, which is where `open_window` places the frame, with
+/// the content size, which is what `WindowBounds::Windowed` sizes. On macOS the
+/// frame includes the title bar, so saving its size grew each restored window
+/// by the title bar's height on every relaunch (Fernrohr#51).
+pub(super) fn restorable_bounds(frame: Bounds<Pixels>, content: Size<Pixels>) -> Bounds<Pixels> {
+    Bounds::new(frame.origin, content)
+}
+
+/// A live window's [`WindowLayout`], as both save sites record it: its
+/// [`restorable_bounds`] and [`workspace_contexts`].
+pub(super) fn layout_from_window(window: &mut Window, cx: &mut App) -> WindowLayout {
+    let bounds = restorable_bounds(window.bounds(), window.viewport_size());
+    let live = workspace_contexts(window, cx);
+    layout_from_bounds(bounds, live)
+}
+
 /// Task 2.2's save side: `contexts` is the live window's own `WindowMode::Workspace`
 /// list (empty for a `Picker`-mode window, which has none yet), read by
 /// [`workspace_contexts`] just before this is called. `panels` stays empty - turning
@@ -85,9 +103,7 @@ pub(super) fn record_closing_layout(window_id: WindowId, window: &mut Window, cx
         }
         return;
     }
-    let bounds = window.bounds();
-    let live = workspace_contexts(window, cx);
-    let layout = layout_from_bounds(bounds, live);
+    let layout = layout_from_window(window, cx);
     if !cx.has_global::<ClosedWindowLayouts>() {
         cx.set_global(ClosedWindowLayouts::default());
     }
@@ -96,17 +112,21 @@ pub(super) fn record_closing_layout(window_id: WindowId, window: &mut Window, cx
         .insert(window_id, layout);
 }
 
+/// Whether `handle` is a main (workspace or picker) window - one with a
+/// layout worth saving, unlike Settings, Tunnels or About.
+pub(super) fn is_main_window(handle: AnyWindowHandle, cx: &App) -> bool {
+    handle
+        .downcast::<Root>()
+        .and_then(|root| root.read(cx).ok())
+        .is_some_and(|root| root.view().clone().downcast::<MainWindow>().is_ok())
+}
+
 /// How many main (workspace or picker) windows other than `except` are open.
 pub(super) fn other_open_main_windows(except: WindowId, cx: &App) -> usize {
     cx.windows()
         .into_iter()
         .filter(|handle| handle.window_id() != except)
-        .filter(|handle| {
-            handle
-                .downcast::<Root>()
-                .and_then(|root| root.read(cx).ok())
-                .is_some_and(|root| root.view().clone().downcast::<MainWindow>().is_ok())
-        })
+        .filter(|handle| is_main_window(*handle, cx))
         .count()
 }
 
