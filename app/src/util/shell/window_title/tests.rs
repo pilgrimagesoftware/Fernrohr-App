@@ -5,7 +5,7 @@
 // next to `#[gpui_kit::test]` items blows the macro-expansion budget (see
 // `util/shell.rs`), and would shadow the built-in `#[test]`.
 use super::{initial_title, title_for, title_from};
-use crate::util::shell::test_support::pods_panel_descriptor;
+use crate::util::shell::test_support::{pods_panel_descriptor, window_title};
 use crate::util::shell::{MainWindow, WindowLayout, WindowMode, open_window};
 use gpui_kit::component::Root;
 use gpui_kit::{TestAppContext, VisualTestContext, WindowHandle};
@@ -104,13 +104,6 @@ fn initial_title_matches_the_entered_workspace(cx: &mut TestAppContext) {
         initial_title(&names(&["staging", "production"])),
         "2 clusters - Fernrohr"
     );
-}
-
-/// What the window last passed to `set_window_title`. `Window::window_title`
-/// reads the platform back and is empty on the test platform, which only
-/// stores the title for `VisualTestContext` to read.
-fn window_title(window: &WindowHandle<MainWindow>, cx: &mut TestAppContext) -> Option<String> {
-    VisualTestContext::from_window((*window).into(), cx).window_title()
 }
 
 /// 3.1-3.3: both `apply` paths reach the OS window - `enter_workspace` and
