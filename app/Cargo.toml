@@ -62,3 +62,12 @@ libs = ["libsecret-1.so.0"]
 
 [package.metadata.packager.dmg]
 window-size = { width = 660, height = 400 }
+
+# `-` is an ad-hoc signature: no certificate, so it can't pass Gatekeeper, but
+# arm64 macOS won't run an unsigned binary and TCC keys its permission grants
+# to a signature. cargo-packager signs the .app before building the dmg from it
+# (so the copy inside is signed too), then signs the dmg itself. It reads the
+# identity only from here, never from APPLE_SIGNING_IDENTITY, so package.yml
+# swaps this line for that secret when one is set (Fernrohr-App#63).
+[package.metadata.packager.macos]
+signing-identity = "-"

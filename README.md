@@ -43,16 +43,19 @@ cargo fmt
 
 ## Running the App
 
-The app likely needs to local network permissions, and since it's unsigned, TCC on the Mac will
-not allow it to make network connections. Once you have the app installed in `/Applications`, run
-the following commands:
+The macOS `.app` and `.dmg` the Package workflow builds are ad-hoc signed, so Apple Silicon runs
+the app and TCC can remember its local network permission. You no longer need to sign it yourself.
+
+An ad-hoc signature carries no Developer ID and isn't notarized, though, so Gatekeeper still blocks
+a copy downloaded through a browser: it reports the app as damaged or from an unidentified
+developer. Once you have the app installed in `/Applications`, clear the quarantine flag:
 
 ```sh
-# remove quarantine
 xattr -d com.apple.quarantine "/Applications/Fernrohr.app"
-# ad-hoc sign
-codesign --force --deep --sign - "/Applications/Fernrohr.app"
 ```
+
+Or open it once from System Settings → Privacy & Security → Open Anyway. Builds made before
+signing landed still need `codesign --force --sign - "/Applications/Fernrohr.app"` as well.
 
 ## Development
 
