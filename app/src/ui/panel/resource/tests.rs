@@ -20,6 +20,7 @@ mod filter;
 mod grouping;
 mod keyboard_panel;
 mod logic;
+mod subgroup_keys;
 mod subgroups;
 
 fn kind(group: &str, kind: &str) -> DiscoveredKind {

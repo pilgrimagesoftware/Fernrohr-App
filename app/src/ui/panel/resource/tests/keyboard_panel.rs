@@ -22,7 +22,7 @@ use gpui_kit::{TestAppContext, VisualTestContext};
 /// `/` only resolves at all because it is a registered `Command`, so a test
 /// that skipped this and bound `panel_bindings()` alone would pass for the
 /// wrong reason.
-fn bind_panel_keys(cx: &mut TestAppContext) {
+pub(super) fn bind_panel_keys(cx: &mut TestAppContext) {
     cx.update(|cx| {
         let mut registry = CommandRegistry::new();
         crate::ui::resource_panel::register_commands(&mut registry);

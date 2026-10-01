@@ -75,8 +75,9 @@ pub struct ResourcePanel {
     /// The row the keyboard cursor is on and the last click landed on -
     /// `.claude/rules/keyboard-first.md`'s "one selection model", distinct
     /// from `selected` (the window's *open* panel): a row can be highlighted
-    /// without being open yet, and Enter opens whatever is highlighted.
-    highlighted: Option<NavTarget>,
+    /// without being open yet, and Enter opens whatever is highlighted. Also
+    /// stops on Custom Resources subgroup headers, which are not rows.
+    highlighted: Option<keyboard::Cursor>,
     /// Categories the user collapsed, this window only. Section 2.3: default
     /// expanded, never written to the preference file.
     collapsed: HashSet<Category>,
@@ -247,10 +248,15 @@ impl ResourcePanel {
     /// Moves the keyboard/click cursor to `target` without opening anything -
     /// what a single click and Up/Down both do (section 4.1's "one selection").
     fn set_highlighted(&mut self, target: Option<NavTarget>, cx: &mut Context<Self>) {
-        if self.highlighted == target {
+        self.set_cursor(target.map(keyboard::Cursor::Row), cx);
+    }
+
+    /// [`Self::set_highlighted`] for any stop, a subgroup header included.
+    fn set_cursor(&mut self, cursor: Option<keyboard::Cursor>, cx: &mut Context<Self>) {
+        if self.highlighted == cursor {
             return;
         }
-        self.highlighted = target;
+        self.highlighted = cursor;
         cx.notify();
     }
 
@@ -265,11 +271,22 @@ impl ResourcePanel {
         }
     }
 
-    /// The currently highlighted row, if any - what a keystroke test asserts
-    /// moved.
-    #[cfg(test)]
+    /// The currently highlighted row, if any: what `render` marks, and what
+    /// a keystroke test asserts moved. `None` on a subgroup header.
     pub(crate) fn highlighted(&self) -> Option<&NavTarget> {
-        self.highlighted.as_ref()
+        match &self.highlighted {
+            Some(keyboard::Cursor::Row(target)) => Some(target),
+            _ => None,
+        }
+    }
+
+    /// The API group whose subgroup header the cursor is on, if it is on one.
+    #[cfg(test)]
+    pub(crate) fn highlighted_subgroup(&self) -> Option<&str> {
+        match &self.highlighted {
+            Some(keyboard::Cursor::Subgroup(group)) => Some(group),
+            _ => None,
+        }
     }
 
     /// Whether `kind`'s own section is collapsed right now - the stored
@@ -305,20 +322,17 @@ impl ResourcePanel {
         )
     }
 
-    /// The kind `highlighted` points at, or `None` when nothing is
-    /// highlighted - every row this panel lists is a [`NavTarget::Kind`], so
-    /// this is the one match arm that can ever be `Some`.
-    fn highlighted_kind(&self) -> Option<DiscoveredKind> {
+    /// The highlighted row's own section - what Left/Right collapse or
+    /// expand. A subgroup header belongs to Custom Resources; every row this
+    /// panel lists is a [`NavTarget::Kind`], so no other row has a section.
+    fn highlighted_category(&self) -> Option<Category> {
         match &self.highlighted {
-            Some(NavTarget::Kind(kind)) => Some(kind.clone()),
+            Some(keyboard::Cursor::Row(NavTarget::Kind(kind))) => {
+                Some(Category::for_gvk(&kind.gvk.group, &kind.plural))
+            }
+            Some(keyboard::Cursor::Subgroup(_)) => Some(Category::CustomResources),
             _ => None,
         }
-    }
-
-    /// The highlighted row's own section - what Left/Right collapse or expand.
-    fn highlighted_category(&self) -> Option<Category> {
-        self.highlighted_kind()
-            .map(|kind| Category::for_gvk(&kind.gvk.group, &kind.plural))
     }
 
     /// Flips `category`'s collapsed state - the section header's click route,
@@ -409,7 +423,7 @@ impl ResourcePanel {
     /// highlighted, so opening a row from the context menu leaves the
     /// keyboard cursor pointing at the panel it just opened.
     fn request_open(&mut self, target: NavTarget, cx: &mut Context<Self>) {
-        self.highlighted = Some(target.clone());
+        self.highlighted = Some(keyboard::Cursor::Row(target.clone()));
         cx.emit(ResourceEvent::Open(target));
         cx.notify();
     }

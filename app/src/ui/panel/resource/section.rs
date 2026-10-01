@@ -128,12 +128,23 @@ pub(super) struct VisibleSubgroup {
     pub(super) expanded: bool,
 }
 
+/// One stop on the keyboard's path through a section: a Custom Resources
+/// subgroup header, or a kind row.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum Navigable<'a> {
+    /// The header of the subgroup for this API group (`""` for core).
+    Subgroup(&'a str),
+    Kind(&'a DiscoveredKind),
+}
+
 impl VisibleSection {
-    /// The kinds a user can reach right now, in render order: none while
-    /// the section is collapsed; in Custom Resources, only expanded
-    /// subgroups' kinds; elsewhere every match. What the keyboard steps
-    /// through, so a row hidden by collapsing can't be selected.
-    pub(super) fn navigable(&self) -> impl Iterator<Item = &DiscoveredKind> {
+    /// What a user can reach right now, in drawn order: nothing while the
+    /// section is collapsed; in Custom Resources, each subgroup's header
+    /// followed by its kinds if it is expanded (a collapsed subgroup keeps
+    /// its header, so the keyboard can reopen it); elsewhere every match.
+    /// What the keyboard steps through, so a row hidden by collapsing can't
+    /// be selected.
+    pub(super) fn navigable(&self) -> impl Iterator<Item = Navigable<'_>> {
         let shown = self.expanded;
         let (flat, grouped): (&[DiscoveredKind], &[VisibleSubgroup]) = if self.subgroups.is_empty()
         {
@@ -142,12 +153,16 @@ impl VisibleSection {
             (&[], &self.subgroups)
         };
         flat.iter()
-            .chain(
-                grouped
-                    .iter()
-                    .filter(|subgroup| subgroup.expanded)
-                    .flat_map(|subgroup| subgroup.matches.iter()),
-            )
+            .map(Navigable::Kind)
+            .chain(grouped.iter().flat_map(|subgroup| {
+                let kinds: &[DiscoveredKind] = if subgroup.expanded {
+                    &subgroup.matches
+                } else {
+                    &[]
+                };
+                std::iter::once(Navigable::Subgroup(subgroup.group.as_str()))
+                    .chain(kinds.iter().map(Navigable::Kind))
+            }))
             .filter(move |_| shown)
     }
 }

@@ -11,11 +11,11 @@
 //! (the same split `pods::panel_bindings` documents).
 
 use super::keyboard::{
-    CollapseSection, ExpandSection, OpenSelected, PANEL_KEY_CONTEXT, SelectNext, SelectPrevious,
+    CollapseSection, Cursor, ExpandSection, OpenSelected, PANEL_KEY_CONTEXT, SelectNext,
+    SelectPrevious,
 };
 use super::{ResourcePanel, keyboard};
 use crate::command::{Command, CommandRegistry};
-use crate::ui::nav::NavTarget;
 use gpui_kit::component::input::Escape;
 use gpui_kit::{Context, Focusable as _, Window, actions};
 
@@ -92,10 +92,9 @@ impl ResourcePanel {
         cx: &mut Context<Self>,
     ) {
         let sections = self.visible_sections(cx);
-        let visible = keyboard::visible_kinds(&sections);
-        let current = self.highlighted_kind();
-        if let Some(next) = keyboard::next(&visible, current.as_ref()) {
-            self.set_highlighted(Some(NavTarget::Kind(next)), cx);
+        let visible = keyboard::visible_items(&sections);
+        if let Some(next) = keyboard::next(&visible, self.highlighted.as_ref()) {
+            self.set_cursor(Some(next), cx);
         }
     }
 
@@ -107,22 +106,22 @@ impl ResourcePanel {
         cx: &mut Context<Self>,
     ) {
         let sections = self.visible_sections(cx);
-        let visible = keyboard::visible_kinds(&sections);
-        let current = self.highlighted_kind();
-        if let Some(previous) = keyboard::previous(&visible, current.as_ref()) {
-            self.set_highlighted(Some(NavTarget::Kind(previous)), cx);
+        let visible = keyboard::visible_items(&sections);
+        if let Some(previous) = keyboard::previous(&visible, self.highlighted.as_ref()) {
+            self.set_cursor(Some(previous), cx);
         }
     }
 
     /// Enter: opens the highlighted row exactly as a double-click does - both
-    /// call [`ResourcePanel::request_open`]. A no-op with nothing highlighted.
+    /// call [`ResourcePanel::request_open`]. A no-op with nothing highlighted, or
+    /// with a subgroup header highlighted - a header opens nothing.
     pub(super) fn on_action_open_selected(
         &mut self,
         _: &OpenSelected,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(target) = self.highlighted.clone() {
+        if let Some(Cursor::Row(target)) = self.highlighted.clone() {
             self.request_open(target, cx);
         }
     }

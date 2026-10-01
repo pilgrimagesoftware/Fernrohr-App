@@ -14,6 +14,7 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::sidebar::{Sidebar, SidebarItem as _, SidebarMenuItem};
 use gpui_kit::component::{Icon, IconName};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 impl ResourcePanel {
@@ -39,7 +40,7 @@ impl ResourcePanel {
         let click_target = target.clone();
         let menu_target = target.clone();
         let menu_panel = this.clone();
-        let highlighted = self.highlighted.as_ref() == Some(&target);
+        let highlighted = self.highlighted() == Some(&target);
         SidebarMenuItem::new(label)
             .icon(target.icon())
             .active(active || highlighted)
@@ -111,6 +112,8 @@ impl ResourcePanel {
             group.clone()
         };
         let selector = format!("resource-subgroup-{name}");
+        let highlighted =
+            self.highlighted.as_ref() == Some(&super::keyboard::Cursor::Subgroup(group.clone()));
         let header = div()
             .id(SharedString::from(selector.clone()))
             .debug_selector(move || selector.clone())
@@ -124,6 +127,10 @@ impl ResourcePanel {
             .rounded(theme.radius)
             .text_xs()
             .text_color(theme.sidebar_foreground.opacity(0.7))
+            .when(highlighted, |el| {
+                el.bg(theme.sidebar_accent)
+                    .text_color(theme.sidebar_accent_foreground)
+            })
             .hover(|el| el.bg(theme.sidebar_accent.opacity(0.5)))
             .on_click(move |_event, _window, cx| {
                 let _ = this.update(cx, |this, cx| this.toggle_subgroup(&group, cx));

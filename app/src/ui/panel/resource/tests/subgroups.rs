@@ -2,9 +2,11 @@
 //! by API group, and the per-window collapsed-subgroup set.
 
 use super::super::category::Category;
+use super::super::keyboard::Cursor;
 use super::super::section::{custom_subgroups, group_kinds};
 use super::{kind, stub_panel};
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::ui::nav::NavTarget;
 use gpui_kit::TestAppContext;
 
 /// A cluster's kinds as `discover_kinds` returns them: by group then kind,
@@ -242,9 +244,12 @@ async fn a_collapsed_subgroups_kinds_leave_the_keyboard_order(cx: &mut TestAppCo
     let reachable = |vcx: &mut gpui_kit::VisualTestContext| {
         window
             .update(vcx, |panel, _window, cx| {
-                super::super::keyboard::visible_kinds(&panel.visible_sections(cx))
+                super::super::keyboard::visible_items(&panel.visible_sections(cx))
                     .into_iter()
-                    .map(|kind| kind.gvk.kind.clone())
+                    .filter_map(|item| match item {
+                        Cursor::Row(NavTarget::Kind(kind)) => Some(kind.gvk.kind),
+                        _ => None,
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap()
