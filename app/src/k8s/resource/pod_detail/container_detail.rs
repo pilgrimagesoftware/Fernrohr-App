@@ -50,7 +50,7 @@ pub(super) fn container_detail(container: &Container) -> ContainerDetail {
 /// the kubelet uses, and a literal shown next to it would be wrong.
 fn env_var_row(var: &EnvVar) -> EnvVarRow {
     let value = match &var.value_from {
-        Some(source) => EnvValue::Reference(describe_env_source(source)),
+        Some(source) => describe_env_source(source),
         None => EnvValue::Literal(var.value.clone().unwrap_or_default()),
     };
     EnvVarRow {
@@ -59,10 +59,14 @@ fn env_var_row(var: &EnvVar) -> EnvVarRow {
     }
 }
 
-fn describe_env_source(source: &EnvVarSource) -> String {
+fn describe_env_source(source: &EnvVarSource) -> EnvValue {
     if let Some(secret) = &source.secret_key_ref {
-        format!("from Secret {} key {}", secret.name, secret.key)
-    } else if let Some(config_map) = &source.config_map_key_ref {
+        return EnvValue::SecretReference(format!(
+            "from Secret {} key {}",
+            secret.name, secret.key
+        ));
+    }
+    EnvValue::Reference(if let Some(config_map) = &source.config_map_key_ref {
         format!("from ConfigMap {} key {}", config_map.name, config_map.key)
     } else if let Some(field) = &source.field_ref {
         format!("from field {}", field.field_path)
@@ -78,7 +82,7 @@ fn describe_env_source(source: &EnvVarSource) -> String {
         )
     } else {
         "from an unknown source".to_string()
-    }
+    })
 }
 
 fn format_volume_mount(mount: &VolumeMount) -> String {

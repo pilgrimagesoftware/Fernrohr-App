@@ -210,9 +210,13 @@ pub struct EnvVarRow {
 pub enum EnvValue {
     /// A literal `value`, verbatim. Empty when the spec gave none.
     Literal(String),
-    /// Where the value would come from, e.g.
-    /// `from Secret db-creds key password`.
+    /// Where a non-Secret value would come from, e.g.
+    /// `from ConfigMap app-config key log_level`.
     Reference(String),
+    /// Where a Secret-sourced value would come from, e.g.
+    /// `from Secret db-creds key password`. A variant of its own so the
+    /// view can mark it as sensitive without parsing the text.
+    SecretReference(String),
 }
 
 impl EnvVarRow {
@@ -221,7 +225,9 @@ impl EnvVarRow {
     pub fn text(&self) -> String {
         match &self.value {
             EnvValue::Literal(value) => format!("{}={value}", self.name),
-            EnvValue::Reference(source) => format!("{} ({source})", self.name),
+            EnvValue::Reference(source) | EnvValue::SecretReference(source) => {
+                format!("{} ({source})", self.name)
+            }
         }
     }
 }

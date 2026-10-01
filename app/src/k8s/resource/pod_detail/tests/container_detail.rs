@@ -6,8 +6,8 @@ use crate::k8s::resource::pod_detail::fields::pod_fields;
 use crate::k8s::resource::pod_detail::model::{ContainerSummary, EnvValue, PodFieldValue};
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::{
-    Capabilities, Container, EnvVar, EnvVarSource, HTTPGetAction, Pod, Probe, SecretKeySelector,
-    SecurityContext, VolumeMount,
+    Capabilities, ConfigMapKeySelector, Container, EnvVar, EnvVarSource, HTTPGetAction, Pod, Probe,
+    SecretKeySelector, SecurityContext, VolumeMount,
 };
 use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 
@@ -86,7 +86,7 @@ fn expanded_detail_renders_env_mounts_probes_and_secret_refs() {
     assert_eq!(detail.env[1].name, "DB_PASSWORD");
     assert_eq!(
         detail.env[1].value,
-        EnvValue::Reference("from Secret db-creds key password".into())
+        EnvValue::SecretReference("from Secret db-creds key password".into())
     );
     assert_eq!(detail.volume_mounts, vec!["data -> /var/lib/data (ro)"]);
     assert_eq!(
@@ -131,6 +131,34 @@ fn a_secret_ref_hides_a_literal_set_alongside_it() {
         "TOKEN (from Secret api-token key token)"
     );
     assert!(!format!("{detail:?}").contains(SECRET_VALUE));
+}
+
+/// Only a Secret ref is marked sensitive: a ConfigMap ref is a plain
+/// reference, so the view tints the one and not the other.
+#[test]
+fn only_secret_refs_are_marked_sensitive() {
+    let mut pod = rich_pod();
+    pod.spec.as_mut().unwrap().containers = vec![Container {
+        name: "app".into(),
+        env: Some(vec![EnvVar {
+            name: "LOG_LEVEL".into(),
+            value_from: Some(EnvVarSource {
+                config_map_key_ref: Some(ConfigMapKeySelector {
+                    name: "app-config".into(),
+                    key: "log_level".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }];
+
+    assert_eq!(
+        only_container(&pod).detail.env[0].value,
+        EnvValue::Reference("from ConfigMap app-config key log_level".into())
+    );
 }
 
 /// A container that declares none of the expanded fields gets an empty

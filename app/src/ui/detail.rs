@@ -259,7 +259,8 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
 }
 
 /// One Secret key: its name, its size, a Show/Hide button (a tab stop, so
-/// Enter or Space works on it), and - while revealed - its value.
+/// Enter or Space works on it, and danger-tinted while it would reveal),
+/// and - while revealed - its value.
 ///
 /// `reveal` is the key's current reveal, if any; `on_toggle` runs on the
 /// button. `value_id` identifies the revealed value's element, for tests. The
@@ -283,9 +284,15 @@ pub fn secret_key_row(
             IconName::Eye
         })
         .label(if shown { "Hide" } else { "Show" })
-        .xsmall()
-        .ghost()
-        .on_click(move |_event, window, cx| on_toggle(window, cx));
+        .xsmall();
+    // Show is tinted danger: it is about to put a sensitive value on screen.
+    // Hide puts it away again, so it needs no warning.
+    let button = if shown {
+        button.ghost()
+    } else {
+        button.danger().outline()
+    }
+    .on_click(move |_event, window, cx| on_toggle(window, cx));
     let value = reveal.map(|reveal| {
         div()
             .id(value_id)

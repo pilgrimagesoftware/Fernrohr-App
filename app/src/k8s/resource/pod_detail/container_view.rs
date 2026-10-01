@@ -1,10 +1,11 @@
 //! The Containers (and Init Containers) cards: each container's summary,
-//! and behind a Show/Hide control its expanded detail - env, volume mounts,
+//! and behind a disclosure chevron its expanded detail - env, volume mounts,
 //! probes, command/args, security context.
 
 use super::model::{ContainerDetail, ContainerSummary, EnvValue};
 use super::panel::PodDetailPanel;
 use crate::ui::detail::{self, BadgeTone};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -19,7 +20,7 @@ pub(super) fn container_section_key(name: &str) -> String {
     format!("container:{name}")
 }
 
-/// The id of container `name`'s Show/Hide control. Container names are
+/// The id of container `name`'s disclosure control. Container names are
 /// unique across a pod's containers and init containers, so the name alone
 /// tells the cards apart.
 pub(super) fn container_toggle_id(name: &str) -> ElementId {
@@ -62,11 +63,17 @@ impl PodDetailPanel {
         let key = container_section_key(&container.name);
         let open = self.open_sections.contains(&key);
         let this = cx.weak_entity();
-        // A tab stop, unlike the Managed Fields toggles: Tab then Space is
-        // this control's keyboard route, as for the Configuration tab's
+        // A disclosure chevron leading the header, as the resource panel's
+        // groups have. A tab stop, unlike the Managed Fields toggles: Tab
+        // then Space is its keyboard route, as for the Configuration tab's
         // expand buttons.
         let toggle = Button::new(container_toggle_id(&container.name))
-            .label(if open { "Hide" } else { "Show" })
+            .icon(if open {
+                IconName::ChevronDown
+            } else {
+                IconName::ChevronRight
+            })
+            .tooltip(if open { "Hide details" } else { "Show details" })
             .xsmall()
             .ghost()
             .on_click(move |_event, _window, cx| {
@@ -98,6 +105,7 @@ impl PodDetailPanel {
                     .flex()
                     .items_center()
                     .gap_2()
+                    .child(toggle)
                     .child(div().size(px(8.)).rounded_full().bg(ready_color))
                     .child(
                         div()
@@ -109,9 +117,7 @@ impl PodDetailPanel {
                             .text_sm()
                             .text_color(detail::tone_color(container.state_tone, cx))
                             .child(container.state.clone()),
-                    )
-                    .child(div().flex_1())
-                    .child(toggle),
+                    ),
             )
             .child(div().text_sm().min_w_0().child(container.image.clone()))
             .when(container.restart_count > 0, |this| {
@@ -239,6 +245,11 @@ fn render_container_detail(name: &str, detail: &ContainerDetail, cx: &App) -> An
                                     .text_color(theme.muted_foreground)
                                     .child(source.clone()),
                             ),
+                            // Danger-tinted, as a Secret's Show button is:
+                            // the value behind it is sensitive.
+                            EnvValue::SecretReference(source) => {
+                                row.child(div().text_color(theme.danger).child(source.clone()))
+                            }
                         }
                     }))
                     .into_any_element(),
