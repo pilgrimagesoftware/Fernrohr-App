@@ -160,13 +160,13 @@ async fn show_logs_and_pod_detail_use_the_selected_pods_context_not_the_active_o
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
-        ClusterRegistry::insert_test_session(cx, "carefulcrab", ConnectionState::Connecting);
+        ClusterRegistry::insert_test_session(cx, "northbay", ConnectionState::Connecting);
         ClusterRegistry::insert_test_session(cx, "other-context", ConnectionState::Connecting);
     });
 
     let window = cx.add_window(|window, cx| {
         MainWindow::test_workspace(
-            vec!["carefulcrab".to_string(), "other-context".to_string()],
+            vec!["northbay".to_string(), "other-context".to_string()],
             window,
             cx,
         )
@@ -178,12 +178,12 @@ async fn show_logs_and_pod_detail_use_the_selected_pods_context_not_the_active_o
                 main_window.test_active_context_name()
             })
             .unwrap(),
-        Some("carefulcrab".to_string()),
+        Some("northbay".to_string()),
         "the window opens on its first context"
     );
 
     // The pod was selected from the *other* context's Pods panel - active stays
-    // `carefulcrab` throughout, matching the bug report exactly.
+    // `northbay` throughout, matching the bug report exactly.
     cx.update(|cx| {
         cx.set_global(SelectedPod(Some(PodSelection {
             namespace: "default".into(),

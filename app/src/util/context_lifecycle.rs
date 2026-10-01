@@ -147,34 +147,34 @@ mod tests {
     #[test]
     fn confirmation_names_the_panel_count_with_no_other_window() {
         assert_eq!(
-            disconnect_confirmation_body("carefulcrab", 3, 0),
-            "3 open panels for carefulcrab will close."
+            disconnect_confirmation_body("northbay", 3, 0),
+            "3 open panels for northbay will close."
         );
         assert_eq!(
-            disconnect_confirmation_body("carefulcrab", 1, 0),
-            "1 open panel for carefulcrab will close."
+            disconnect_confirmation_body("northbay", 1, 0),
+            "1 open panel for northbay will close."
         );
         assert_eq!(
-            disconnect_confirmation_body("carefulcrab", 0, 0),
-            "No open panels for carefulcrab will close."
+            disconnect_confirmation_body("northbay", 0, 0),
+            "No open panels for northbay will close."
         );
     }
 
     #[test]
     fn confirmation_names_a_single_other_window() {
         assert_eq!(
-            disconnect_confirmation_body("greedygoat", 2, 1),
-            "2 open panels for greedygoat will close. \
-             greedygoat stays connected in 1 other window."
+            disconnect_confirmation_body("southbay", 2, 1),
+            "2 open panels for southbay will close. \
+             southbay stays connected in 1 other window."
         );
     }
 
     #[test]
     fn confirmation_names_several_other_windows() {
         assert_eq!(
-            disconnect_confirmation_body("greedygoat", 2, 3),
-            "2 open panels for greedygoat will close. \
-             greedygoat stays connected in 3 other windows."
+            disconnect_confirmation_body("southbay", 2, 3),
+            "2 open panels for southbay will close. \
+             southbay stays connected in 3 other windows."
         );
     }
 }
