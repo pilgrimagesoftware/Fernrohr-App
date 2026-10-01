@@ -1,5 +1,6 @@
 //! The panel's side of the Configuration tab: loading the cards when the tab
-//! is first shown, revealing one Secret value, and hiding them all.
+//! is first shown, revealing one Secret value, hiding them all, and expanding
+//! or collapsing one large ConfigMap value.
 
 use super::entries::{ConfigEntry, entries};
 use super::fetch::fetch_card;
@@ -104,6 +105,21 @@ impl PodDetailPanel {
             .await;
         })
         .detach();
+        cx.notify();
+    }
+
+    /// Expands ConfigMap `target`'s `key` to its full value, or collapses it
+    /// again.
+    pub(in crate::k8s::resource::pod_detail) fn toggle_expanded(
+        &mut self,
+        target: ObjectRef,
+        key: String,
+        cx: &mut Context<Self>,
+    ) {
+        let slot = (target, key);
+        if !self.configuration.expanded.remove(&slot) {
+            self.configuration.expanded.insert(slot);
+        }
         cx.notify();
     }
 

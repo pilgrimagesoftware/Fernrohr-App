@@ -17,6 +17,9 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+mod collapsible;
+pub use collapsible::Collapsible;
+
 /// A status's color, decided by the status rather than looked up at render
 /// time - so "is this good" is testable without a theme, and the renderer only
 /// maps tone to a color.
@@ -167,28 +170,38 @@ pub fn lines(rows: &[String]) -> AnyElement {
 /// Key/value pairs, the key muted above its value - a ConfigMap's data, where
 /// a value can run to many lines and would not fit beside its key.
 pub fn key_values(pairs: &[(String, String)], cx: &App) -> AnyElement {
-    let theme = cx.theme();
+    let mono = cx.theme().mono_font_family.clone();
     div()
         .flex()
         .flex_col()
         .gap_2()
         .children(pairs.iter().map(|(key, value)| {
-            div()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(theme.muted_foreground)
-                        .child(key.clone()),
-                )
-                .child(
-                    div()
-                        .font_family(theme.mono_font_family.clone())
-                        .text_sm()
-                        .child(value.clone()),
-                )
+            key_value(
+                key,
+                div()
+                    .font_family(mono.clone())
+                    .text_sm()
+                    .child(value.clone())
+                    .into_any_element(),
+                cx,
+            )
         }))
+        .into_any_element()
+}
+
+/// One key/value pair as [`key_values`] draws it, with the value already
+/// drawn - so a caller can draw it collapsed.
+pub fn key_value(key: &str, value: AnyElement, cx: &App) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(key.to_string()),
+        )
+        .child(value)
         .into_any_element()
 }
 
@@ -260,7 +273,8 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
 ///
 /// `reveal` is the key's current reveal, if any; `on_toggle` runs on the
 /// button. `value_id` identifies the revealed value's element, for tests. The
-/// value is read out of its `SecretValue` here and nowhere else in the view.
+/// value is read out of its `SecretValue` in [`revealed_text`] and nowhere
+/// else in the view.
 pub fn secret_key_row(
     key: &str,
     size: usize,
@@ -283,22 +297,11 @@ pub fn secret_key_row(
         .ghost()
         .on_click(move |_event, window, cx| on_toggle(window, cx));
     let value = reveal.map(|reveal| {
-        let text = match reveal {
-            Reveal::Pending => "Revealing…".to_string(),
-            Reveal::Shown(value) if value.is_empty() => "(empty)".to_string(),
-            // The one place a value is read out of a `SecretValue`.
-            Reveal::Shown(value) => match value.expose() {
-                Some(text) => text.to_string(),
-                None => format!("binary, {} bytes", value.len()),
-            },
-            Reveal::Failed(RevealError::Missing) => "It no longer exists.".to_string(),
-            Reveal::Failed(RevealError::Failed(message)) => format!("Could not read it: {message}"),
-        };
         div()
             .id(value_id)
             .font_family(theme.mono_font_family.clone())
             .text_sm()
-            .child(text)
+            .child(revealed_text(reveal))
             .test_support()
     });
     div()
@@ -324,6 +327,22 @@ pub fn secret_key_row(
         )
         .children(value)
         .into_any_element()
+}
+
+/// What a Secret key's value line says for `reveal`. A revealed value is shown
+/// in full - Secret values never collapse.
+fn revealed_text(reveal: &Reveal) -> String {
+    match reveal {
+        Reveal::Pending => "Revealing…".to_string(),
+        Reveal::Shown(value) if value.is_empty() => "(empty)".to_string(),
+        // The one place a value is read out of a `SecretValue`.
+        Reveal::Shown(value) => match value.expose() {
+            Some(text) => text.to_string(),
+            None => format!("binary, {} bytes", value.len()),
+        },
+        Reveal::Failed(RevealError::Missing) => "It no longer exists.".to_string(),
+        Reveal::Failed(RevealError::Failed(message)) => format!("Could not read it: {message}"),
+    }
 }
 
 #[cfg(test)]

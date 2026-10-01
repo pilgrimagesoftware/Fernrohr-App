@@ -53,3 +53,8 @@ pub const SETTINGS_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(820.), gpui_kit::px(600.));
 pub const SETTINGS_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(600.), gpui_kit::px(420.));
+
+/// `pod-configuration-tab` 5.1: a ConfigMap value longer than this many characters, or
+/// spanning more than one line, starts collapsed to its first this-many characters of its
+/// first line plus an ellipsis. Secret values never collapse.
+pub const COLLAPSED_VALUE_PREVIEW_CHARS: usize = 20;

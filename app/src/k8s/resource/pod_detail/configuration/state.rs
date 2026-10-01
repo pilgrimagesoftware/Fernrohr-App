@@ -1,9 +1,9 @@
-//! What the Configuration tab knows: each card's contents, and the Secret
-//! values currently revealed.
+//! What the Configuration tab knows: each card's contents, the Secret values
+//! currently revealed, and which large values are expanded.
 
 use crate::k8s::object_ref::ObjectRef;
 pub(in crate::k8s::resource::pod_detail) use crate::k8s::resource::secret_value::Reveal;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// One card's contents, as far as they've loaded. A Secret's are its type and
 /// keys with sizes only - its values are dropped as the object arrives.
@@ -31,6 +31,9 @@ pub(in crate::k8s::resource::pod_detail) struct ConfigurationState {
     pub(in crate::k8s::resource::pod_detail) cards: HashMap<ObjectRef, CardContents>,
     /// Revealed (or revealing) values, keyed by Secret and key.
     pub(in crate::k8s::resource::pod_detail) revealed: HashMap<(ObjectRef, String), Reveal>,
+    /// Large ConfigMap values shown in full, keyed by ConfigMap and key. Every
+    /// other large value is collapsed; Secret values never are.
+    pub(in crate::k8s::resource::pod_detail) expanded: HashSet<(ObjectRef, String)>,
 }
 
 impl ConfigurationState {
@@ -38,6 +41,21 @@ impl ConfigurationState {
     /// behind a flag.
     pub(in crate::k8s::resource::pod_detail) fn hide_all(&mut self) {
         self.revealed.clear();
+    }
+
+    /// Leaving the tab: every value is hidden and every value collapses, so
+    /// the tab is shown again as it first was.
+    pub(in crate::k8s::resource::pod_detail) fn leave(&mut self) {
+        self.hide_all();
+        self.expanded.clear();
+    }
+
+    pub(in crate::k8s::resource::pod_detail) fn is_expanded(
+        &self,
+        target: &ObjectRef,
+        key: &str,
+    ) -> bool {
+        self.expanded.contains(&(target.clone(), key.to_string()))
     }
 
     pub(in crate::k8s::resource::pod_detail) fn reveal_of(

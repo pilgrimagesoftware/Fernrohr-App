@@ -15,7 +15,7 @@ mod state;
 mod view;
 
 #[cfg(test)]
-pub(super) use view::reveal_button_id;
+pub(super) use view::{expand_button_id, reveal_button_id, value_id};
 
 pub(super) use state::ConfigurationState;
 #[cfg(test)]
