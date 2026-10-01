@@ -80,6 +80,13 @@ pub struct ResourcePanel {
     /// Categories the user collapsed, this window only. Section 2.3: default
     /// expanded, never written to the preference file.
     collapsed: HashSet<Category>,
+    /// API groups the user collapsed inside Custom Resources
+    /// (`custom-resource-grouping`), this window only - beside `collapsed`, and
+    /// like it starting empty (every subgroup expanded) and never saved.
+    // UNWIRED(custom-resource-grouping §2): the subgroup header toggle writes
+    // this; until then only tests read it.
+    #[allow(dead_code)]
+    collapsed_subgroups: HashSet<String>,
     /// The bottom-pinned filter box's text field (section 3.1).
     filter_input: Entity<InputState>,
     focus_handle: FocusHandle,
@@ -167,6 +174,7 @@ impl ResourcePanel {
             selected: None,
             highlighted: None,
             collapsed: HashSet::new(),
+            collapsed_subgroups: HashSet::new(),
             filter_input,
             focus_handle: cx.focus_handle(),
             _connection_observation: observation,

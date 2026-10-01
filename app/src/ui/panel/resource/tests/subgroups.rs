@@ -1,10 +1,11 @@
 //! `custom-resource-grouping` §1: the Custom Resources section's kinds bucketed
-//! by API group.
+//! by API group, and the per-window collapsed-subgroup set.
 
 use super::super::category::Category;
 use super::super::section::{custom_subgroups, group_kinds};
-use super::kind;
+use super::{kind, stub_panel};
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use gpui_kit::TestAppContext;
 
 /// A cluster's kinds as `discover_kinds` returns them: by group then kind,
 /// core first. Built-ins the taxonomy names (Pod, Deployment, Service) land in
@@ -112,4 +113,20 @@ fn subgroup_order_does_not_rely_on_sorted_input() {
             ("zeta.example.com".to_string(), vec!["Zed".to_string()]),
         ]
     );
+}
+
+/// A fresh panel - a new window on a connection - starts with every subgroup
+/// expanded: nothing in the collapsed-subgroup set.
+#[gpui_kit::test]
+async fn a_fresh_panel_has_every_subgroup_expanded(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = stub_panel(cx);
+    window
+        .update(cx, |panel, _window, _cx| {
+            assert!(panel.collapsed_subgroups.is_empty());
+        })
+        .unwrap();
 }
