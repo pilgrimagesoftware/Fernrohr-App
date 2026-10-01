@@ -212,3 +212,18 @@ fn a_restored_resource_panel_width_is_clamped_or_defaulted() {
     );
     assert_eq!(restored_resource_width(&with(None)), RESOURCE_PANEL_WIDTH);
 }
+
+/// Fernrohr#51: a save records the frame's origin with the *content* size. On
+/// macOS `window.bounds()` is the outer frame, 32px taller than the content
+/// here, and `open_window` sizes the content area - so saving the frame's own
+/// size grew the window by the title bar on every relaunch.
+#[test]
+fn restorable_bounds_keeps_the_frame_origin_and_the_content_size() {
+    use gpui_kit::{Bounds, point, px, size};
+    let frame = Bounds::new(point(px(300.), px(200.)), size(px(1000.), px(792.)));
+    let content = size(px(1000.), px(760.));
+    assert_eq!(
+        super::restorable_bounds(frame, content),
+        Bounds::new(point(px(300.), px(200.)), size(px(1000.), px(760.)))
+    );
+}

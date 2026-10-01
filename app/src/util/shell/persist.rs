@@ -29,11 +29,7 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
         HashMap::new()
     };
     for handle in cx.windows() {
-        if let Ok(layout) = handle.update(cx, |_, window, cx| {
-            let bounds = window.bounds();
-            let live = workspace_contexts(window, cx);
-            layout_from_bounds(bounds, live)
-        }) {
+        if let Ok(layout) = handle.update(cx, |_, window, cx| layout_from_window(window, cx)) {
             layouts.insert(handle.window_id(), layout);
         }
     }
