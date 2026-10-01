@@ -41,6 +41,19 @@ cargo clippy -- -D warnings
 cargo fmt
 ```
 
+## Running the App
+
+The app likely needs to local network permissions, and since it's unsigned, TCC on the Mac will
+not allow it to make network connections. Once you have the app installed in `/Applications`, run
+the following commands:
+
+```sh
+# remove quarantine
+xattr -d com.apple.quarantine "/Applications/Fernrohr.app"
+# ad-hoc sign
+codesign --force --deep --sign - "/Applications/Fernrohr.app"
+```
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and contribution guidelines.
