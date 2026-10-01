@@ -14,6 +14,21 @@ pub(super) struct ClosedWindowLayouts(pub(super) HashMap<WindowId, WindowLayout>
 
 impl Global for ClosedWindowLayouts {}
 
+/// Where [`init`] was told to persist the workspace, for saves that happen
+/// before quit (see [`super::persist::schedule_save`]).
+pub(super) struct WorkspacePath(pub(super) PathBuf);
+
+impl Global for WorkspacePath {}
+
+/// The save [`super::persist::schedule_save`] has pending. Replacing it drops,
+/// and so cancels, the previous one - that is the debounce.
+pub(super) struct PendingSave {
+    /// Held only so dropping it cancels the save.
+    pub(super) _task: Task<()>,
+}
+
+impl Global for PendingSave {}
+
 pub(super) struct SavedDockLayouts(pub(super) crate::config::dock_layouts::DockLayouts);
 
 impl Global for SavedDockLayouts {}
@@ -118,6 +133,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         &dock_layouts_path,
     )));
 
+    cx.set_global(WorkspacePath(workspace_path.clone()));
     cx.on_app_quit(move |cx| {
         save(cx, &workspace_path);
         if let Some(layouts) = cx.try_global::<SavedDockLayouts>() {

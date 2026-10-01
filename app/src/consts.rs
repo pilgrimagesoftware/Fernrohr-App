@@ -34,6 +34,11 @@ pub(crate) const STATUS_ESCALATE_AFTER: Duration = Duration::from_secs(30);
 /// with a problem to show.
 pub(crate) const STATUS_TICK_INTERVAL: Duration = Duration::from_secs(1);
 
+/// How long a window must stop moving or resizing before its layout is saved
+/// (Fernrohr#51). A drag fires a bounds change per frame; this coalesces them
+/// into one write, while keeping a kill or crash from losing the layout.
+pub(crate) const BOUNDS_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
+
 /// The Resource panel's starting width, and how far its divider may be dragged. The
 /// minimum keeps kind names readable; the maximum keeps the dock usable.
 pub const RESOURCE_PANEL_WIDTH: gpui_kit::Pixels = gpui_kit::px(255.);

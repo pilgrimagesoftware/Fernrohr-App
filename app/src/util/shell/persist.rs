@@ -1,6 +1,7 @@
 //! Saving every open window's layout at quit, and reopening them at start.
 
 use super::*;
+use crate::consts::BOUNDS_SAVE_DEBOUNCE;
 
 /// Opens the windows recorded at `workspace_path`, or one default window if
 /// the file is missing, empty, or failed to parse (`config::load` already
@@ -40,6 +41,21 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
     }
     let windows: Vec<WindowLayout> = layouts.into_values().collect();
     let _ = config::save(workspace_path, &WorkspaceConfig { windows });
+}
+
+/// Saves the workspace once windows stop moving or resizing for
+/// [`BOUNDS_SAVE_DEBOUNCE`], so a kill or crash - which never reaches the
+/// quit-time [`save`] - doesn't lose the layout. Each call replaces (and so
+/// cancels) the pending save. A no-op before [`init`] has recorded the path.
+pub(super) fn schedule_save(cx: &mut App) {
+    let Some(path) = cx.try_global::<WorkspacePath>().map(|path| path.0.clone()) else {
+        return;
+    };
+    let task = cx.spawn(async move |cx| {
+        cx.background_executor().timer(BOUNDS_SAVE_DEBOUNCE).await;
+        cx.update(|cx| save(cx, &path));
+    });
+    cx.set_global(PendingSave { _task: task });
 }
 
 #[cfg(test)]
