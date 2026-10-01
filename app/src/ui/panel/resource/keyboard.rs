@@ -22,7 +22,8 @@ actions!(
         SelectPrevious,
         OpenSelected,
         CollapseSection,
-        ExpandSection
+        ExpandSection,
+        ToggleSubgroup
     ]
 );
 
@@ -35,6 +36,12 @@ const UP_KEY: &str = "up";
 pub(super) const ENTER_KEY: &str = "enter";
 pub(super) const LEFT_KEY: &str = "left";
 pub(super) const RIGHT_KEY: &str = "right";
+pub(super) const SPACE_KEY: &str = "space";
+
+/// [`PANEL_KEY_CONTEXT`] minus the filter box: Space types a space there, so
+/// a key that is also text binds here instead. GPUI's `!` checks the whole
+/// focus path, so this stops matching once the filter's `Input` is focused.
+pub(super) const LIST_KEY_CONTEXT: &str = "ResourcePanel && !Input";
 
 /// The cursor keys, bound directly in the panel's key context. Moving a selection
 /// one row isn't something anyone picks from a palette, so these are the one kind
@@ -143,6 +150,8 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
             Kbd::binding_for_action(&ExpandSection, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| Kbd::new(keystroke(RIGHT_KEY))),
         );
+    let toggle = Kbd::binding_for_action(&ToggleSubgroup, Some(PANEL_KEY_CONTEXT), window)
+        .unwrap_or_else(|| Kbd::new(keystroke(SPACE_KEY)));
     let enter = Kbd::binding_for_action(&OpenSelected, Some(PANEL_KEY_CONTEXT), window)
         .unwrap_or_else(|| Kbd::new(keystroke(ENTER_KEY)));
     let filter = Kbd::binding_for_action(
@@ -161,6 +170,7 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
         .child(hint(updown.into_any_element(), "Select"))
         .child(hint(enter.into_any_element(), "Open"))
         .child(hint(leftright.into_any_element(), "Collapse/expand"))
+        .child(hint(toggle.into_any_element(), "Toggle group"))
         .child(hint(filter.into_any_element(), "Filter"))
 }
 

@@ -10,12 +10,14 @@
 //! or menu presence, so they stay raw bindings in [`super::keyboard`] instead
 //! (the same split `pods::panel_bindings` documents).
 
+use super::category::Category;
 use super::keyboard::{
-    CollapseSection, Cursor, ExpandSection, OpenSelected, PANEL_KEY_CONTEXT, SelectNext,
-    SelectPrevious,
+    CollapseSection, Cursor, ExpandSection, LIST_KEY_CONTEXT, OpenSelected, PANEL_KEY_CONTEXT,
+    SelectNext, SelectPrevious, ToggleSubgroup,
 };
 use super::{ResourcePanel, keyboard};
 use crate::command::{Command, CommandRegistry};
+use crate::ui::nav::NavTarget;
 use gpui_kit::component::input::Escape;
 use gpui_kit::{Context, Focusable as _, Window, actions};
 
@@ -23,6 +25,7 @@ actions!(resource_panel, [FocusFilter, FocusResources]);
 
 pub(super) const FOCUS_FILTER_COMMAND_ID: &str = "resource.focus_filter";
 pub(super) const FOCUS_FILTER_DEFAULT_BINDING: &str = "/";
+pub(super) const TOGGLE_SUBGROUP_COMMAND_ID: &str = "resource.toggle_subgroup";
 pub(super) const FOCUS_RESOURCES_COMMAND_ID: &str = "resource.focus";
 pub(super) const FOCUS_RESOURCES_DEFAULT_BINDING: &str = "cmd-0";
 
@@ -70,6 +73,14 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
+    registry.register(Command {
+        id: TOGGLE_SUBGROUP_COMMAND_ID,
+        title: "Toggle Resource Group",
+        default_binding: keyboard::SPACE_KEY,
+        context: Some(LIST_KEY_CONTEXT),
+        action: Box::new(ToggleSubgroup),
+        menu: None,
+    });
     // The keyboard's way *into* the panel: without it, reaching the list took a
     // click, which keyboard-first.md rules out. Global, so it works from any panel.
     registry.register(Command {
@@ -150,6 +161,31 @@ impl ResourcePanel {
         if let Some(category) = self.highlighted_category() {
             self.collapsed.remove(&category);
             cx.notify();
+        }
+    }
+
+    /// Space: collapses or expands the Custom Resources subgroup the cursor
+    /// is in - on its header or one of its kinds. Collapsing moves the cursor
+    /// to the header, since the kind it was on is no longer drawn. A no-op
+    /// outside Custom Resources, which has no subgroups.
+    pub(super) fn on_action_toggle_subgroup(
+        &mut self,
+        _: &ToggleSubgroup,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let group = match &self.highlighted {
+            Some(Cursor::Subgroup(group)) => group.clone(),
+            Some(Cursor::Row(NavTarget::Kind(kind)))
+                if self.highlighted_category() == Some(Category::CustomResources) =>
+            {
+                kind.gvk.group.clone()
+            }
+            _ => return,
+        };
+        self.toggle_subgroup(&group, cx);
+        if self.collapsed_subgroups.contains(&group) {
+            self.set_cursor(Some(Cursor::Subgroup(group)), cx);
         }
     }
 

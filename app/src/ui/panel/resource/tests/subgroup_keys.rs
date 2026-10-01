@@ -84,3 +84,61 @@ async fn down_at_a_subgroups_last_kind_focuses_the_next_subgroups_header(cx: &mu
     vcx.simulate_keystrokes("up");
     assert_eq!(cursor(window, &mut vcx), (None, Some("Widget".into())));
 }
+
+/// 4.2: the toggle-group command (Space) collapses the subgroup the cursor
+/// is in and moves the cursor to its header, since the kind it was on is no
+/// longer drawn; Space on the header then expands it again.
+#[gpui_kit::test]
+async fn toggling_the_focused_subgroup_collapses_it_and_focuses_its_header(
+    cx: &mut TestAppContext,
+) {
+    let (window, mut vcx) = focused_panel(cx);
+    let collapsed = |vcx: &mut VisualTestContext| {
+        window
+            .update(vcx, |panel, _window, _cx| panel.collapsed_subgroups.clone())
+            .unwrap()
+    };
+
+    vcx.simulate_keystrokes("down down");
+    assert_eq!(cursor(window, &mut vcx), (None, Some("Widget".into())));
+
+    vcx.simulate_keystrokes("space");
+    assert!(
+        collapsed(&mut vcx).contains("alpha.example.com"),
+        "Space collapses the subgroup holding the focused kind"
+    );
+    assert_eq!(collapsed(&mut vcx).len(), 1, "and only that one");
+    assert_eq!(
+        cursor(window, &mut vcx),
+        (Some("alpha.example.com".into()), None),
+        "focus moves to the collapsed subgroup's header"
+    );
+
+    vcx.simulate_keystrokes("space");
+    assert!(
+        collapsed(&mut vcx).is_empty(),
+        "Space on the header expands it"
+    );
+    assert_eq!(
+        cursor(window, &mut vcx),
+        (Some("alpha.example.com".into()), None),
+        "expanding leaves focus on the header"
+    );
+}
+
+/// Space is text in the filter box, so the toggle binding stands aside there:
+/// typing a space filters rather than toggling a subgroup.
+#[gpui_kit::test]
+async fn space_in_the_filter_is_typed_not_a_toggle(cx: &mut TestAppContext) {
+    let (window, mut vcx) = focused_panel(cx);
+    vcx.simulate_keystrokes("down down");
+    vcx.simulate_keystrokes("/");
+    vcx.simulate_keystrokes("space");
+    let (filter, collapsed) = window
+        .update(&mut vcx, |panel, _window, cx| {
+            (panel.filter_text(cx), panel.collapsed_subgroups.clone())
+        })
+        .unwrap();
+    assert_eq!(filter, " ");
+    assert!(collapsed.is_empty());
+}

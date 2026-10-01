@@ -405,6 +405,7 @@ impl Render for ResourcePanel {
             .on_action(cx.listener(Self::on_action_open_selected))
             .on_action(cx.listener(Self::on_action_collapse_section))
             .on_action(cx.listener(Self::on_action_expand_section))
+            .on_action(cx.listener(Self::on_action_toggle_subgroup))
             .on_action(cx.listener(Self::on_action_focus_filter))
             .on_action(cx.listener(Self::on_action_clear_filter))
             .child(content)
