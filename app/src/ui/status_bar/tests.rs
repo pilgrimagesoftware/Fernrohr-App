@@ -50,36 +50,31 @@ async fn non_connected_items_sort_before_connected_ones(cx: &mut TestAppContext)
     init(cx);
     let client_a = test_client(cx);
     let client_b = test_client(cx);
-    subscribe_connected(cx, "carefulcrab", client_a);
-    subscribe_connected(cx, "greedygoat", client_b);
+    subscribe_connected(cx, "northbay", client_a);
+    subscribe_connected(cx, "southbay", client_b);
     cx.update(|cx| {
         ClusterRegistry::apply_health_transition(
             cx,
-            "greedygoat",
+            "southbay",
             HealthTransition::Pause(PauseReason::Reconnecting),
         )
     });
 
     let bar = cx.update(|cx| {
-        cx.new(|cx| {
-            StatusBarView::new(
-                vec!["carefulcrab".to_string(), "greedygoat".to_string()],
-                cx,
-            )
-        })
+        cx.new(|cx| StatusBarView::new(vec!["northbay".to_string(), "southbay".to_string()], cx))
     });
 
     cx.update(|cx| {
         let items = bar.read(cx).items(cx);
         assert_eq!(items.len(), 2);
         assert_eq!(
-            items[0].context_name, "greedygoat",
+            items[0].context_name, "southbay",
             "the paused context is listed before the connected one"
         );
-        assert_eq!(items[1].context_name, "carefulcrab");
+        assert_eq!(items[1].context_name, "northbay");
     });
 
-    // `greedygoat` stays paused for the rest of the test, so `bar`'s tick would otherwise
+    // `southbay` stays paused for the rest of the test, so `bar`'s tick would otherwise
     // keep re-arming its timer forever (by design - see `ensure_tick`'s doc comment).
     // Dropping the entity here cancels that task instead of leaving it for the test
     // harness's own end-of-test drain to spin on indefinitely.

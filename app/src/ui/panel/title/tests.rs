@@ -51,7 +51,7 @@ impl Render for NarrowHeading {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div().w(px(128.)).child(item_heading(
             "gke-metrics-agent-bl7vc".to_string(),
-            Some("carefulcrab-staging-us-west1".to_string()),
+            Some("northbay-staging-us-west1".to_string()),
             black(),
         ))
     }
