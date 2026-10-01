@@ -1,0 +1,21 @@
+name: Prepare Release
+
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    uses: pilgrimagesoftware/github-actions/.github/workflows/rust-prepare-release.yaml@master
+    with:
+      project-number: 10
+      base-branch: master
+      reviewer: paulyhedral
+      release-label: release
+      commit-files: "Cargo.toml Cargo.lock app/Cargo.toml CHANGELOG.md"
+    secrets:
+      PSW_CI_APP_ID: ${{ secrets.PSW_CI_APP_ID }}
+      PSW_CI_PRIVATE_KEY: ${{ secrets.PSW_CI_PRIVATE_KEY }}

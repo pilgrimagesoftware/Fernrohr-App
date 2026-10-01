@@ -1,0 +1,134 @@
+name: Package
+
+# Builds installable Fernrohr packages with cargo-packager for every platform
+# ci.yml already tests (macOS, Linux).
+#
+# Runs on every merge into develop, keeping the result as a workflow artifact,
+# and is called by release.yml with a tag, which also attaches the installers
+# to the GitHub Release.
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to attach the packages to. Empty to only keep them as an artifact."
+        type: string
+        default: ""
+      ref:
+        description: "Git ref to build. Defaults to the ref that triggered the caller."
+        type: string
+        default: ""
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+# A merge into develop supersedes the build in flight for the one before it; a
+# release build has its own group and is never cancelled.
+concurrency:
+  group: package-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  package:
+    name: Package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            target: aarch64-apple-darwin
+            formats: app,dmg
+          - name: Linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            formats: appimage,deb
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: ${{ matrix.target }}
+          cache-key: package-${{ matrix.target }}
+
+      - name: Install Linux packaging dependencies
+        if: matrix.name == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libfontconfig-dev \
+            libwayland-dev \
+            libxkbcommon-x11-dev \
+            libvulkan1 \
+            libgtk-3-dev \
+            libsecret-1-dev \
+            mesa-vulkan-drivers
+
+      - name: Install cargo-packager
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
+
+      # cargo-packager resolves `[package.metadata.packager]` from the manifest
+      # in the current directory, not from a workspace root with `--packages`.
+      - name: Package
+        working-directory: app
+        env:
+          # macOS signing/notarization credentials; cargo-packager reads these
+          # from the environment only, and packages unsigned while unset.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # A plain `cargo build` with no `--target` would write to
+          # target/release while packaging looks under target/<triple>/release.
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          cargo packager \
+            --release \
+            --target ${{ matrix.target }} \
+            --formats ${{ matrix.formats }} \
+            --verbose
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Fernrohr-${{ matrix.name }}-${{ github.run_number }}
+          path: |
+            target/${{ matrix.target }}/release/*.dmg
+            target/${{ matrix.target }}/release/*.app
+            target/${{ matrix.target }}/release/*.AppImage
+            target/${{ matrix.target }}/release/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach to release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          gh release upload "${{ inputs.tag }}" \
+            target/${{ matrix.target }}/release/*.dmg \
+            target/${{ matrix.target }}/release/*.AppImage \
+            target/${{ matrix.target }}/release/*.deb \
+            --clobber

@@ -32,3 +32,32 @@ rcgen = "=0.14.10"
 rustls = "=0.23.45"
 tokio-rustls = "=0.26.5"
 tokio-tungstenite = "=0.29.0"
+
+# cargo-packager configuration (`cargo install cargo-packager`). Invoked in CI as
+# `cargo packager --release --formats <fmt>` from this directory; the binary is
+# auto-detected from the crate's default `[[bin]]` target (src/main.rs).
+#
+# Icon path is relative to this manifest's directory: cargo-packager `cd`s to the
+# directory of the Cargo.toml it read `[package.metadata.packager]` from before
+# resolving any relative paths in the config.
+[package.metadata.packager]
+name = "fernrohr"
+product-name = "Fernrohr"
+identifier = "com.pilgrimagesoftware.fernrohr"
+description = "Desktop UI for Kubernetes cluster monitoring"
+homepage = "https://github.com/pilgrimagesoftware/Fernrohr-App"
+authors = ["Paul Schifferer <paul@schifferers.net>"]
+publisher = "Pilgrimage Software"
+license_file = "../LICENSE.md"
+copyright = "Copyright (c) 2026 Pilgrimage Software"
+category = "Utility"
+icons = ["../images/fernrohr-icon.png"]
+
+[package.metadata.packager.deb]
+depends = ["libsecret-1-0"]
+
+[package.metadata.packager.appimage]
+libs = ["libsecret-1.so.0"]
+
+[package.metadata.packager.dmg]
+window-size = { width = 660, height = 400 }
