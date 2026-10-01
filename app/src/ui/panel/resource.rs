@@ -81,10 +81,12 @@ pub struct ResourcePanel {
     /// Categories the user collapsed, this window only. Section 2.3: default
     /// expanded, never written to the preference file.
     collapsed: HashSet<Category>,
-    /// API groups the user collapsed inside Custom Resources
-    /// (`custom-resource-grouping`), this window only - beside `collapsed`, and
-    /// like it starting empty (every subgroup expanded) and never saved.
-    collapsed_subgroups: HashSet<String>,
+    /// API groups the user expanded inside Custom Resources
+    /// (`custom-resource-grouping`), this window only and never saved. Unlike
+    /// `collapsed` it tracks the *open* state: subgroups start collapsed, so an
+    /// empty set is the default and a group discovery adds later is collapsed
+    /// with no extra work.
+    expanded_subgroups: HashSet<String>,
     /// The bottom-pinned filter box's text field (section 3.1).
     filter_input: Entity<InputState>,
     focus_handle: FocusHandle,
@@ -172,7 +174,7 @@ impl ResourcePanel {
             selected: None,
             highlighted: None,
             collapsed: HashSet::new(),
-            collapsed_subgroups: HashSet::new(),
+            expanded_subgroups: HashSet::new(),
             filter_input,
             focus_handle: cx.focus_handle(),
             _connection_observation: observation,
@@ -317,7 +319,7 @@ impl ResourcePanel {
         section::visible_sections(
             self.loaded_kinds(),
             &self.collapsed,
-            &self.collapsed_subgroups,
+            &self.expanded_subgroups,
             &self.filter_text(cx),
         )
     }
@@ -347,8 +349,8 @@ impl ResourcePanel {
     /// Flips the API-group subgroup `group`'s collapsed state inside Custom
     /// Resources - its header's click route (`custom-resource-grouping` 2.2).
     fn toggle_subgroup(&mut self, group: &str, cx: &mut Context<Self>) {
-        if !self.collapsed_subgroups.remove(group) {
-            self.collapsed_subgroups.insert(group.to_string());
+        if !self.expanded_subgroups.remove(group) {
+            self.expanded_subgroups.insert(group.to_string());
         }
         cx.notify();
     }

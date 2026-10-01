@@ -117,20 +117,71 @@ fn subgroup_order_does_not_rely_on_sorted_input() {
     );
 }
 
-/// A fresh panel - a new window on a connection - starts with every subgroup
-/// expanded: nothing in the collapsed-subgroup set.
+/// Each Custom Resources subgroup as `visible_sections` (and so `render`)
+/// sees it right now: its group and whether it is expanded.
+fn subgroup_states(
+    window: gpui_kit::WindowHandle<super::super::ResourcePanel>,
+    cx: &mut TestAppContext,
+) -> Vec<(String, bool)> {
+    window
+        .update(cx, |panel, _window, cx| {
+            panel
+                .visible_sections(cx)
+                .into_iter()
+                .flat_map(|section| section.subgroups)
+                .map(|subgroup| (subgroup.group, subgroup.expanded))
+                .collect()
+        })
+        .unwrap()
+}
+
+/// 6.1: a fresh panel - a new window on a connection - reports every
+/// subgroup collapsed; expanding one leaves the rest collapsed; and a group
+/// discovery reports later starts collapsed too.
 #[gpui_kit::test]
-async fn a_fresh_panel_has_every_subgroup_expanded(cx: &mut TestAppContext) {
+async fn a_fresh_panel_starts_every_subgroup_collapsed(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
     window
-        .update(cx, |panel, _window, _cx| {
-            assert!(panel.collapsed_subgroups.is_empty());
+        .update(cx, |panel, _window, cx| {
+            panel.state = super::super::ResourceState::Loaded(discovered());
+            cx.notify();
         })
         .unwrap();
+    let states = subgroup_states(window, cx);
+    assert_eq!(states.len(), 4, "core plus three CRD groups");
+    assert!(
+        states.iter().all(|(_, expanded)| !expanded),
+        "all collapsed: {states:?}"
+    );
+
+    window
+        .update(cx, |panel, _window, cx| {
+            panel.toggle_subgroup("argoproj.io", cx)
+        })
+        .unwrap();
+    let expanded: Vec<String> = subgroup_states(window, cx)
+        .into_iter()
+        .filter(|(_, expanded)| *expanded)
+        .map(|(group, _)| group)
+        .collect();
+    assert_eq!(expanded, vec!["argoproj.io"], "only the one expanded");
+
+    window
+        .update(cx, |panel, _window, cx| {
+            let mut kinds = discovered();
+            kinds.push(kind("zeta.example.com", "Zed"));
+            panel.state = super::super::ResourceState::Loaded(kinds);
+            cx.notify();
+        })
+        .unwrap();
+    assert!(
+        subgroup_states(window, cx).contains(&("zeta.example.com".to_string(), false)),
+        "a later-discovered group starts collapsed"
+    );
 }
 
 /// A panel showing `discovered()`, drawn in a window.
@@ -148,6 +199,12 @@ fn loaded_panel(
     window
         .update(cx, |panel, _window, cx| {
             panel.state = super::super::ResourceState::Loaded(discovered());
+            // Subgroups start collapsed (6.1); these tests collapse from a
+            // fully open list, so open every group first.
+            panel.expanded_subgroups = custom_subgroups(&custom_resources())
+                .into_iter()
+                .map(|subgroup| subgroup.group)
+                .collect();
             cx.notify();
         })
         .unwrap();
@@ -185,7 +242,7 @@ async fn collapsing_one_subgroup_leaves_the_others_visible(cx: &mut TestAppConte
 
     window
         .update(&mut vcx, |panel, _window, cx| {
-            panel.collapsed_subgroups.insert("argoproj.io".into());
+            panel.expanded_subgroups.remove("argoproj.io");
             cx.notify();
         })
         .unwrap();
@@ -210,13 +267,13 @@ async fn collapsing_one_subgroup_leaves_the_others_visible(cx: &mut TestAppConte
 }
 
 /// 2.2: a click on a subgroup's header toggles it - both what's drawn and the
-/// collapsed set - and a second click restores it.
+/// stored set - and a second click restores it.
 #[gpui_kit::test]
 async fn clicking_a_subgroup_header_toggles_it(cx: &mut TestAppContext) {
     let (window, mut vcx) = loaded_panel(cx);
-    let collapsed = |vcx: &mut gpui_kit::VisualTestContext| {
+    let expanded = |vcx: &mut gpui_kit::VisualTestContext| {
         window
-            .update(vcx, |panel, _window, _cx| panel.collapsed_subgroups.clone())
+            .update(vcx, |panel, _window, _cx| panel.expanded_subgroups.clone())
             .unwrap()
     };
     let click_header = |vcx: &mut gpui_kit::VisualTestContext| {
@@ -228,11 +285,11 @@ async fn clicking_a_subgroup_header_toggles_it(cx: &mut TestAppContext) {
     };
 
     click_header(&mut vcx);
-    assert!(collapsed(&mut vcx).contains("cert-manager.io"));
+    assert!(!expanded(&mut vcx).contains("cert-manager.io"));
     assert!(!drawn(&mut vcx, "resource-row-subgroup-cert-manager.io-0"));
 
     click_header(&mut vcx);
-    assert!(collapsed(&mut vcx).is_empty());
+    assert!(expanded(&mut vcx).contains("cert-manager.io"));
     assert!(drawn(&mut vcx, "resource-row-subgroup-cert-manager.io-0"));
 }
 
@@ -257,7 +314,7 @@ async fn a_collapsed_subgroups_kinds_leave_the_keyboard_order(cx: &mut TestAppCo
     assert!(reachable(&mut vcx).contains(&"Rollout".to_string()));
     window
         .update(&mut vcx, |panel, _window, cx| {
-            panel.collapsed_subgroups.insert("argoproj.io".into());
+            panel.expanded_subgroups.remove("argoproj.io");
             cx.notify();
         })
         .unwrap();
@@ -283,10 +340,10 @@ fn three_groups() -> Vec<DiscoveredKind> {
 /// them, for `filter` and the collapsed-subgroup set.
 fn subgroups_for(
     kinds: &[DiscoveredKind],
-    collapsed_subgroups: &std::collections::HashSet<String>,
+    expanded_subgroups: &std::collections::HashSet<String>,
     filter: &str,
 ) -> Vec<super::super::section::VisibleSubgroup> {
-    super::super::section::visible_sections(kinds, &Default::default(), collapsed_subgroups, filter)
+    super::super::section::visible_sections(kinds, &Default::default(), expanded_subgroups, filter)
         .into_iter()
         .find(|section| section.category == Category::CustomResources)
         .map(|section| section.subgroups)
@@ -306,7 +363,7 @@ fn a_filter_shows_only_subgroups_with_a_match() {
 }
 
 /// 3.2: a filter forces a collapsed subgroup with a match open, without
-/// touching the stored collapsed set, so clearing the filter restores it.
+/// touching the stored expanded set, so clearing the filter restores it.
 #[gpui_kit::test]
 async fn a_filter_opens_a_collapsed_subgroup_until_cleared(cx: &mut TestAppContext) {
     cx.update(|cx| {
@@ -329,7 +386,7 @@ async fn a_filter_opens_a_collapsed_subgroup_until_cleared(cx: &mut TestAppConte
             .update(cx, |panel, _window, cx| {
                 let subgroups = subgroups_for(
                     panel.loaded_kinds(),
-                    &panel.collapsed_subgroups,
+                    &panel.expanded_subgroups,
                     &panel.filter_text(cx),
                 );
                 (
@@ -337,15 +394,15 @@ async fn a_filter_opens_a_collapsed_subgroup_until_cleared(cx: &mut TestAppConte
                         .iter()
                         .find(|subgroup| subgroup.group == "beta.example.com")
                         .map(|subgroup| subgroup.expanded),
-                    panel.collapsed_subgroups.contains("beta.example.com"),
+                    !panel.expanded_subgroups.contains("beta.example.com"),
                 )
             })
             .unwrap()
     };
     window
         .update(cx, |panel, _window, cx| {
+            // Beta starts collapsed: subgroups are collapsed by default (6.1).
             panel.state = super::super::ResourceState::Loaded(three_groups());
-            panel.collapsed_subgroups.insert("beta.example.com".into());
             cx.notify();
         })
         .unwrap();

@@ -184,7 +184,7 @@ impl ResourcePanel {
             _ => return,
         };
         self.toggle_subgroup(&group, cx);
-        if self.collapsed_subgroups.contains(&group) {
+        if !self.expanded_subgroups.contains(&group) {
             self.set_cursor(Some(Cursor::Subgroup(group)), cx);
         }
     }

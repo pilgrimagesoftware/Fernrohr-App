@@ -18,7 +18,8 @@ fn three_groups() -> Vec<DiscoveredKind> {
     ]
 }
 
-/// The panel loaded with [`three_groups`], keys bound and the list focused.
+/// The panel loaded with [`three_groups`], every subgroup opened (they start
+/// collapsed), keys bound and the list focused.
 fn focused_panel(
     cx: &mut TestAppContext,
 ) -> (WindowHandle<super::super::ResourcePanel>, VisualTestContext) {
@@ -31,6 +32,10 @@ fn focused_panel(
     window
         .update(cx, |panel, window, cx| {
             panel.state = super::super::ResourceState::Loaded(three_groups());
+            panel.expanded_subgroups = three_groups()
+                .into_iter()
+                .map(|kind| kind.gvk.group)
+                .collect();
             panel.focus_handle.clone().focus(window, cx);
             cx.notify();
         })
@@ -93,9 +98,9 @@ async fn toggling_the_focused_subgroup_collapses_it_and_focuses_its_header(
     cx: &mut TestAppContext,
 ) {
     let (window, mut vcx) = focused_panel(cx);
-    let collapsed = |vcx: &mut VisualTestContext| {
+    let expanded = |vcx: &mut VisualTestContext| {
         window
-            .update(vcx, |panel, _window, _cx| panel.collapsed_subgroups.clone())
+            .update(vcx, |panel, _window, _cx| panel.expanded_subgroups.clone())
             .unwrap()
     };
 
@@ -104,10 +109,10 @@ async fn toggling_the_focused_subgroup_collapses_it_and_focuses_its_header(
 
     vcx.simulate_keystrokes("space");
     assert!(
-        collapsed(&mut vcx).contains("alpha.example.com"),
+        !expanded(&mut vcx).contains("alpha.example.com"),
         "Space collapses the subgroup holding the focused kind"
     );
-    assert_eq!(collapsed(&mut vcx).len(), 1, "and only that one");
+    assert_eq!(expanded(&mut vcx).len(), 2, "and only that one");
     assert_eq!(
         cursor(window, &mut vcx),
         (Some("alpha.example.com".into()), None),
@@ -115,8 +120,9 @@ async fn toggling_the_focused_subgroup_collapses_it_and_focuses_its_header(
     );
 
     vcx.simulate_keystrokes("space");
-    assert!(
-        collapsed(&mut vcx).is_empty(),
+    assert_eq!(
+        expanded(&mut vcx).len(),
+        3,
         "Space on the header expands it"
     );
     assert_eq!(
@@ -134,11 +140,11 @@ async fn space_in_the_filter_is_typed_not_a_toggle(cx: &mut TestAppContext) {
     vcx.simulate_keystrokes("down down");
     vcx.simulate_keystrokes("/");
     vcx.simulate_keystrokes("space");
-    let (filter, collapsed) = window
+    let (filter, expanded) = window
         .update(&mut vcx, |panel, _window, cx| {
-            (panel.filter_text(cx), panel.collapsed_subgroups.clone())
+            (panel.filter_text(cx), panel.expanded_subgroups.len())
         })
         .unwrap();
     assert_eq!(filter, " ");
-    assert!(collapsed.is_empty());
+    assert_eq!(expanded, 3, "no subgroup toggled");
 }

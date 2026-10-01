@@ -123,7 +123,7 @@ pub(super) struct VisibleSubgroup {
     pub(super) group: String,
     /// The section's kinds in this group that pass the filter.
     pub(super) matches: Vec<DiscoveredKind>,
-    /// Whether its rows show: not in the per-window collapsed set, or a
+    /// Whether its rows show: in the per-window expanded set, or a
     /// filter is active (which forces every matching subgroup open).
     pub(super) expanded: bool,
 }
@@ -178,7 +178,7 @@ impl VisibleSection {
 pub(super) fn visible_sections(
     kinds: &[DiscoveredKind],
     collapsed: &HashSet<Category>,
-    collapsed_subgroups: &HashSet<String>,
+    expanded_subgroups: &HashSet<String>,
     filter: &str,
 ) -> Vec<VisibleSection> {
     let filtering = !filter.is_empty();
@@ -203,7 +203,7 @@ pub(super) fn visible_sections(
                         // match (one with none isn't built at all), without
                         // touching the stored set - so clearing it restores
                         // the collapse as it was.
-                        expanded: filtering || !collapsed_subgroups.contains(&subgroup.group),
+                        expanded: filtering || expanded_subgroups.contains(&subgroup.group),
                         group: subgroup.group,
                         matches: subgroup.kinds,
                     })
