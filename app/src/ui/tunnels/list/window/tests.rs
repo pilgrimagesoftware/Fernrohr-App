@@ -196,7 +196,7 @@ async fn an_unreadable_kubeconfig_flags_nothing_stale(cx: &mut TestAppContext) {
     store
         .create("qa-bastion", sample_tunnel("QA"), None)
         .unwrap();
-    store.bind("greedygoat", "qa-bastion").unwrap();
+    store.bind("southbay", "qa-bastion").unwrap();
     let missing = std::env::temp_dir().join(format!(
         "fernrohr-tunnels-window-test-missing-kubeconfig-{}.yaml",
         std::process::id()

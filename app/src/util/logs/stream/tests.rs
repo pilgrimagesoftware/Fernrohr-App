@@ -47,8 +47,8 @@ fn describe_log_stream_error_names_the_pod_for_a_404() {
     let error = api_error(404, "NotFound", "pods \"clamav-plc9g\" not found");
 
     assert_eq!(
-        describe_log_stream_error(&error, "clamav-plc9g", "default", "carefulcrab"),
-        "Pod clamav-plc9g not found in namespace default on carefulcrab."
+        describe_log_stream_error(&error, "clamav-plc9g", "default", "northbay"),
+        "Pod clamav-plc9g not found in namespace default on northbay."
     );
 }
 
@@ -63,7 +63,7 @@ fn describe_log_stream_error_reads_reason_and_message_for_other_api_errors() {
     );
 
     assert_eq!(
-        describe_log_stream_error(&error, "web-1", "default", "carefulcrab"),
+        describe_log_stream_error(&error, "web-1", "default", "northbay"),
         "Forbidden: pods is forbidden: User \"x\" cannot list resource"
     );
 }
