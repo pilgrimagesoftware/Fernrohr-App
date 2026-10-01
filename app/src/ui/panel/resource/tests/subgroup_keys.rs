@@ -1,4 +1,4 @@
-//! `custom-resource-grouping` §4: the keyboard route through Custom
+//! `custom-resource-grouping` §4 and §6.2: the keyboard route through Custom
 //! Resources' subgroups, driven by real keystrokes as
 //! `.claude/rules/keyboard-first.md` requires.
 
@@ -147,4 +147,79 @@ async fn space_in_the_filter_is_typed_not_a_toggle(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(filter, " ");
     assert_eq!(expanded, 3, "no subgroup toggled");
+}
+
+/// Both stores the collapse/expand-all commands must leave consistent: the
+/// expanded subgroups, and the top-level sections they must not touch.
+fn state(
+    window: WindowHandle<super::super::ResourcePanel>,
+    vcx: &mut VisualTestContext,
+) -> (Vec<String>, usize) {
+    window
+        .update(vcx, |panel, _window, _cx| {
+            let mut expanded: Vec<String> = panel.expanded_subgroups.iter().cloned().collect();
+            expanded.sort();
+            (expanded, panel.collapsed.len())
+        })
+        .unwrap()
+}
+
+/// 6.2: with some subgroups collapsed, expand-all (Shift-Right) expands every
+/// subgroup, and leaves the top-level sections as they were.
+#[gpui_kit::test]
+async fn expand_all_expands_every_subgroup(cx: &mut TestAppContext) {
+    let (window, mut vcx) = focused_panel(cx);
+    window
+        .update(&mut vcx, |panel, _window, cx| {
+            panel
+                .expanded_subgroups
+                .retain(|group| group == "beta.example.com");
+            cx.notify();
+        })
+        .unwrap();
+    assert_eq!(
+        state(window, &mut vcx),
+        (vec!["beta.example.com".into()], 0)
+    );
+
+    vcx.simulate_keystrokes("shift-right");
+    assert_eq!(
+        state(window, &mut vcx),
+        (
+            vec![
+                "alpha.example.com".into(),
+                "beta.example.com".into(),
+                "gamma.example.com".into(),
+            ],
+            0
+        ),
+        "every subgroup expanded, no section collapsed"
+    );
+}
+
+/// 6.2: with a kind inside a subgroup focused, collapse-all (Shift-Left)
+/// collapses every subgroup and moves the cursor to that kind's subgroup
+/// header - not the first header - leaving the top-level sections alone.
+#[gpui_kit::test]
+async fn collapse_all_collapses_every_subgroup_and_focuses_the_kinds_header(
+    cx: &mut TestAppContext,
+) {
+    let (window, mut vcx) = focused_panel(cx);
+    vcx.simulate_keystrokes("down down down down");
+    assert_eq!(
+        cursor(window, &mut vcx),
+        (None, Some("WidgetPolicy".into()))
+    );
+
+    vcx.simulate_keystrokes("shift-left");
+    assert_eq!(
+        state(window, &mut vcx),
+        (vec![], 0),
+        "every subgroup collapsed, no section collapsed"
+    );
+    assert_eq!(
+        cursor(window, &mut vcx),
+        (Some("beta.example.com".into()), None),
+        "focus moves to WidgetPolicy's own subgroup header"
+    );
 }

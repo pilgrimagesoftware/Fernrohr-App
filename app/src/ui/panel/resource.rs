@@ -355,6 +355,25 @@ impl ResourcePanel {
         cx.notify();
     }
 
+    /// Collapses (`expanded: false`) or expands every Custom Resources
+    /// subgroup at once - collapse/expand all (`custom-resource-grouping`
+    /// 6.2). Expanding fills the set with the groups loaded now; a group
+    /// discovered later still starts collapsed. Top-level sections are left
+    /// alone.
+    fn set_all_subgroups(&mut self, expanded: bool, cx: &mut Context<Self>) {
+        self.expanded_subgroups = if expanded {
+            section::group_kinds(self.loaded_kinds())
+                .into_iter()
+                .filter(|section| section.category == Category::CustomResources)
+                .flat_map(|section| section::custom_subgroups(&section.kinds))
+                .map(|subgroup| subgroup.group)
+                .collect()
+        } else {
+            HashSet::new()
+        };
+        cx.notify();
+    }
+
     /// Starts discovery as soon as the window's context has a client. A no-op
     /// while the state is already settled or a request is in flight.
     fn sync(&mut self, connection: &Entity<ClusterConnection>, cx: &mut Context<Self>) {

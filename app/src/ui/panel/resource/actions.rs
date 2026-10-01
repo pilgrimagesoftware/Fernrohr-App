@@ -12,8 +12,8 @@
 
 use super::category::Category;
 use super::keyboard::{
-    CollapseSection, Cursor, ExpandSection, LIST_KEY_CONTEXT, OpenSelected, PANEL_KEY_CONTEXT,
-    SelectNext, SelectPrevious, ToggleSubgroup,
+    CollapseAllSubgroups, CollapseSection, Cursor, ExpandAllSubgroups, ExpandSection,
+    LIST_KEY_CONTEXT, OpenSelected, PANEL_KEY_CONTEXT, SelectNext, SelectPrevious, ToggleSubgroup,
 };
 use super::{ResourcePanel, keyboard};
 use crate::command::{Command, CommandRegistry};
@@ -73,14 +73,37 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
-    registry.register(Command {
-        id: TOGGLE_SUBGROUP_COMMAND_ID,
-        title: "Toggle Resource Group",
-        default_binding: keyboard::SPACE_KEY,
-        context: Some(LIST_KEY_CONTEXT),
-        action: Box::new(ToggleSubgroup),
-        menu: None,
-    });
+    // Space and Shift-arrows are text or text selection in the filter box, so
+    // these bind in `LIST_KEY_CONTEXT` rather than the whole panel.
+    for (id, title, key, action) in [
+        (
+            TOGGLE_SUBGROUP_COMMAND_ID,
+            "Toggle Resource Group",
+            keyboard::SPACE_KEY,
+            Box::new(ToggleSubgroup) as Box<dyn gpui_kit::Action>,
+        ),
+        (
+            "resource.collapse_all_subgroups",
+            "Collapse All Resource Groups",
+            keyboard::SHIFT_LEFT_KEY,
+            Box::new(CollapseAllSubgroups),
+        ),
+        (
+            "resource.expand_all_subgroups",
+            "Expand All Resource Groups",
+            keyboard::SHIFT_RIGHT_KEY,
+            Box::new(ExpandAllSubgroups),
+        ),
+    ] {
+        registry.register(Command {
+            id,
+            title,
+            default_binding: key,
+            context: Some(LIST_KEY_CONTEXT),
+            action,
+            menu: None,
+        });
+    }
     // The keyboard's way *into* the panel: without it, reaching the list took a
     // click, which keyboard-first.md rules out. Global, so it works from any panel.
     registry.register(Command {
@@ -164,29 +187,65 @@ impl ResourcePanel {
         }
     }
 
+    /// The Custom Resources subgroup the cursor is in: the header it is on,
+    /// or the group of the kind it is on. `None` outside Custom Resources,
+    /// which has no subgroups.
+    fn cursor_subgroup(&self) -> Option<String> {
+        match &self.highlighted {
+            Some(Cursor::Subgroup(group)) => Some(group.clone()),
+            Some(Cursor::Row(NavTarget::Kind(kind)))
+                if self.highlighted_category() == Some(Category::CustomResources) =>
+            {
+                Some(kind.gvk.group.clone())
+            }
+            _ => None,
+        }
+    }
+
     /// Space: collapses or expands the Custom Resources subgroup the cursor
     /// is in - on its header or one of its kinds. Collapsing moves the cursor
     /// to the header, since the kind it was on is no longer drawn. A no-op
-    /// outside Custom Resources, which has no subgroups.
+    /// outside Custom Resources.
     pub(super) fn on_action_toggle_subgroup(
         &mut self,
         _: &ToggleSubgroup,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let group = match &self.highlighted {
-            Some(Cursor::Subgroup(group)) => group.clone(),
-            Some(Cursor::Row(NavTarget::Kind(kind)))
-                if self.highlighted_category() == Some(Category::CustomResources) =>
-            {
-                kind.gvk.group.clone()
-            }
-            _ => return,
+        let Some(group) = self.cursor_subgroup() else {
+            return;
         };
         self.toggle_subgroup(&group, cx);
         if !self.expanded_subgroups.contains(&group) {
             self.set_cursor(Some(Cursor::Subgroup(group)), cx);
         }
+    }
+
+    /// Shift-Left: collapses every Custom Resources subgroup. A cursor on one
+    /// of their kinds moves to that kind's subgroup header, the same as Space
+    /// collapsing the one subgroup.
+    pub(super) fn on_action_collapse_all_subgroups(
+        &mut self,
+        _: &CollapseAllSubgroups,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let group = self.cursor_subgroup();
+        self.set_all_subgroups(false, cx);
+        if let Some(group) = group {
+            self.set_cursor(Some(Cursor::Subgroup(group)), cx);
+        }
+    }
+
+    /// Shift-Right: expands every Custom Resources subgroup. The cursor stays
+    /// put - whatever it was on is still drawn.
+    pub(super) fn on_action_expand_all_subgroups(
+        &mut self,
+        _: &ExpandAllSubgroups,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_all_subgroups(true, cx);
     }
 
     /// `/`: focuses the filter box. Registered as a `Command` rather than a

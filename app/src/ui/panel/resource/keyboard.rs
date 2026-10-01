@@ -23,7 +23,9 @@ actions!(
         OpenSelected,
         CollapseSection,
         ExpandSection,
-        ToggleSubgroup
+        ToggleSubgroup,
+        CollapseAllSubgroups,
+        ExpandAllSubgroups
     ]
 );
 
@@ -37,6 +39,8 @@ pub(super) const ENTER_KEY: &str = "enter";
 pub(super) const LEFT_KEY: &str = "left";
 pub(super) const RIGHT_KEY: &str = "right";
 pub(super) const SPACE_KEY: &str = "space";
+pub(super) const SHIFT_LEFT_KEY: &str = "shift-left";
+pub(super) const SHIFT_RIGHT_KEY: &str = "shift-right";
 
 /// [`PANEL_KEY_CONTEXT`] minus the filter box: Space types a space there, so
 /// a key that is also text binds here instead. GPUI's `!` checks the whole
@@ -152,6 +156,17 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
         );
     let toggle = Kbd::binding_for_action(&ToggleSubgroup, Some(PANEL_KEY_CONTEXT), window)
         .unwrap_or_else(|| Kbd::new(keystroke(SPACE_KEY)));
+    let all_groups = div()
+        .flex()
+        .gap_0p5()
+        .child(
+            Kbd::binding_for_action(&CollapseAllSubgroups, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| Kbd::new(keystroke(SHIFT_LEFT_KEY))),
+        )
+        .child(
+            Kbd::binding_for_action(&ExpandAllSubgroups, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| Kbd::new(keystroke(SHIFT_RIGHT_KEY))),
+        );
     let enter = Kbd::binding_for_action(&OpenSelected, Some(PANEL_KEY_CONTEXT), window)
         .unwrap_or_else(|| Kbd::new(keystroke(ENTER_KEY)));
     let filter = Kbd::binding_for_action(
@@ -171,6 +186,7 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
         .child(hint(enter.into_any_element(), "Open"))
         .child(hint(leftright.into_any_element(), "Collapse/expand"))
         .child(hint(toggle.into_any_element(), "Toggle group"))
+        .child(hint(all_groups.into_any_element(), "All groups"))
         .child(hint(filter.into_any_element(), "Filter"))
 }
 
