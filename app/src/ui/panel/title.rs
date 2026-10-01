@@ -191,10 +191,7 @@ pub fn title_element(scope: &PanelScope, text: String, focused: bool, cx: &App) 
         // The underline's width is reserved while unfocused too, so moving
         // focus between panels doesn't shift any tab's label.
         .border_b_2()
-        .border_color(focus_underline(
-            focused,
-            crate::ui::accent::focus_accent(cx),
-        ))
+        .border_color(focus_underline(focused, crate::ui::style::accent(cx)))
         .debug_selector(|| {
             let state = if focused { "focused" } else { "unfocused" };
             format!("panel-title-{text}-{state}")

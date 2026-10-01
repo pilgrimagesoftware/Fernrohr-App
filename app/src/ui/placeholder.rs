@@ -101,6 +101,7 @@ impl EventEmitter<ScopeEvent> for PlaceholderPanel {}
 impl Render for PlaceholderPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
+        let raised = crate::ui::style::surface_raised(cx);
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names();
         let namespace_bar =
@@ -115,6 +116,7 @@ impl Render for PlaceholderPanel {
                     .flex()
                     .justify_end()
                     .p_2()
+                    .bg(raised)
                     .border_b_1()
                     .border_color(theme.border)
                     .child(picker)

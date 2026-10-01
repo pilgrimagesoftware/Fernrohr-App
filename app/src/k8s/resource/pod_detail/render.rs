@@ -49,16 +49,13 @@ impl PodDetailPanel {
         } else if active_tab == DetailSection::Events {
             self.render_events(cx)
         } else {
-            div()
-                .flex()
-                .flex_col()
-                .children(
-                    fields
-                        .iter()
-                        .filter(|field| field.section == active_tab)
-                        .map(|field| self.render_field(field, cx)),
-                )
-                .into_any_element()
+            crate::ui::detail::striped(
+                fields
+                    .iter()
+                    .filter(|field| field.section == active_tab)
+                    .map(|field| self.render_field(field, cx)),
+                cx,
+            )
         };
         div()
             .flex()
@@ -184,6 +181,7 @@ impl Render for PodDetailPanel {
             .justify_between()
             .gap_2()
             .p_2()
+            .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
             .child(

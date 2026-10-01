@@ -86,12 +86,13 @@ impl ObjectDetailPanel {
                     .flex()
                     .flex_col()
                     .child(detail::section_heading(section.title.clone(), cx))
-                    .children(
+                    .child(detail::striped(
                         section
                             .fields
                             .iter()
                             .map(|field| self.render_field(&section.title, field, cx)),
-                    )
+                        cx,
+                    ))
             }))
             .child(detail::section_heading("Events", cx))
             .child(div().pt_1().child(detail::events(&events, cx)))
@@ -177,6 +178,7 @@ impl Render for ObjectDetailPanel {
             .justify_between()
             .gap_2()
             .p_2()
+            .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
             .child(

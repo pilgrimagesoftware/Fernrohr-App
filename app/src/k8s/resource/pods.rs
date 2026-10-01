@@ -36,6 +36,7 @@ mod test_support;
 mod watch;
 
 pub use panel::{PodsPanel, register_restore};
+pub(crate) use rows::BAD_WAITING_REASONS;
 pub(crate) use rows::format_age;
 pub use rows::{PodRow, matches_namespaces, pod_row};
 pub use selection::{PodSelection, SelectedPod};

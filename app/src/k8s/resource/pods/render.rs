@@ -118,7 +118,15 @@ impl Render for PodsPanel {
                                 .scrollbar_visible(true, true),
                         ),
                     )
-                    .child(div().mt_2().child(shortcuts))
+                    .child(
+                        div()
+                            .mt_2()
+                            .px_2()
+                            .py_1()
+                            .rounded_md()
+                            .bg(crate::ui::style::surface_raised(cx))
+                            .child(shortcuts),
+                    )
             }
         };
 
@@ -138,6 +146,7 @@ impl Render for PodsPanel {
             .items_center()
             .gap_2()
             .p_2()
+            .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
             .child(panel_title::context_label(

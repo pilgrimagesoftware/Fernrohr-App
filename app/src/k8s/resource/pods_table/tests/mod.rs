@@ -40,6 +40,8 @@ pub(super) fn pod_table_rows_fixture() -> Vec<crate::k8s::resource::pods_table::
     .map(
         |(name, namespace, ready, status, restarts, age_secs, ip, node)| PodTableRow {
             row: PodRow {
+                status_tone: crate::ui::style::Tone::Neutral,
+                ready_tone: crate::ui::style::Tone::Neutral,
                 name: name.into(),
                 namespace: namespace.into(),
                 ready: ready.into(),

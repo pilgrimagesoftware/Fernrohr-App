@@ -101,6 +101,7 @@ impl Render for LogsPanel {
                     .items_center()
                     .gap_1()
                     .p_2()
+                    .bg(crate::ui::style::surface_raised(cx))
                     .border_b_1()
                     .border_color(cx.theme().border)
                     // "pod / container" (plus the context in a multi-context window) on

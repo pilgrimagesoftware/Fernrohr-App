@@ -8,11 +8,13 @@
 
 use crate::k8s::resource::events::EventSummary;
 use crate::k8s::resource::secret_value::{Reveal, RevealError};
+use crate::ui::style::{self, Tone};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 /// A status's color, decided by the status rather than looked up at render
@@ -24,29 +26,42 @@ pub enum BadgeTone {
     Good,
     /// Something to notice - not necessarily a failure.
     Warning,
+    /// A failure: the thing won't work as it is.
+    Bad,
     /// The cluster did not say either way.
     Unknown,
 }
 
-fn tone_color(tone: BadgeTone, cx: &App) -> Hsla {
-    let theme = cx.theme();
-    match tone {
-        BadgeTone::Good => theme.success,
-        BadgeTone::Warning => theme.warning,
-        BadgeTone::Unknown => theme.muted_foreground,
+impl From<BadgeTone> for Tone {
+    fn from(tone: BadgeTone) -> Self {
+        match tone {
+            BadgeTone::Good => Tone::Good,
+            BadgeTone::Warning => Tone::Warning,
+            BadgeTone::Bad => Tone::Bad,
+            BadgeTone::Unknown => Tone::Neutral,
+        }
     }
 }
 
-/// One field row: a fixed-width muted label, and the value beside it.
+/// A tone's colour: `ui::style`'s one status table.
+pub fn tone_color(tone: BadgeTone, cx: &App) -> Hsla {
+    style::status(tone.into(), cx)
+}
+
+/// One field row: a fixed-width label, quieter than its value (muted and a
+/// size down), and the value beside it.
 pub fn row(label: impl Into<SharedString>, value: impl IntoElement, cx: &App) -> AnyElement {
     div()
         .flex()
         .gap_3()
         .py_1()
+        .px_2()
+        .rounded_sm()
         .child(
             div()
                 .w(px(180.))
                 .flex_none()
+                .text_sm()
                 .text_color(cx.theme().muted_foreground)
                 .child(label.into()),
         )
@@ -58,16 +73,46 @@ pub fn row(label: impl Into<SharedString>, value: impl IntoElement, cx: &App) ->
         .into_any_element()
 }
 
+/// Rows with every other one on the stripe fill, so a long run of fields
+/// reads as rows rather than a block of text.
+pub fn striped(rows: impl IntoIterator<Item = AnyElement>, cx: &App) -> AnyElement {
+    let stripe = style::stripe(cx);
+    div()
+        .flex()
+        .flex_col()
+        .children(rows.into_iter().enumerate().map(|(ix, row)| {
+            let striped = ix % 2 == 1;
+            div()
+                .debug_selector(move || {
+                    format!(
+                        "detail-row-{ix}-{}",
+                        if striped { "stripe" } else { "plain" }
+                    )
+                })
+                .rounded_sm()
+                .when(striped, |this| this.bg(stripe))
+                .child(row)
+        }))
+        .into_any_element()
+}
+
 /// A heading above a group of rows, for views that stack sections rather
-/// than tab between them.
+/// than tab between them: an accent bar beside the title, in a heavier weight.
 pub fn section_heading(title: impl Into<SharedString>, cx: &App) -> AnyElement {
     div()
         .pt_3()
         .pb_1()
-        .border_b_1()
-        .border_color(cx.theme().border)
-        .font_weight(FontWeight::MEDIUM)
-        .child(title.into())
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .w(px(3.))
+                .h(px(14.))
+                .rounded_sm()
+                .bg(style::accent(cx)),
+        )
+        .child(div().font_weight(FontWeight::SEMIBOLD).child(title.into()))
         .into_any_element()
 }
 
@@ -172,10 +217,11 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
         .flex_col()
         .gap_2()
         .children(events.iter().map(|event| {
+            // A normal event's reason reads as plain text; only the others
+            // take a status colour.
             let reason_color = match event.tone {
                 BadgeTone::Good => theme.foreground,
-                BadgeTone::Warning => theme.warning,
-                BadgeTone::Unknown => theme.muted_foreground,
+                tone => tone_color(tone, cx),
             };
             div()
                 .flex()
@@ -183,6 +229,7 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
                 .gap_1()
                 .p_2()
                 .rounded_md()
+                .bg(style::surface_card(cx))
                 .border_1()
                 .border_color(theme.border)
                 .child(
@@ -278,3 +325,6 @@ pub fn secret_key_row(
         .children(value)
         .into_any_element()
 }
+
+#[cfg(test)]
+mod tests;

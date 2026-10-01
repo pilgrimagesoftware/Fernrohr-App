@@ -1,6 +1,8 @@
 //! A pod as a list row, and the view pipeline over rows: namespace scope, name filter and sort.
 
 use super::*;
+use crate::ui::style::Tone;
+use k8s_openapi::api::core::v1::PodStatus;
 
 /// The subset of a `Pod` a list row needs, computed fresh from the object at
 /// render time rather than stored separately - see design D2 on field
@@ -18,6 +20,63 @@ pub struct PodRow {
     /// Raw seconds behind `age`'s display string - kept separately because
     /// the display string ("9m" vs "10m") doesn't sort correctly as text.
     pub age_secs: i64,
+    /// How healthy the pod is, for the Status cell's colour ([`status_tone`]).
+    pub status_tone: Tone,
+    /// Whether its containers are ready, for the Ready cell's dot.
+    pub ready_tone: Tone,
+}
+
+/// Container waiting reasons that mean the pod won't run as it is - `kubectl`
+/// shows these in its STATUS column in place of the phase.
+pub(crate) const BAD_WAITING_REASONS: &[&str] = &[
+    "CrashLoopBackOff",
+    "ImagePullBackOff",
+    "ErrImagePull",
+    "Error",
+    "CreateContainerConfigError",
+    "CreateContainerError",
+    "InvalidImageName",
+    "RunContainerError",
+];
+
+/// A pod's health as a tone: `Failed`, or any container (init or main) waiting
+/// for a reason in [`BAD_WAITING_REASONS`], is bad; `Pending` is a warning;
+/// `Running` is good; `Succeeded` and anything unknown are neutral.
+pub fn status_tone(status: Option<&PodStatus>) -> Tone {
+    let Some(status) = status else {
+        return Tone::Neutral;
+    };
+    let stuck = status
+        .container_statuses
+        .iter()
+        .chain(status.init_container_statuses.iter())
+        .flatten()
+        .filter_map(|container| {
+            container
+                .state
+                .as_ref()?
+                .waiting
+                .as_ref()?
+                .reason
+                .as_deref()
+        })
+        .any(|reason| BAD_WAITING_REASONS.contains(&reason));
+    match status.phase.as_deref() {
+        _ if stuck => Tone::Bad,
+        Some("Failed") => Tone::Bad,
+        Some("Pending") => Tone::Warning,
+        Some("Running") => Tone::Good,
+        _ => Tone::Neutral,
+    }
+}
+
+/// All containers ready is good, some not is a warning, none at all neutral.
+pub(super) fn ready_tone(ready: usize, total: usize) -> Tone {
+    match (ready, total) {
+        (_, 0) => Tone::Neutral,
+        (ready, total) if ready == total => Tone::Good,
+        _ => Tone::Warning,
+    }
 }
 
 pub(super) fn uid(pod: &Pod) -> String {
@@ -69,6 +128,8 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
             .and_then(|spec| spec.node_name.clone())
             .unwrap_or_default(),
         age_secs,
+        status_tone: status_tone(status),
+        ready_tone: ready_tone(ready_count, total),
     }
 }
 

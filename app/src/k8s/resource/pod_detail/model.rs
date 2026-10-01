@@ -162,6 +162,9 @@ pub struct ContainerSummary {
     /// human string rather than the raw `ContainerState` union, since the
     /// panel only ever displays it, never branches on which variant it is.
     pub state: String,
+    /// `state`'s health: running is good, stuck (a waiting reason the Pods
+    /// table also counts as bad) or failed is bad, any other wait a warning.
+    pub state_tone: BadgeTone,
     pub ports: Vec<String>,
     pub requests: Vec<String>,
     pub limits: Vec<String>,

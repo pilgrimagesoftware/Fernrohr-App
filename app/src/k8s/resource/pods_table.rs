@@ -196,6 +196,7 @@ impl PodTableDelegate {
     /// The text `render_td` shows at `(row_ix, col_ix)` - a pure query so
     /// tests can exercise the same lookup `render_td` renders from without a
     /// GPUI `Window`/`Context`.
+    #[cfg(test)]
     pub(super) fn cell_text_at(&self, row_ix: usize, col_ix: usize) -> String {
         cell_text(&self.rows[row_ix].row, self.columns[col_ix])
     }
@@ -279,16 +280,41 @@ impl TableDelegate for PodTableDelegate {
         )
     }
 
+    /// Status in its tone's colour, Ready with a dot in its readiness tone,
+    /// and a non-zero restart count in the warning tone - the tones decided by
+    /// the row projection (`pods::rows`), mapped to colour by `ui::style`.
     fn render_td(
         &mut self,
         row_ix: usize,
         col_ix: usize,
         _: &mut Window,
-        _: &mut Context<TableState<Self>>,
+        cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        div()
-            .whitespace_nowrap()
-            .child(self.cell_text_at(row_ix, col_ix))
+        use crate::ui::style::{self, Tone};
+        let row = &self.rows[row_ix].row;
+        let column = self.columns[col_ix];
+        let text = cell_text(row, column);
+        let cell = div().whitespace_nowrap();
+        match column {
+            PodColumn::Status => cell
+                .text_color(style::status(row.status_tone, cx))
+                .child(text),
+            PodColumn::Ready => cell
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(
+                    div()
+                        .size(px(7.))
+                        .rounded_full()
+                        .bg(style::status(row.ready_tone, cx)),
+                )
+                .child(text),
+            PodColumn::Restarts if row.restarts > 0 => cell
+                .text_color(style::status(Tone::Warning, cx))
+                .child(text),
+            _ => cell.child(text),
+        }
     }
 
     fn move_column(

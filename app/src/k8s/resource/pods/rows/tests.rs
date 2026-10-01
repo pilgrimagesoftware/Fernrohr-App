@@ -115,3 +115,93 @@ fn age_sort_toggles_direction() {
     let names: Vec<_> = descending.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(names, vec!["oldest", "middle", "newest"]);
 }
+
+mod tones {
+    //! The projection's status and readiness tones - what the Pods table's
+    //! Status and Ready cells are coloured by.
+    use crate::k8s::resource::pods::rows::status_tone;
+    use crate::ui::style::Tone;
+    use k8s_openapi::api::core::v1::{
+        ContainerState, ContainerStateWaiting, ContainerStatus, PodStatus,
+    };
+
+    fn phase(phase: &str) -> PodStatus {
+        PodStatus {
+            phase: Some(phase.into()),
+            ..Default::default()
+        }
+    }
+
+    fn waiting(reason: &str) -> ContainerStatus {
+        ContainerStatus {
+            name: "app".into(),
+            state: Some(ContainerState {
+                waiting: Some(ContainerStateWaiting {
+                    reason: Some(reason.into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn each_phase_has_its_tone() {
+        assert_eq!(status_tone(Some(&phase("Running"))), Tone::Good);
+        assert_eq!(status_tone(Some(&phase("Pending"))), Tone::Warning);
+        assert_eq!(status_tone(Some(&phase("Failed"))), Tone::Bad);
+        assert_eq!(status_tone(Some(&phase("Succeeded"))), Tone::Neutral);
+        assert_eq!(status_tone(Some(&phase("Unknown"))), Tone::Neutral);
+        assert_eq!(status_tone(None), Tone::Neutral);
+    }
+
+    /// A running pod whose container is crash-looping, or a pending one that
+    /// can't pull its image, is bad whatever its phase says.
+    #[test]
+    fn a_stuck_container_is_bad() {
+        for (pod_phase, reason) in [
+            ("Running", "CrashLoopBackOff"),
+            ("Pending", "ImagePullBackOff"),
+            ("Pending", "ErrImagePull"),
+        ] {
+            let status = PodStatus {
+                container_statuses: Some(vec![waiting(reason)]),
+                ..phase(pod_phase)
+            };
+            assert_eq!(
+                status_tone(Some(&status)),
+                Tone::Bad,
+                "{pod_phase} + {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stuck_init_container_is_bad_too() {
+        let status = PodStatus {
+            init_container_statuses: Some(vec![waiting("CrashLoopBackOff")]),
+            ..phase("Pending")
+        };
+        assert_eq!(status_tone(Some(&status)), Tone::Bad);
+    }
+
+    /// Waiting on something ordinary - a container still being created - is
+    /// just pending.
+    #[test]
+    fn an_ordinary_wait_keeps_the_phase_tone() {
+        let status = PodStatus {
+            container_statuses: Some(vec![waiting("ContainerCreating")]),
+            ..phase("Pending")
+        };
+        assert_eq!(status_tone(Some(&status)), Tone::Warning);
+    }
+
+    #[test]
+    fn readiness_is_good_when_all_ready_and_a_warning_otherwise() {
+        use super::super::ready_tone;
+        assert_eq!(ready_tone(2, 2), Tone::Good);
+        assert_eq!(ready_tone(1, 2), Tone::Warning);
+        assert_eq!(ready_tone(0, 0), Tone::Neutral);
+    }
+}
