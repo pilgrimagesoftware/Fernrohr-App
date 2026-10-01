@@ -204,10 +204,11 @@ impl PodDetailPanel {
 
     /// Switches the active tab of the structured view.
     pub(super) fn set_active_tab(&mut self, section: DetailSection, cx: &mut Context<Self>) {
-        // Leaving the Configuration tab hides every revealed value: one
-        // doesn't sit on screen behind a tab switch.
+        // Leaving the Configuration tab hides every revealed value - one
+        // doesn't sit on screen behind a tab switch - and collapses every
+        // value, so the tab is shown again collapsed.
         if self.active_tab == DetailSection::Configuration && section != self.active_tab {
-            self.configuration.hide_all();
+            self.configuration.leave();
         }
         self.active_tab = section;
         if section == DetailSection::Configuration {

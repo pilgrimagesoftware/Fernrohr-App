@@ -28,3 +28,45 @@ fn rows_alternate_the_stripe(cx: &mut TestAppContext) {
         assert!(cx.debug_bounds(selector).is_some(), "row {ix} is {fill}");
     }
 }
+
+/// `pod-configuration-tab` 5.1: over 100 characters or more than one line is
+/// large, and the preview is the first line's first 20 characters.
+#[test]
+fn a_value_is_large_past_a_hundred_characters_or_one_line() {
+    use super::collapsible::preview;
+    assert_eq!(preview("debug"), None);
+    assert_eq!(
+        preview(&"a".repeat(100)),
+        None,
+        "100 characters is not large"
+    );
+    assert_eq!(
+        preview(&"a".repeat(101)).as_deref(),
+        Some(format!("{}…", "a".repeat(20)).as_str()),
+        "101 characters is large"
+    );
+    assert_eq!(
+        preview("a\nb").as_deref(),
+        Some("a…"),
+        "two short lines are large"
+    );
+    // Characters, not bytes: 100 two-byte characters still fit.
+    assert_eq!(preview(&"ü".repeat(100)), None);
+    assert_eq!(
+        preview(&"ü".repeat(101)).as_deref(),
+        Some(format!("{}…", "ü".repeat(20)).as_str())
+    );
+    // A trailing newline doesn't make a second line.
+    assert_eq!(preview("debug\n"), None);
+}
+
+/// `pod-configuration-tab` 5.2: a revealed Secret value is shown in full,
+/// however long - Secret values never collapse.
+#[test]
+fn a_revealed_secret_value_is_shown_in_full() {
+    use crate::k8s::resource::secret_value::{Reveal, SecretValue};
+    let long = "line-one-is-well-over-twenty-characters\nline-two";
+    let text = super::revealed_text(&Reveal::Shown(SecretValue::new(long.as_bytes().to_vec())));
+    assert_eq!(text, long);
+    assert!(!text.contains('…'));
+}

@@ -1,12 +1,14 @@
-//! Drawing the Configuration tab: one card per referenced ConfigMap or Secret
-//! - its link, its uses, its contents - with a reveal button per Secret key.
+//! Drawing the Configuration tab: one card per referenced ConfigMap or
+//! Secret, with its link, its uses and its contents, a reveal button per
+//! Secret key, and an expand button per large ConfigMap value.
 
 use super::state::CardContents;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
-use crate::ui::detail;
+use crate::ui::detail::{self, Collapsible};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
+use std::rc::Rc;
 
 /// The id of the reveal button for key `index` of card `card` - what a click
 /// targets, and what a test finds the button by.
@@ -15,6 +17,25 @@ pub(in crate::k8s::resource::pod_detail) fn reveal_button_id(
     index: usize,
 ) -> ElementId {
     ElementId::NamedInteger(format!("reveal-{card}").into(), index as u64)
+}
+
+/// The id of the expand button for ConfigMap key `index` of card `card`.
+pub(in crate::k8s::resource::pod_detail) fn expand_button_id(
+    card: usize,
+    index: usize,
+) -> ElementId {
+    ElementId::NamedInteger(format!("expand-{card}").into(), index as u64)
+}
+
+/// The id of ConfigMap key `index` of card `card`'s label.
+pub(in crate::k8s::resource::pod_detail) fn key_label_id(card: usize, index: usize) -> ElementId {
+    ElementId::NamedInteger(format!("key-{card}").into(), index as u64)
+}
+
+/// The id of the drawn value of key `index` of card `card` - a ConfigMap value,
+/// or a Secret value while revealed.
+pub(in crate::k8s::resource::pod_detail) fn value_id(card: usize, index: usize) -> ElementId {
+    ElementId::NamedInteger(format!("value-{card}").into(), index as u64)
 }
 
 impl PodDetailPanel {
@@ -102,7 +123,13 @@ impl PodDetailPanel {
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .child(detail::key_values(data, cx))
+                    .children(data.iter().enumerate().map(|(index, (key, value))| {
+                        self.collapsible(card, index, target, key, cx).render(
+                            key,
+                            value.clone(),
+                            cx,
+                        )
+                    }))
                     .children(binary.iter().map(|(key, size)| {
                         div()
                             .text_sm()
@@ -143,7 +170,7 @@ impl PodDetailPanel {
             size,
             self.configuration.reveal_of(secret, key),
             reveal_button_id(card, index),
-            ElementId::NamedInteger(format!("revealed-{card}").into(), index as u64),
+            value_id(card, index),
             move |_window, cx| {
                 let _ = this.update(cx, |this: &mut Self, cx| {
                     this.toggle_reveal(target.clone(), owned_key.clone(), cx)
@@ -151,5 +178,30 @@ impl PodDetailPanel {
             },
             cx,
         )
+    }
+
+    /// ConfigMap value `index` of card `card`'s element and expand control,
+    /// wired to this panel's expansion state.
+    fn collapsible(
+        &self,
+        card: usize,
+        index: usize,
+        target: &ObjectRef,
+        key: &str,
+        cx: &Context<Self>,
+    ) -> Collapsible {
+        let this = cx.weak_entity();
+        let (target_owned, owned_key) = (target.clone(), key.to_string());
+        Collapsible {
+            key_id: key_label_id(card, index),
+            value_id: value_id(card, index),
+            toggle_id: expand_button_id(card, index),
+            expanded: self.configuration.is_expanded(target, key),
+            on_toggle: Rc::new(move |_window, cx| {
+                let _ = this.update(cx, |this: &mut Self, cx| {
+                    this.toggle_expanded(target_owned.clone(), owned_key.clone(), cx)
+                });
+            }),
+        }
     }
 }
