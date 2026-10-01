@@ -75,11 +75,18 @@ pub struct ResourcePanel {
     /// The row the keyboard cursor is on and the last click landed on -
     /// `.claude/rules/keyboard-first.md`'s "one selection model", distinct
     /// from `selected` (the window's *open* panel): a row can be highlighted
-    /// without being open yet, and Enter opens whatever is highlighted.
-    highlighted: Option<NavTarget>,
+    /// without being open yet, and Enter opens whatever is highlighted. Also
+    /// stops on Custom Resources subgroup headers, which are not rows.
+    highlighted: Option<keyboard::Cursor>,
     /// Categories the user collapsed, this window only. Section 2.3: default
     /// expanded, never written to the preference file.
     collapsed: HashSet<Category>,
+    /// API groups the user expanded inside Custom Resources
+    /// (`custom-resource-grouping`), this window only and never saved. Unlike
+    /// `collapsed` it tracks the *open* state: subgroups start collapsed, so an
+    /// empty set is the default and a group discovery adds later is collapsed
+    /// with no extra work.
+    expanded_subgroups: HashSet<String>,
     /// The bottom-pinned filter box's text field (section 3.1).
     filter_input: Entity<InputState>,
     focus_handle: FocusHandle,
@@ -167,6 +174,7 @@ impl ResourcePanel {
             selected: None,
             highlighted: None,
             collapsed: HashSet::new(),
+            expanded_subgroups: HashSet::new(),
             filter_input,
             focus_handle: cx.focus_handle(),
             _connection_observation: observation,
@@ -242,10 +250,15 @@ impl ResourcePanel {
     /// Moves the keyboard/click cursor to `target` without opening anything -
     /// what a single click and Up/Down both do (section 4.1's "one selection").
     fn set_highlighted(&mut self, target: Option<NavTarget>, cx: &mut Context<Self>) {
-        if self.highlighted == target {
+        self.set_cursor(target.map(keyboard::Cursor::Row), cx);
+    }
+
+    /// [`Self::set_highlighted`] for any stop, a subgroup header included.
+    fn set_cursor(&mut self, cursor: Option<keyboard::Cursor>, cx: &mut Context<Self>) {
+        if self.highlighted == cursor {
             return;
         }
-        self.highlighted = target;
+        self.highlighted = cursor;
         cx.notify();
     }
 
@@ -260,11 +273,22 @@ impl ResourcePanel {
         }
     }
 
-    /// The currently highlighted row, if any - what a keystroke test asserts
-    /// moved.
-    #[cfg(test)]
+    /// The currently highlighted row, if any: what `render` marks, and what
+    /// a keystroke test asserts moved. `None` on a subgroup header.
     pub(crate) fn highlighted(&self) -> Option<&NavTarget> {
-        self.highlighted.as_ref()
+        match &self.highlighted {
+            Some(keyboard::Cursor::Row(target)) => Some(target),
+            _ => None,
+        }
+    }
+
+    /// The API group whose subgroup header the cursor is on, if it is on one.
+    #[cfg(test)]
+    pub(crate) fn highlighted_subgroup(&self) -> Option<&str> {
+        match &self.highlighted {
+            Some(keyboard::Cursor::Subgroup(group)) => Some(group),
+            _ => None,
+        }
     }
 
     /// Whether `kind`'s own section is collapsed right now - the stored
@@ -292,23 +316,25 @@ impl ResourcePanel {
     /// single source both `render` and the keyboard handlers read, so Up/Down
     /// can never step through a row `render` would not draw.
     fn visible_sections(&self, cx: &App) -> Vec<section::VisibleSection> {
-        section::visible_sections(self.loaded_kinds(), &self.collapsed, &self.filter_text(cx))
+        section::visible_sections(
+            self.loaded_kinds(),
+            &self.collapsed,
+            &self.expanded_subgroups,
+            &self.filter_text(cx),
+        )
     }
 
-    /// The kind `highlighted` points at, or `None` when nothing is
-    /// highlighted - every row this panel lists is a [`NavTarget::Kind`], so
-    /// this is the one match arm that can ever be `Some`.
-    fn highlighted_kind(&self) -> Option<DiscoveredKind> {
+    /// The highlighted row's own section - what Left/Right collapse or
+    /// expand. A subgroup header belongs to Custom Resources; every row this
+    /// panel lists is a [`NavTarget::Kind`], so no other row has a section.
+    fn highlighted_category(&self) -> Option<Category> {
         match &self.highlighted {
-            Some(NavTarget::Kind(kind)) => Some(kind.clone()),
+            Some(keyboard::Cursor::Row(NavTarget::Kind(kind))) => {
+                Some(Category::for_gvk(&kind.gvk.group, &kind.plural))
+            }
+            Some(keyboard::Cursor::Subgroup(_)) => Some(Category::CustomResources),
             _ => None,
         }
-    }
-
-    /// The highlighted row's own section - what Left/Right collapse or expand.
-    fn highlighted_category(&self) -> Option<Category> {
-        self.highlighted_kind()
-            .map(|kind| Category::for_gvk(&kind.gvk.group, &kind.plural))
     }
 
     /// Flips `category`'s collapsed state - the section header's click route,
@@ -317,6 +343,34 @@ impl ResourcePanel {
         if !self.collapsed.remove(&category) {
             self.collapsed.insert(category);
         }
+        cx.notify();
+    }
+
+    /// Flips the API-group subgroup `group`'s collapsed state inside Custom
+    /// Resources - its header's click route (`custom-resource-grouping` 2.2).
+    fn toggle_subgroup(&mut self, group: &str, cx: &mut Context<Self>) {
+        if !self.expanded_subgroups.remove(group) {
+            self.expanded_subgroups.insert(group.to_string());
+        }
+        cx.notify();
+    }
+
+    /// Collapses (`expanded: false`) or expands every Custom Resources
+    /// subgroup at once - collapse/expand all (`custom-resource-grouping`
+    /// 6.2). Expanding fills the set with the groups loaded now; a group
+    /// discovered later still starts collapsed. Top-level sections are left
+    /// alone.
+    fn set_all_subgroups(&mut self, expanded: bool, cx: &mut Context<Self>) {
+        self.expanded_subgroups = if expanded {
+            section::group_kinds(self.loaded_kinds())
+                .into_iter()
+                .filter(|section| section.category == Category::CustomResources)
+                .flat_map(|section| section::custom_subgroups(&section.kinds))
+                .map(|subgroup| subgroup.group)
+                .collect()
+        } else {
+            HashSet::new()
+        };
         cx.notify();
     }
 
@@ -390,7 +444,7 @@ impl ResourcePanel {
     /// highlighted, so opening a row from the context menu leaves the
     /// keyboard cursor pointing at the panel it just opened.
     fn request_open(&mut self, target: NavTarget, cx: &mut Context<Self>) {
-        self.highlighted = Some(target.clone());
+        self.highlighted = Some(keyboard::Cursor::Row(target.clone()));
         cx.emit(ResourceEvent::Open(target));
         cx.notify();
     }

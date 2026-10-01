@@ -9,8 +9,8 @@
 //! itself, so `keymap::bindings` picks it up automatically (see that file's
 //! `register_commands`).
 
-use super::section::VisibleSection;
-use crate::k8s::cluster::discovery::DiscoveredKind;
+use super::section::{Navigable, VisibleSection};
+use crate::ui::nav::NavTarget;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
@@ -22,7 +22,10 @@ actions!(
         SelectPrevious,
         OpenSelected,
         CollapseSection,
-        ExpandSection
+        ExpandSection,
+        ToggleSubgroup,
+        CollapseAllSubgroups,
+        ExpandAllSubgroups
     ]
 );
 
@@ -35,6 +38,14 @@ const UP_KEY: &str = "up";
 pub(super) const ENTER_KEY: &str = "enter";
 pub(super) const LEFT_KEY: &str = "left";
 pub(super) const RIGHT_KEY: &str = "right";
+pub(super) const SPACE_KEY: &str = "space";
+pub(super) const SHIFT_LEFT_KEY: &str = "shift-left";
+pub(super) const SHIFT_RIGHT_KEY: &str = "shift-right";
+
+/// [`PANEL_KEY_CONTEXT`] minus the filter box: Space types a space there, so
+/// a key that is also text binds here instead. GPUI's `!` checks the whole
+/// focus path, so this stops matching once the filter's `Input` is focused.
+pub(super) const LIST_KEY_CONTEXT: &str = "ResourcePanel && !Input";
 
 /// The cursor keys, bound directly in the panel's key context. Moving a selection
 /// one row isn't something anyone picks from a palette, so these are the one kind
@@ -48,31 +59,47 @@ pub(super) fn panel_bindings() -> [KeyBinding; 2] {
     ]
 }
 
-/// Every kind currently visible, in the order rows render: fixed section
-/// order, then discovery order within a section. What Up/Down step through
-/// and what Enter opens - a collapsed or filtered-out section contributes
+/// Where the keyboard cursor sits: on a row the panel can open, or on a
+/// Custom Resources subgroup header, which collapses and expands but opens
+/// nothing - so it is not a [`NavTarget`].
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum Cursor {
+    Row(NavTarget),
+    /// The subgroup header for this API group (`""` for core).
+    Subgroup(String),
+}
+
+impl From<Navigable<'_>> for Cursor {
+    fn from(item: Navigable<'_>) -> Self {
+        match item {
+            Navigable::Subgroup(group) => Cursor::Subgroup(group.to_string()),
+            Navigable::Kind(kind) => Cursor::Row(NavTarget::Kind(kind.clone())),
+        }
+    }
+}
+
+/// Every stop currently visible, in the order it is drawn: fixed section
+/// order, then each section's [`VisibleSection::navigable`] order. What
+/// Up/Down step through - a collapsed or filtered-out section contributes
 /// nothing, so its rows cannot be reached or opened until it is visible
 /// again.
-pub(super) fn visible_kinds(sections: &[VisibleSection]) -> Vec<&DiscoveredKind> {
+pub(super) fn visible_items(sections: &[VisibleSection]) -> Vec<Cursor> {
     sections
         .iter()
-        .filter(|section| section.expanded)
-        .flat_map(|section| section.matches.iter())
+        .flat_map(VisibleSection::navigable)
+        .map(Cursor::from)
         .collect()
 }
 
-/// The kind Down should select: the one after `current` in `visible`, the
-/// first row when nothing is selected (or the current selection is no longer
-/// visible), or `current` unchanged when it is already the last row - Down
+/// The stop Down should select: the one after `current` in `visible`, the
+/// first when nothing is selected (or the current selection is no longer
+/// visible), or `current` unchanged when it is already the last - Down
 /// never wraps.
-pub(super) fn next(
-    visible: &[&DiscoveredKind],
-    current: Option<&DiscoveredKind>,
-) -> Option<DiscoveredKind> {
+pub(super) fn next(visible: &[Cursor], current: Option<&Cursor>) -> Option<Cursor> {
     if visible.is_empty() {
         return None;
     }
-    let index = current.and_then(|current| visible.iter().position(|kind| *kind == current));
+    let index = current.and_then(|current| visible.iter().position(|item| item == current));
     let next_index = match index {
         Some(index) => (index + 1).min(visible.len() - 1),
         None => 0,
@@ -80,17 +107,14 @@ pub(super) fn next(
     Some(visible[next_index].clone())
 }
 
-/// The kind Up should select: the one before `current` in `visible`, the
-/// first row when nothing is selected (or it is no longer visible), or
-/// `current` unchanged when it is already the first row - Up never wraps.
-pub(super) fn previous(
-    visible: &[&DiscoveredKind],
-    current: Option<&DiscoveredKind>,
-) -> Option<DiscoveredKind> {
+/// The stop Up should select: the one before `current` in `visible`, the
+/// first when nothing is selected (or it is no longer visible), or
+/// `current` unchanged when it is already the first - Up never wraps.
+pub(super) fn previous(visible: &[Cursor], current: Option<&Cursor>) -> Option<Cursor> {
     if visible.is_empty() {
         return None;
     }
-    let index = current.and_then(|current| visible.iter().position(|kind| *kind == current));
+    let index = current.and_then(|current| visible.iter().position(|item| item == current));
     let previous_index = match index {
         Some(index) => index.saturating_sub(1),
         None => 0,
@@ -130,6 +154,19 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
             Kbd::binding_for_action(&ExpandSection, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| Kbd::new(keystroke(RIGHT_KEY))),
         );
+    let toggle = Kbd::binding_for_action(&ToggleSubgroup, Some(PANEL_KEY_CONTEXT), window)
+        .unwrap_or_else(|| Kbd::new(keystroke(SPACE_KEY)));
+    let all_groups = div()
+        .flex()
+        .gap_0p5()
+        .child(
+            Kbd::binding_for_action(&CollapseAllSubgroups, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| Kbd::new(keystroke(SHIFT_LEFT_KEY))),
+        )
+        .child(
+            Kbd::binding_for_action(&ExpandAllSubgroups, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| Kbd::new(keystroke(SHIFT_RIGHT_KEY))),
+        );
     let enter = Kbd::binding_for_action(&OpenSelected, Some(PANEL_KEY_CONTEXT), window)
         .unwrap_or_else(|| Kbd::new(keystroke(ENTER_KEY)));
     let filter = Kbd::binding_for_action(
@@ -148,6 +185,8 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
         .child(hint(updown.into_any_element(), "Select"))
         .child(hint(enter.into_any_element(), "Open"))
         .child(hint(leftright.into_any_element(), "Collapse/expand"))
+        .child(hint(toggle.into_any_element(), "Toggle group"))
+        .child(hint(all_groups.into_any_element(), "All groups"))
         .child(hint(filter.into_any_element(), "Filter"))
 }
 

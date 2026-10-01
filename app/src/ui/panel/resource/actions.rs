@@ -10,8 +10,10 @@
 //! or menu presence, so they stay raw bindings in [`super::keyboard`] instead
 //! (the same split `pods::panel_bindings` documents).
 
+use super::category::Category;
 use super::keyboard::{
-    CollapseSection, ExpandSection, OpenSelected, PANEL_KEY_CONTEXT, SelectNext, SelectPrevious,
+    CollapseAllSubgroups, CollapseSection, Cursor, ExpandAllSubgroups, ExpandSection,
+    LIST_KEY_CONTEXT, OpenSelected, PANEL_KEY_CONTEXT, SelectNext, SelectPrevious, ToggleSubgroup,
 };
 use super::{ResourcePanel, keyboard};
 use crate::command::{Command, CommandRegistry};
@@ -23,6 +25,7 @@ actions!(resource_panel, [FocusFilter, FocusResources]);
 
 pub(super) const FOCUS_FILTER_COMMAND_ID: &str = "resource.focus_filter";
 pub(super) const FOCUS_FILTER_DEFAULT_BINDING: &str = "/";
+pub(super) const TOGGLE_SUBGROUP_COMMAND_ID: &str = "resource.toggle_subgroup";
 pub(super) const FOCUS_RESOURCES_COMMAND_ID: &str = "resource.focus";
 pub(super) const FOCUS_RESOURCES_DEFAULT_BINDING: &str = "cmd-0";
 
@@ -70,6 +73,37 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
+    // Space and Shift-arrows are text or text selection in the filter box, so
+    // these bind in `LIST_KEY_CONTEXT` rather than the whole panel.
+    for (id, title, key, action) in [
+        (
+            TOGGLE_SUBGROUP_COMMAND_ID,
+            "Toggle Resource Group",
+            keyboard::SPACE_KEY,
+            Box::new(ToggleSubgroup) as Box<dyn gpui_kit::Action>,
+        ),
+        (
+            "resource.collapse_all_subgroups",
+            "Collapse All Resource Groups",
+            keyboard::SHIFT_LEFT_KEY,
+            Box::new(CollapseAllSubgroups),
+        ),
+        (
+            "resource.expand_all_subgroups",
+            "Expand All Resource Groups",
+            keyboard::SHIFT_RIGHT_KEY,
+            Box::new(ExpandAllSubgroups),
+        ),
+    ] {
+        registry.register(Command {
+            id,
+            title,
+            default_binding: key,
+            context: Some(LIST_KEY_CONTEXT),
+            action,
+            menu: None,
+        });
+    }
     // The keyboard's way *into* the panel: without it, reaching the list took a
     // click, which keyboard-first.md rules out. Global, so it works from any panel.
     registry.register(Command {
@@ -92,10 +126,9 @@ impl ResourcePanel {
         cx: &mut Context<Self>,
     ) {
         let sections = self.visible_sections(cx);
-        let visible = keyboard::visible_kinds(&sections);
-        let current = self.highlighted_kind();
-        if let Some(next) = keyboard::next(&visible, current.as_ref()) {
-            self.set_highlighted(Some(NavTarget::Kind(next)), cx);
+        let visible = keyboard::visible_items(&sections);
+        if let Some(next) = keyboard::next(&visible, self.highlighted.as_ref()) {
+            self.set_cursor(Some(next), cx);
         }
     }
 
@@ -107,22 +140,22 @@ impl ResourcePanel {
         cx: &mut Context<Self>,
     ) {
         let sections = self.visible_sections(cx);
-        let visible = keyboard::visible_kinds(&sections);
-        let current = self.highlighted_kind();
-        if let Some(previous) = keyboard::previous(&visible, current.as_ref()) {
-            self.set_highlighted(Some(NavTarget::Kind(previous)), cx);
+        let visible = keyboard::visible_items(&sections);
+        if let Some(previous) = keyboard::previous(&visible, self.highlighted.as_ref()) {
+            self.set_cursor(Some(previous), cx);
         }
     }
 
     /// Enter: opens the highlighted row exactly as a double-click does - both
-    /// call [`ResourcePanel::request_open`]. A no-op with nothing highlighted.
+    /// call [`ResourcePanel::request_open`]. A no-op with nothing highlighted, or
+    /// with a subgroup header highlighted - a header opens nothing.
     pub(super) fn on_action_open_selected(
         &mut self,
         _: &OpenSelected,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(target) = self.highlighted.clone() {
+        if let Some(Cursor::Row(target)) = self.highlighted.clone() {
             self.request_open(target, cx);
         }
     }
@@ -152,6 +185,67 @@ impl ResourcePanel {
             self.collapsed.remove(&category);
             cx.notify();
         }
+    }
+
+    /// The Custom Resources subgroup the cursor is in: the header it is on,
+    /// or the group of the kind it is on. `None` outside Custom Resources,
+    /// which has no subgroups.
+    fn cursor_subgroup(&self) -> Option<String> {
+        match &self.highlighted {
+            Some(Cursor::Subgroup(group)) => Some(group.clone()),
+            Some(Cursor::Row(NavTarget::Kind(kind)))
+                if self.highlighted_category() == Some(Category::CustomResources) =>
+            {
+                Some(kind.gvk.group.clone())
+            }
+            _ => None,
+        }
+    }
+
+    /// Space: collapses or expands the Custom Resources subgroup the cursor
+    /// is in - on its header or one of its kinds. Collapsing moves the cursor
+    /// to the header, since the kind it was on is no longer drawn. A no-op
+    /// outside Custom Resources.
+    pub(super) fn on_action_toggle_subgroup(
+        &mut self,
+        _: &ToggleSubgroup,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(group) = self.cursor_subgroup() else {
+            return;
+        };
+        self.toggle_subgroup(&group, cx);
+        if !self.expanded_subgroups.contains(&group) {
+            self.set_cursor(Some(Cursor::Subgroup(group)), cx);
+        }
+    }
+
+    /// Shift-Left: collapses every Custom Resources subgroup. A cursor on one
+    /// of their kinds moves to that kind's subgroup header, the same as Space
+    /// collapsing the one subgroup.
+    pub(super) fn on_action_collapse_all_subgroups(
+        &mut self,
+        _: &CollapseAllSubgroups,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let group = self.cursor_subgroup();
+        self.set_all_subgroups(false, cx);
+        if let Some(group) = group {
+            self.set_cursor(Some(Cursor::Subgroup(group)), cx);
+        }
+    }
+
+    /// Shift-Right: expands every Custom Resources subgroup. The cursor stays
+    /// put - whatever it was on is still drawn.
+    pub(super) fn on_action_expand_all_subgroups(
+        &mut self,
+        _: &ExpandAllSubgroups,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_all_subgroups(true, cx);
     }
 
     /// `/`: focuses the filter box. Registered as a `Command` rather than a
