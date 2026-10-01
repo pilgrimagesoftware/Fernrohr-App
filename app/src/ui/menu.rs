@@ -38,7 +38,7 @@ pub fn init(registry: &CommandRegistry, cx: &mut App) {
     cx.on_action(|_: &CloseWindow, cx: &mut App| {
         if let Some(window) = cx.active_window() {
             let _ = window.update(cx, |_, window, cx| {
-                crate::util::shell::close_window(window, cx)
+                crate::util::shell::close_tab_or_window(window, cx)
             });
         }
     });

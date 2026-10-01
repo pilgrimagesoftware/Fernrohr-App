@@ -86,9 +86,27 @@ pub(crate) fn disconnect_confirmation_body(
     body
 }
 
+/// `Cmd-W`'s confirmation body when closing the window would tear down a live tunnel
+/// on one or more of its contexts (`per-tab-close-button` section 2.4) - named the
+/// same way [`disconnect_confirmation_body`] names panels, so the two dialogs read
+/// consistently. Only called when `active_tunnel_contexts` is non-empty.
+pub(crate) fn close_window_confirmation_body(active_tunnel_contexts: &[String]) -> String {
+    match active_tunnel_contexts {
+        [] => String::new(),
+        [one] => format!("{one}'s tunnel will disconnect."),
+        many => format!(
+            "These contexts' tunnels will disconnect: {}.",
+            many.join(", ")
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{contexts_after_disconnect, disconnect_confirmation_body, dock_layout_key};
+    use super::{
+        close_window_confirmation_body, contexts_after_disconnect, disconnect_confirmation_body,
+        dock_layout_key,
+    };
 
     #[test]
     fn a_single_context_keys_by_its_bare_name() {
@@ -175,6 +193,22 @@ mod tests {
             disconnect_confirmation_body("greedygoat", 2, 3),
             "2 open panels for greedygoat will close. \
              greedygoat stays connected in 3 other windows."
+        );
+    }
+
+    #[test]
+    fn close_confirmation_names_a_single_context() {
+        assert_eq!(
+            close_window_confirmation_body(&["carefulcrab".to_string()]),
+            "carefulcrab's tunnel will disconnect."
+        );
+    }
+
+    #[test]
+    fn close_confirmation_names_several_contexts() {
+        assert_eq!(
+            close_window_confirmation_body(&["a".to_string(), "b".to_string()]),
+            "These contexts' tunnels will disconnect: a, b."
         );
     }
 }

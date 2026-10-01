@@ -2,6 +2,7 @@ use super::connection::{ClusterConnection, ConnectionState};
 use super::context_health::ContextHealth;
 use super::health::{self, HealthTransition};
 use super::watch_registry::{PauseReason, WatchRegistry};
+use crate::forward::managed::ForwardState;
 use crate::k8s::resource::pods::{PodsTable, watch_all_namespaces};
 use gpui_kit::{App, AppContext as _, Entity, Global, WindowId};
 use kube::Client;
@@ -381,6 +382,23 @@ impl ClusterRegistry {
         ContextHealth::Connected
     }
 
+    /// Whether `context_name`'s bound forward, if it has one, is currently `Up` or
+    /// `Reconnecting` - `Cmd-W`'s test for whether closing this window would tear down
+    /// a live tunnel. `false` for an unbound context, one with no session yet, or one
+    /// whose forward never came up.
+    pub fn has_active_tunnel(cx: &App, context_name: &str) -> bool {
+        let Some(session) = cx
+            .try_global::<Self>()
+            .and_then(|registry| registry.sessions.get(context_name))
+        else {
+            return false;
+        };
+        let Some(state) = session.connection.read(cx).forward_state() else {
+            return false;
+        };
+        is_tunnel_active(*state.borrow())
+    }
+
     /// Unsubscribes a panel from `context_name`'s shared Pods watch, tearing it down on
     /// the 1-to-0 transition.
     pub fn unsubscribe_pods(cx: &mut App, context_name: &str) {
@@ -396,11 +414,50 @@ impl ClusterRegistry {
     }
 }
 
+/// Whether a forward's state counts as "actively tunneling" for `Cmd-W`'s
+/// tunnel-teardown warning - up, or reconnecting after having been up (still worth
+/// warning about, since traffic was flowing through it a moment ago). Pulled out of
+/// [`ClusterRegistry::has_active_tunnel`] as a plain value so it's testable without a
+/// session, a connection, or a real forward.
+fn is_tunnel_active(state: ForwardState) -> bool {
+    matches!(state, ForwardState::Up | ForwardState::Reconnecting)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use gpui_kit::TestAppContext;
     use kube::Config;
+
+    #[test]
+    fn tunnel_is_active_up_or_reconnecting_only() {
+        assert!(is_tunnel_active(ForwardState::Up));
+        assert!(is_tunnel_active(ForwardState::Reconnecting));
+        assert!(!is_tunnel_active(ForwardState::Connecting));
+        assert!(!is_tunnel_active(ForwardState::Disconnected));
+    }
+
+    #[gpui_kit::test]
+    async fn has_active_tunnel_is_false_with_no_session_or_no_bound_forward(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+        cx.update(crate::runtime::init);
+
+        assert!(
+            !cx.update(|cx| ClusterRegistry::has_active_tunnel(cx, "never-seen")),
+            "a context with no session has no tunnel to warn about"
+        );
+
+        let client = test_client(cx);
+        cx.update(|cx| {
+            ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connected(client))
+        });
+        assert!(
+            !cx.update(|cx| ClusterRegistry::has_active_tunnel(cx, "kind-dev")),
+            "an unbound context's connection has no forward at all"
+        );
+    }
 
     fn test_client(cx: &mut TestAppContext) -> Client {
         let handle = cx.update(|cx| crate::runtime::handle(cx));

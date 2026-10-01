@@ -4,9 +4,9 @@
 use super::{
     ClosedWindowLayouts, MainWindow, NavTarget, OpenPanel, OpenedPanel, PanelDescriptor, PanelKey,
     SET_CONTEXT_TUNNEL_COMMAND_ID, SavedDockLayouts, ShowLogs, ShowPodDetail, ToggleCommandPalette,
-    WindowLayout, WindowMode, WorkspaceConfig, close_window, config, init, open_saved_or_default,
-    open_window, register_commands, restorable_panels, restored_contexts, restored_resource_width,
-    save, watch_picker, write_context_tunnel,
+    WindowLayout, WindowMode, WorkspaceConfig, close_tab_or_window, close_window, config, init,
+    open_saved_or_default, open_window, register_commands, restorable_panels, restored_contexts,
+    restored_resource_width, save, watch_picker, write_context_tunnel,
 };
 use crate::command::CommandRegistry;
 use crate::config::tunnels::{TunnelAuth, TunnelConfig};
@@ -2130,6 +2130,68 @@ async fn the_focus_resources_key_focuses_the_resource_panel(cx: &mut TestAppCont
     assert!(
         focused,
         "the Focus Resources key puts focus on the Resource panel"
+    );
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}
+
+/// `per-tab-close-button` section 2.5: `Cmd-W`'s routing (`close_tab_or_window`),
+/// called directly rather than through `simulate_keystrokes` - the latter already
+/// holds the target window's own update scope while delivering the keystroke, and
+/// `CloseWindow`'s handler opens a second, nested one to reach this same function
+/// (`ui/menu.rs::init`'s `cx.active_window()` + `window.update`), which the test
+/// platform's re-entrancy guard rejects even though real keystroke delivery does
+/// not nest this way. `platform_items_have_their_standard_shortcuts` (`ui/menu.rs`)
+/// already proves `Cmd-W` reaches this handler; this test proves the handler's own
+/// decision (close the window) for the no-panel-open branch.
+///
+/// The has-open-panel branch (`ClosePanel` dispatch) is not covered here: reaching
+/// it needs a `Root`-wrapped test window (`close_tab_or_window`'s own
+/// `window.root::<Root>()` check) with the newly opened panel actually focused
+/// inside a painted render tree, and this codebase has no existing test that
+/// reaches that combination (`window.dispatch_action` only matches handlers a real
+/// paint pass registered). Verified manually instead: opening a second panel and
+/// pressing Cmd-W closes only the active tab, leaving the other panel and the
+/// window open - the same `ClosePanel` the ellipsis menu's "Close" item already
+/// dispatches via `window.dispatch_action`, just reachable without a click now.
+///
+/// With no panel open and no active tunnel, it closes the window directly, with no
+/// confirmation - unchanged from today's `CloseWindow` behavior. The confirm-dialog
+/// branch (an active tunnel) is covered at the pure-logic level instead
+/// (`context_lifecycle::close_window_confirmation_body`'s own tests,
+/// `ClusterRegistry::has_active_tunnel`'s), the same split `context_bar/tests.rs`
+/// already uses for the analogous Disconnect confirmation - reaching
+/// `ForwardState::Up` here would need a real, reachable SSH bastion.
+#[gpui_kit::test]
+async fn cmd_w_routing_closes_the_window_when_no_panel_is_open_and_no_tunnel_is_active(
+    cx: &mut TestAppContext,
+) {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+    });
+    let window = cx.add_window(|window, cx| MainWindow::test_picker_window(window, cx));
+    cx.run_until_parked();
+
+    let windows_before = cx.update(|cx| cx.windows().len());
+
+    window
+        .update(cx, |_main_window, window, cx| {
+            close_tab_or_window(window, cx);
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    let windows_after = cx.update(|cx| cx.windows().len());
+    assert_eq!(
+        windows_after,
+        windows_before - 1,
+        "Cmd-W with no panel open and no active tunnel closes the window with no dialog"
     );
 
     let _ = std::fs::remove_file(&path);

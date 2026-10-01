@@ -19,7 +19,8 @@ use crate::ui::tunnels;
 use crate::util::context_lifecycle;
 use crate::util::paths;
 use gpui_kit::component::Root;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
+use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::dock::{
     DockArea, DockEvent, DockPlacement, DockSkin, PanelId, PanelInfo, PanelState,
 };
@@ -291,6 +292,75 @@ pub(crate) fn window_context_count(window: &mut Window, cx: &App) -> usize {
         return 1;
     };
     main_window.read(cx).contexts().len().max(1)
+}
+
+/// `Cmd-W`: closes `window`'s active tab (`ClosePanel`) if its dock has one open,
+/// otherwise closes the window itself - with a confirmation first when closing would
+/// tear down a live tunnel on one of the window's contexts. Non-`MainWindow`s (About,
+/// Tunnels-manage) have no dock and no contexts, so they fall straight through to an
+/// unconfirmed [`close_window`], same as today.
+pub(crate) fn close_tab_or_window(window: &mut Window, cx: &mut App) {
+    use gpui_kit::component::dock::ClosePanel;
+
+    let Some(Some(root)) = window.root::<Root>() else {
+        close_window(window, cx);
+        return;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        close_window(window, cx);
+        return;
+    };
+    if main_window.read(cx).has_open_panel(cx) {
+        window.dispatch_action(Box::new(ClosePanel), cx);
+        return;
+    }
+    let active_tunnels: Vec<String> = main_window
+        .read(cx)
+        .contexts()
+        .into_iter()
+        .filter(|context_name| ClusterRegistry::has_active_tunnel(cx, context_name))
+        .collect();
+    if active_tunnels.is_empty() {
+        close_window(window, cx);
+        return;
+    }
+    confirm_close_window(active_tunnels, window, cx);
+}
+
+/// The confirm dialog `close_tab_or_window` opens before tearing down a live tunnel -
+/// mirrors `context_bar::open_disconnect_dialog`'s Cancel/confirm footer.
+fn confirm_close_window(active_tunnels: Vec<String>, window: &mut Window, cx: &mut App) {
+    let body = context_lifecycle::close_window_confirmation_body(&active_tunnels);
+
+    Root::update(window, cx, |root, window, cx| {
+        root.open_dialog(
+            move |dialog, _window, _cx| {
+                dialog.title("Close Window?").child(body.clone()).footer(
+                    DialogFooter::new()
+                        .child(Button::new("close-window-cancel").label("Cancel").on_click(
+                            |_event, window, cx| {
+                                Root::update(window, cx, |root, window, cx| {
+                                    root.close_dialog(window, cx);
+                                });
+                            },
+                        ))
+                        .child(
+                            Button::new("close-window-confirm")
+                                .label("Close Window")
+                                .with_variant(ButtonVariant::Danger)
+                                .on_click(|_event, window, cx| {
+                                    Root::update(window, cx, |root, window, cx| {
+                                        root.close_dialog(window, cx);
+                                    });
+                                    close_window(window, cx);
+                                }),
+                        ),
+                )
+            },
+            window,
+            cx,
+        );
+    });
 }
 
 /// A saved Resource panel width, clamped to the range its divider allows; the
@@ -973,6 +1043,18 @@ impl MainWindow {
         match &self.mode {
             WindowMode::Picker(_) => Vec::new(),
             WindowMode::Workspace { contexts, .. } => contexts.clone(),
+        }
+    }
+
+    /// Whether this window's dock has any panel open - `Cmd-W`'s test for closing the
+    /// active tab (`ClosePanel`) rather than the window itself. `false` in `Picker`
+    /// mode, which has no dock.
+    fn has_open_panel(&self, cx: &App) -> bool {
+        match &self.mode {
+            WindowMode::Picker(_) => false,
+            WindowMode::Workspace { dock_area, .. } => {
+                !dock_area.read(cx).is_empty(DockPlacement::Center, cx)
+            }
         }
     }
 
