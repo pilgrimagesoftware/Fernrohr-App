@@ -10,6 +10,7 @@ mod collapse;
 mod config_fixture;
 mod configuration;
 mod container_detail;
+mod container_view;
 mod events;
 mod fetch;
 mod fixtures;
