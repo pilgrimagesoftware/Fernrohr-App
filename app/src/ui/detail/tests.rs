@@ -29,21 +29,32 @@ fn rows_alternate_the_stripe(cx: &mut TestAppContext) {
     }
 }
 
-/// `pod-configuration-tab` 5.1: over 20 characters or more than one line is
+/// `pod-configuration-tab` 5.1: over 100 characters or more than one line is
 /// large, and the preview is the first line's first 20 characters.
 #[test]
-fn a_value_is_large_past_twenty_characters_or_one_line() {
+fn a_value_is_large_past_a_hundred_characters_or_one_line() {
     use super::collapsible::preview;
     assert_eq!(preview("debug"), None);
-    assert_eq!(preview("exactly-twenty-chars"), None);
     assert_eq!(
-        preview("one-over-twenty-chars").as_deref(),
-        Some("one-over-twenty-char…")
+        preview(&"a".repeat(100)),
+        None,
+        "100 characters is not large"
     );
-    assert_eq!(preview("a\nb").as_deref(), Some("a…"));
     assert_eq!(
-        preview("ünïcödé-ünïcödé-ünïcödé").as_deref(),
-        Some("ünïcödé-ünïcödé-ünïc…")
+        preview(&"a".repeat(101)).as_deref(),
+        Some(format!("{}…", "a".repeat(20)).as_str()),
+        "101 characters is large"
+    );
+    assert_eq!(
+        preview("a\nb").as_deref(),
+        Some("a…"),
+        "two short lines are large"
+    );
+    // Characters, not bytes: 100 two-byte characters still fit.
+    assert_eq!(preview(&"ü".repeat(100)), None);
+    assert_eq!(
+        preview(&"ü".repeat(101)).as_deref(),
+        Some(format!("{}…", "ü".repeat(20)).as_str())
     );
     // A trailing newline doesn't make a second line.
     assert_eq!(preview("debug\n"), None);

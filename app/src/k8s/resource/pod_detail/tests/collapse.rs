@@ -6,10 +6,10 @@
 //! Secret key has no collapse control, hidden or revealed.
 //!
 //! Card 0 is Secret `db` (`password`, `username`), card 1 ConfigMap `app-env`
-//! (`BANNER`, `LOG_LEVEL`, `config.yaml`, in key order).
+//! (`BANNER`, `LOG_LEVEL`, `MOTD`, `config.yaml`, in key order).
 
 use super::config_fixture::{
-    BANNER, CONFIG_YAML, Harness, PASSWORD, focus_panel, harness, open_configuration,
+    BANNER, CONFIG_YAML, Harness, MOTD, PASSWORD, focus_panel, harness, open_configuration,
     press_by_keyboard, reveal_password_by_keyboard, shown, wait_for,
 };
 use crate::k8s::resource::pod_detail::configuration::{expand_button_id, key_label_id, value_id};
@@ -22,7 +22,8 @@ const SECRET: usize = 0;
 const CONFIG_MAP: usize = 1;
 const BANNER_KEY: usize = 0;
 const LOG_LEVEL_KEY: usize = 1;
-const CONFIG_YAML_KEY: usize = 2;
+const MOTD_KEY: usize = 2;
+const CONFIG_YAML_KEY: usize = 3;
 
 /// What value `index` of card `card` draws, read after a fresh frame.
 fn drawn(vcx: &mut VisualTestContext, h: &Harness, card: usize, index: usize) -> Option<String> {
@@ -94,6 +95,16 @@ async fn large_values_start_collapsed_and_expand_one_at_a_time(cx: &mut TestAppC
         &h,
         expand_button_id(CONFIG_MAP, LOG_LEVEL_KEY)
     ));
+    // So does one of exactly 100 characters: only past 100 is large.
+    assert_eq!(
+        drawn(&mut vcx, &h, CONFIG_MAP, MOTD_KEY).as_deref(),
+        Some(MOTD)
+    );
+    assert!(!has_control(
+        &mut vcx,
+        &h,
+        expand_button_id(CONFIG_MAP, MOTD_KEY)
+    ));
 
     // Tab + Space expands that one value; the other stays collapsed.
     press_by_keyboard(&mut vcx, &h, expand_button_id(CONFIG_MAP, CONFIG_YAML_KEY));
@@ -159,7 +170,7 @@ async fn a_secret_key_has_no_collapse_control(cx: &mut TestAppContext) {
     let panel = h.panel.clone();
     open_configuration(&mut vcx, &h);
     assert!(
-        PASSWORD.chars().count() > 20,
+        PASSWORD.chars().count() > 100,
         "the fixture's value is large"
     );
 

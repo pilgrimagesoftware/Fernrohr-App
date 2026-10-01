@@ -1,12 +1,14 @@
 //! Large values drawn collapsed (`pod-configuration-tab` 5.1): a value longer
-//! than [`COLLAPSED_VALUE_PREVIEW_CHARS`] characters, or spanning more than one
-//! line, shows a short preview and an Expand/Collapse button until expanded.
+//! than [`COLLAPSE_VALUE_OVER_CHARS`] characters, or spanning more than one
+//! line, shows a short preview - its first line's first
+//! [`COLLAPSED_VALUE_PREVIEW_CHARS`] characters - and an Expand/Collapse button
+//! until expanded.
 //!
 //! Only ConfigMap values collapse: a Secret value is hidden until revealed,
 //! and shown in full once it is. This module only draws; whether a value is
 //! expanded is the panel's state, kept per value and never saved.
 
-use crate::consts::COLLAPSED_VALUE_PREVIEW_CHARS;
+use crate::consts::{COLLAPSE_VALUE_OVER_CHARS, COLLAPSED_VALUE_PREVIEW_CHARS};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -17,11 +19,12 @@ use std::rc::Rc;
 
 /// The collapsed preview of `value` - its first line's first
 /// [`COLLAPSED_VALUE_PREVIEW_CHARS`] characters and an ellipsis - or `None`
-/// when the value is short enough to show whole.
+/// when the value is short enough to show whole: one line of at most
+/// [`COLLAPSE_VALUE_OVER_CHARS`] characters.
 pub(super) fn preview(value: &str) -> Option<String> {
     let mut lines = value.lines();
     let first = lines.next().unwrap_or_default();
-    let large = lines.next().is_some() || value.chars().count() > COLLAPSED_VALUE_PREVIEW_CHARS;
+    let large = lines.next().is_some() || value.chars().count() > COLLAPSE_VALUE_OVER_CHARS;
     large.then(|| {
         let start: String = first.chars().take(COLLAPSED_VALUE_PREVIEW_CHARS).collect();
         format!("{start}…")

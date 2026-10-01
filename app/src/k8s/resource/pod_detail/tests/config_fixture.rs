@@ -21,13 +21,15 @@ use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// A ConfigMap value over 20 characters on one line.
-pub(super) const BANNER: &str = "Welcome to the staging cluster";
+/// A ConfigMap value over 100 characters on one line.
+pub(super) const BANNER: &str = "Welcome to the staging cluster - deploys freeze at 17:00, page the on-call channel before any rollback.";
+/// A ConfigMap value of exactly 100 characters on one line - not large.
+pub(super) const MOTD: &str = "Maintenance window: Sundays 02:00-04:00 UTC. Expect brief API restarts and clients reconnecting.....";
 /// A ConfigMap value spanning several lines.
 pub(super) const CONFIG_YAML: &str = "server:\n  port: 8080\n";
 
-/// Long enough to start collapsed once revealed.
-pub(super) const PASSWORD: &str = "hunter2-hunter2-hunter2-hunter2";
+/// Over 100 characters: a ConfigMap value this long would collapse.
+pub(super) const PASSWORD: &str = "hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-hunter2-";
 pub(super) const USERNAME: &str = "other-value";
 
 /// Serves the pod (mounting Secret `db`, reading ConfigMap `app-env` through
@@ -69,6 +71,7 @@ pub(super) async fn serve(config_reads: Arc<AtomicUsize>) -> std::net::SocketAdd
                             "data": {
                                 "BANNER": BANNER,
                                 "LOG_LEVEL": "debug",
+                                "MOTD": MOTD,
                                 "config.yaml": CONFIG_YAML,
                             } })
                 } else if line.contains("/secrets/db ") {
@@ -76,7 +79,7 @@ pub(super) async fn serve(config_reads: Arc<AtomicUsize>) -> std::net::SocketAdd
                     json!({ "apiVersion": "v1", "kind": "Secret",
                             "metadata": { "name": "db", "namespace": "staging" },
                             "type": "Opaque",
-                            "data": { "password": "aHVudGVyMi1odW50ZXIyLWh1bnRlcjItaHVudGVyMg==", "username": "b3RoZXItdmFsdWU=" } })
+                            "data": { "password": "aHVudGVyMi1odW50ZXIyLWh1bnRlcjItaHVudGVyMi1odW50ZXIyLWh1bnRlcjItaHVudGVyMi1odW50ZXIyLWh1bnRlcjItaHVudGVyMi1odW50ZXIyLWh1bnRlcjItaHVudGVyMi1odW50ZXIyLWh1bnRlcjIt", "username": "b3RoZXItdmFsdWU=" } })
                 } else {
                     json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure",
                             "reason": "NotFound", "code": 404, "message": "not found" })
