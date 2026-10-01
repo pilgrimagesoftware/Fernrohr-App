@@ -170,38 +170,28 @@ pub fn lines(rows: &[String]) -> AnyElement {
 /// Key/value pairs, the key muted above its value - a ConfigMap's data, where
 /// a value can run to many lines and would not fit beside its key.
 pub fn key_values(pairs: &[(String, String)], cx: &App) -> AnyElement {
-    let mono = cx.theme().mono_font_family.clone();
+    let theme = cx.theme();
     div()
         .flex()
         .flex_col()
         .gap_2()
         .children(pairs.iter().map(|(key, value)| {
-            key_value(
-                key,
-                div()
-                    .font_family(mono.clone())
-                    .text_sm()
-                    .child(value.clone())
-                    .into_any_element(),
-                cx,
-            )
-        }))
-        .into_any_element()
-}
-
-/// One key/value pair as [`key_values`] draws it, with the value already
-/// drawn - so a caller can draw it collapsed.
-pub fn key_value(key: &str, value: AnyElement, cx: &App) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .child(
             div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(key.to_string()),
-        )
-        .child(value)
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(key.clone()),
+                )
+                .child(
+                    div()
+                        .font_family(theme.mono_font_family.clone())
+                        .text_sm()
+                        .child(value.clone()),
+                )
+        }))
         .into_any_element()
 }
 

@@ -27,6 +27,11 @@ pub(in crate::k8s::resource::pod_detail) fn expand_button_id(
     ElementId::NamedInteger(format!("expand-{card}").into(), index as u64)
 }
 
+/// The id of ConfigMap key `index` of card `card`'s label.
+pub(in crate::k8s::resource::pod_detail) fn key_label_id(card: usize, index: usize) -> ElementId {
+    ElementId::NamedInteger(format!("key-{card}").into(), index as u64)
+}
+
 /// The id of the drawn value of key `index` of card `card` - a ConfigMap value,
 /// or a Secret value while revealed.
 pub(in crate::k8s::resource::pod_detail) fn value_id(card: usize, index: usize) -> ElementId {
@@ -119,10 +124,11 @@ impl PodDetailPanel {
                     .flex_col()
                     .gap_1()
                     .children(data.iter().enumerate().map(|(index, (key, value))| {
-                        let drawn = self
-                            .collapsible(card, index, target, key, cx)
-                            .render(value.clone(), cx);
-                        detail::key_value(key, drawn, cx)
+                        self.collapsible(card, index, target, key, cx).render(
+                            key,
+                            value.clone(),
+                            cx,
+                        )
                     }))
                     .children(binary.iter().map(|(key, size)| {
                         div()
@@ -187,6 +193,7 @@ impl PodDetailPanel {
         let this = cx.weak_entity();
         let (target_owned, owned_key) = (target.clone(), key.to_string());
         Collapsible {
+            key_id: key_label_id(card, index),
             value_id: value_id(card, index),
             toggle_id: expand_button_id(card, index),
             expanded: self.configuration.is_expanded(target, key),

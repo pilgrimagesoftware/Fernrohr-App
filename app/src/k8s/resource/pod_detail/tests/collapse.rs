@@ -12,9 +12,11 @@ use super::config_fixture::{
     BANNER, CONFIG_YAML, Harness, PASSWORD, focus_panel, harness, open_configuration,
     press_by_keyboard, reveal_password_by_keyboard, shown, wait_for,
 };
-use crate::k8s::resource::pod_detail::configuration::{expand_button_id, value_id};
+use crate::k8s::resource::pod_detail::configuration::{expand_button_id, key_label_id, value_id};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, ElementId, Modifiers, TestAppContext, VisualTestContext};
+use gpui_kit::{
+    AppContext as _, Bounds, ElementId, Modifiers, Pixels, TestAppContext, VisualTestContext, px,
+};
 
 const SECRET: usize = 0;
 const CONFIG_MAP: usize = 1;
@@ -37,6 +39,17 @@ fn has_control(vcx: &mut VisualTestContext, h: &Harness, id: ElementId) -> bool 
     vcx.update_window(h.window.into(), |_, window, cx| {
         window.render_frame(cx);
         window.try_find(id).is_some()
+    })
+    .unwrap()
+}
+
+fn bounds(vcx: &mut VisualTestContext, h: &Harness, id: ElementId) -> Bounds<Pixels> {
+    vcx.update_window(h.window.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(id.clone())
+            .unwrap_or_else(|| panic!("{id:?} is drawn"))
+            .bounds()
     })
     .unwrap()
 }
@@ -158,4 +171,46 @@ async fn a_secret_key_has_no_collapse_control(cx: &mut TestAppContext) {
         "it's revealed"
     );
     assert!(!has_control(&mut vcx, &h, expand_button_id(SECRET, 0)));
+}
+
+/// The expand control sits right after its key's label - on the key's line,
+/// a gap past the label's end - rather than at the far edge of a wide row,
+/// and it stays put when the value expands.
+#[gpui_kit::test]
+async fn the_expand_control_sits_beside_its_key(cx: &mut TestAppContext) {
+    let h = harness(cx);
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    open_configuration(&mut vcx, &h);
+
+    let key = bounds(&mut vcx, &h, key_label_id(CONFIG_MAP, CONFIG_YAML_KEY));
+    let value = bounds(&mut vcx, &h, value_id(CONFIG_MAP, CONFIG_YAML_KEY));
+    let control = bounds(&mut vcx, &h, expand_button_id(CONFIG_MAP, CONFIG_YAML_KEY));
+    assert!(
+        value.size.width > px(400.),
+        "the row is wide enough to tell beside from right-aligned: {value:?}"
+    );
+    let gap = control.left() - key.right();
+    assert!(
+        gap >= px(0.) && gap < px(16.),
+        "the control follows the key's label: key {key:?}, control {control:?}"
+    );
+    assert!(
+        control.top() < key.bottom() && key.top() < control.bottom(),
+        "the control is on the key's line: key {key:?}, control {control:?}"
+    );
+    assert!(
+        control.bottom() <= value.top(),
+        "the control is above the value, not beside it: {control:?}, {value:?}"
+    );
+
+    press_by_keyboard(&mut vcx, &h, expand_button_id(CONFIG_MAP, CONFIG_YAML_KEY));
+    assert_eq!(
+        drawn(&mut vcx, &h, CONFIG_MAP, CONFIG_YAML_KEY).as_deref(),
+        Some(CONFIG_YAML)
+    );
+    assert_eq!(
+        bounds(&mut vcx, &h, expand_button_id(CONFIG_MAP, CONFIG_YAML_KEY)).origin,
+        control.origin,
+        "expanding doesn't move the control"
+    );
 }

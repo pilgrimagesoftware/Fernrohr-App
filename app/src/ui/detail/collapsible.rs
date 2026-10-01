@@ -31,8 +31,11 @@ pub(super) fn preview(value: &str) -> Option<String> {
 /// What the expand control runs: the panel flips the value's expanded state.
 pub type OnToggle = Rc<dyn Fn(&mut Window, &mut App)>;
 
-/// One value's element and its expand control, and whether it's expanded.
+/// One key/value pair whose value may collapse: the element ids, and whether
+/// it's expanded.
 pub struct Collapsible {
+    /// The key's label - what a test measures the control's place against.
+    pub key_id: ElementId,
     /// The drawn value's element - what a test reads the shown text from.
     pub value_id: ElementId,
     /// The Expand/Collapse button, a tab stop.
@@ -42,9 +45,11 @@ pub struct Collapsible {
 }
 
 impl Collapsible {
-    /// Draws `text` in full, or - while collapsed and large - as its preview,
-    /// with an Expand/Collapse button. A short value gets no button.
-    pub fn render(self, text: String, cx: &App) -> AnyElement {
+    /// Draws `key` above `text`, the value in full or - while collapsed and
+    /// large - as its preview. A large value's Expand/Collapse button sits
+    /// right after the key, in the same place either way, so a wide panel
+    /// doesn't push it out of sight; a short value gets no button.
+    pub fn render(self, key: &str, text: String, cx: &App) -> AnyElement {
         let theme = cx.theme();
         let preview = preview(&text);
         let has_toggle = preview.is_some();
@@ -52,15 +57,11 @@ impl Collapsible {
             Some(preview) if !self.expanded => preview,
             _ => text,
         };
-        let value = div()
-            .id(self.value_id)
-            .flex_1()
-            .min_w_0()
-            .font_family(theme.mono_font_family.clone())
+        let label = div()
+            .id(self.key_id)
             .text_sm()
-            .role(accesskit::Role::Label)
-            .aria_value(shown.clone())
-            .child(shown)
+            .text_color(theme.muted_foreground)
+            .child(key.to_string())
             .test_support();
         let toggle = has_toggle.then(|| {
             let on_toggle = self.on_toggle;
@@ -75,12 +76,26 @@ impl Collapsible {
                 .ghost()
                 .on_click(move |_event, window, cx| on_toggle(window, cx))
         });
+        let value = div()
+            .id(self.value_id)
+            .font_family(theme.mono_font_family.clone())
+            .text_sm()
+            .role(accesskit::Role::Label)
+            .aria_value(shown.clone())
+            .child(shown)
+            .test_support();
         div()
             .flex()
-            .items_start()
-            .gap_2()
+            .flex_col()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(label)
+                    .children(toggle),
+            )
             .child(value)
-            .children(toggle)
             .into_any_element()
     }
 }
