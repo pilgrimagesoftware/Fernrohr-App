@@ -171,6 +171,59 @@ pub struct ContainerSummary {
     /// The ConfigMaps and Secrets this container reads environment from,
     /// one per object - see `references::env_sources`.
     pub env_sources: Vec<ObjectRef>,
+    /// What the card shows once expanded. Built here with the rest, not
+    /// on expansion: it reads the same `Container` the summary already has.
+    pub detail: ContainerDetail,
+}
+
+/// The fields a container card leaves out until it is expanded, each
+/// already in display shape.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ContainerDetail {
+    /// `spec.env` in declaration order. `envFrom` is not repeated here; it is
+    /// the summary's `env_sources`.
+    pub env: Vec<EnvVarRow>,
+    /// `name -> /mount/path`, with `subPath` and `(ro)` when set.
+    pub volume_mounts: Vec<String>,
+    /// One line per probe the container declares, e.g.
+    /// `Readiness: HTTP GET /healthz:8080 every 10s`.
+    pub probes: Vec<String>,
+    pub command: Vec<String>,
+    pub args: Vec<String>,
+    /// The container `securityContext`'s set fields as `key=value` chips.
+    /// Unset fields are left out, not shown as defaults.
+    pub security_context: Vec<String>,
+}
+
+/// One environment variable: its name and where its value comes from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EnvVarRow {
+    pub name: String,
+    pub value: EnvValue,
+}
+
+/// An env var's value as the panel may show it. A `valueFrom` entry is never
+/// resolved: the panel has read access to the Pod, not to the Secrets it
+/// names, and decoded secret values don't belong on screen by default.
+/// ConfigMap refs are treated the same way, so there is one rule, not two.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EnvValue {
+    /// A literal `value`, verbatim. Empty when the spec gave none.
+    Literal(String),
+    /// Where the value would come from, e.g.
+    /// `from Secret db-creds key password`.
+    Reference(String),
+}
+
+impl EnvVarRow {
+    /// `NAME=value` or `NAME (from Secret db-creds key password)`.
+    #[cfg(test)]
+    pub fn text(&self) -> String {
+        match &self.value {
+            EnvValue::Literal(value) => format!("{}={value}", self.name),
+            EnvValue::Reference(source) => format!("{} ({source})", self.name),
+        }
+    }
 }
 
 /// One volume: its name, what kind of source backs it, and the object behind
