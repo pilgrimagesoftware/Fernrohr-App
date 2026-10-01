@@ -207,6 +207,33 @@ async fn collapsing_one_subgroup_leaves_the_others_visible(cx: &mut TestAppConte
     );
 }
 
+/// 2.2: a click on a subgroup's header toggles it - both what's drawn and the
+/// collapsed set - and a second click restores it.
+#[gpui_kit::test]
+async fn clicking_a_subgroup_header_toggles_it(cx: &mut TestAppContext) {
+    let (window, mut vcx) = loaded_panel(cx);
+    let collapsed = |vcx: &mut gpui_kit::VisualTestContext| {
+        window
+            .update(vcx, |panel, _window, _cx| panel.collapsed_subgroups.clone())
+            .unwrap()
+    };
+    let click_header = |vcx: &mut gpui_kit::VisualTestContext| {
+        let bounds = vcx
+            .debug_bounds("resource-subgroup-cert-manager.io")
+            .expect("the header is drawn");
+        vcx.simulate_click(bounds.center(), gpui_kit::Modifiers::none());
+        vcx.run_until_parked();
+    };
+
+    click_header(&mut vcx);
+    assert!(collapsed(&mut vcx).contains("cert-manager.io"));
+    assert!(!drawn(&mut vcx, "resource-row-subgroup-cert-manager.io-0"));
+
+    click_header(&mut vcx);
+    assert!(collapsed(&mut vcx).is_empty());
+    assert!(drawn(&mut vcx, "resource-row-subgroup-cert-manager.io-0"));
+}
+
 /// A collapsed subgroup's kinds can't be reached from the keyboard either:
 /// they leave the order Up/Down step through, the same moment they hide.
 #[gpui_kit::test]

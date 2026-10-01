@@ -330,6 +330,15 @@ impl ResourcePanel {
         cx.notify();
     }
 
+    /// Flips the API-group subgroup `group`'s collapsed state inside Custom
+    /// Resources - its header's click route (`custom-resource-grouping` 2.2).
+    fn toggle_subgroup(&mut self, group: &str, cx: &mut Context<Self>) {
+        if !self.collapsed_subgroups.remove(group) {
+            self.collapsed_subgroups.insert(group.to_string());
+        }
+        cx.notify();
+    }
+
     /// Starts discovery as soon as the window's context has a client. A no-op
     /// while the state is already settled or a request is in flight.
     fn sync(&mut self, connection: &Entity<ClusterConnection>, cx: &mut Context<Self>) {

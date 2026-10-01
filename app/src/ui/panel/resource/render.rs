@@ -94,8 +94,8 @@ impl ResourcePanel {
     }
 
     /// One API group inside Custom Resources: an indented header - chevron,
-    /// group name (`core` for the core group), count - over its rows while
-    /// expanded (`custom-resource-grouping` 2.1).
+    /// group name (`core` for the core group), count - whose click toggles it,
+    /// over its rows while expanded (`custom-resource-grouping` 2.1/2.2).
     fn render_subgroup(
         &self,
         subgroup: &VisibleSubgroup,
@@ -103,6 +103,7 @@ impl ResourcePanel {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme().clone();
+        let this = cx.weak_entity();
         let group = subgroup.group.clone();
         let name = if group.is_empty() {
             "core".to_string()
@@ -124,6 +125,9 @@ impl ResourcePanel {
             .text_xs()
             .text_color(theme.sidebar_foreground.opacity(0.7))
             .hover(|el| el.bg(theme.sidebar_accent.opacity(0.5)))
+            .on_click(move |_event, _window, cx| {
+                let _ = this.update(cx, |this, cx| this.toggle_subgroup(&group, cx));
+            })
             .child(
                 div()
                     .flex()
