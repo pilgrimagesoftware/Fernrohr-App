@@ -51,7 +51,8 @@ publisher = "Pilgrimage Software"
 license_file = "../LICENSE.md"
 copyright = "Copyright (c) 2026 Pilgrimage Software"
 category = "Utility"
-icons = ["../images/fernrohr-icon.png"]
+before-packaging-command = "cargo build --release --package fernrohr"
+icons = ["../images/fernrohr-icon.png", "../images/fernrohr-icon.icns"]
 
 [package.metadata.packager.deb]
 depends = ["libsecret-1-0"]
