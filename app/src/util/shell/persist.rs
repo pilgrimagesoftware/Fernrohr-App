@@ -28,7 +28,12 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
     } else {
         HashMap::new()
     };
+    // Main windows only: a Settings, Tunnels or About window open at quit
+    // would otherwise be written as an extra, context-less main window.
     for handle in cx.windows() {
+        if !is_main_window(handle, cx) {
+            continue;
+        }
         if let Ok(layout) = handle.update(cx, |_, window, cx| layout_from_window(window, cx)) {
             layouts.insert(handle.window_id(), layout);
         }

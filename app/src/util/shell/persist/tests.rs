@@ -291,3 +291,30 @@ async fn multi_context_dock_arrangement_round_trips_order_insensitively(cx: &mut
         );
     });
 }
+
+/// Fernrohr#51: `save` writes main windows only. A Settings window open at
+/// quit used to be written as a second, context-less main window, which the
+/// next launch reopened as an empty picker.
+#[gpui_kit::test]
+async fn saving_skips_windows_that_are_not_main_windows(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+        open_window(cx, WindowLayout::default());
+        crate::ui::settings::open_or_focus(cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(cx.update(|cx| cx.windows().len()), 2, "main plus Settings");
+
+    cx.update(|cx| save(cx, &path));
+
+    let saved: WorkspaceConfig = config::load(&path);
+    assert_eq!(saved.windows.len(), 1, "only the main window is saved");
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}
