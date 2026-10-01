@@ -185,3 +185,13 @@ pub(super) fn focused(
         .update(cx, |_, window, cx| handle.contains_focused(window, cx))
         .unwrap()
 }
+
+/// What `window` last passed to `set_window_title`. `Window::window_title`
+/// reads the platform back and is empty on the test platform, which only
+/// stores the title for `VisualTestContext` to read.
+pub(super) fn window_title<V: 'static>(
+    window: &WindowHandle<V>,
+    cx: &mut TestAppContext,
+) -> Option<String> {
+    VisualTestContext::from_window((*window).into(), cx).window_title()
+}

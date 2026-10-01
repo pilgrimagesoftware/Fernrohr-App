@@ -13,6 +13,8 @@ use gpui_kit::{
     Render, StatefulInteractiveElement, Styled, Window, div, img, px,
 };
 
+use crate::consts::APP_NAME;
+
 use super::build_info::{build_details, build_identifier, version};
 use super::window::AboutWindow;
 
@@ -72,7 +74,7 @@ impl Render for AboutWindow {
             .py_8()
             .bg(cx.theme().background)
             .child(img(ICON.clone()).w(px(ICON_SIZE)).h(px(ICON_SIZE)))
-            .child(div().text_2xl().font_semibold().child("Fernrohr"))
+            .child(div().text_2xl().font_semibold().child(APP_NAME))
             // The version and build are the text a bug report needs, so the
             // text itself copies them - a copy button beside it was one more
             // thing to aim at.

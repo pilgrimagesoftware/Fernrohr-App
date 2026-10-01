@@ -3,8 +3,8 @@
 // `util/shell.rs`), and would shadow the built-in `#[test]`.
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::util::shell::test_support::*;
-use crate::util::shell::{MainWindow, NavTarget, WindowMode};
-use gpui_kit::{AppContext as _, TestAppContext};
+use crate::util::shell::{MainWindow, NavTarget, WindowLayout, WindowMode, open_window};
+use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 
 /// Section 3.2: adding a context holds it, makes it the active one, and opens
 /// its Pods panel.
@@ -12,6 +12,10 @@ use gpui_kit::{AppContext as _, TestAppContext};
 async fn add_context_holds_switches_active_and_opens_pods(cx: &mut TestAppContext) {
     let window = connected_window(cx, "kind-dev").await;
     cx.run_until_parked();
+    assert_eq!(
+        window_title(&window, cx).as_deref(),
+        Some("kind-dev - Fernrohr")
+    );
 
     window
         .update(cx, |main_window, window, cx| {
@@ -19,6 +23,10 @@ async fn add_context_holds_switches_active_and_opens_pods(cx: &mut TestAppContex
         })
         .unwrap();
     cx.run_until_parked();
+    assert_eq!(
+        window_title(&window, cx).as_deref(),
+        Some("2 clusters - Fernrohr")
+    );
 
     window
         .update(cx, |main_window, _window, _cx| {
@@ -133,6 +141,10 @@ async fn disconnect_context_closes_its_panels_and_releases_the_hold(cx: &mut Tes
         })
         .unwrap();
     cx.run_until_parked();
+    assert_eq!(
+        window_title(&window, cx).as_deref(),
+        Some("2 clusters - Fernrohr")
+    );
 
     window
         .update(cx, |main_window, window, cx| {
@@ -140,6 +152,11 @@ async fn disconnect_context_closes_its_panels_and_releases_the_hold(cx: &mut Tes
         })
         .unwrap();
     cx.run_until_parked();
+    // Back to one context, so the title names the survivor.
+    assert_eq!(
+        window_title(&window, cx).as_deref(),
+        Some("kind-dev - Fernrohr")
+    );
 
     window
         .update(cx, |main_window, _window, _cx| {
@@ -203,6 +220,11 @@ async fn disconnecting_the_last_context_returns_to_the_picker(cx: &mut TestAppCo
         })
         .unwrap();
     cx.run_until_parked();
+    assert_eq!(window_title(&second, cx).as_deref(), Some("Fernrohr"));
+    assert_eq!(
+        window_title(&first, cx).as_deref(),
+        Some("kind-dev - Fernrohr")
+    );
 
     second
         .update(cx, |main_window, _window, _cx| {
@@ -287,4 +309,33 @@ async fn set_active_context_to_an_unused_context_is_a_no_op(cx: &mut TestAppCont
             assert_eq!(*active, 0);
         })
         .unwrap();
+}
+
+/// `window-title-and-menu` 4.2, the `app-shell` spec's "Restored windows come
+/// back titled": a window restored holding several contexts is titled with
+/// their count from its first frame - read before anything runs, so the title
+/// comes from `open_window`'s `TitlebarOptions`, not a later re-title.
+#[gpui_kit::test]
+async fn a_restored_multi_context_window_is_titled_from_its_first_frame(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let layout = WindowLayout {
+        contexts: vec!["kind-dev".to_string(), "staging".to_string()],
+        panels: vec![
+            pods_panel_descriptor("kind-dev"),
+            pods_panel_descriptor("staging"),
+        ],
+        ..Default::default()
+    };
+    cx.update(|cx| open_window(cx, layout));
+    let window = cx.update(|cx| cx.windows()[0]);
+    let first_frame = VisualTestContext::from_window(window, cx).window_title();
+    assert_eq!(first_frame.as_deref(), Some("2 clusters - Fernrohr"));
+
+    cx.run_until_parked();
+    let settled = VisualTestContext::from_window(window, cx).window_title();
+    assert_eq!(settled.as_deref(), Some("2 clusters - Fernrohr"));
 }

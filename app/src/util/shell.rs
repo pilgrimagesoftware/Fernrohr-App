@@ -56,6 +56,7 @@ mod test_hooks;
 mod test_support;
 mod tunnel_dialog;
 mod window;
+mod window_title;
 
 // The surface the rest of the crate uses, named explicitly: a glob would
 // collide with the `gpui_kit::*` import above (`gpui_kit::init` versus

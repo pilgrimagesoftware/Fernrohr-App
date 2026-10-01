@@ -69,6 +69,14 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             // grew. Without a floor the picker's centred column overflows and the
             // logo is clipped off the top.
             window_min_size: Some(crate::ui::picker::MIN_WINDOW_SIZE),
+            // `Some` both sets the title and keeps it visible: with `None`,
+            // macOS hides the title bar's text at creation and never revisits
+            // it (`window-title-and-menu` design.md decisions 2 and 3).
+            titlebar: Some(TitlebarOptions {
+                title: Some(window_title::initial_title(&contexts).into()),
+                appears_transparent: false,
+                traffic_light_position: None,
+            }),
             ..Default::default()
         },
         |window, cx| {
