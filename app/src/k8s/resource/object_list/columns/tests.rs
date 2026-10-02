@@ -129,3 +129,107 @@ fn a_malformed_object_yields_no_cells() {
     let cells = typed_cells::<Deployment>(&malformed, |_| vec![Cell::Number(1)]);
     assert!(cells.is_empty());
 }
+
+/// The column table in the `resource-browser` spec, kind by kind: each listed
+/// kind's own columns, titled and ordered as the spec (and `kubectl get`) has
+/// them.
+#[test]
+fn every_kind_in_the_spec_has_its_columns() {
+    let spec: &[(&str, &str, &[&str])] = &[
+        ("apps", "Deployment", &["Ready", "Up-to-date", "Available"]),
+        ("apps", "ReplicaSet", &["Desired", "Current", "Ready"]),
+        ("apps", "StatefulSet", &["Ready"]),
+        (
+            "apps",
+            "DaemonSet",
+            &["Desired", "Current", "Ready", "Up-to-date", "Available"],
+        ),
+        ("batch", "Job", &["Status", "Completions", "Duration"]),
+        (
+            "batch",
+            "CronJob",
+            &["Schedule", "Suspend", "Active", "Last schedule"],
+        ),
+        ("", "ConfigMap", &["Data"]),
+        ("", "Secret", &["Type", "Data"]),
+        (
+            "",
+            "Service",
+            &["Type", "Cluster IP", "External IP", "Ports"],
+        ),
+        (
+            "networking.k8s.io",
+            "Ingress",
+            &["Class", "Hosts", "Address", "Ports"],
+        ),
+        ("", "Endpoints", &["Endpoints"]),
+        (
+            "discovery.k8s.io",
+            "EndpointSlice",
+            &["Address type", "Ports", "Endpoints"],
+        ),
+        ("networking.k8s.io", "NetworkPolicy", &["Pod selector"]),
+        (
+            "",
+            "PersistentVolumeClaim",
+            &[
+                "Status",
+                "Volume",
+                "Capacity",
+                "Access modes",
+                "Storage class",
+            ],
+        ),
+        (
+            "",
+            "PersistentVolume",
+            &[
+                "Capacity",
+                "Access modes",
+                "Reclaim policy",
+                "Status",
+                "Claim",
+                "Storage class",
+            ],
+        ),
+        (
+            "storage.k8s.io",
+            "StorageClass",
+            &["Provisioner", "Reclaim policy", "Volume binding mode"],
+        ),
+        ("", "Node", &["Status", "Roles", "Version", "Internal IP"]),
+        ("", "Namespace", &["Status"]),
+        ("", "ServiceAccount", &["Secrets"]),
+        (
+            "rbac.authorization.k8s.io",
+            "RoleBinding",
+            &["Role", "Subjects"],
+        ),
+        (
+            "rbac.authorization.k8s.io",
+            "ClusterRoleBinding",
+            &["Role", "Subjects"],
+        ),
+    ];
+    for (group, kind, titles) in spec {
+        let columns = super::for_kind(group, kind).unwrap_or_else(|| panic!("{kind} has columns"));
+        let actual: Vec<&str> = columns.columns.iter().map(|column| column.title).collect();
+        assert_eq!(&actual, titles, "{kind}'s columns");
+        let mut ids: Vec<&str> = columns.columns.iter().map(|column| column.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), titles.len(), "{kind}'s column keys are distinct");
+    }
+}
+
+/// The spec's "A kind without extra columns": a Roles list - and a CRD's -
+/// shows only the base columns.
+#[test]
+fn a_kind_outside_the_table_has_no_columns_of_its_own() {
+    assert!(super::for_kind("rbac.authorization.k8s.io", "Role").is_none());
+    assert!(super::for_kind("example.com", "Widget").is_none());
+    assert!(
+        super::for_kind("", "Pod").is_none(),
+        "Pods keep their own table"
+    );
+}

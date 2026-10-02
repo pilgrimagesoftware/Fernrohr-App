@@ -10,6 +10,7 @@
 //! a kind with no table gets the base columns only.
 
 mod config_network;
+mod storage_cluster;
 mod workloads;
 
 use jiff::Timestamp;
@@ -138,6 +139,16 @@ pub fn for_kind(group: &str, kind: &str) -> Option<&'static KindColumns> {
         ("networking.k8s.io", "Ingress") => &config_network::INGRESS,
         ("networking.k8s.io", "NetworkPolicy") => &config_network::NETWORK_POLICY,
         ("discovery.k8s.io", "EndpointSlice") => &config_network::ENDPOINT_SLICE,
+        ("", "PersistentVolumeClaim") => &storage_cluster::PERSISTENT_VOLUME_CLAIM,
+        ("", "PersistentVolume") => &storage_cluster::PERSISTENT_VOLUME,
+        ("storage.k8s.io", "StorageClass") => &storage_cluster::STORAGE_CLASS_COLUMNS,
+        ("", "Node") => &storage_cluster::NODE,
+        ("", "Namespace") => &storage_cluster::NAMESPACE,
+        ("", "ServiceAccount") => &storage_cluster::SERVICE_ACCOUNT,
+        ("rbac.authorization.k8s.io", "RoleBinding") => &storage_cluster::ROLE_BINDING,
+        ("rbac.authorization.k8s.io", "ClusterRoleBinding") => {
+            &storage_cluster::CLUSTER_ROLE_BINDING
+        }
         _ => return None,
     })
 }

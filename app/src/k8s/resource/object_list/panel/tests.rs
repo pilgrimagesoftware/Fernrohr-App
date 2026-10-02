@@ -174,7 +174,10 @@ async fn a_namespaced_kind_shows_namespace_and_a_cluster_scoped_kind_does_not(
     assert!(title.starts_with("Deployments"), "a plural title: {title}");
 
     let mut h = harness(cx, nodes(), vec![object("node-a", None)]);
-    assert_eq!(column_ids(&mut h), ["name", "age"]);
+    assert_eq!(
+        column_ids(&mut h),
+        ["name", "status", "roles", "version", "internal_ip", "age"]
+    );
     let namespaced = h.vcx.update(|_, cx| h.panel.read(cx).scope.is_namespaced());
     assert!(!namespaced, "no namespace picker for a cluster-scoped kind");
 }
