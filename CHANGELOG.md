@@ -1,3 +1,15 @@
+
+## 0.2.0 - 2026-10-02
+
+### <!-- 1 -->🐛 Bug Fixes
+- Grant id-token:write so the release workflow can start
+- Port report_issue dialog to gpui-kit 0.7's WindowExt API
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Report issue dialog
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
