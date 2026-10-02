@@ -121,6 +121,7 @@ impl Render for MainWindow {
                 open_command_palette(window, cx);
             })
             .on_action(cx.listener(Self::on_action_show_pods))
+            .on_action(cx.listener(Self::on_action_show_events))
             .on_action(cx.listener(Self::on_action_focus_resources))
             .on_action(cx.listener(Self::on_action_refresh_resources))
             .on_action(cx.listener(Self::on_action_focus_next_panel))

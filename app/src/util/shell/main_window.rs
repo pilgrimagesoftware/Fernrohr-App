@@ -194,6 +194,14 @@ impl MainWindow {
                 )
                 .detach();
             }
+            nav::OpenedPanel::Events(panel) => {
+                cx.subscribe_in(
+                    &panel,
+                    window,
+                    move |this: &mut MainWindow, _panel, event, _window, cx| rekey(this, event, cx),
+                )
+                .detach();
+            }
             nav::OpenedPanel::Placeholder(panel) => {
                 cx.subscribe_in(
                     &panel,

@@ -16,6 +16,9 @@ pub(super) struct ClusterSession {
     /// Every other kind a panel watches on this context: one shared table and task
     /// per kind, present while at least one panel subscribes to it.
     pub(super) kinds: HashMap<DiscoveredKind, KindWatch>,
+    /// The Event watch and its table, present while an events browser (or any
+    /// other Event consumer) subscribes to it.
+    pub(super) events: Option<EventsWatch>,
     pub(super) watchers: WatchRegistry<WatchKey>,
     // Kept alive for as long as the session exists; aborts on drop like every other
     // owned background task. `None` for an unbound context, which has no forward to watch.
@@ -31,6 +34,13 @@ pub(super) struct ClusterSession {
 /// task consuming the stream - `None` while the watch is paused.
 pub(super) struct KindWatch {
     pub(super) table: Entity<ObjectsTable>,
+    pub(super) task: Option<gpui_kit::Task<()>>,
+}
+
+/// A context's shared Event watch: the table its consumers render from, and the
+/// task consuming the stream - `None` while the watch is paused.
+pub(super) struct EventsWatch {
+    pub(super) table: Entity<EventsTable>,
     pub(super) task: Option<gpui_kit::Task<()>>,
 }
 
@@ -81,6 +91,7 @@ impl ClusterRegistry {
                 pods_watch: None,
                 client: None,
                 kinds: HashMap::new(),
+                events: None,
                 watchers: WatchRegistry::new(),
                 _health: health,
                 holders: HashSet::new(),

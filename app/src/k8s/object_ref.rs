@@ -68,6 +68,22 @@ impl ObjectRef {
     /// `namespace` is the dependent's own; `None` for a cluster-scoped
     /// dependent. A cluster-scoped owner of a namespaced dependent is corrected
     /// by `viewer_for`, which knows the owner kind's real scope from discovery.
+    /// An object named by its `apiVersion`, kind, namespace and name - how an
+    /// event's `involvedObject` and `related` name the object they're about.
+    pub fn from_api_version(
+        api_version: &str,
+        kind: impl Into<String>,
+        namespace: Option<String>,
+        name: impl Into<String>,
+    ) -> Self {
+        Self {
+            group: group_of(api_version).to_string(),
+            kind: kind.into(),
+            namespace,
+            name: name.into(),
+        }
+    }
+
     pub fn from_owner(owner: &OwnerReference, namespace: Option<&str>) -> Self {
         Self {
             group: group_of(&owner.api_version).to_string(),

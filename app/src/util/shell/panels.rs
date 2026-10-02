@@ -89,6 +89,12 @@ pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
                 None => return keys,
             }
         }
+        "Events" => {
+            if crate::k8s::resource::events_browser::restore::from_state(data).is_none() {
+                return keys;
+            }
+            NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind::events())
+        }
         _ => return keys,
     };
     keys.push(PanelKey {

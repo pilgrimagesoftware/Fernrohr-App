@@ -150,6 +150,25 @@ impl DiscoveredKind {
             verbs: Default::default(),
         }
     }
+
+    /// The core `v1` `Event` kind - what the events browser lists and the
+    /// "Show Events" command opens.
+    pub fn events() -> Self {
+        Self {
+            gvk: GroupVersionKind::gvk("", "v1", "Event"),
+            plural: "events".to_string(),
+            namespaced: true,
+            verbs: KindVerbs::default(),
+        }
+    }
+
+    /// Whether this is the core `v1` `Event` kind, which opens the events
+    /// browser rather than the generic list (`events-browser` D4). A CRD named
+    /// `Event` in its own group is not, and nor is `events.k8s.io`'s, which
+    /// keeps the generic list.
+    pub fn is_core_event(&self) -> bool {
+        self.gvk.group.is_empty() && self.gvk.kind == "Event"
+    }
 }
 
 /// What discovery found: every kind from the API groups that answered, and the

@@ -41,6 +41,16 @@ impl MainWindow {
         }
     }
 
+    pub(super) fn on_action_show_events(
+        &mut self,
+        _: &crate::ui::nav::ShowEvents,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let kind = crate::k8s::cluster::discovery::DiscoveredKind::events();
+        self.open_target(NavTarget::Kind(kind), window, cx);
+    }
+
     pub(super) fn on_action_show_pods(
         &mut self,
         _: &ShowPods,
