@@ -13,6 +13,7 @@ use super::panel::PodDetailPanel;
 use crate::k8s::resource::events;
 use crate::ui::panel_title;
 use crate::ui::typography::TypeRole as _;
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
@@ -262,6 +263,8 @@ impl Render for PodDetailPanel {
             .flex_col()
             .child(header)
             .child(div().flex_1().min_h_0().child(content))
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("pod-detail-panel-tab-trap", &self.focus_handle)
     }
 }
 

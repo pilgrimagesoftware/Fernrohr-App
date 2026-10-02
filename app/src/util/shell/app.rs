@@ -109,6 +109,8 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // Kept for the keybindings editor, which edits it live (`keymap::apply`).
     cx.set_global(keymap::LiveKeymap::new(keymap_path.to_path_buf(), keymap));
     cx.bind_keys(crate::ui::resource_panel::panel_bindings());
+    let tab_bindings = crate::ui::panel::focus::tab_bindings(cx);
+    cx.bind_keys(tab_bindings);
     cx.bind_keys(crate::ui::list_keys::bindings(&[
         crate::k8s::resource::object_list::LIST_KEY_CONTEXT,
         crate::k8s::resource::pods::PANEL_KEY_CONTEXT,

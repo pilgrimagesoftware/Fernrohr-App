@@ -5,6 +5,7 @@
 
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
@@ -62,7 +63,7 @@ impl PlaceholderPanel {
             kind,
             scope,
             namespaces,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         }
     }
 
@@ -148,6 +149,8 @@ impl Render for PlaceholderPanel {
                                  list once the cluster serves the kind again.",
                     )),
             )
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("placeholder-panel-tab-trap", &self.focus_handle)
     }
 }
 

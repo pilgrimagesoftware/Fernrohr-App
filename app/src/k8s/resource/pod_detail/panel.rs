@@ -103,7 +103,7 @@ impl PodDetailPanel {
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
         this
@@ -134,7 +134,7 @@ impl PodDetailPanel {
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
         this

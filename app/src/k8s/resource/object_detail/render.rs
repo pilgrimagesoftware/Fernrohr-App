@@ -10,6 +10,7 @@ use crate::k8s::resource::events;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::typography::TypeRole as _;
 use crate::ui::{detail, link, panel_title};
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
@@ -236,6 +237,8 @@ impl Render for ObjectDetailPanel {
             .flex_col()
             .child(header)
             .child(div().flex_1().min_h_0().child(content))
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("object-detail-panel-tab-trap", &self.focus_handle)
     }
 }
 

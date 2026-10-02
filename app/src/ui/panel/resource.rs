@@ -203,7 +203,7 @@ impl ResourcePanel {
             collapsed: HashSet::new(),
             expanded_subgroups: HashSet::new(),
             filter_input,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             side: ResourceSide::default(),
             _connection_observation: observation,
             _filter_observation: filter_observation,

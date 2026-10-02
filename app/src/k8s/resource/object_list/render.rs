@@ -10,6 +10,7 @@ use super::panel::ObjectListPanel;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::ui::panel_title::{self, ScopeEvent};
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::kbd::Kbd;
@@ -145,5 +146,7 @@ impl Render for ObjectListPanel {
                     .child(header)
                     .child(div().flex_1().min_h_0().child(content)),
             )
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("object-list-panel-tab-trap", &self.focus_handle)
     }
 }

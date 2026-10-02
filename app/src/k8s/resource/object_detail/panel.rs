@@ -83,7 +83,7 @@ impl ObjectDetailPanel {
             viewing: DetailView::Structured,
             fetching: false,
             revealed: Default::default(),
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
         this

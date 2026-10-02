@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::ui::list_keys::{self, Step};
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
 
 /// Up/Down with no pod selected, or with focus on the panel rather than its table
@@ -199,5 +200,7 @@ impl Render for PodsPanel {
                     .child(header)
                     .child(div().flex_1().min_h_0().child(content)),
             )
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("pods-panel-tab-trap", &self.focus_handle)
     }
 }
