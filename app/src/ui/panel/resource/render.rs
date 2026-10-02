@@ -6,6 +6,7 @@
 use super::section::{VisibleSection, VisibleSubgroup};
 use super::{ResourcePanel, ResourceState};
 use crate::ui::nav::NavTarget;
+use crate::ui::panel::focus_ring::FocusRing as _;
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
@@ -452,25 +453,12 @@ impl Render for ResourcePanel {
             }
         };
 
-        // The panel's focus indicator: a bar in the accent colour while focus is
-        // anywhere inside it, as the dock panels' tabs are underlined - without it,
-        // a focused Resource panel looks no different from an unfocused one.
+        // The same focus ring the dock panels draw - without it, a focused
+        // Resource panel looks no different from an unfocused one.
         let focused = self.focus_handle.contains_focused(window, cx);
-        let indicator = if focused {
-            crate::ui::style::accent(cx)
-        } else {
-            gpui_kit::transparent_black()
-        };
         div()
             .size_full()
-            .debug_selector(move || {
-                format!(
-                    "resource-panel-{}",
-                    if focused { "focused" } else { "unfocused" }
-                )
-            })
-            .border_t_2()
-            .border_color(indicator)
+            .focus_ring("resource-panel", focused, cx)
             .key_context(super::keyboard::PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_select_next))

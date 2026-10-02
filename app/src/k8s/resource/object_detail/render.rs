@@ -8,6 +8,7 @@ use super::panel::ObjectDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::events;
 use crate::k8s::resource::pod_detail::DetailView;
+use crate::ui::panel::focus_ring::FocusRing as _;
 use crate::ui::typography::TypeRole as _;
 use crate::ui::{detail, link, panel_title};
 use gpui_kit::base::TestSupportExt as _;
@@ -229,6 +230,11 @@ impl Render for ObjectDetailPanel {
             .size_full()
             .key_context(key_context())
             .track_focus(&self.focus_handle)
+            .focus_ring(
+                "object-detail-panel",
+                self.focus_handle.contains_focused(window, cx),
+                cx,
+            )
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_go_to))

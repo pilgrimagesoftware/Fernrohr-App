@@ -197,8 +197,9 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 /// `text` as the panel's title element, with a "Context: <name>" tooltip. The dock
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
 ///
-/// It is also the panel's focus indicator: underlined in the accent colour
-/// (the user's system accent on macOS) while `focused`. Pass `focus_handle.contains_focused(..)`, not `is_focused`:
+/// It also marks the panel's focus, beside the ring around its content
+/// ([`super::focus_ring`]): underlined in the accent colour (the user's
+/// system accent on macOS) while `focused`. Pass `focus_handle.contains_focused(..)`, not `is_focused`:
 /// a panel whose content takes focus itself (a table row, a text input) moves
 /// the window's focus to that child, and an indicator lit only while the
 /// panel's own handle held focus would go dark the moment the panel was used.

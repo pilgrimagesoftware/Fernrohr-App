@@ -217,6 +217,35 @@ async fn a_clicked_panel_shows_focus_and_its_keys_work(cx: &mut TestAppContext) 
     assert!(collapsed(&mut h), "Left collapses it too");
 }
 
+/// 12.1: one ring, drawn on whichever panel holds focus - a dock panel once it's
+/// clicked, the Resource panel again after Focus Resources - and on no other.
+#[gpui_kit::test]
+async fn the_focus_ring_follows_focus_between_the_dock_and_the_resource_panel(
+    cx: &mut TestAppContext,
+) {
+    let mut h = harness(cx);
+    let drawn = |h: &mut Harness, selector: &'static str| {
+        h.vcx.update(|window, cx| window.render_frame(cx));
+        h.vcx.debug_bounds(selector)
+    };
+    let pods = drawn(&mut h, "pods-panel-unfocused").expect("the dock's Pods panel is drawn");
+    h.vcx.simulate_click(pods.center(), Modifiers::none());
+    h.vcx.run_until_parked();
+    assert!(
+        drawn(&mut h, "pods-panel-focused").is_some(),
+        "a click rings it"
+    );
+    assert!(drawn(&mut h, "pods-panel-unfocused").is_none());
+    assert!(drawn(&mut h, "resource-panel-unfocused").is_some());
+
+    press(&mut h.vcx, "cmd-0");
+    assert!(drawn(&mut h, "resource-panel-focused").is_some());
+    assert!(
+        drawn(&mut h, "pods-panel-unfocused").is_some(),
+        "the ring left the Pods panel"
+    );
+}
+
 /// 11.1: a new window opens its panel on the stored edge, read from `ui.toml`.
 #[gpui_kit::test]
 async fn a_new_window_opens_the_panel_on_the_preferred_edge(cx: &mut TestAppContext) {

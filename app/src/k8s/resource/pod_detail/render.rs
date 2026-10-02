@@ -11,6 +11,7 @@ use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
 use crate::k8s::resource::events;
+use crate::ui::panel::focus_ring::FocusRing as _;
 use crate::ui::panel_title;
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::TestSupportExt as _;
@@ -250,6 +251,11 @@ impl Render for PodDetailPanel {
             .key_context(key_context())
             .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
+            .focus_ring(
+                "pod-detail-panel",
+                self.focus_handle.contains_focused(window, cx),
+                cx,
+            )
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
             .on_action(cx.listener(Self::on_action_select_containers_tab))
