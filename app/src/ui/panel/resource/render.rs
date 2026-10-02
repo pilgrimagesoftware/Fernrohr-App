@@ -386,6 +386,7 @@ impl ResourcePanel {
                     .child("Resources"),
             )
             .child(div().flex_shrink_0().child(selector))
+            .child(super::edge::header_buttons(self.side))
             .into_any_element()
     }
 
@@ -451,8 +452,25 @@ impl Render for ResourcePanel {
             }
         };
 
+        // The panel's focus indicator: a bar in the accent colour while focus is
+        // anywhere inside it, as the dock panels' tabs are underlined - without it,
+        // a focused Resource panel looks no different from an unfocused one.
+        let focused = self.focus_handle.contains_focused(window, cx);
+        let indicator = if focused {
+            crate::ui::style::accent(cx)
+        } else {
+            gpui_kit::transparent_black()
+        };
         div()
             .size_full()
+            .debug_selector(move || {
+                format!(
+                    "resource-panel-{}",
+                    if focused { "focused" } else { "unfocused" }
+                )
+            })
+            .border_t_2()
+            .border_color(indicator)
             .key_context(super::keyboard::PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_select_next))

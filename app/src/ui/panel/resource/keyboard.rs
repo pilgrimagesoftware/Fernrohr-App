@@ -185,7 +185,7 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
         .child(hint(updown.into_any_element(), "Select"))
         .child(hint(enter.into_any_element(), "Open"))
         .child(hint(leftright.into_any_element(), "Collapse/expand"))
-        .child(hint(toggle.into_any_element(), "Toggle group"))
+        .child(hint(toggle.into_any_element(), "Toggle"))
         .child(hint(all_groups.into_any_element(), "All groups"))
         .child(hint(filter.into_any_element(), "Filter"))
 }

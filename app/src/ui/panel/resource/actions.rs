@@ -35,7 +35,7 @@ pub(super) const FOCUS_RESOURCES_DEFAULT_BINDING: &str = "cmd-0";
 /// `pub(crate)`: `util/shell.rs::register_commands` calls this across the
 /// module boundary the same way it calls `nav::register_commands` and
 /// `tunnels::register_commands`.
-pub(crate) fn register_commands(registry: &mut CommandRegistry) {
+pub(super) fn register_commands(registry: &mut CommandRegistry) {
     registry.register(Command {
         id: FOCUS_FILTER_COMMAND_ID,
         title: "Focus Resource Filter",
@@ -204,8 +204,9 @@ impl ResourcePanel {
 
     /// Space: collapses or expands the Custom Resources subgroup the cursor
     /// is in - on its header or one of its kinds. Collapsing moves the cursor
-    /// to the header, since the kind it was on is no longer drawn. A no-op
-    /// outside Custom Resources.
+    /// to the header, since the kind it was on is no longer drawn. Outside
+    /// Custom Resources, which has no subgroups, it toggles the cursor's section
+    /// instead - what a user expects Space to do there.
     pub(super) fn on_action_toggle_subgroup(
         &mut self,
         _: &ToggleSubgroup,
@@ -213,6 +214,9 @@ impl ResourcePanel {
         cx: &mut Context<Self>,
     ) {
         let Some(group) = self.cursor_subgroup() else {
+            if let Some(category) = self.highlighted_category() {
+                self.toggle_section(category, cx);
+            }
             return;
         };
         self.toggle_subgroup(&group, cx);

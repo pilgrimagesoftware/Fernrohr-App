@@ -10,8 +10,17 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let WindowMode::Workspace { resource_panel, .. } = &self.mode {
+        // A collapsed panel comes back first: focus on a panel that isn't drawn
+        // would be focus nowhere.
+        if let WindowMode::Workspace {
+            resource_panel,
+            resource_collapsed,
+            ..
+        } = &mut self.mode
+        {
+            *resource_collapsed = false;
             resource_panel.update(cx, |panel, cx| panel.focus_list(window, cx));
+            cx.notify();
         }
     }
 

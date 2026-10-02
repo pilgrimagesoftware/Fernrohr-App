@@ -51,6 +51,12 @@ pub(super) enum WindowMode {
         /// The Resource panel's current width: seeded from the saved layout, updated
         /// on every divider drag, and written back by [`save`].
         resource_width: Pixels,
+        /// Which window edge the Resource panel is on (11.2). Per window and not
+        /// saved: moving it here doesn't move it in other windows or the next one.
+        resource_side: crate::ui::resource_panel::ResourceSide,
+        /// Whether the Resource panel is collapsed to a strip on its edge (11.3).
+        /// Per window and not saved; a new window always starts expanded.
+        resource_collapsed: bool,
     },
 }
 

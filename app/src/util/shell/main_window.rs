@@ -134,6 +134,8 @@ impl MainWindow {
             status_bar,
             context_bar,
             resource_width: RESOURCE_PANEL_WIDTH,
+            resource_side: crate::ui::resource_panel::ResourceSide::default(),
+            resource_collapsed: false,
         };
         // Entering a workspace doesn't go through `sync_context_children` (its
         // children are built here already synced), so it titles the window itself.
