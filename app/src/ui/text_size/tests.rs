@@ -75,6 +75,7 @@ async fn a_change_is_saved_without_touching_the_rest_of_the_file(cx: &mut TestAp
         theme: ThemePreference::Dark,
         text_size: TextSize::DEFAULT,
         resource_side: crate::config::ui::ResourceSide::Right,
+        ..UiConfig::default()
     };
     config::save(&path, &stored).expect("temp file written");
     cx.update(|cx| {

@@ -31,6 +31,11 @@ fn main() {
             ui::theme::init(ui_config.theme, cx);
             ui::theme::save_to(ui_path.clone(), cx);
             ui::resource_panel::init_side_preference(ui_config.resource_side, ui_path.clone(), cx);
+            k8s::resource::pod_detail::window_preference::init(
+                ui_config.pod_events_window,
+                ui_path.clone(),
+                cx,
+            );
             ui::text_size::init(ui_config.text_size, ui_path, cx);
             let workspace_path = util::shell::default_workspace_path();
             let keymap_path = util::paths::preference_dir().join("keymap.toml");
