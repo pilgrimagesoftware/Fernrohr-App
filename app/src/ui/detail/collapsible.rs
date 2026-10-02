@@ -97,7 +97,7 @@ impl Collapsible {
                 div()
                     .flex()
                     .items_center()
-                    .gap_2()
+                    .gap(crate::ui::space::spacing(cx).control_gap)
                     .child(label)
                     .children(toggle),
             )

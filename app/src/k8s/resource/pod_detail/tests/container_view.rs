@@ -176,3 +176,40 @@ async fn the_chevron_has_a_gutter_of_its_own(cx: &mut TestAppContext) {
         toggle.right()
     );
 }
+
+/// `visual-refresh-typography-spacing` 3.2, detail panels: a card's content
+/// sits at least the panel inset from the panel's edges, plus the card's own
+/// padding from the card's edge. At 150% text, so the insets are the scaled
+/// tokens and not the fixed pixels they replaced (which happen to add up to
+/// the default-size minimum).
+#[gpui_kit::test]
+async fn card_content_is_inset_from_the_panel_and_card_edges(cx: &mut TestAppContext) {
+    let h = harness(cx);
+    cx.update(|cx| {
+        crate::ui::space::TextScale::new(1.5)
+            .expect("a valid scale")
+            .set(cx)
+    });
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    focus_panel(&mut vcx, &h);
+    vcx.simulate_keystrokes("2");
+    vcx.run_until_parked();
+
+    let space = vcx.update(|_, cx| crate::ui::space::spacing(cx));
+    let width = vcx
+        .update_window(h.window.into(), |_, window, _| window.viewport_size().width)
+        .unwrap();
+    // The panel fills the window, so its edges are the window's.
+    let toggle = bounds(&mut vcx, &h, container_toggle_id("app"));
+    let inset = space.panel_inset + space.card_padding;
+    assert!(
+        toggle.left() >= inset,
+        "the chevron starts {:?} from the left edge, under {inset:?}",
+        toggle.left()
+    );
+    assert!(
+        width - toggle.right() >= space.panel_inset,
+        "the chevron ends {:?} from the right edge",
+        width - toggle.right()
+    );
+}

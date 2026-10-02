@@ -56,7 +56,7 @@ impl PodDetailPanel {
         div()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap(crate::ui::space::spacing(cx).control_gap)
             .children(entries.iter().enumerate().map(|(card, entry)| {
                 let header = crate::ui::link::references(
                     format!("config-{card}"),
@@ -79,7 +79,7 @@ impl PodDetailPanel {
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .p_2()
+                    .p(crate::ui::space::spacing(cx).card_padding)
                     .rounded_md()
                     .border_1()
                     .border_color(theme.border)

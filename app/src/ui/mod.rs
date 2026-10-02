@@ -11,9 +11,6 @@ pub mod picker_keys;
 pub mod picker_tunnel;
 pub mod placeholder;
 pub mod settings;
-// UNWIRED: the panels convert to the tokens in `visual-refresh-typography-
-// spacing` 3.2, and the text-size preference sets `TextScale` in section 4.
-#[allow(dead_code)]
 pub mod space;
 pub mod status_bar;
 pub mod style;

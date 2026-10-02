@@ -106,7 +106,7 @@ pub fn striped(rows: impl IntoIterator<Item = AnyElement>, cx: &App) -> AnyEleme
 /// than tab between them: an accent bar beside the title, in a heavier weight.
 pub fn section_heading(title: impl Into<SharedString>, cx: &App) -> AnyElement {
     div()
-        .pt_3()
+        .pt(crate::ui::space::spacing(cx).section_gap)
         .pb_1()
         .flex()
         .items_center()
@@ -221,7 +221,7 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
         .data_font()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(crate::ui::space::spacing(cx).control_gap)
         .children(events.iter().map(|event| {
             // A normal event's reason reads as plain text; only the others
             // take a status colour.
@@ -233,7 +233,7 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
                 .flex()
                 .flex_col()
                 .gap_1()
-                .p_2()
+                .p(crate::ui::space::spacing(cx).card_padding)
                 .rounded_md()
                 .bg(style::surface_card(cx))
                 .border_1()

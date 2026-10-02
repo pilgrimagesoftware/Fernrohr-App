@@ -95,7 +95,7 @@ impl PodDetailPanel {
                 PodFieldValue::ManagedFields(entries) => div()
                     .flex()
                     .flex_col()
-                    .gap_2()
+                    .gap(crate::ui::space::spacing(cx).control_gap)
                     .children(entries.iter().enumerate().map(|(index, entry)| {
                         // Keyed by index, not manager name: two entries can
                         // share a manager (a status subresource update versus
@@ -109,7 +109,7 @@ impl PodDetailPanel {
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .p_2()
+                            .p(crate::ui::space::spacing(cx).card_padding)
                             .rounded_md()
                             .bg(crate::ui::style::surface_card(cx))
                             .border_1()

@@ -15,7 +15,7 @@ impl Render for LogsPanel {
         } else if self.current.is_none() {
             div()
                 .size_full()
-                .p_3()
+                .p(crate::ui::space::spacing(cx).panel_inset)
                 .child("Click a pod to view its logs.")
                 .into_any_element()
         } else {
@@ -23,7 +23,7 @@ impl Render for LogsPanel {
             let line_count = lines.len();
             div()
                 .size_full()
-                .p_3()
+                .p(crate::ui::space::spacing(cx).panel_inset)
                 .code_font(cx)
                 .overflow_x_scrollbar()
                 .child(
@@ -100,8 +100,9 @@ impl Render for LogsPanel {
                 div()
                     .flex()
                     .items_center()
-                    .gap_1()
-                    .p_2()
+                    .gap(crate::ui::space::spacing(cx).control_gap)
+                    .px(crate::ui::space::spacing(cx).panel_inset)
+                    .py(crate::ui::space::spacing(cx).control_gap)
                     .bg(crate::ui::style::surface_raised(cx))
                     .border_b_1()
                     .border_color(cx.theme().border)

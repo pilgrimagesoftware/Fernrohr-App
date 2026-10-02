@@ -102,6 +102,7 @@ impl Render for PlaceholderPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let raised = crate::ui::style::surface_raised(cx);
+        let space = crate::ui::space::spacing(cx);
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names();
         let namespace_bar =
@@ -115,7 +116,8 @@ impl Render for PlaceholderPanel {
                 div()
                     .flex()
                     .justify_end()
-                    .p_2()
+                    .px(space.panel_inset)
+                    .py(space.control_gap)
                     .bg(raised)
                     .border_b_1()
                     .border_color(theme.border)
@@ -138,8 +140,8 @@ impl Render for PlaceholderPanel {
                     .flex_col()
                     .items_center()
                     .justify_center()
-                    .gap_2()
-                    .p_6()
+                    .gap(space.control_gap)
+                    .p(space.panel_inset)
                     .child(
                         div()
                             .text_lg()

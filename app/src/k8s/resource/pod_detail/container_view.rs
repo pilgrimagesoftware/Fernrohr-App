@@ -47,7 +47,7 @@ impl PodDetailPanel {
         div()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap(crate::ui::space::spacing(cx).control_gap)
             .py_1()
             .px_2()
             .when_some(heading, |this, heading| {
@@ -189,7 +189,7 @@ impl PodDetailPanel {
             .flex()
             .items_start()
             .gap_1()
-            .p_2()
+            .p(crate::ui::space::spacing(cx).card_padding)
             .rounded_md()
             .bg(crate::ui::style::surface_card(cx))
             .border_1()

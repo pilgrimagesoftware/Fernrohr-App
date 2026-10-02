@@ -44,6 +44,9 @@ impl TextScale {
     /// The default text size.
     pub const DEFAULT: Self = Self(1.0);
 
+    // UNWIRED: the text-size preference (`visual-refresh-typography-spacing`
+    // section 4) builds its scale with this; until then only tests do.
+    #[allow(dead_code)]
     /// A scale of `factor` (1.0 is the default size), or `None` for a factor
     /// that isn't a positive, finite number.
     pub fn new(factor: f32) -> Option<Self> {
@@ -60,6 +63,8 @@ impl TextScale {
         cx.try_global::<Self>().copied().unwrap_or_default()
     }
 
+    // UNWIRED: see `new`.
+    #[allow(dead_code)]
     /// Makes this the app's scale and redraws every window, so open windows
     /// take the new spacing without a restart.
     pub fn set(self, cx: &mut App) {
