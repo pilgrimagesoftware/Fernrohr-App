@@ -7,6 +7,7 @@
 
 mod fetch;
 mod fixtures;
+mod header;
 mod overview;
 mod panel;
 mod secrets;

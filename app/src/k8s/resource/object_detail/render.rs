@@ -188,10 +188,18 @@ impl Render for ObjectDetailPanel {
                 div()
                     .flex_1()
                     .min_w(rems(8.))
-                    .child(panel_title::item_heading(
-                        self.target.name.clone(),
-                        panel_title::heading_context(&self.scope, window_contexts),
-                        cx.theme().muted_foreground,
+                    .child(panel_title::with_header_icon(
+                        crate::ui::icon::for_kind(
+                            &self.target.kind.gvk.group,
+                            &self.target.kind.gvk.kind,
+                        ),
+                        panel_title::item_heading(
+                            self.target.name.clone(),
+                            panel_title::heading_context(&self.scope, window_contexts),
+                            cx.theme().muted_foreground,
+                        ),
+                        window,
+                        cx,
                     )),
             )
             .child(

@@ -85,6 +85,8 @@ pub(crate) const DEFAULT_FONT_SIZE: f32 = 16.;
 pub(crate) const DEFAULT_MONO_FONT_SIZE: f32 = 13.;
 
 /// `resource-kind-icons`: how many device sizes the kind-icon raster cache keeps
-/// at once (`ui::icon::element`). Two text roles on 1x and 2x displays, with room
-/// for a text-size change; asking for one more size releases the oldest.
-pub(crate) const ICON_RASTER_SIZES: usize = 6;
+/// at once (`ui::icon::element`). Three roles (text, small, header) on 1x and 2x
+/// displays are six sizes in steady use; twice that leaves room for a text-size
+/// change's new sizes before the old ones age out. Asking for one more size
+/// releases the oldest.
+pub(crate) const ICON_RASTER_SIZES: usize = 12;

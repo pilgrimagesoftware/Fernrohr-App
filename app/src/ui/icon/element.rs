@@ -30,6 +30,9 @@ pub enum IconSize {
     /// cards, links. Add a variant beside it for an icon next to text of
     /// another size.
     Small,
+    /// A detail panel header's title block (`2rem`, twice body text): the
+    /// pod detail and object viewer headers, beside the resource's name.
+    Header,
 }
 
 impl IconSize {
@@ -37,6 +40,7 @@ impl IconSize {
         match self {
             Self::Text => 1.,
             Self::Small => 0.875,
+            Self::Header => 2.,
         }
     }
 
