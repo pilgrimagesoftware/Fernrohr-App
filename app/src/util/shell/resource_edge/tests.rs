@@ -180,13 +180,23 @@ async fn focusing_a_collapsed_panel_expands_it_and_panel_stepping_skips_it(
     assert!(panel_focused(&mut h));
 }
 
-/// (b): clicking the panel focuses it, and its keys then work - Space toggles the
-/// section under the cursor, as Left does.
+/// (b): clicking the panel focuses it, lights the bar along its header, and its
+/// keys then work - Space toggles the section under the cursor, as Left does.
 #[gpui_kit::test]
-async fn a_clicked_panel_takes_focus_and_its_keys_work(cx: &mut TestAppContext) {
+async fn a_clicked_panel_shows_focus_and_its_keys_work(cx: &mut TestAppContext) {
     let mut h = harness(cx);
+    let indicator = |h: &mut Harness, state: &'static str| {
+        h.vcx.update(|window, cx| window.render_frame(cx));
+        h.vcx.debug_bounds(state).is_some()
+    };
+    assert!(indicator(&mut h, "resource-panel-unfocused"));
+
     click(&mut h, "resource-row-Workloads-0");
     assert!(panel_focused(&mut h));
+    assert!(
+        indicator(&mut h, "resource-panel-focused"),
+        "the header bar shows it has focus"
+    );
 
     let pods = DiscoveredKind::pods();
     let collapsed = |h: &mut Harness| {
@@ -209,7 +219,8 @@ async fn a_clicked_panel_takes_focus_and_its_keys_work(cx: &mut TestAppContext) 
 
 /// 12.1: the dock panel's tab title is the focus indicator, drawn as rendered -
 /// underlined once the panel is clicked, plain again once focus moves to the
-/// Resource panel (Focus Resources).
+/// Resource panel (Focus Resources), whose header bar lights instead. Nothing
+/// frames a panel's content: the removed ring's elements are never drawn.
 #[gpui_kit::test]
 async fn the_tab_underline_follows_focus_between_the_dock_and_the_resource_panel(
     cx: &mut TestAppContext,
@@ -226,6 +237,9 @@ async fn the_tab_underline_follows_focus_between_the_dock_and_the_resource_panel
         drawn(&mut h, "panel-title-Pods-focused").is_some(),
         "a click underlines it"
     );
+    for ring in ["pods-panel-focused", "pods-panel-unfocused"] {
+        assert!(drawn(&mut h, ring).is_none(), "no ring around the content");
+    }
 
     press(&mut h.vcx, "cmd-0");
     assert!(panel_focused(&mut h));
@@ -233,6 +247,7 @@ async fn the_tab_underline_follows_focus_between_the_dock_and_the_resource_panel
         drawn(&mut h, "panel-title-Pods-unfocused").is_some(),
         "the underline left the Pods panel"
     );
+    assert!(drawn(&mut h, "resource-panel-focused").is_some());
 }
 
 /// 11.1: a new window opens its panel on the stored edge, read from `ui.toml`.

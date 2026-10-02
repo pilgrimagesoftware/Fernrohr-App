@@ -452,8 +452,26 @@ impl Render for ResourcePanel {
             }
         };
 
+        // The panel's focus indicator: a bar in the accent colour along the top of
+        // its header while focus is anywhere inside it. It has no tab to underline
+        // like the dock panels, and a frame around the content was rejected
+        // (`panel-focus-highlight-inset`), so this bar is all it draws.
+        let focused = self.focus_handle.contains_focused(window, cx);
+        let indicator = if focused {
+            crate::ui::style::accent(cx)
+        } else {
+            gpui_kit::transparent_black()
+        };
         div()
             .size_full()
+            .debug_selector(move || {
+                format!(
+                    "resource-panel-{}",
+                    if focused { "focused" } else { "unfocused" }
+                )
+            })
+            .border_t_2()
+            .border_color(indicator)
             .key_context(super::keyboard::PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_select_next))
