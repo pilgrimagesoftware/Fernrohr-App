@@ -177,7 +177,7 @@ async fn up_then_y_opens_the_last_rows_yaml(cx: &mut TestAppContext) {
 /// Pods table's.
 #[test]
 fn describe_and_yaml_are_list_scoped_navigate_commands() {
-    use crate::command::{CommandRegistry, MenuSlot};
+    use crate::command::CommandRegistry;
     let mut registry = CommandRegistry::new();
     crate::util::shell::register_commands(&mut registry);
     for (id, key) in [("object_list.describe", "d"), ("object_list.yaml", "y")] {
@@ -189,6 +189,7 @@ fn describe_and_yaml_are_list_scoped_navigate_commands() {
             command.context,
             Some(crate::k8s::resource::object_list::LIST_KEY_CONTEXT)
         );
-        assert_eq!(command.menu, Some(MenuSlot::Navigate));
+        // Panel-scoped, so out of the menu bar (`menu-organization`).
+        assert_eq!(command.menu, None);
     }
 }

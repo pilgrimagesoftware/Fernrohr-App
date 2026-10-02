@@ -111,7 +111,7 @@ async fn cmd_comma_opens_one_settings_window(cx: &mut TestAppContext) {
     );
     let in_app_menu = cx.update(|cx| {
         cx.global::<CommandRegistry>()
-            .for_menu(crate::command::MenuSlot::App)
+            .for_menu(crate::command::TopMenu::App)
             .iter()
             .any(|command| command.id == "settings.open")
     });

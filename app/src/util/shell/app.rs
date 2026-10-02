@@ -66,7 +66,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: TOGGLE_PALETTE_DEFAULT_BINDING,
         context: None,
         action: Box::new(ToggleCommandPalette),
-        menu: Some(crate::command::MenuSlot::View),
+        menu: Some(crate::command::MenuSlot::View(
+            crate::command::ViewGroup::Palette,
+        )),
     });
     registry.register(Command {
         id: SET_CONTEXT_TUNNEL_COMMAND_ID,
@@ -74,7 +76,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SET_CONTEXT_TUNNEL_DEFAULT_BINDING,
         context: None,
         action: Box::new(SetContextTunnel),
-        menu: Some(crate::command::MenuSlot::Context),
+        menu: Some(crate::command::MenuSlot::Context(
+            crate::command::ContextGroup::Tunnels,
+        )),
     });
     crate::ui::menu::register_commands(registry);
     nav::register_commands(registry);
@@ -86,6 +90,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::theme::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
     crate::k8s::resource::object_list::register_commands(registry);
+    crate::ui::table_fit::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);

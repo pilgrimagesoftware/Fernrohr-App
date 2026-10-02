@@ -7,7 +7,7 @@
 //! Owns only the command surface; what each action does lives with the panel's
 //! handlers in `pods.rs`.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry};
 use gpui_kit::{Action, actions};
 
 actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
@@ -33,11 +33,10 @@ const FIT_COMMAND_ID: &str = "pods.fit_columns";
 
 /// Registers the panel's shortcuts.
 ///
-/// Menu slots: describe and YAML open a panel, so they sit in Navigate; the
-/// namespace warp re-scopes this panel, so View. Logs stays out of the menu -
-/// Navigate already has the global "Show Logs", which opens the same selected
-/// pod's logs, and two items for one thing is clutter. The native menu greys
-/// these out unless a Pods panel is on the focus path.
+/// None is in the menu bar: they act only in a Pods panel, and the menu bar
+/// holds global commands only, so it never depends on focus
+/// (`menu-organization`). The palette offers them while a Pods panel is on the
+/// focus path, and the hint row shows their keys.
 pub fn register_commands(registry: &mut CommandRegistry) {
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {
         registry.register(Command {
@@ -54,14 +53,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Filter to Selected Pod's Namespace",
         NAMESPACE_KEY,
         Box::new(WarpNamespace),
-        Some(MenuSlot::View),
+        None,
     );
     register(
         DESCRIBE_COMMAND_ID,
         "Pods: Describe Selected Pod",
         DESCRIBE_KEY,
         Box::new(DescribePod),
-        Some(MenuSlot::Navigate),
+        None,
     );
     register(
         LOGS_COMMAND_ID,
@@ -75,7 +74,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Show Selected Pod's YAML",
         YAML_KEY,
         Box::new(ShowPodYaml),
-        Some(MenuSlot::Navigate),
+        None,
     );
     // The keyboard twin of a double-click on a header divider (`ui::table_fit`).
     register(
@@ -83,7 +82,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Fit Columns to Contents",
         crate::ui::table_fit::FIT_COLUMNS_KEY,
         Box::new(crate::ui::table_fit::FitAllColumns),
-        Some(MenuSlot::View),
+        None,
     );
 }
 

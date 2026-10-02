@@ -148,7 +148,9 @@ impl NavTarget {
 /// actions - see `shell::register_commands` for the sibling pattern.
 ///
 /// Only the two panel-opening actions that exist without discovery can be
-/// registered here. A per-kind command would have to be minted at runtime from
+/// registered here. Neither is in the menu bar: Navigate holds only moving
+/// focus and switching tabs (`menu-organization`), and Show Logs depends on
+/// the selected pod. A per-kind command would have to be minted at runtime from
 /// the cluster's kinds, and the palette is built from the registry at app
 /// start - before any cluster is connected.
 pub fn register_commands(registry: &mut CommandRegistry) {
@@ -158,7 +160,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SHOW_PODS_DEFAULT_BINDING,
         context: None,
         action: Box::new(ShowPods),
-        menu: Some(crate::command::MenuSlot::Navigate),
+        menu: None,
     });
     registry.register(Command {
         id: SHOW_LOGS_COMMAND_ID,
@@ -166,7 +168,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SHOW_LOGS_DEFAULT_BINDING,
         context: None,
         action: Box::new(ShowLogs),
-        menu: Some(crate::command::MenuSlot::Navigate),
+        menu: None,
     });
 }
 

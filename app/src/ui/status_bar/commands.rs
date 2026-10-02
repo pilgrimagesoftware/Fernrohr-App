@@ -3,7 +3,7 @@
 //! in the Context menu and the palette. `MainWindow` handles them by asking its
 //! status bar, which owns the add popover and the disconnect confirmation.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, ContextGroup, MenuSlot};
 use gpui_kit::actions;
 
 actions!(context, [AddContext, DisconnectActiveContext]);
@@ -20,7 +20,7 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         default_binding: "",
         context: None,
         action: Box::new(AddContext),
-        menu: Some(MenuSlot::Context),
+        menu: Some(MenuSlot::Context(ContextGroup::Contexts)),
     });
     registry.register(Command {
         id: DISCONNECT_COMMAND_ID,
@@ -28,6 +28,6 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         default_binding: "",
         context: None,
         action: Box::new(DisconnectActiveContext),
-        menu: Some(MenuSlot::Context),
+        menu: Some(MenuSlot::Context(ContextGroup::Contexts)),
     });
 }

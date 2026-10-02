@@ -5,7 +5,7 @@
 //! Focus Resources, one of the `cmd-1`/`cmd-2`/`cmd-0` show-panel keys.
 
 use super::{current, set};
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, MenuSlot, ViewGroup};
 use crate::config::ui::TextSize;
 use gpui_kit::{App, actions};
 
@@ -45,7 +45,7 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
             default_binding,
             context: None,
             action,
-            menu: Some(MenuSlot::View),
+            menu: Some(MenuSlot::View(ViewGroup::Appearance)),
         });
     }
 }

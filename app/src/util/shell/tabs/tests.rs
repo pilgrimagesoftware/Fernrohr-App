@@ -91,7 +91,10 @@ fn the_tab_commands_are_registered_and_global() {
         assert!(available.contains(&id.as_str()), "{id} is offered globally");
     }
     for id in ["tab.next", "tab.previous"] {
-        assert_eq!(registry.get(id).unwrap().menu, Some(MenuSlot::Navigate));
+        assert_eq!(
+            registry.get(id).unwrap().menu,
+            Some(MenuSlot::Navigate(crate::command::NavigateGroup::Tabs))
+        );
     }
 }
 

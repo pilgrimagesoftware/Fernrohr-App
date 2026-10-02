@@ -2,7 +2,7 @@
 //! `shell::init` keymap.
 
 use super::{DECREASE_COMMAND_ID, INCREASE_COMMAND_ID, RESET_COMMAND_ID};
-use crate::command::{CommandRegistry, MenuSlot, build_items};
+use crate::command::{CommandRegistry, build_items};
 use crate::config::ui::{TextSize, Theme as ThemePreference};
 use crate::keymap::{KeymapConfig, conflicts};
 use crate::ui::text_size::current;
@@ -97,7 +97,7 @@ fn registry() -> CommandRegistry {
 fn all_three_are_in_the_view_menu_and_the_palette() {
     let registry = registry();
     let view: Vec<&str> = registry
-        .for_menu(MenuSlot::View)
+        .for_menu(crate::command::TopMenu::View)
         .iter()
         .map(|command| command.id)
         .collect();

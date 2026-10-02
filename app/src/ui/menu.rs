@@ -10,7 +10,7 @@
 //! user-facing action reaches the command palette and takes a `keymap.toml`
 //! override, and its key comes from the registry like any other command's.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, TopMenu};
 use gpui_kit::*;
 
 actions!(
@@ -76,7 +76,7 @@ fn menus(registry: &CommandRegistry) -> Vec<Menu> {
             let mut items = vec![MenuItem::action("About Fernrohr", About)];
             // Settings… and anything else the registry puts in the App menu,
             // between About and Services as on every Mac app.
-            let app_items = registry_items(MenuSlot::App, registry);
+            let app_items = registry_items(TopMenu::App, registry);
             if !app_items.is_empty() {
                 items.push(MenuItem::separator());
                 items.extend(app_items);
@@ -93,12 +93,12 @@ fn menus(registry: &CommandRegistry) -> Vec<Menu> {
             ]);
             items
         }),
-        menu_from_registry("Context", MenuSlot::Context, registry),
-        menu_from_registry("Edit", MenuSlot::Edit, registry),
-        menu_from_registry("View", MenuSlot::View, registry),
-        menu_from_registry("Navigate", MenuSlot::Navigate, registry),
+        menu_from_registry("Context", TopMenu::Context, registry),
+        menu_from_registry("Edit", TopMenu::Edit, registry),
+        menu_from_registry("View", TopMenu::View, registry),
+        menu_from_registry("Navigate", TopMenu::Navigate, registry),
         Menu::new("Window").items({
-            let mut items = registry_items(MenuSlot::Window, registry);
+            let mut items = registry_items(TopMenu::Window, registry);
             items.push(MenuItem::separator());
             items.push(MenuItem::action("Minimize", Minimize));
             items.push(MenuItem::action("Zoom", Zoom));
@@ -106,7 +106,7 @@ fn menus(registry: &CommandRegistry) -> Vec<Menu> {
             items.push(MenuItem::action("Close Window", CloseWindow));
             items
         }),
-        menu_from_registry("Help", MenuSlot::Help, registry),
+        menu_from_registry("Help", TopMenu::Help, registry),
     ]
 }
 
@@ -171,203 +171,55 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     }
 }
 
-fn menu_from_registry(name: &'static str, slot: MenuSlot, registry: &CommandRegistry) -> Menu {
-    Menu::new(name).items(registry_items(slot, registry))
+fn menu_from_registry(name: &'static str, menu: TopMenu, registry: &CommandRegistry) -> Menu {
+    Menu::new(name).items(registry_items(menu, registry))
 }
 
-fn registry_items(slot: MenuSlot, registry: &CommandRegistry) -> Vec<MenuItem> {
-    registry
-        .for_menu(slot)
-        .into_iter()
-        .map(|command| MenuItem::Action {
-            name: command.title.into(),
-            action: command.action.boxed_clone(),
-            os_action: None,
-            checked: false,
-            disabled: false,
-        })
-        .collect()
+/// `menu`'s registry items, grouped (`menu-organization`): each group's items
+/// in registration order, a separator between groups, and a group that names
+/// a submenu drawn as that one submenu.
+///
+/// Built once, from the registry - not per focus change. A panel-scoped
+/// command carries no menu slot, so nothing here depends on which panel has
+/// focus; the native menu greys out an item whose action nothing on the focus
+/// path answers.
+fn registry_items(menu: TopMenu, registry: &CommandRegistry) -> Vec<MenuItem> {
+    let mut items = Vec::new();
+    let mut group = None;
+    let mut submenu: Option<(&'static str, Vec<MenuItem>)> = None;
+    for command in registry.for_menu(menu) {
+        let Some(slot) = command.menu else {
+            continue;
+        };
+        if group.is_some_and(|group| group != slot.group()) {
+            if let Some((title, sub_items)) = submenu.take() {
+                items.push(MenuItem::submenu(Menu::new(title).items(sub_items)));
+            }
+            items.push(MenuItem::separator());
+        }
+        group = Some(slot.group());
+        let item = command_item(command);
+        match (slot.submenu(), &mut submenu) {
+            (Some(_), Some((_, sub_items))) => sub_items.push(item),
+            (Some(title), None) => submenu = Some((title, vec![item])),
+            (None, _) => items.push(item),
+        }
+    }
+    if let Some((title, sub_items)) = submenu {
+        items.push(MenuItem::submenu(Menu::new(title).items(sub_items)));
+    }
+    items
+}
+
+fn command_item(command: &Command) -> MenuItem {
+    MenuItem::Action {
+        name: command.title.into(),
+        action: command.action.boxed_clone(),
+        os_action: None,
+        checked: false,
+        disabled: false,
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        About, CloseWindow, Hide, MenuSlot, Minimize, Quit, register_commands, registry_items,
-    };
-    use crate::command::{Command, CommandRegistry};
-    use gpui_kit::{Action, actions};
-
-    actions!(menu_test, [TestAction]);
-
-    /// After a keymap edit and `rebuild_menus`, the menu bar is re-installed
-    /// with the command still in it, and the key the native menu shows - the
-    /// action's earliest binding that no `Unbind` cancelled - is the new one.
-    /// Rebuilding doesn't register handlers again: About still opens exactly
-    /// one window.
-    #[gpui_kit::test]
-    fn rebuilt_menus_show_the_new_key_and_fire_once(cx: &mut gpui_kit::TestAppContext) {
-        use crate::keymap::{Edit, apply};
-        use crate::ui::panel::focus::FocusNextPanel;
-
-        cx.executor().allow_parking();
-        let dir = std::env::temp_dir();
-        let n = std::process::id();
-        let (workspace, keymap) = (
-            dir.join(format!("fernrohr-menu-workspace-{n}.toml")),
-            dir.join(format!("fernrohr-menu-keymap-{n}.toml")),
-        );
-        let _ = std::fs::remove_file(&keymap);
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-            crate::util::shell::init(cx, workspace.clone(), &keymap);
-
-            apply(cx, "panel.focus_next", Edit::Set("cmd-shift-j".into())).expect("saved");
-            super::rebuild_menus(cx);
-            super::rebuild_menus(cx);
-
-            let menus = cx.get_menus().expect("a menu bar is installed");
-            let navigate = menus
-                .iter()
-                .find(|menu| menu.name.as_ref() == "Navigate")
-                .expect("a Navigate menu");
-            assert!(
-                navigate.items.iter().any(|item| matches!(
-                    item,
-                    gpui_kit::OwnedMenuItem::Action { name, .. } if name == "Focus Next Panel"
-                )),
-                "the command is still in its menu"
-            );
-            let shown = cx
-                .key_bindings()
-                .borrow()
-                .bindings_for_action(&FocusNextPanel)
-                .next()
-                .map(|binding| {
-                    binding
-                        .keystrokes()
-                        .iter()
-                        .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
-                        .collect::<Vec<_>>()
-                });
-            let expected = gpui_kit::Keystroke::parse("cmd-shift-j").unwrap().unparse();
-            assert_eq!(shown, Some(vec![expected]), "the menu shows the new key");
-        });
-
-        let before = cx.update(|cx| cx.windows().len());
-        cx.update(|cx| cx.dispatch_action(&About));
-        cx.run_until_parked();
-        assert_eq!(
-            cx.update(|cx| cx.windows().len()),
-            before + 1,
-            "About's handler ran once, not once per rebuild"
-        );
-        let _ = std::fs::remove_file(&workspace);
-        let _ = std::fs::remove_file(&keymap);
-    }
-
-    /// Settings… sits in the App menu, between About and Services, once the
-    /// registry has it - `MenuSlot::App`'s first command.
-    #[test]
-    fn the_app_menu_carries_settings() {
-        let mut registry = CommandRegistry::new();
-        crate::ui::settings::register_commands(&mut registry);
-        let menus = super::menus(&registry);
-        let names: Vec<String> = menus[0]
-            .items
-            .iter()
-            .filter_map(|item| match item {
-                gpui_kit::MenuItem::Action { name, .. } => Some(name.to_string()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(names.first().map(String::as_str), Some("About Fernrohr"));
-        assert_eq!(names.get(1).map(String::as_str), Some("Settings…"));
-    }
-
-    /// The App and Window menu items answer to each platform's standard
-    /// shortcuts - through their registered commands, the path every command's
-    /// key takes - and every platform item reaches the palette. Hide and
-    /// Minimize are macOS conventions, unbound elsewhere.
-    #[test]
-    fn platform_items_have_their_standard_shortcuts() {
-        let mut registry = CommandRegistry::new();
-        register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            &gpui_kit::DummyKeyboardMapper,
-        );
-        let key_for = |action: &dyn Action| {
-            bindings
-                .iter()
-                .find(|binding| binding.action().partial_eq(action))
-                .map(|binding| {
-                    binding
-                        .keystrokes()
-                        .iter()
-                        .map(|keystroke| keystroke.unparse())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-        };
-        let macos = cfg!(target_os = "macos");
-        assert_eq!(
-            key_for(&Quit).as_deref(),
-            Some(if macos { "cmd-q" } else { "ctrl-q" })
-        );
-        assert_eq!(key_for(&Hide).as_deref(), macos.then_some("cmd-h"));
-        assert_eq!(key_for(&Minimize).as_deref(), macos.then_some("cmd-m"));
-        assert_eq!(
-            key_for(&CloseWindow).as_deref(),
-            Some(if macos { "cmd-w" } else { "ctrl-w" })
-        );
-        assert_eq!(
-            key_for(&About),
-            None,
-            "About has no shortcut, and no warning"
-        );
-        assert_eq!(
-            registry.available(&[]).len(),
-            8,
-            "every platform item is a palette entry"
-        );
-    }
-
-    #[test]
-    fn registry_items_only_returns_the_requested_slot() {
-        let mut registry = CommandRegistry::new();
-        registry.register(Command {
-            id: "test.one",
-            title: "One",
-            default_binding: "cmd-1",
-            context: None,
-            action: Box::new(TestAction),
-            menu: Some(MenuSlot::View),
-        });
-        registry.register(Command {
-            id: "test.two",
-            title: "Two",
-            default_binding: "cmd-2",
-            context: None,
-            action: Box::new(TestAction),
-            menu: Some(MenuSlot::Navigate),
-        });
-        registry.register(Command {
-            id: "test.three",
-            title: "Three",
-            default_binding: "cmd-3",
-            context: None,
-            action: Box::new(TestAction),
-            menu: None,
-        });
-
-        let view_items = registry_items(MenuSlot::View, &registry);
-        assert_eq!(view_items.len(), 1);
-    }
-
-    #[test]
-    fn quit_and_about_are_distinct_actions() {
-        assert!(!Quit.partial_eq(&About));
-    }
-}
+mod tests;

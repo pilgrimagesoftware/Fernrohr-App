@@ -2,7 +2,7 @@
 //! one per choice, in the View menu, each making that theme current in every
 //! window. The status bar's switcher dispatches the same actions.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, MenuSlot, ViewGroup};
 use crate::config::ui::Theme as ThemePreference;
 use gpui_kit::{App, actions};
 
@@ -25,7 +25,7 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
             default_binding: "",
             context: None,
             action,
-            menu: Some(MenuSlot::View),
+            menu: Some(MenuSlot::View(ViewGroup::Appearance)),
         });
     }
 }

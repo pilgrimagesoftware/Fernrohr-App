@@ -112,7 +112,9 @@ pub(super) fn register_commands(registry: &mut CommandRegistry) {
         default_binding: FOCUS_RESOURCES_DEFAULT_BINDING,
         context: None,
         action: Box::new(FocusResources),
-        menu: Some(crate::command::MenuSlot::Navigate),
+        menu: Some(crate::command::MenuSlot::Navigate(
+            crate::command::NavigateGroup::Panels,
+        )),
     });
 }
 

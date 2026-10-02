@@ -65,7 +65,10 @@ fn the_focus_commands_are_global_navigate_items_with_their_own_keys() {
             registry.available(&[]).iter().any(|c| c.id == id),
             "{id} is offered with no panel focused"
         );
-        assert_eq!(command.menu, Some(MenuSlot::Navigate));
+        assert_eq!(
+            command.menu,
+            Some(MenuSlot::Navigate(crate::command::NavigateGroup::Panels))
+        );
         let shared: Vec<&str> = registry
             .iter()
             .filter(|other| {
