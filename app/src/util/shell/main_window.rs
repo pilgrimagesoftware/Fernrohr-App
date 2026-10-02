@@ -77,8 +77,11 @@ impl MainWindow {
                 .layout(DockPlacement::Center)
                 .map(|tree| tree.panels().collect::<Vec<_>>())
                 .unwrap_or_default();
+            // Paired by position - one key slot per restored panel - and a
+            // panel with no key (an unrestored one) isn't tracked.
             ids.into_iter()
                 .zip(restored_keys)
+                .filter_map(|(id, key)| Some((id, key?)))
                 .map(|(id, key)| OpenPanel {
                     id,
                     key,

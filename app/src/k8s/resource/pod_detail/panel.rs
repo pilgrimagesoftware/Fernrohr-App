@@ -24,28 +24,22 @@ use k8s_openapi::api::core::v1::Pod;
 
 pub fn register_restore(cx: &mut gpui_kit::App) {
     register_panel(cx, "PodDetail", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("PodDetail layout state must be a panel");
-        };
-        let context_name = state["context_name"]
-            .as_str()
-            .expect("PodDetail layout state must name its cluster")
-            .to_string();
-        let namespace = state["pod_namespace"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
-        let name = state["pod_name"].as_str().unwrap_or_default().to_string();
-        let target = NavTarget::pod(namespace.clone(), name.clone());
-        let scope = PanelScope::new(target, context_name);
-        panel_handle(cx.new(|cx| {
-            PodDetailPanel::new(
-                PodRef { namespace, name },
-                scope,
-                DetailView::Structured,
-                cx,
-            )
-        }))
+        use crate::ui::unrestored::{required_str, restore_with};
+        restore_with(&context, cx, |state, cx| {
+            let context_name = required_str(state, "context_name")?.to_string();
+            let namespace = required_str(state, "pod_namespace")?.to_string();
+            let name = required_str(state, "pod_name")?.to_string();
+            let target = NavTarget::pod(namespace.clone(), name.clone());
+            let scope = PanelScope::new(target, context_name);
+            Ok(panel_handle(cx.new(|cx| {
+                PodDetailPanel::new(
+                    PodRef { namespace, name },
+                    scope,
+                    DetailView::Structured,
+                    cx,
+                )
+            })))
+        })
     });
 }
 

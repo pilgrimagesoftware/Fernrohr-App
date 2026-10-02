@@ -23,6 +23,7 @@ pub mod theme;
 pub mod toolbar;
 pub mod tunnels;
 pub mod typography;
+pub mod unrestored;
 pub mod viewer;
 
 pub use panel::resource as resource_panel;

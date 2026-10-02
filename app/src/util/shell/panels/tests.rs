@@ -70,9 +70,49 @@ fn restored_panel_keys_preserve_kind_context_and_namespace() {
     let keys = super::restored_panel_keys(&state);
 
     assert_eq!(keys.len(), 1);
-    assert_eq!(keys[0].target, NavTarget::pods());
-    assert_eq!(keys[0].context_name, "kind-dev");
-    assert_eq!(keys[0].namespaces, vec!["kube-system"]);
+    let key = keys[0].as_ref().expect("a Pods panel is keyed");
+    assert_eq!(key.target, NavTarget::pods());
+    assert_eq!(key.context_name, "kind-dev");
+    assert_eq!(key.namespaces, vec!["kube-system"]);
+}
+
+/// `restore-no-panic`: a panel the window can't key still takes its slot, so the
+/// keys after it stay paired with their own panels.
+#[test]
+fn an_unreadable_panel_keeps_its_slot_among_the_keys() {
+    use gpui_kit::component::dock::{PanelInfo, PanelState};
+
+    let panel = |name: &str, info: serde_json::Value| PanelState {
+        panel_name: name.to_string(),
+        children: Vec::new(),
+        info: PanelInfo::Panel(info),
+    };
+    let tabs = PanelState {
+        panel_name: "TabPanel".to_string(),
+        children: vec![
+            panel("Pods", serde_json::json!({})),
+            panel("Logs", serde_json::json!({ "context_name": "kind-dev" })),
+        ],
+        info: PanelInfo::Tabs { active_index: 0 },
+    };
+    let state = PanelState {
+        panel_name: "StackPanel".to_string(),
+        children: vec![tabs],
+        info: PanelInfo::Stack {
+            sizes: Vec::new(),
+            axis: 0,
+        },
+    };
+
+    let keys = super::restored_panel_keys(&state);
+
+    assert_eq!(keys.len(), 2, "one slot per restored panel");
+    assert!(keys[0].is_none(), "the Pods panel names no cluster");
+    assert_eq!(
+        keys[1].as_ref().map(|key| key.target.clone()),
+        Some(NavTarget::Logs),
+        "the Logs panel keeps its own key"
+    );
 }
 
 /// `standard-resource-panels` 1.6: a restored list panel - and a placeholder from an
@@ -104,13 +144,14 @@ fn restored_list_panels_are_keyed_by_their_kind() {
         };
         let keys = super::restored_panel_keys(&state);
         assert_eq!(keys.len(), 1, "{panel_name}");
+        let key = keys[0].as_ref().expect("a list panel is keyed");
         assert_eq!(
-            keys[0].target,
+            key.target,
             NavTarget::Kind(services.clone()),
             "{panel_name}"
         );
-        assert_eq!(keys[0].context_name, "kind-dev");
-        assert_eq!(keys[0].namespaces, vec!["staging"]);
+        assert_eq!(key.context_name, "kind-dev");
+        assert_eq!(key.namespaces, vec!["staging"]);
     }
 }
 
