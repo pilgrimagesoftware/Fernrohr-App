@@ -13,4 +13,5 @@ mod overview;
 mod panel;
 mod secrets;
 mod sections;
+mod storage;
 mod workloads;

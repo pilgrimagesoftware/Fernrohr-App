@@ -28,6 +28,8 @@ pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec
         // the placeholders aren't valid base64, which `Secret::data` expects.
         ("", "Secret") => Some(config::secret(object)),
         ("", "PersistentVolumeClaim") => typed(object).map(|claim| storage::claim(&claim)),
+        ("", "PersistentVolume") => typed(object).map(|volume| storage::volume(&volume)),
+        ("storage.k8s.io", "StorageClass") => typed(object).map(|class| storage::class(&class)),
         ("", "ServiceAccount") => {
             typed(object).map(|account| service_account::sections(&account, namespace))
         }
