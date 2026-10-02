@@ -90,7 +90,7 @@ async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestApp
 
     window
         .update(cx, |panel, _window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             cx.notify();
         })
         .unwrap();
@@ -142,7 +142,7 @@ async fn the_toolbar_toggles_between_fields_and_yaml(cx: &mut TestAppContext) {
 
     window
         .update(cx, |panel, _window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             panel.set_view(DetailView::Yaml, cx);
         })
         .unwrap();
@@ -169,7 +169,7 @@ async fn switching_tabs_shows_only_that_tabs_fields(cx: &mut TestAppContext) {
 
     window
         .update(cx, |panel, _window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             cx.notify();
         })
         .unwrap();
@@ -215,7 +215,7 @@ async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
 
     window
         .update(&mut vcx, |panel, window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             panel.focus_handle.clone().focus(window, cx);
             cx.notify();
         })
@@ -298,7 +298,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
     window
         .update(&mut vcx, |panel, window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             panel.focus_handle.clone().focus(window, cx);
             cx.notify();
         })

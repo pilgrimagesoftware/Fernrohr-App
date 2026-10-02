@@ -1,22 +1,14 @@
-//! Reading the pod: one `get` plus the events naming it, and the states the
-//! panel moves through while and after that happens.
+//! Reading the pod: one `get`, and the states the panel moves through while and
+//! after that happens. Its events come from a live watch the panel runs once the
+//! pod is in (`live_events`), not from this fetch.
 
-use super::format::non_empty;
-use crate::k8s::resource::events::{self, InvolvedObject};
-use k8s_openapi::api::core::v1::Event as K8sEvent;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
-
-/// The events naming a pod, or why they could not be listed. Kept apart from
-/// the pod's own fetch result: a user allowed to `get` pods but not to `list`
-/// events still gets the pod, and the Events tab says why it is empty rather
-/// than claiming there were none.
-pub(super) type PodEvents = Result<Vec<K8sEvent>, String>;
 
 /// What the panel knows about the pod it is scoped to.
 pub(super) enum PodDetailState {
     Loading,
-    Loaded(Box<Pod>, PodEvents),
+    Loaded(Box<Pod>),
     /// The pod is gone. Its own state rather than an error: a detail panel that
     /// outlives its pod is a normal thing to have left open, not a failure.
     NotFound,
@@ -33,16 +25,12 @@ pub(super) enum PodDetailState {
 /// One fetch's outcome, so a 404 is told apart from every other error before it
 /// reaches the panel's state.
 pub(super) enum PodFetch {
-    Found(Box<Pod>, PodEvents),
+    Found(Box<Pod>),
     NotFound,
 }
 
-/// Fetches the pod and, alongside it, the events naming it - a single round
-/// trip's worth of state rather than a second fetch lifecycle to manage, since
-/// the Events tab has nothing to show until the pod itself has loaded anyway.
-/// A 404 on the pod skips the events lookup entirely: there is nothing left to
-/// name events by. Any other failure is `(message, detail)` - see
-/// `PodDetailState::Failed`'s doc comment.
+/// Fetches the pod. A 404 is its own outcome; any other failure is
+/// `(message, detail)` - see `PodDetailState::Failed`'s doc comment.
 pub(super) async fn fetch_pod(
     client: kube::Client,
     namespace: String,
@@ -59,15 +47,5 @@ pub(super) async fn fetch_pod(
             ));
         }
     };
-    let events = events::list(
-        client,
-        &InvolvedObject {
-            kind: "Pod",
-            namespace: Some(&namespace),
-            name: &name,
-            uid: non_empty(&pod.metadata.uid),
-        },
-    )
-    .await;
-    Ok(PodFetch::Found(Box::new(pod), events))
+    Ok(PodFetch::Found(Box::new(pod)))
 }

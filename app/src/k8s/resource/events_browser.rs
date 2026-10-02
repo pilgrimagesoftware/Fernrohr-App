@@ -23,7 +23,6 @@ mod watch;
 pub use commands::register_commands;
 pub use panel::EventsPanel;
 pub use restore::register_restore;
-#[cfg(test)]
 pub use row::EventRow;
 pub use store::EventsTable;
 pub use watch::watch_events;

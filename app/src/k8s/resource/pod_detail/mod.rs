@@ -23,6 +23,7 @@ mod fetch;
 mod field_view;
 mod fields;
 mod format;
+mod live_events;
 mod model;
 mod panel;
 mod references;

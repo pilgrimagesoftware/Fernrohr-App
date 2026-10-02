@@ -10,7 +10,6 @@ use super::commands::{
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
-use crate::k8s::resource::events;
 use crate::ui::panel_title;
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::FocusTrapElement as _;
@@ -77,11 +76,9 @@ impl PodDetailPanel {
     /// render path rather than a `PodField` - events come from a separate
     /// fetch, not from `pod_fields`'s projection of the pod object itself.
     fn render_events(&self, cx: &Context<Self>) -> AnyElement {
-        let events = match self.events() {
-            Some(Ok(events)) => Ok(events::summarize(events, Timestamp::now())),
-            Some(Err(reason)) => Err(reason.clone()),
-            None => Ok(Vec::new()),
-        };
+        let events = self
+            .event_summaries(Timestamp::now(), cx)
+            .unwrap_or_else(|| Ok(Vec::new()));
         crate::ui::detail::events(&events, cx)
     }
 
@@ -118,7 +115,7 @@ impl Render for PodDetailPanel {
                 cx,
             )
             .into_any_element(),
-            PodDetailState::Loaded(_, _) => match self.viewing {
+            PodDetailState::Loaded(_) => match self.viewing {
                 // Field values wrap to the panel's width rather than
                 // overflowing it - vertical-only scroll, so nothing pushes
                 // the layout wider than the panel actually is.

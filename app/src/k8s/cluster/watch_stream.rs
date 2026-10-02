@@ -86,6 +86,31 @@ enum Outcome<K> {
 /// Dropping the returned task ends the watch.
 pub(crate) fn run<K>(
     api: Api<K>,
+    on_event: impl FnMut(watcher::Event<K>, &mut App) + 'static,
+    on_unauthorized: impl FnOnce(&mut App) + 'static,
+    on_refused: OnRefused,
+    on_no_resource_version: OnNoResourceVersion,
+    cx: &mut App,
+) -> Task<()>
+where
+    K: kube::Resource + Clone + DeserializeOwned + Debug + Send + 'static,
+{
+    run_with(
+        api,
+        watcher::Config::default(),
+        on_event,
+        on_unauthorized,
+        on_refused,
+        on_no_resource_version,
+        cx,
+    )
+}
+
+/// [`run`], watching only what `config` selects - a field selector pinning one
+/// object's events, say.
+pub(crate) fn run_with<K>(
+    api: Api<K>,
+    config: watcher::Config,
     mut on_event: impl FnMut(watcher::Event<K>, &mut App) + 'static,
     on_unauthorized: impl FnOnce(&mut App) + 'static,
     on_refused: OnRefused,
@@ -98,8 +123,7 @@ where
     let report_refusal = matches!(on_refused, OnRefused::Report(_));
     let report_no_version = matches!(on_no_resource_version, OnNoResourceVersion::Report(_));
     let rx = crate::runtime::spawn_stream(cx, 64, move |tx| async move {
-        let mut stream =
-            Box::pin(watcher::watcher(api, watcher::Config::default()).default_backoff());
+        let mut stream = Box::pin(watcher::watcher(api, config).default_backoff());
         while let Some(event) = stream.next().await {
             match event {
                 Ok(event) => {

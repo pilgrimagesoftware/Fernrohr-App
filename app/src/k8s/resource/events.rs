@@ -5,6 +5,7 @@
 //! thing (`resource-links` 5.1). The shape of an event, and of the selector
 //! that finds an object's events, does not depend on the object's kind.
 
+use crate::k8s::resource::events_browser::EventRow;
 use crate::k8s::resource::pods::format_age;
 use crate::ui::detail::BadgeTone;
 use jiff::Timestamp;
@@ -68,6 +69,48 @@ pub async fn list(
         .await
         .map(|list| list.items)
         .map_err(|error| error.to_string())
+}
+
+/// Watches `object`'s events - the field selector [`list`] uses - applying each
+/// change to `table`, the events browser's model, so a detail view's events read
+/// exactly as the browser's do (`pod-events-time-window` D1). One watch per
+/// detail panel: the selector is unique to the object, so there's nothing to
+/// share. A 403 is recorded on `table` as its refusal; a 401 calls
+/// `on_unauthorized` once. Dropping the task ends the watch.
+pub fn watch(
+    client: kube::Client,
+    object: &InvolvedObject<'_>,
+    table: gpui_kit::Entity<crate::k8s::resource::events_browser::EventsTable>,
+    on_unauthorized: impl FnOnce(&mut gpui_kit::App) + 'static,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::Task<()> {
+    use crate::k8s::cluster::watch_stream::{self, OnNoResourceVersion, OnRefused};
+    let api: Api<K8sEvent> = match object.namespace {
+        Some(namespace) => Api::namespaced(client, namespace),
+        None => Api::all(client),
+    };
+    let config = kube_runtime::watcher::Config::default().fields(&selector(object));
+    let refused = table.clone();
+    watch_stream::run_with(
+        api,
+        config,
+        move |event, cx| {
+            table.update(cx, |table, cx| {
+                table.apply(event);
+                cx.notify();
+            });
+        },
+        on_unauthorized,
+        OnRefused::Report(Box::new(move |message, cx| {
+            refused.update(cx, |table, cx| {
+                table.set_refused(message);
+                cx.notify();
+            });
+        })),
+        // An Event list always carries a `resourceVersion`.
+        OnNoResourceVersion::Retry,
+        cx,
+    )
 }
 
 /// When an event last happened. The legacy `lastTimestamp`/`firstTimestamp`
@@ -141,31 +184,37 @@ pub(crate) fn reporting_instance(event: &K8sEvent) -> Option<String> {
 /// as a warning tone and any other type (chiefly `Normal`) as good; an event
 /// with no type at all is `Unknown`, neither good nor a warning.
 pub fn summarize(events: &[K8sEvent], now: Timestamp) -> Vec<EventSummary> {
-    let mut events: Vec<(&K8sEvent, Option<Timestamp>)> = events
-        .iter()
-        .map(|event| (event, event_time(event)))
-        .collect();
+    let rows: Vec<EventRow> = events.iter().map(EventRow::new).collect();
+    summarize_rows(&rows, now)
+}
+
+/// [`summarize`] for events already read into the events browser's rows - what a
+/// live watch keeps (`pod-events-time-window` D1). Both paths go through here, so
+/// an event reads the same wherever it's shown.
+pub fn summarize_rows(rows: &[EventRow], now: Timestamp) -> Vec<EventSummary> {
+    let mut rows: Vec<&EventRow> = rows.iter().collect();
     // `Option`'s ordering puts `None` first, so reversing it sorts newest
     // first and leaves undated events at the end.
-    events.sort_by(|(_, a), (_, b)| b.cmp(a));
-    events
-        .into_iter()
-        .map(|(event, time)| {
-            let age = time
+    rows.sort_by_key(|row| std::cmp::Reverse(row.last_seen));
+    rows.into_iter()
+        .map(|row| {
+            let age = row
+                .last_seen
                 .map(|time| format_age(now.duration_since(time).as_secs()))
                 .unwrap_or_else(|| "unknown".to_string());
-            let tone = match event.type_.as_deref() {
+            let tone = match row.type_.as_deref() {
                 Some("Warning") => BadgeTone::Warning,
                 Some(_) => BadgeTone::Good,
                 None => BadgeTone::Unknown,
             };
-            // Like the timestamps, a series-style event counts its repeats on
-            // `series.count` rather than the legacy `count`.
-            let count = event_count(event);
             EventSummary {
-                reason: text(&event.reason).unwrap_or_else(|| "Unknown".to_string()),
-                message: text(&event.message).unwrap_or_default(),
-                count,
+                reason: if row.reason.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    row.reason.clone()
+                },
+                message: row.message.clone(),
+                count: row.count,
                 age,
                 tone,
             }
@@ -204,3 +253,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod watch_tests;

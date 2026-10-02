@@ -6,7 +6,7 @@ use super::commands::{
     SelectContainersTab, SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab,
     SelectVolumesTab, ToggleDetailView,
 };
-use super::fetch::{PodDetailState, PodEvents, PodFetch, fetch_pod};
+use super::fetch::{PodDetailState, PodFetch, fetch_pod};
 use super::fields::pod_fields;
 use super::model::{DetailSection, DetailView, PodField};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
@@ -68,6 +68,8 @@ pub struct PodDetailPanel {
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
     pub(super) fetching: bool,
+    /// The pod's live events, once it has loaded (`live_events`).
+    pub(super) events: Option<super::live_events::PodEventsWatch>,
     /// The Configuration tab's cards and revealed Secret values. Revealed
     /// values live only here, and only until hidden, the tab is left, or the
     /// panel closes.
@@ -96,6 +98,7 @@ impl PodDetailPanel {
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
+            events: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
@@ -127,6 +130,7 @@ impl PodDetailPanel {
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
+            events: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
@@ -147,6 +151,7 @@ impl PodDetailPanel {
         let namespace = self.pod.namespace.clone();
         let name = self.pod.name.clone();
         self.fetching = true;
+        let watch_client = client.clone();
         let rx = crate::runtime::spawn_stream(cx, 1, move |tx| async move {
             let _ = tx.send(fetch_pod(client, namespace, name).await).await;
         });
@@ -155,7 +160,10 @@ impl PodDetailPanel {
                 let _ = this.update(cx, |this, cx| {
                     this.fetching = false;
                     this.state = match result {
-                        Ok(PodFetch::Found(pod, events)) => PodDetailState::Loaded(pod, events),
+                        Ok(PodFetch::Found(pod)) => {
+                            this.watch_events(&pod, watch_client.clone(), cx);
+                            PodDetailState::Loaded(pod)
+                        }
                         Ok(PodFetch::NotFound) => PodDetailState::NotFound,
                         Err((message, detail)) => PodDetailState::Failed { message, detail },
                     };
@@ -192,7 +200,7 @@ impl PodDetailPanel {
     /// that need a loaded panel without a cluster (the window's link tests).
     #[cfg(test)]
     pub(crate) fn test_set_loaded(&mut self, pod: Pod, cx: &mut Context<Self>) {
-        self.state = PodDetailState::Loaded(Box::new(pod), Ok(Vec::new()));
+        self.state = PodDetailState::Loaded(Box::new(pod));
         cx.notify();
     }
 
@@ -236,16 +244,7 @@ impl PodDetailPanel {
     /// The loaded pod, if the fetch has landed. Read by tests and by render.
     pub(super) fn pod(&self) -> Option<&Pod> {
         match &self.state {
-            PodDetailState::Loaded(pod, _) => Some(pod),
-            _ => None,
-        }
-    }
-
-    /// The events naming this pod, once the fetch has landed - or why they
-    /// could not be listed. `None` until then.
-    pub(super) fn events(&self) -> Option<&PodEvents> {
-        match &self.state {
-            PodDetailState::Loaded(_, events) => Some(events),
+            PodDetailState::Loaded(pod) => Some(pod),
             _ => None,
         }
     }

@@ -60,7 +60,7 @@ impl ClusterRegistry {
     /// refreshed client; a failed one leaves the watch paused - closing every subscribed
     /// panel is still what releases it (`unsubscribe_pods`, already unconditional on
     /// health/auth state).
-    pub(super) fn handle_unauthorized(cx: &mut App, context_name: &str) {
+    pub(crate) fn handle_unauthorized(cx: &mut App, context_name: &str) {
         if !cx.global::<Self>().sessions.contains_key(context_name) {
             return;
         }

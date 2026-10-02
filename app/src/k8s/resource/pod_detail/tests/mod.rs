@@ -15,6 +15,7 @@ mod events;
 mod fetch;
 mod fixtures;
 mod links;
+mod live_events;
 mod panel;
 mod projection;
 mod references;
