@@ -44,6 +44,12 @@ pub(crate) const STATUS_TICK_INTERVAL: Duration = Duration::from_secs(1);
 /// `resourceVersion` to start a watch from (`componentstatuses`).
 pub(crate) const LIST_POLL_INTERVAL: Duration = Duration::from_secs(30);
 
+/// How long API discovery waits for one API group before reporting it unavailable
+/// (`discovery-resilience`). kube retries a 503 with a backoff that can run for
+/// minutes, and the other groups' kinds wait for the slowest group, so a dead
+/// aggregated API must not hold the Resource panel's list back longer than this.
+pub(crate) const DISCOVERY_GROUP_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// How long a window must stop moving or resizing before its layout is saved
 /// (Fernrohr#51). A drag fires a bounds change per frame; this coalesces them
 /// into one write, while keeping a kill or crash from losing the layout.

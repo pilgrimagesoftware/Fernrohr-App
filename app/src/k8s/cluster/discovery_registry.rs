@@ -104,7 +104,16 @@ impl DiscoveredKinds {
                 let _ = this.update(cx, |this, cx| {
                     this.loading = false;
                     match result {
-                        Ok(kinds) => this.kinds = Some(kinds),
+                        Ok(discovered) => {
+                            for group in &discovered.unavailable {
+                                log::warn!(
+                                    "API group {:?} unavailable: {}",
+                                    group.group,
+                                    group.reason
+                                );
+                            }
+                            this.kinds = Some(discovered.kinds);
+                        }
                         Err(error) => log::warn!("resource discovery failed: {error}"),
                     }
                     cx.notify();

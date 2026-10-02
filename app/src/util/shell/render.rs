@@ -122,6 +122,7 @@ impl Render for MainWindow {
             })
             .on_action(cx.listener(Self::on_action_show_pods))
             .on_action(cx.listener(Self::on_action_focus_resources))
+            .on_action(cx.listener(Self::on_action_refresh_resources))
             .on_action(cx.listener(Self::on_action_focus_next_panel))
             .on_action(cx.listener(Self::on_action_focus_previous_panel))
             .on_action(cx.listener(Self::on_action_show_logs))

@@ -12,8 +12,8 @@
 //! the whole thing keyboard-operable ([`keyboard`]/[`actions`]). This file stays
 //! wiring and state; [`render`] draws it and [`actions`] answers the keyboard.
 
-use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
-use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
+use crate::k8s::cluster::connection::ClusterConnection;
+use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::ui::nav::NavTarget;
 use category::Category;
@@ -23,14 +23,19 @@ use std::collections::HashSet;
 
 mod actions;
 mod category;
+mod discovery;
 mod edge;
 mod keyboard;
+mod notes;
 mod render;
 mod section;
 mod side_preference;
 
 pub(crate) use actions::FocusResources;
 pub(crate) use category::is_built_in;
+#[cfg(test)]
+pub(crate) use discovery::REFRESH_DEFAULT_BINDING;
+pub use discovery::RefreshResources;
 #[cfg(test)]
 pub(crate) use edge::TOGGLE_DEFAULT_BINDING;
 #[cfg(test)]
@@ -44,6 +49,7 @@ pub use side_preference::{SaveResourceSide, init_side_preference, preferred_side
 /// The Resource panel's commands: its own keys, and moving or collapsing it.
 pub(crate) fn register_commands(registry: &mut crate::command::CommandRegistry) {
     actions::register_commands(registry);
+    discovery::register_commands(registry);
     side_preference::register_commands(registry);
     edge::register_commands(registry);
 }
@@ -76,7 +82,7 @@ enum ResourceState {
     WaitingForConnection,
     Loading,
     Loaded(Vec<DiscoveredKind>),
-    Failed(String),
+    Failed { message: String, detail: String },
 }
 
 pub struct ResourcePanel {
@@ -88,6 +94,8 @@ pub struct ResourcePanel {
     /// so this flag is what stops a connection that flaps from racing two
     /// results into `state`.
     loading: bool,
+    /// The API groups the last discovery couldn't read (`discovery-resilience`).
+    notes: discovery::Notes,
     /// The kind the window's active panel is showing, so its row is marked
     /// active. Set by the window whenever it switches panels.
     selected: Option<NavTarget>,
@@ -198,6 +206,7 @@ impl ResourcePanel {
             contexts,
             state: ResourceState::WaitingForConnection,
             loading: false,
+            notes: discovery::Notes::default(),
             selected: None,
             highlighted: None,
             collapsed: HashSet::new(),
@@ -400,40 +409,6 @@ impl ResourcePanel {
             HashSet::new()
         };
         cx.notify();
-    }
-
-    /// Starts discovery as soon as the window's context has a client. A no-op
-    /// while the state is already settled or a request is in flight.
-    fn sync(&mut self, connection: &Entity<ClusterConnection>, cx: &mut Context<Self>) {
-        if self.loading || matches!(self.state, ResourceState::Loaded(_)) {
-            return;
-        }
-        let ConnectionState::Connected(client) = &connection.read(cx).state else {
-            return;
-        };
-        self.load(client.clone(), cx);
-    }
-
-    fn load(&mut self, client: kube::Client, cx: &mut Context<Self>) {
-        self.loading = true;
-        self.state = ResourceState::Loading;
-        let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
-            let _ = tx.send(discover_kinds(client).await).await;
-        });
-        cx.spawn(async move |this, cx| {
-            crate::runtime::drain(rx, |result| {
-                let _ = this.update(cx, |this, cx| {
-                    this.loading = false;
-                    this.state = match result {
-                        Ok(kinds) => ResourceState::Loaded(kinds),
-                        Err(error) => ResourceState::Failed(error.to_string()),
-                    };
-                    cx.notify();
-                });
-            })
-            .await;
-        })
-        .detach();
     }
 
     /// The row for each discovered kind: its label, the target selecting it

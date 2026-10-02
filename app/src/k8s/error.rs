@@ -19,10 +19,20 @@
 /// The message half of a failure report: what a panel shows by default.
 pub(crate) fn describe(error: &kube::Error) -> String {
     match error {
+        // kube's stand-in when the server's error body wasn't a `Status` (a 503
+        // from an aggregated API's dead backend, say): its "reason" is kube's own
+        // parse note, so the HTTP status and the body the server sent say more.
+        kube::Error::Api(status) if status.reason == UNPARSED_ERROR_REASON => {
+            format!("HTTP {}: {}", status.code, status.message.trim())
+        }
         kube::Error::Api(status) => format!("{}: {}", status.reason, status.message),
         other => other.to_string(),
     }
 }
+
+/// The reason kube gives an error whose body it couldn't parse as a `Status`
+/// (`kube_client::client::handle_api_errors`).
+const UNPARSED_ERROR_REASON: &str = "Failed to parse error data";
 
 /// The technical half: every field `Debug` can show, kept alongside the
 /// readable message rather than discarded - a panel renders both, the second
@@ -50,6 +60,14 @@ mod tests {
     fn describe_reads_an_api_errors_reason_and_message() {
         let error = api_error("Forbidden", "pods is forbidden", 403);
         assert_eq!(describe(&error), "Forbidden: pods is forbidden");
+    }
+
+    /// A body kube couldn't parse reads as its HTTP status and what the server
+    /// sent, not as kube's own "Failed to parse error data".
+    #[test]
+    fn describe_reads_an_unparsed_error_as_its_http_status_and_body() {
+        let error = api_error("Failed to parse error data", "service unavailable\n", 503);
+        assert_eq!(describe(&error), "HTTP 503: service unavailable");
     }
 
     #[test]

@@ -4,9 +4,11 @@
 //! 8.1 of the `cluster-picker-and-navigation` change renders one row per kind
 //! it returns, CRDs included, rather than a hard-coded list.
 
+use futures_util::future::join_all;
 use kube::Client;
+use kube::core::GroupVersion;
 use kube::core::GroupVersionKind;
-use kube::discovery::{Discovery, Scope, verbs};
+use kube::discovery::{ApiGroup, Scope, oneshot, verbs};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
@@ -150,324 +152,143 @@ impl DiscoveredKind {
     }
 }
 
-/// Runs API discovery against `client` and returns every resource kind the
-/// cluster reports - CRDs included - at each group's recommended version.
+/// What discovery found: every kind from the API groups that answered, and the
+/// groups that didn't. A group that fails - typically an aggregated API such as
+/// `metrics.k8s.io` whose backend is down and answers 503 - costs only its own
+/// kinds, not the whole list.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Discovered {
+    pub kinds: Vec<DiscoveredKind>,
+    pub unavailable: Vec<UnavailableGroup>,
+}
+
+/// Why discovery failed outright - only listing the API groups can: a readable
+/// message (the HTTP status and message), and the full technical detail.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiscoveryFailure {
+    pub message: String,
+    pub detail: String,
+}
+
+impl std::fmt::Display for DiscoveryFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+/// One API group discovery couldn't read, and why, readably.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnavailableGroup {
+    /// The group's name; empty for the core group.
+    pub group: String,
+    /// What went wrong: the HTTP status and message, not a parse-failure dump.
+    pub reason: String,
+}
+
+/// Runs API discovery against `client`: every resource kind the cluster reports -
+/// CRDs included - at each group's preferred version, group by group.
+///
+/// Only listing the groups at all is fatal, and it too gets at most the per-group
+/// limit: kube's own retrying of a 503 would otherwise hold the panel for minutes. Each group is then read on its own,
+/// concurrently, and one that fails lands in [`Discovered::unavailable`] while the
+/// rest list.
 ///
 /// Subresources (`pods/log`, `deployments/scale`) are left out by `kube`'s
 /// discovery parser before this sees them: they are not kinds of their own, so
 /// they would otherwise be listed alongside the resource they hang off.
-pub async fn discover_kinds(client: Client) -> kube::Result<Vec<DiscoveredKind>> {
-    let discovery = Discovery::new(client).run().await?;
-    let mut kinds: BTreeSet<DiscoveredKind> = BTreeSet::new();
-    for group in discovery.groups() {
-        for (resource, capabilities) in group.recommended_resources() {
-            kinds.insert(DiscoveredKind {
-                gvk: GroupVersionKind::gvk(&resource.group, &resource.version, &resource.kind),
-                plural: resource.plural,
-                namespaced: matches!(capabilities.scope, Scope::Namespaced),
-                verbs: KindVerbs {
-                    list: capabilities.supports_operation(verbs::LIST),
-                    watch: capabilities.supports_operation(verbs::WATCH),
-                },
+pub async fn discover_kinds(client: Client) -> Result<Discovered, DiscoveryFailure> {
+    discover_kinds_within(client, crate::consts::DISCOVERY_GROUP_TIMEOUT).await
+}
+
+/// [`discover_kinds`], waiting at most `per_group` for each group.
+pub(crate) async fn discover_kinds_within(
+    client: Client,
+    per_group: std::time::Duration,
+) -> Result<Discovered, DiscoveryFailure> {
+    let groups = match tokio::time::timeout(per_group, client.list_api_groups()).await {
+        Ok(Ok(groups)) => groups,
+        Ok(Err(error)) => {
+            return Err(DiscoveryFailure {
+                message: crate::k8s::error::describe(&error),
+                detail: crate::k8s::error::detail(&error),
             });
         }
+        Err(_) => {
+            let message = format!(
+                "The API server didn't list its API groups within {}s.",
+                per_group.as_secs_f32()
+            );
+            return Err(DiscoveryFailure {
+                detail: message.clone(),
+                message,
+            });
+        }
+    };
+    let core = within(
+        String::new(),
+        per_group,
+        oneshot::group(&client, ApiGroup::CORE_GROUP),
+    );
+    let named = groups.groups.into_iter().map(|group| {
+        let client = client.clone();
+        let version = group
+            .preferred_version
+            .as_ref()
+            .or(group.versions.first())
+            .map(|version| version.version.clone())
+            .unwrap_or_default();
+        let gv = GroupVersion::gv(&group.name, &version);
+        within(group.name, per_group, async move {
+            oneshot::pinned_group(&client, &gv).await
+        })
+    });
+    let (core, named) = futures_util::future::join(core, join_all(named)).await;
+
+    let mut kinds: BTreeSet<DiscoveredKind> = BTreeSet::new();
+    let mut unavailable = Vec::new();
+    for (name, result) in std::iter::once(core).chain(named) {
+        match result {
+            Ok(group) => {
+                for (resource, capabilities) in group.recommended_resources() {
+                    kinds.insert(DiscoveredKind {
+                        gvk: GroupVersionKind::gvk(
+                            &resource.group,
+                            &resource.version,
+                            &resource.kind,
+                        ),
+                        plural: resource.plural,
+                        namespaced: matches!(capabilities.scope, Scope::Namespaced),
+                        verbs: KindVerbs {
+                            list: capabilities.supports_operation(verbs::LIST),
+                            watch: capabilities.supports_operation(verbs::WATCH),
+                        },
+                    });
+                }
+            }
+            Err(reason) => unavailable.push(UnavailableGroup {
+                group: name,
+                reason,
+            }),
+        }
     }
-    Ok(kinds.into_iter().collect())
+    Ok(Discovered {
+        kinds: kinds.into_iter().collect(),
+        unavailable,
+    })
+}
+
+/// One group's query, given at most `limit`: its group, or why not, readably.
+async fn within(
+    name: String,
+    limit: std::time::Duration,
+    query: impl std::future::Future<Output = kube::Result<ApiGroup>>,
+) -> (String, Result<ApiGroup, String>) {
+    let result = match tokio::time::timeout(limit, query).await {
+        Ok(result) => result.map_err(|error| crate::k8s::error::describe(&error)),
+        Err(_) => Err(format!("no answer within {}s", limit.as_secs_f32())),
+    };
+    (name, result)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use kube::{Client, Config};
-    use std::collections::HashMap;
-    use std::sync::Arc;
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::net::TcpListener;
-
-    /// Serves fixed JSON responses by request path until the listener (and
-    /// every clone of it) is dropped, i.e. for the lifetime of the test.
-    async fn serve_fixtures(routes: HashMap<&'static str, &'static str>) -> std::net::SocketAddr {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let routes = Arc::new(routes);
-        tokio::spawn(async move {
-            loop {
-                let Ok((stream, _)) = listener.accept().await else {
-                    return;
-                };
-                let routes = routes.clone();
-                tokio::spawn(handle_connection(stream, routes));
-            }
-        });
-        addr
-    }
-
-    async fn handle_connection(
-        stream: tokio::net::TcpStream,
-        routes: Arc<HashMap<&'static str, &'static str>>,
-    ) {
-        let mut reader = BufReader::new(stream);
-        let mut request_line = String::new();
-        if reader.read_line(&mut request_line).await.unwrap_or(0) == 0 {
-            return;
-        }
-        // Drain headers up to the blank line.
-        loop {
-            let mut line = String::new();
-            if reader.read_line(&mut line).await.unwrap_or(0) == 0 || line == "\r\n" {
-                break;
-            }
-        }
-
-        let path = request_line
-            .split_whitespace()
-            .nth(1)
-            .unwrap_or("")
-            .to_string();
-        let stream = reader.into_inner();
-        respond(stream, routes.get(path.as_str()).copied()).await;
-    }
-
-    async fn respond(mut stream: tokio::net::TcpStream, body: Option<&str>) {
-        let (status, body) = match body {
-            Some(body) => ("200 OK", body),
-            None => ("404 Not Found", "{}"),
-        };
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
-        let _ = stream.shutdown().await;
-    }
-
-    fn client_for(addr: std::net::SocketAddr) -> Client {
-        let mut config = Config::new(format!("http://{addr}").parse().unwrap());
-        config.connect_timeout = Some(std::time::Duration::from_millis(500));
-        Client::try_from(config).unwrap()
-    }
-
-    #[tokio::test]
-    async fn pod_is_present_after_discovery() {
-        let routes = HashMap::from([
-            (
-                "/apis",
-                r#"{"kind":"APIGroupList","apiVersion":"v1","groups":[]}"#,
-            ),
-            (
-                "/api",
-                r#"{"kind":"APIVersions","versions":["v1"],"serverAddressByClientCIDRs":[]}"#,
-            ),
-            (
-                "/api/v1",
-                r#"{"kind":"APIResourceList","groupVersion":"v1","resources":[
-                    {"name":"pods","singularName":"pod","namespaced":true,"kind":"Pod","verbs":["get","list","watch"]}
-                ]}"#,
-            ),
-        ]);
-        let addr = serve_fixtures(routes).await;
-
-        let kinds = discover_kinds(client_for(addr)).await.unwrap();
-
-        let pod = kinds
-            .iter()
-            .find(|kind| kind.gvk.kind == "Pod")
-            .expect("Pod is discovered");
-        assert_eq!(pod.gvk.group, "", "core group has an empty group name");
-        assert_eq!(pod.gvk.version, "v1");
-        assert_eq!(pod.plural, "pods");
-        assert!(pod.namespaced, "Pods are namespaced");
-        assert_eq!(pod.verbs, KindVerbs::default(), "Pods list and watch");
-    }
-
-    /// A cluster serving a CRD alongside its built-in resources: the CRD's kind
-    /// comes back from discovery like any other, which is what lets the
-    /// Resource panel list it instead of a fixed subset of built-ins.
-    #[tokio::test]
-    async fn a_crd_kind_is_discovered_alongside_the_built_in_resources() {
-        let routes = HashMap::from([
-            (
-                "/apis",
-                r#"{"kind":"APIGroupList","apiVersion":"v1","groups":[{
-                    "name":"ferns.example.com",
-                    "versions":[{"groupVersion":"ferns.example.com/v1","version":"v1"}],
-                    "preferredVersion":{"groupVersion":"ferns.example.com/v1","version":"v1"}
-                }]}"#,
-            ),
-            (
-                "/api",
-                r#"{"kind":"APIVersions","versions":["v1"],"serverAddressByClientCIDRs":[]}"#,
-            ),
-            (
-                "/api/v1",
-                r#"{"kind":"APIResourceList","groupVersion":"v1","resources":[
-                    {"name":"pods","singularName":"pod","namespaced":true,"kind":"Pod","verbs":["get","list","watch"]}
-                ]}"#,
-            ),
-            (
-                "/apis/ferns.example.com/v1",
-                r#"{"kind":"APIResourceList","apiVersion":"v1","groupVersion":"ferns.example.com/v1","resources":[
-                    {"name":"ferns","singularName":"fern","namespaced":true,"kind":"Fern","verbs":["get","list","watch"]}
-                ]}"#,
-            ),
-        ]);
-        let addr = serve_fixtures(routes).await;
-
-        let kinds = discover_kinds(client_for(addr)).await.unwrap();
-
-        let fern = kinds
-            .iter()
-            .find(|kind| kind.gvk.kind == "Fern")
-            .expect("the CRD's kind is discovered");
-        assert_eq!(fern.gvk.group, "ferns.example.com");
-        assert_eq!(fern.gvk.version, "v1");
-        assert_eq!(fern.plural, "ferns");
-        assert!(fern.namespaced);
-
-        // The built-in resources are still there - the CRD is additive, not a
-        // replacement for the core group.
-        assert!(
-            kinds.iter().any(|kind| kind.gvk.kind == "Pod"),
-            "kinds: {kinds:?}"
-        );
-    }
-
-    /// Same-named kinds under different groups stay separate rows, and each is
-    /// labelled so a reader can tell which is which - the reason a discovered
-    /// kind carries its group rather than just its name.
-    #[tokio::test]
-    async fn same_named_kinds_in_different_groups_stay_distinct() {
-        let routes = HashMap::from([
-            (
-                "/apis",
-                r#"{"kind":"APIGroupList","apiVersion":"v1","groups":[{
-                    "name":"events.k8s.io",
-                    "versions":[{"groupVersion":"events.k8s.io/v1","version":"v1"}],
-                    "preferredVersion":{"groupVersion":"events.k8s.io/v1","version":"v1"}
-                }]}"#,
-            ),
-            (
-                "/api",
-                r#"{"kind":"APIVersions","versions":["v1"],"serverAddressByClientCIDRs":[]}"#,
-            ),
-            (
-                "/api/v1",
-                r#"{"kind":"APIResourceList","groupVersion":"v1","resources":[
-                    {"name":"events","singularName":"event","namespaced":true,"kind":"Event","verbs":["get","list","watch"]}
-                ]}"#,
-            ),
-            (
-                "/apis/events.k8s.io/v1",
-                r#"{"kind":"APIResourceList","apiVersion":"v1","groupVersion":"events.k8s.io/v1","resources":[
-                    {"name":"events","singularName":"event","namespaced":true,"kind":"Event","verbs":["get","list","watch"]}
-                ]}"#,
-            ),
-        ]);
-        let addr = serve_fixtures(routes).await;
-
-        let kinds = discover_kinds(client_for(addr)).await.unwrap();
-
-        let events: Vec<&DiscoveredKind> = kinds
-            .iter()
-            .filter(|kind| kind.gvk.kind == "Event")
-            .collect();
-        assert_eq!(events.len(), 2, "one row per group, not one per name");
-        assert_eq!(events[0].label(), "Event", "core needs no qualifier");
-        assert_eq!(events[1].label(), "Event · events.k8s.io");
-    }
-
-    /// A resource that only supports `get` is still a discovered kind, so it
-    /// still gets a row - the Resource panel lists what the cluster reports
-    /// rather than filtering down to what it can render today.
-    #[tokio::test]
-    async fn a_kind_without_list_verb_is_still_listed() {
-        let routes = HashMap::from([
-            (
-                "/apis",
-                r#"{"kind":"APIGroupList","apiVersion":"v1","groups":[]}"#,
-            ),
-            (
-                "/api",
-                r#"{"kind":"APIVersions","versions":["v1"],"serverAddressByClientCIDRs":[]}"#,
-            ),
-            (
-                "/api/v1",
-                r#"{"kind":"APIResourceList","groupVersion":"v1","resources":[
-                    {"name":"componentstatuses","singularName":"","namespaced":false,"kind":"ComponentStatus","verbs":["get","list"]},
-                    {"name":"bindings","singularName":"","namespaced":true,"kind":"Binding","verbs":["create"]}
-                ]}"#,
-            ),
-        ]);
-        let addr = serve_fixtures(routes).await;
-
-        let kinds = discover_kinds(client_for(addr)).await.unwrap();
-
-        let status = kinds
-            .iter()
-            .find(|kind| kind.gvk.kind == "ComponentStatus")
-            .expect("discovered regardless of its verbs");
-        assert!(!status.namespaced, "ComponentStatus is cluster-scoped");
-        // `unwatchable-kinds`: its verbs come along, so its list panel polls.
-        assert_eq!(
-            status.verbs,
-            KindVerbs {
-                list: true,
-                watch: false
-            }
-        );
-        let binding = kinds
-            .iter()
-            .find(|kind| kind.gvk.kind == "Binding")
-            .expect("discovered regardless of its verbs");
-        assert!(!binding.verbs.list, "a create-only kind can't be listed");
-    }
-
-    #[test]
-    fn kinds_sort_by_group_then_kind_with_core_first() {
-        let kinds = vec![
-            DiscoveredKind {
-                gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
-                plural: "deployments".into(),
-                namespaced: true,
-                verbs: Default::default(),
-            },
-            DiscoveredKind {
-                gvk: GroupVersionKind::gvk("", "v1", "Service"),
-                plural: "services".into(),
-                namespaced: true,
-                verbs: Default::default(),
-            },
-            DiscoveredKind {
-                gvk: GroupVersionKind::gvk("", "v1", "Pod"),
-                plural: "pods".into(),
-                namespaced: true,
-                verbs: Default::default(),
-            },
-        ];
-        let mut sorted = kinds.clone();
-        sorted.sort();
-
-        let labels: Vec<String> = sorted.iter().map(DiscoveredKind::label).collect();
-        assert_eq!(labels, vec!["Pod", "Service", "Deployment · apps"]);
-    }
-
-    #[test]
-    fn plural_label_capitalizes_the_plural_and_keeps_the_group_qualifier() {
-        let pod = DiscoveredKind {
-            gvk: GroupVersionKind::gvk("", "v1", "Pod"),
-            plural: "pods".into(),
-            namespaced: true,
-            verbs: Default::default(),
-        };
-        assert_eq!(pod.plural_label(), "Pods");
-
-        let widget = DiscoveredKind {
-            gvk: GroupVersionKind::gvk("example.com", "v1", "Widget"),
-            plural: "widgets".into(),
-            namespaced: true,
-            verbs: Default::default(),
-        };
-        assert_eq!(widget.plural_label(), "Widgets · example.com");
-        assert_eq!(widget.plural_name(), "Widgets");
-    }
-}
+mod tests;
