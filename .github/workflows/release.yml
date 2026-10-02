@@ -27,6 +27,11 @@ jobs:
       # every push and PR; this re-runs that same suite against the tagged ref.
       test-args: "--workspace"
       publish-to-crates-io: false
+      # The bare release runner lacks the GUI dev libraries ci.yml installs; without
+      # them the pre-publish cargo test can't link (xcb, xkbcommon).
+      linux-packages: >-
+        libasound2-dev libfontconfig-dev libwayland-dev libxkbcommon-x11-dev
+        libvulkan1 libgtk-3-dev libsecret-1-dev mesa-vulkan-drivers
       release-branch: master
       merge-back-branch: develop
     secrets:
