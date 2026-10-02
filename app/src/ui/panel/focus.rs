@@ -134,20 +134,21 @@ pub fn focused_group(area: &DockArea, window: &Window, cx: &App) -> Option<NodeI
 }
 
 /// Moves keyboard focus one stop in `direction`: the Resource panel (`resource`,
-/// the first stop) then [`dock_stops`]. The current stop is the one focus is
+/// the first stop, when it's drawn - `None` while collapsed) then [`dock_stops`]. The current stop is the one focus is
 /// anywhere inside (`contains_focused`, the same test the tab underline uses),
 /// so a focused table row or filter field counts as its panel. Stops are
 /// rebuilt from the live layout every time, so a panel closed since the last
 /// step simply isn't one.
 pub fn move_focus(
-    resource: FocusHandle,
+    resource: Option<FocusHandle>,
     dock_area: &Entity<DockArea>,
     direction: Direction,
     window: &mut Window,
     cx: &mut App,
 ) {
     let area = dock_area.read(cx);
-    let stops: Vec<FocusHandle> = std::iter::once(resource)
+    let stops: Vec<FocusHandle> = resource
+        .into_iter()
         .chain(
             dock_stops(area, cx)
                 .into_iter()

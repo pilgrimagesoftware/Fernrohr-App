@@ -23,11 +23,23 @@ use std::collections::HashSet;
 
 mod actions;
 mod category;
+mod edge;
 mod keyboard;
 mod render;
 mod section;
 
-pub(crate) use actions::{FocusResources, register_commands};
+pub(crate) use actions::FocusResources;
+#[cfg(test)]
+pub(crate) use edge::{
+    MOVE_COMMAND_ID, MOVE_DEFAULT_BINDING, TOGGLE_COMMAND_ID, TOGGLE_DEFAULT_BINDING,
+};
+pub use edge::{MoveResourcePanel, ResourceSide, ToggleResourcePanel, collapsed_strip};
+
+/// The Resource panel's commands: its own keys, and moving or collapsing it.
+pub(crate) fn register_commands(registry: &mut crate::command::CommandRegistry) {
+    actions::register_commands(registry);
+    edge::register_commands(registry);
+}
 
 /// The panel's own keybindings (Up/Down/Enter/Left/Right), in its own key
 /// context - `/` is not here, see `actions::register_commands`'s doc comment.
@@ -90,6 +102,8 @@ pub struct ResourcePanel {
     /// The bottom-pinned filter box's text field (section 3.1).
     filter_input: Entity<InputState>,
     focus_handle: FocusHandle,
+    /// The window edge it's on, for which way its collapse button points.
+    side: ResourceSide,
     /// Kept, rather than `.detach()`ed, so [`Self::set_active_context`] can
     /// replace it: switching the active context means observing a *different*
     /// connection, and the old subscription must stop firing into a state that
@@ -111,6 +125,12 @@ impl ResourcePanel {
 
     /// The panel's focus handle: the one Focus Next / Previous Panel steps to,
     /// and which the filter field sits inside.
+    /// Tells the panel which window edge it's on, when the window moves it.
+    pub(crate) fn set_side(&mut self, side: ResourceSide, cx: &mut Context<Self>) {
+        self.side = side;
+        cx.notify();
+    }
+
     pub(crate) fn focus_handle(&self) -> FocusHandle {
         self.focus_handle.clone()
     }
@@ -177,6 +197,7 @@ impl ResourcePanel {
             expanded_subgroups: HashSet::new(),
             filter_input,
             focus_handle: cx.focus_handle(),
+            side: ResourceSide::default(),
             _connection_observation: observation,
             _filter_observation: filter_observation,
         };

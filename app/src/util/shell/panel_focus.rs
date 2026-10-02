@@ -36,10 +36,12 @@ impl MainWindow {
         if let WindowMode::Workspace {
             dock_area,
             resource_panel,
+            resource_collapsed,
             ..
         } = &self.mode
         {
-            let resource = resource_panel.read(cx).focus_handle();
+            // A collapsed Resource panel isn't drawn, so it isn't a stop.
+            let resource = (!*resource_collapsed).then(|| resource_panel.read(cx).focus_handle());
             focus::move_focus(resource, dock_area, direction, window, cx);
         }
     }
