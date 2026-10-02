@@ -28,9 +28,6 @@ impl ObjectRow {
         }
     }
 
-    // UNWIRED: `ObjectListPanel` (`standard-resource-panels` 1.3) is the first
-    // caller; until then only tests use it.
-    #[allow(dead_code)]
     /// Seconds since creation at `now`, as the Pods table's Age measures it.
     pub fn age_secs(&self, now: Timestamp) -> i64 {
         self.created

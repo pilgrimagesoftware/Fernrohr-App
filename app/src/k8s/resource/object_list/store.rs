@@ -21,16 +21,10 @@ pub struct ObjectsTable {
 }
 
 impl ObjectsTable {
-    // UNWIRED: `ObjectListPanel` (`standard-resource-panels` 1.3) is the first
-    // caller; until then only tests use it.
-    #[allow(dead_code)]
     pub fn rows(&self) -> &[ObjectRow] {
         self.index.items()
     }
 
-    // UNWIRED: `ObjectListPanel` (`standard-resource-panels` 1.3) is the first
-    // caller; until then only tests use it.
-    #[allow(dead_code)]
     /// Why the kind can't be listed, if the server refused it. A panel shows this
     /// in place of an empty table.
     pub fn refused(&self) -> Option<&str> {

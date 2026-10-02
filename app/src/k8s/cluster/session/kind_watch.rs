@@ -7,9 +7,6 @@ use super::registry::KindWatch;
 use super::*;
 
 impl ClusterRegistry {
-    // UNWIRED: `ObjectListPanel` (`standard-resource-panels` 1.3) is the first
-    // caller; until then only tests use it.
-    #[allow(dead_code)]
     /// Subscribes a panel to `context_name`'s shared watch of `kind`, starting it on the
     /// 0-to-1 transition. Returns the shared table to render from.
     pub fn subscribe_kind(
@@ -75,9 +72,6 @@ impl ClusterRegistry {
         )
     }
 
-    // UNWIRED: `ObjectListPanel` (`standard-resource-panels` 1.3) is the first
-    // caller; until then only tests use it.
-    #[allow(dead_code)]
     /// Unsubscribes a panel from `context_name`'s shared watch of `kind`. The last one
     /// out stops the watch and drops the kind's table.
     pub fn unsubscribe_kind(cx: &mut App, context_name: &str, kind: &DiscoveredKind) {
