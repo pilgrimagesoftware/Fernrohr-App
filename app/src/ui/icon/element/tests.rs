@@ -82,17 +82,18 @@ impl Render for Sample {
         div()
             .flex()
             .items_start()
-            .child(div().debug_selector(|| "icon-text".into()).child(kind_icon(
+            .child(div().debug_selector(|| "icon-sm".into()).child(kind_icon(
                 KindIcon::Pod,
-                IconSize::Text,
+                IconSize::Small,
                 window,
                 cx,
             )))
-            .child(
-                div()
-                    .debug_selector(|| "icon-small".into())
-                    .child(kind_icon(KindIcon::Pod, IconSize::Small, window, cx)),
-            )
+            .child(div().debug_selector(|| "icon-xs".into()).child(kind_icon(
+                KindIcon::Pod,
+                IconSize::XSmall,
+                window,
+                cx,
+            )))
     }
 }
 
@@ -115,9 +116,9 @@ fn the_icon_follows_the_text_size(cx: &mut TestAppContext) {
         gpui_kit::init(cx);
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
     });
-    let (text, small) = cx.update(|cx| (IconSize::Text.logical(cx), IconSize::Small.logical(cx)));
-    let default_text = icon_height(cx, "icon-text");
-    let default_small = icon_height(cx, "icon-small");
+    let (text, small) = cx.update(|cx| (IconSize::Small.logical(cx), IconSize::XSmall.logical(cx)));
+    let default_text = icon_height(cx, "icon-sm");
+    let default_small = icon_height(cx, "icon-xs");
     for (height, logical) in [(default_text, text), (default_small, small)] {
         assert!(
             height <= logical && height >= logical - px(1.),
@@ -130,7 +131,7 @@ fn the_icon_follows_the_text_size(cx: &mut TestAppContext) {
     );
 
     cx.update(|cx| crate::ui::text_size::set(TextSize::MAX, cx));
-    let larger = icon_height(cx, "icon-text");
+    let larger = icon_height(cx, "icon-sm");
     let factor = TextSize::MAX.factor();
     assert!(
         (f32::from(larger) - f32::from(default_text) * factor).abs() <= 1.,

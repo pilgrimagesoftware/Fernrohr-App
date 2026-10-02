@@ -9,9 +9,9 @@
 //! icon; [`element`] draws one beside text.
 
 mod element;
-// UNWIRED: see `ui::icon`'s note in `ui/mod.rs`.
-#[allow(unused_imports)]
-pub use element::{IconSize, device_px, kind_icon};
+#[cfg(test)]
+pub(crate) use element::test_hooks;
+pub use element::{IconSize, kind_icon};
 
 /// One bundled icon. A closed set: every file this app ships is a variant, so
 /// adding an icon is adding a variant here and a file, and the tests walk
@@ -56,7 +56,8 @@ pub enum KindIcon {
 }
 
 impl KindIcon {
-    /// Every icon, in declaration order.
+    /// Every icon, in declaration order, for the tests to walk.
+    #[cfg(test)]
     pub const ALL: [KindIcon; 31] = [
         Self::Pod,
         Self::Deployment,
@@ -179,6 +180,20 @@ pub fn for_kind(group: &str, kind: &str) -> KindIcon {
     }
 }
 
+/// The icon for what a panel shows: its kind's, or Pod's for one pod's
+/// detail, or a container's for the Logs panel, which streams one container.
+pub fn for_target(target: &crate::ui::nav::NavTarget) -> KindIcon {
+    use crate::ui::nav::NavTarget;
+    match target {
+        NavTarget::Kind(kind) => for_kind(&kind.gvk.group, &kind.gvk.kind),
+        NavTarget::Object(object) => for_kind(&object.kind.gvk.group, &object.kind.gvk.kind),
+        NavTarget::Pod(_) => KindIcon::Pod,
+        NavTarget::Logs => KindIcon::Container,
+    }
+}
+
+// UNWIRED: the container cards draw it in `resource-kind-icons` 3.3.
+#[allow(dead_code)]
 /// The icon for a container listed in pod detail.
 pub fn for_container() -> KindIcon {
     KindIcon::Container
