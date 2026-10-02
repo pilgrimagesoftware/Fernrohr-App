@@ -1,6 +1,7 @@
-//! `resource-kind-icons` 2.1: every bundled icon file loads.
+//! `resource-kind-icons` 2.1-2.2: every bundled icon file loads, and each
+//! kind resolves to the right one.
 
-use super::KindIcon;
+use super::{KindIcon, for_container, for_kind};
 use gpui_kit::TestAppContext;
 use std::collections::HashSet;
 use std::path::Path;
@@ -65,4 +66,76 @@ fn every_bundled_icon_loads_and_renders_in_colour(cx: &mut TestAppContext) {
 fn every_icon_is_a_distinct_file() {
     let distinct: HashSet<&[u8]> = KindIcon::ALL.iter().map(|icon| icon.svg()).collect();
     assert_eq!(distinct.len(), KindIcon::ALL.len());
+}
+
+/// 2.2: core-group kinds.
+#[test]
+fn core_kinds_get_their_own_icons() {
+    assert_eq!(for_kind("", "Pod"), KindIcon::Pod);
+    assert_eq!(for_kind("", "ConfigMap"), KindIcon::ConfigMap);
+    assert_eq!(for_kind("", "Secret"), KindIcon::Secret);
+    assert_eq!(for_kind("", "Service"), KindIcon::Service);
+    assert_eq!(for_kind("", "Node"), KindIcon::Node);
+}
+
+/// 2.2: a kind in a named built-in group.
+#[test]
+fn apps_and_other_builtin_group_kinds_get_their_own_icons() {
+    assert_eq!(for_kind("apps", "Deployment"), KindIcon::Deployment);
+    assert_eq!(for_kind("apps", "StatefulSet"), KindIcon::StatefulSet);
+    assert_eq!(for_kind("batch", "CronJob"), KindIcon::CronJob);
+    assert_eq!(for_kind("networking.k8s.io", "Ingress"), KindIcon::Ingress);
+    assert_eq!(
+        for_kind("rbac.authorization.k8s.io", "ClusterRoleBinding"),
+        KindIcon::ClusterRoleBinding
+    );
+    assert_eq!(
+        for_kind("apiextensions.k8s.io", "CustomResourceDefinition"),
+        KindIcon::CustomResourceDefinition
+    );
+}
+
+/// 2.2: the group is part of the key. A CRD named like a built-in kind gets
+/// the custom-resource icon, and a built-in kind in the wrong group isn't
+/// matched by name alone.
+#[test]
+fn a_crd_named_like_a_builtin_kind_is_a_custom_resource() {
+    assert_eq!(for_kind("example.com", "Pod"), KindIcon::CustomResource);
+    assert_eq!(
+        for_kind("ferns.example.com", "Deployment"),
+        KindIcon::CustomResource
+    );
+    assert_eq!(for_kind("apps", "Pod"), KindIcon::Kind);
+}
+
+/// CRD groups under `k8s.io` - the Gateway API, volume snapshots - are custom
+/// resources too, not built-in kinds.
+#[test]
+fn community_crds_under_k8s_io_are_custom_resources() {
+    assert_eq!(
+        for_kind("gateway.networking.k8s.io", "Gateway"),
+        KindIcon::CustomResource
+    );
+    assert_eq!(
+        for_kind("snapshot.storage.k8s.io", "VolumeSnapshot"),
+        KindIcon::CustomResource
+    );
+}
+
+/// A built-in kind the set doesn't cover gets the generic kind icon, not the
+/// custom-resource one.
+#[test]
+fn an_uncovered_builtin_kind_gets_the_generic_icon() {
+    assert_eq!(
+        for_kind("discovery.k8s.io", "EndpointSlice"),
+        KindIcon::Kind
+    );
+    assert_eq!(for_kind("", "Event"), KindIcon::Kind);
+    assert_eq!(for_kind("coordination.k8s.io", "Lease"), KindIcon::Kind);
+}
+
+/// 2.2: a container.
+#[test]
+fn a_container_gets_the_container_icon() {
+    assert_eq!(for_container(), KindIcon::Container);
 }
