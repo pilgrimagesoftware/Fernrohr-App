@@ -19,7 +19,9 @@ use std::path::PathBuf;
 
 mod commands;
 
-pub(crate) use commands::{register_commands, register_handlers};
+pub(crate) use commands::{
+    DecreaseTextSize, IncreaseTextSize, ResetTextSize, register_commands, register_handlers,
+};
 
 /// The current preference, and the preference file it's saved to. No file
 /// means nothing is saved, which is what tests that never call [`init`] get.

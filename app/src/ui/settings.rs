@@ -13,6 +13,7 @@ mod rows;
 pub mod shortcuts;
 #[cfg(test)]
 mod tests;
+mod text_size;
 
 pub use shortcuts::ShortcutsSection;
 
@@ -136,7 +137,15 @@ impl Render for SettingsWindow {
             .bg(theme.background)
             .text_color(theme.foreground)
             .child(sidebar)
-            .child(div().flex_1().min_w_0().child(self.shortcuts.clone()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(div().p_3().child(text_size::row(window, cx)))
+                    .child(div().flex_1().min_h_0().child(self.shortcuts.clone())),
+            )
             .children(Root::render_dialog_layer(window, cx))
     }
 }
