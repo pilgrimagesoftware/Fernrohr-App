@@ -50,13 +50,26 @@ impl PodDetailPanel {
         } else if active_tab == DetailSection::Events {
             self.render_events(window, cx)
         } else {
-            crate::ui::detail::striped(
+            let rows = crate::ui::detail::striped(
                 fields
                     .iter()
                     .filter(|field| field.section == active_tab)
                     .map(|field| self.render_field(field, cx)),
                 cx,
-            )
+            );
+            match (active_tab == DetailSection::Overview)
+                .then(|| self.render_overview_warnings(cx))
+                .flatten()
+            {
+                Some(warnings) => div()
+                    .flex()
+                    .flex_col()
+                    .gap(crate::ui::space::spacing(cx).section_gap)
+                    .child(warnings)
+                    .child(rows)
+                    .into_any_element(),
+                None => rows,
+            }
         };
         div()
             .flex()

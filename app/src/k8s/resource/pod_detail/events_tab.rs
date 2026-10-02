@@ -1,13 +1,18 @@
 //! Drawing the pod's Events tab (`pod-events-time-window` 2.1-2.2): the window's
 //! events, then how many older ones it hides - an empty list says it's empty *in
-//! the window*, so it's never read as "no events at all".
+//! the window*, so it's never read as "no events at all". And the Overview tab's
+//! recent warnings within the same window (3.1), linking to the Events tab.
 
 use super::PodDetailPanel;
 use super::commands::PANEL_KEY_CONTEXT;
+use super::live_events::EventsView;
+use super::model::DetailSection;
 use super::window_commands::{
     LONGER_KEY, LongerEventsWindow, SHORTER_KEY, ShorterEventsWindow, action_for,
 };
 use crate::config::ui::PodEventsWindow;
+use crate::k8s::resource::events::EventSummary;
+use crate::ui::detail::BadgeTone;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -79,6 +84,68 @@ impl PodDetailPanel {
                     .child(key(&LongerEventsWindow, LONGER_KEY, window))
                     .child("Window"),
             )
+    }
+}
+
+/// How many recent warnings the Overview tab shows.
+const OVERVIEW_WARNINGS: usize = 3;
+
+impl PodDetailPanel {
+    /// The pod's most recent Warning events within the window, newest first, at
+    /// most [`OVERVIEW_WARNINGS`] - what the Overview tab surfaces (3.1).
+    pub(super) fn overview_warnings(&self, now: Timestamp, cx: &App) -> Vec<EventSummary> {
+        let Some(EventsView {
+            events: Ok(events), ..
+        }) = self.events_view(now, cx)
+        else {
+            return Vec::new();
+        };
+        events
+            .into_iter()
+            .filter(|event| event.tone == BadgeTone::Warning)
+            .take(OVERVIEW_WARNINGS)
+            .collect()
+    }
+
+    /// The Overview's warnings block - nothing at all when there are none - with
+    /// a link to the Events tab, which opens it as clicking its tab (or `5`) does.
+    pub(super) fn render_overview_warnings(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let warnings = self.overview_warnings(Timestamp::now(), cx);
+        if warnings.is_empty() {
+            return None;
+        }
+        let this = cx.weak_entity();
+        let heading = match self.events_window {
+            PodEventsWindow::All => "Recent warnings".to_string(),
+            window => format!("Recent warnings (last {})", window.label()),
+        };
+        Some(
+            div()
+                .debug_selector(|| "pod-overview-warnings".into())
+                .flex()
+                .flex_col()
+                .gap(crate::ui::space::spacing(cx).control_gap)
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(div().text_sm().child(heading))
+                        .child(
+                            Button::new("pod-overview-events-link")
+                                .label("All events")
+                                .link()
+                                .xsmall()
+                                .on_click(move |_event, _window, cx| {
+                                    let _ = this.update(cx, |panel, cx| {
+                                        panel.set_active_tab(DetailSection::Events, cx)
+                                    });
+                                }),
+                        ),
+                )
+                .child(crate::ui::detail::events(&Ok(warnings), cx))
+                .into_any_element(),
+        )
     }
 }
 

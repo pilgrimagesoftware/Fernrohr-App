@@ -100,6 +100,28 @@ impl PodDetailPanel {
         });
     }
 
+    /// Gives the panel `events` as if its watch had delivered them. Test-only.
+    #[cfg(test)]
+    pub(crate) fn test_set_events(
+        &mut self,
+        events: Vec<k8s_openapi::api::core::v1::Event>,
+        cx: &mut Context<Self>,
+    ) {
+        let table = cx.new(|_| EventsTable::default());
+        table.update(cx, |table, _| {
+            for event in events {
+                table.apply(kube_runtime::watcher::Event::Apply(event));
+            }
+        });
+        self.events = Some(PodEventsWatch {
+            uid: String::new(),
+            table,
+            _task: Task::ready(()),
+            _tick: Task::ready(()),
+        });
+        cx.notify();
+    }
+
     /// The Events tab's content within the panel's window at `now`. `None` until
     /// the pod has loaded and its watch has started.
     pub(super) fn events_view(&self, now: Timestamp, cx: &App) -> Option<EventsView> {
