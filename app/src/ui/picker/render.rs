@@ -10,20 +10,25 @@ impl Render for ClusterPicker {
         let theme = cx.theme().clone();
         // The logo sits outside the card so it reads as app branding rather than
         // as part of the command-palette chrome the card deliberately mimics.
-        let backdrop = |content: AnyElement| {
+        // Built before the closure: drawing the logo needs the window and
+        // `cx` mutably, which the card-building below then borrows again.
+        let logo = logo::logo(window, cx);
+        let gap = crate::ui::space::spacing(cx).section_gap * 1.5;
+        let background = theme.background;
+        let backdrop = move |content: AnyElement| {
             div()
                 .size_full()
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(theme.background)
+                .bg(background)
                 .child(
                     div()
                         .flex()
                         .flex_col()
                         .items_center()
-                        .gap(crate::ui::space::spacing(cx).section_gap * 1.5)
-                        .child(logo())
+                        .gap(gap)
+                        .child(logo)
                         .child(content),
                 )
         };

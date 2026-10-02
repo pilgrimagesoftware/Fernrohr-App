@@ -35,10 +35,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
 
 mod interaction;
 mod layout;
+mod logo;
 mod render;
 mod rows;
 mod state;
