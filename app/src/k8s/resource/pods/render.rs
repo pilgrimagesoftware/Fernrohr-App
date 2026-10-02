@@ -1,7 +1,6 @@
 //! Drawing the Pods panel: its table, hint bar and states.
 
 use super::*;
-use crate::ui::panel::focus_ring::FocusRing as _;
 
 impl Render for PodsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -164,11 +163,6 @@ impl Render for PodsPanel {
             .size_full()
             .key_context(PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
-            .focus_ring(
-                "pods-panel",
-                self.focus_handle.contains_focused(window, cx),
-                cx,
-            )
             .on_action(cx.listener(Self::on_action_warp_namespace))
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_show_pod_logs))

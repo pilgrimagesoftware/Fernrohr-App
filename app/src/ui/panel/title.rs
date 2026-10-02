@@ -198,13 +198,13 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 /// by the API group for a custom resource list, see [`tooltip::tooltip_lines`]). The dock
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
 ///
-/// It also marks the panel's focus, beside the ring around its content
-/// ([`super::focus_ring`]): underlined in the accent colour (the user's system
-/// accent on macOS) while focus is anywhere inside the panel `focus_handle`
-/// belongs to - `contains_focused`, not `is_focused`: a panel whose content
-/// takes focus itself (a table row, a text input) moves the window's focus to
-/// that child, and an indicator lit only while the panel's own handle held focus
-/// would go dark the moment the panel was used. A press on it focuses that panel.
+/// It is also the panel's focus indicator: underlined in the accent colour
+/// (the user's system accent on macOS) while focus is anywhere inside the panel
+/// `focus_handle` belongs to - `contains_focused`, not `is_focused`: a panel
+/// whose content takes focus itself (a table row, a text input) moves the
+/// window's focus to that child, and an indicator lit only while the panel's
+/// own handle held focus would go dark the moment the panel was used. A press
+/// on it focuses that panel.
 ///
 /// The tab is the one place the dock lets a panel mark itself: the tab strip
 /// draws this element, but reads no per-panel style (`Panel::title_style` only
