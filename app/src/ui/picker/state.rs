@@ -16,7 +16,7 @@ pub enum PickerEvent {
 /// every [`ClusterPicker::set_tunnel`] afterward - kept as one function so the two
 /// call sites can't drift into reading it two different ways.
 ///
-/// `pub(crate)`: `ui/context_bar.rs`'s chips read the same cache for their tunnel
+/// `pub(crate)`: the status bar's capsules (`ui/status_bar.rs`) read the same cache for their tunnel
 /// name, refreshed on the same [`TunnelsRevision`] signal - one read of the file's
 /// shape, not two.
 pub(crate) fn load_tunnels(

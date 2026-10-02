@@ -82,16 +82,13 @@ impl Render for MainWindow {
             // The Resource panel is the window's left edge. It used to be a
             // fixed Pods/Logs list built here; the kinds now come from the
             // cluster's own discovery (spec 8.1), so it owns its own chrome.
-            // `connection-status-bar`/`window-context-bar`: the workspace is a
-            // column - the context bar fixed to its own height at the top, the
-            // existing panel row at `flex_1`, then the status bar fixed to its
-            // own height below it. The picker has neither bar (it shows its own
-            // connect progress instead, and has no context list to chip yet).
+            // `connection-status-bar`: the workspace is a column - the panel row
+            // at `flex_1`, then the status bar fixed to its own height below it.
+            // The picker has no status bar: it shows its own connect progress.
             WindowMode::Workspace {
                 dock_area,
                 resource_panel,
                 status_bar,
-                context_bar,
                 resource_width,
                 resource_side,
                 resource_collapsed,
@@ -100,7 +97,6 @@ impl Render for MainWindow {
                 .size_full()
                 .flex()
                 .flex_col()
-                .child(context_bar.clone())
                 .child(div().flex_1().min_h_0().child(Self::workspace_row(
                     dock_area,
                     resource_panel,
@@ -113,7 +109,13 @@ impl Render for MainWindow {
                 .child(status_bar.clone())
                 .into_any_element(),
         };
-        let root = div().size_full().track_focus(&self.focus_handle);
+        // The window's own top bar, then the mode's body below it.
+        let toolbar = crate::ui::toolbar::window_toolbar(window, cx).into_any_element();
+        let root = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .track_focus(&self.focus_handle);
         Self::with_tab_actions(root, cx)
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
@@ -130,10 +132,16 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_open_listed_object))
             .on_action(cx.listener(Self::on_action_toggle_resource_panel))
             .on_action(cx.listener(Self::on_action_move_resource_panel))
+            .on_action(cx.listener(Self::on_action_add_context))
+            .on_action(cx.listener(Self::on_action_disconnect_active_context))
             .on_action(cx.listener(Self::on_action_save_resource_side))
-            .child(body)
+            .child(toolbar)
+            .child(div().flex_1().min_h_0().child(body))
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod toolbar_tests;

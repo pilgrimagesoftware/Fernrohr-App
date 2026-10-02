@@ -1,6 +1,5 @@
 pub mod about_window;
 pub mod accent;
-pub mod context_bar;
 pub mod detail;
 pub mod icon;
 pub mod link;
@@ -21,6 +20,7 @@ pub mod style;
 pub mod table_fit;
 pub mod text_size;
 pub mod theme;
+pub mod toolbar;
 pub mod tunnels;
 pub mod typography;
 pub mod viewer;

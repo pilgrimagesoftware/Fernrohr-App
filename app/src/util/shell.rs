@@ -18,7 +18,6 @@ use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
 use crate::tunnel::store::TunnelStore;
-use crate::ui::context_bar::ContextBarView;
 use crate::ui::nav::{
     self, NavTarget, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
 };
