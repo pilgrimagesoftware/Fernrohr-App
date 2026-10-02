@@ -73,14 +73,15 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
             // grew. Without a floor the picker's centred column overflows and the
             // logo is clipped off the top.
             window_min_size: Some(crate::ui::picker::MIN_WINDOW_SIZE),
-            // `Some` both sets the title and keeps it visible: with `None`,
-            // macOS hides the title bar's text at creation and never revisits
-            // it (`window-title-and-menu` design.md decisions 2 and 3).
-            titlebar: Some(TitlebarOptions {
-                title: Some(window_title::initial_title(&contexts).into()),
-                appears_transparent: false,
-                traffic_light_position: None,
-            }),
+            // The window draws its own top bar (`ui::toolbar`): a transparent
+            // titlebar whose drag the app owns, so AppKit doesn't also treat it
+            // as a move region. The title still names the window in the Window
+            // menu and the accessibility tree (`window-title-and-menu` design.md
+            // decisions 2 and 3).
+            titlebar: Some(crate::ui::toolbar::titlebar_options(
+                window_title::initial_title(&contexts).into(),
+            )),
+            app_owns_titlebar_drag: true,
             ..Default::default()
         },
         cx,

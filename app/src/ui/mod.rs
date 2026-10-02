@@ -20,6 +20,7 @@ pub mod style;
 pub mod table_fit;
 pub mod text_size;
 pub mod theme;
+pub mod toolbar;
 pub mod tunnels;
 pub mod typography;
 pub mod viewer;

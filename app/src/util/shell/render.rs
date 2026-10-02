@@ -109,7 +109,13 @@ impl Render for MainWindow {
                 .child(status_bar.clone())
                 .into_any_element(),
         };
-        let root = div().size_full().track_focus(&self.focus_handle);
+        // The window's own top bar, then the mode's body below it.
+        let toolbar = crate::ui::toolbar::window_toolbar(window, cx).into_any_element();
+        let root = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .track_focus(&self.focus_handle);
         Self::with_tab_actions(root, cx)
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
@@ -129,9 +135,13 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_add_context))
             .on_action(cx.listener(Self::on_action_disconnect_active_context))
             .on_action(cx.listener(Self::on_action_save_resource_side))
-            .child(body)
+            .child(toolbar)
+            .child(div().flex_1().min_h_0().child(body))
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod toolbar_tests;
