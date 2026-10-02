@@ -100,3 +100,31 @@ async fn a_manager_row_toggles_on_click(cx: &mut TestAppContext) {
     click(&mut vcx);
     assert!(!body_drawn(&mut vcx, &h, 1));
 }
+
+/// `resource-detail-ui-improvements` 2, in the pod panel: its YAML view folds
+/// too - `z` folds every block to the top-level keys.
+#[gpui_kit::test]
+async fn the_pod_yaml_view_folds(cx: &mut TestAppContext) {
+    use crate::ui::yaml_view::{YamlLines, line_selector};
+    let h = harness(cx, managed_pod());
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    focus_panel(&mut vcx, &h);
+    vcx.simulate_keystrokes("y");
+    vcx.run_until_parked();
+    let yaml = vcx.update(|_, cx| h.panel.read(cx).yaml().expect("loaded"));
+    let lines = YamlLines::parse(&yaml);
+    let name = lines
+        .lines
+        .iter()
+        .position(|line| line.text.trim() == "name: api-7d9f-ftg5t")
+        .expect("the name line");
+    let drawn = |vcx: &mut VisualTestContext| {
+        let _ = vcx.update_window(h.window.into(), |_, window, cx| window.render_frame(cx));
+        let selector: &'static str = line_selector(name).leak();
+        vcx.debug_bounds(selector).is_some()
+    };
+    assert!(drawn(&mut vcx), "unfolded at first");
+    vcx.simulate_keystrokes("z");
+    vcx.run_until_parked();
+    assert!(!drawn(&mut vcx), "z folded metadata away");
+}

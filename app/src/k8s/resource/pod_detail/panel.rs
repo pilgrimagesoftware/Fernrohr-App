@@ -65,6 +65,8 @@ pub struct PodDetailPanel {
     /// Absent means collapsed - the default for a long list the user came for
     /// something else in.
     pub(super) open_sections: std::collections::HashSet<String>,
+    /// The YAML view's folds and scroll position.
+    pub(super) yaml_view: crate::ui::yaml_view::YamlViewState,
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
     pub(super) fetching: bool,
@@ -99,6 +101,7 @@ impl PodDetailPanel {
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
+            yaml_view: Default::default(),
             fetching: false,
             events: None,
             events_window: super::window_preference::preferred(cx),
@@ -132,6 +135,7 @@ impl PodDetailPanel {
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
+            yaml_view: Default::default(),
             fetching: false,
             events: None,
             events_window: super::window_preference::preferred(cx),

@@ -11,7 +11,6 @@ use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
 use crate::ui::panel_title;
-use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -92,16 +91,41 @@ impl PodDetailPanel {
         self.render_events_view(window, cx)
     }
 
-    fn render_yaml(&self, cx: &App) -> AnyElement {
+    /// The manifest, folding and scrolling both ways (`ui::yaml_view`).
+    fn render_yaml(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(yaml) = self.yaml() else {
             return div().into_any_element();
         };
-        div()
-            .size_full()
-            .code_font(cx)
-            .whitespace_nowrap()
-            .child(yaml)
-            .into_any_element()
+        let this = cx.weak_entity();
+        let on_toggle: crate::ui::yaml_view::OnToggle = std::rc::Rc::new(move |line, _, cx| {
+            let _ = this.update(cx, |this: &mut Self, cx| {
+                this.yaml_view.toggle(line);
+                cx.notify();
+            });
+        });
+        self.yaml_view.element(&yaml, on_toggle, cx)
+    }
+
+    fn on_action_fold_all(
+        &mut self,
+        _: &crate::ui::yaml_view::FoldAll,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(yaml) = self.yaml() {
+            self.yaml_view.fold_all(&yaml);
+            cx.notify();
+        }
+    }
+
+    fn on_action_unfold_all(
+        &mut self,
+        _: &crate::ui::yaml_view::UnfoldAll,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.yaml_view.unfold_all();
+        cx.notify();
     }
 }
 
@@ -136,11 +160,12 @@ impl Render for PodDetailPanel {
                     .child(self.render_structured(window, cx))
                     .into_any_element(),
                 // YAML is monospace and line-oriented like the Logs panel -
-                // it keeps both-axis scroll rather than wrapping lines.
+                // it keeps both-axis scroll rather than wrapping lines. The view
+                // scrolls itself: a scroll container around a full-height
+                // child had nothing to scroll.
                 DetailView::Yaml => div()
                     .size_full()
                     .p(space.panel_inset)
-                    .overflow_scrollbar()
                     .child(self.render_yaml(cx))
                     .into_any_element(),
             },
@@ -259,6 +284,8 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
+            .on_action(cx.listener(Self::on_action_fold_all))
+            .on_action(cx.listener(Self::on_action_unfold_all))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
             .on_action(cx.listener(Self::on_action_select_containers_tab))
             .on_action(cx.listener(Self::on_action_select_configuration_tab))

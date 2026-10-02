@@ -17,3 +17,4 @@ mod secrets;
 mod sections;
 mod storage;
 mod workloads;
+mod yaml;
