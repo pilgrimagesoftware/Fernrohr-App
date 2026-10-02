@@ -212,3 +212,52 @@ async fn an_unreadable_kubeconfig_flags_nothing_stale(cx: &mut TestAppContext) {
 
     let _ = std::fs::remove_file(&tunnels_path);
 }
+
+/// `visual-refresh-typography-spacing` 3.2, dialogs and windows: the Tunnels
+/// window's content sits at least the panel inset from its edges - the New
+/// Tunnel button, at the header's top right, from the top and right. At 150%
+/// text, so the inset is the scaled token, not the 16px literal it replaced.
+#[gpui_kit::test]
+async fn the_tunnels_windows_content_is_inset_from_its_edges(cx: &mut TestAppContext) {
+    use crate::ui::space::{TextScale, spacing};
+    use gpui_kit::test::TestWindowExt as _;
+
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        TextScale::new(1.5).expect("a valid scale").set(cx);
+    });
+    let tunnels_path = temp_tunnels_path();
+    let kubeconfig_path = missing_kubeconfig_path();
+    let window = cx.add_window(move |window, cx| {
+        TunnelsWindow::new(tunnels_path, Some(kubeconfig_path), window, cx)
+    });
+    let any: gpui_kit::AnyWindowHandle = window.into();
+    let (inset, width, button) = any
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            let button = window
+                .try_find(gpui_kit::ElementId::from(gpui_kit::SharedString::from(
+                    "tunnels-new",
+                )))
+                .expect("the New Tunnel button is drawn")
+                .bounds();
+            (
+                spacing(cx).panel_inset,
+                window.viewport_size().width,
+                button,
+            )
+        })
+        .unwrap();
+    assert!(
+        button.top() >= inset,
+        "the button is {:?} from the top, under {inset:?}",
+        button.top()
+    );
+    assert!(
+        width - button.right() >= inset,
+        "the button is {:?} from the right, under {inset:?}",
+        width - button.right()
+    );
+}

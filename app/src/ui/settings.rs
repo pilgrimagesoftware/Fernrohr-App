@@ -118,7 +118,7 @@ impl Render for SettingsWindow {
         let sidebar = div()
             .w(px(180.))
             .h_full()
-            .p_2()
+            .p(crate::ui::space::spacing(cx).control_gap)
             .border_r_1()
             .border_color(theme.border)
             .bg(theme.sidebar)
