@@ -150,20 +150,34 @@ fn focus_table(h: &mut Harness) {
 }
 
 /// Spec: a namespaced kind's list has a Namespace column; a cluster-scoped kind's
-/// (Nodes) has none, and no namespace picker.
+/// (Nodes) has none, and no namespace picker. A built-in kind's own columns sit
+/// between them and Age (`standard-resource-panels` section 2).
 #[gpui_kit::test]
 async fn a_namespaced_kind_shows_namespace_and_a_cluster_scoped_kind_does_not(
     cx: &mut TestAppContext,
 ) {
     let mut h = harness(cx, deployments(), vec![object("web", Some("staging"))]);
-    assert_eq!(column_ids(&mut h), ["name", "namespace", "age"]);
+    assert_eq!(
+        column_ids(&mut h),
+        [
+            "name",
+            "namespace",
+            "ready",
+            "up_to_date",
+            "available",
+            "age"
+        ]
+    );
     let title = h
         .vcx
         .update(|_, cx| crate::ui::panel_title::title(&h.panel.read(cx).scope));
     assert!(title.starts_with("Deployments"), "a plural title: {title}");
 
     let mut h = harness(cx, nodes(), vec![object("node-a", None)]);
-    assert_eq!(column_ids(&mut h), ["name", "age"]);
+    assert_eq!(
+        column_ids(&mut h),
+        ["name", "status", "roles", "version", "internal_ip", "age"]
+    );
     let namespaced = h.vcx.update(|_, cx| h.panel.read(cx).scope.is_namespaced());
     assert!(!namespaced, "no namespace picker for a cluster-scoped kind");
 }

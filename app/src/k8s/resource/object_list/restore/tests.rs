@@ -12,10 +12,13 @@ use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext, px};
 use kube::core::GroupVersionKind;
 use serde_json::json;
 
-fn services() -> DiscoveredKind {
+/// A namespaced kind with only the base columns (`standard-resource-panels`
+/// section 2 gives Service and most built-ins their own), so these tests are
+/// about the layout mechanics alone.
+fn leases() -> DiscoveredKind {
     DiscoveredKind {
-        gvk: GroupVersionKind::gvk("", "v1", "Service"),
-        plural: "services".into(),
+        gvk: GroupVersionKind::gvk("coordination.k8s.io", "v1", "Lease"),
+        plural: "leases".into(),
         namespaced: true,
     }
 }
@@ -26,7 +29,7 @@ fn test_client(cx: &mut TestAppContext) -> kube::Client {
     kube::Client::try_from(kube::Config::new("http://127.0.0.1:0".parse().unwrap())).unwrap()
 }
 
-/// Spec: "Restored with the window" - a Services list saves its kind, context,
+/// Spec: "Restored with the window" - a Leases list saves its kind, context,
 /// namespace selection and column layout, and reading that back gives the same.
 #[gpui_kit::test]
 async fn a_list_panel_round_trips_kind_namespaces_and_columns(cx: &mut TestAppContext) {
@@ -39,10 +42,9 @@ async fn a_list_panel_round_trips_kind_namespaces_and_columns(cx: &mut TestAppCo
     let objects = cx.update(|cx| cx.new(|_| ObjectsTable::default()));
     let mut built = None;
     let window = cx.add_window(|window, cx| {
-        let scope = PanelScope::new(NavTarget::Kind(services()), "kind-dev".into())
+        let scope = PanelScope::new(NavTarget::Kind(leases()), "kind-dev".into())
             .scoped_to(vec!["staging".into()]);
-        let panel =
-            cx.new(|cx| ObjectListPanel::with_table(services(), scope, objects, client, cx));
+        let panel = cx.new(|cx| ObjectListPanel::with_table(leases(), scope, objects, client, cx));
         built = Some(panel.clone());
         Root::new(panel, window, cx)
     });
@@ -66,7 +68,7 @@ async fn a_list_panel_round_trips_kind_namespaces_and_columns(cx: &mut TestAppCo
         panic!("a list panel saves panel state");
     };
     let saved = from_state(&data).expect("the state names its kind and cluster");
-    assert_eq!(saved.kind, services());
+    assert_eq!(saved.kind, leases());
     assert_eq!(saved.context_name, "kind-dev");
     assert_eq!(saved.namespaces, ["staging"]);
     let ids: Vec<&str> = saved
@@ -106,15 +108,15 @@ fn only_a_kind_discovery_no_longer_reports_restores_as_a_placeholder() {
         namespaced: true,
     };
     assert!(
-        !restores_as_placeholder(&services(), None),
+        !restores_as_placeholder(&leases(), None),
         "discovery still running"
     );
     assert!(!restores_as_placeholder(
-        &services(),
-        Some(&[services(), other.clone()])
+        &leases(),
+        Some(&[leases(), other.clone()])
     ));
     assert!(
-        restores_as_placeholder(&services(), Some(&[other])),
+        restores_as_placeholder(&leases(), Some(&[other])),
         "no longer served"
     );
 }
@@ -131,16 +133,16 @@ async fn a_restored_layout_is_the_tables_starting_layout(cx: &mut TestAppContext
     let objects = cx.update(|cx| cx.new(|_| ObjectsTable::default()));
     let saved = from_state(&json!({
         "context_name": "kind-dev", "namespaces": [],
-        "group": "", "version": "v1", "kind": "Service", "plural": "services",
+        "group": "coordination.k8s.io", "version": "v1", "kind": "Lease", "plural": "leases",
         "namespaced": true,
         "columns": [{ "id": "namespace", "width": 120.0 }, { "id": "name", "width": 300.0 }],
     }))
     .unwrap();
     let mut built = None;
     let window = cx.add_window(|window, cx| {
-        let scope = PanelScope::new(NavTarget::Kind(services()), "kind-dev".into());
+        let scope = PanelScope::new(NavTarget::Kind(leases()), "kind-dev".into());
         let panel = cx.new(|cx| {
-            let mut panel = ObjectListPanel::with_table(services(), scope, objects, client, cx);
+            let mut panel = ObjectListPanel::with_table(leases(), scope, objects, client, cx);
             panel.initial_layout = saved.columns;
             panel
         });

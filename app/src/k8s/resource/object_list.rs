@@ -3,6 +3,7 @@
 //! from discovery, so it covers built-in kinds and CRDs alike. This file declares
 //! and re-exports; each submodule owns one concern.
 
+mod columns;
 mod commands;
 mod panel;
 mod render;

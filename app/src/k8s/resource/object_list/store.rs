@@ -1,7 +1,9 @@
 //! The live set of one kind's objects that one watch keeps up to date, including the
 //! relist sweep, and the refusal a forbidden kind shows in place of rows.
 
+use super::columns::{self, KindColumns};
 use super::row::ObjectRow;
+use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::util::resource_index::ResourceIndex;
 use kube::api::DynamicObject;
 use kube_runtime::watcher;
@@ -18,9 +20,21 @@ pub struct ObjectsTable {
     relisting: Option<HashSet<String>>,
     /// The API server's refusal, when it won't let this user list the kind (a 403).
     refused: Option<String>,
+    /// The kind's own columns, whose cells each row is built with - `None` for
+    /// a kind with base columns only.
+    columns: Option<&'static KindColumns>,
 }
 
 impl ObjectsTable {
+    /// A table for `kind`'s objects, building each row with the kind's own
+    /// columns' cells.
+    pub fn for_kind(kind: &DiscoveredKind) -> Self {
+        Self {
+            columns: columns::for_kind(&kind.gvk.group, &kind.gvk.kind),
+            ..Self::default()
+        }
+    }
+
     pub fn rows(&self) -> &[ObjectRow] {
         self.index.items()
     }
@@ -42,18 +56,19 @@ impl ObjectsTable {
     pub fn apply(&mut self, event: watcher::Event<DynamicObject>) {
         match event {
             watcher::Event::Apply(object) => {
-                let row = ObjectRow::new(&object);
+                let row = ObjectRow::new(&object, self.columns);
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::InitApply(object) => {
-                let row = ObjectRow::new(&object);
+                let row = ObjectRow::new(&object, self.columns);
                 if let Some(seen) = &mut self.relisting {
                     seen.insert(row.uid.clone());
                 }
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::Delete(object) => {
-                self.index.apply_deleted(&ObjectRow::new(&object).uid);
+                self.index
+                    .apply_deleted(object.metadata.uid.as_deref().unwrap_or_default());
             }
             watcher::Event::Init => {
                 self.refused = None;
