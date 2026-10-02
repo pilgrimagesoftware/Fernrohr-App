@@ -61,7 +61,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
     let bounds = window_bounds(&layout, cx);
     let contexts = restored_contexts(&layout);
     let resource_width = restored_resource_width(&layout);
-    cx.open_window(
+    // Fully qualified: `util::shell` re-exports this function as `open_window`.
+    gpui_kit::open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             // A restored layout can carry a window smaller than the picker needs
@@ -79,6 +80,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             }),
             ..Default::default()
         },
+        cx,
         |window, cx| {
             crate::ui::theme::watch_window(window, cx);
 
@@ -109,7 +111,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
                 view
             });
             view.update(cx, |view, cx| view.focus_initial(window, cx));
-            cx.new(|cx| Root::new(view, window, cx))
+            view
         },
     )
     .expect("failed to open window");

@@ -37,11 +37,14 @@ fn open_about_window(handle: &Rc<RefCell<Option<AnyWindowHandle>>>, cx: &mut App
     {
         return;
     }
-    match cx.open_window(about_window_options(cx), |window, cx| {
+    // Rooted like every other window, so it gets Root's keyboard traversal
+    // (the Close button off macOS) and overlay hosting.
+    let options = about_window_options(cx);
+    match gpui_kit::open_window(options, cx, |window, cx| {
         crate::ui::theme::watch_window(window, cx);
         cx.new(AboutWindow::new)
     }) {
-        Ok(window) => *handle.borrow_mut() = Some(window.into()),
+        Ok((window, _)) => *handle.borrow_mut() = Some(window),
         Err(error) => eprintln!("failed to open the About window: {error}"),
     }
 }
@@ -95,6 +98,38 @@ impl AboutWindow {
 #[cfg(test)]
 mod tests {
     use crate::ui::menu::About;
+
+    /// `gpui-kit` 0.7.0: About opens through `gpui_kit::open_window` like every
+    /// other window, so its root is a `Root` hosting the `AboutWindow`.
+    #[gpui_kit::test]
+    fn about_opens_rooted_in_a_root(cx: &mut gpui_kit::TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            super::register_about_action(cx);
+        });
+        cx.update(|cx| cx.dispatch_action(&About));
+        cx.run_until_parked();
+
+        let window = cx.update(|cx| *cx.windows().last().expect("About opened a window"));
+        let hosts_about = window
+            .update(cx, |_, window, cx| {
+                window
+                    .root::<gpui_kit::component::Root>()
+                    .flatten()
+                    .is_some_and(|root| {
+                        root.read(cx)
+                            .view()
+                            .clone()
+                            .downcast::<super::AboutWindow>()
+                            .is_ok()
+                    })
+            })
+            .unwrap();
+        assert!(
+            hosts_about,
+            "the About window's root is a Root hosting AboutWindow"
+        );
+    }
 
     /// Activating About twice opens exactly one window - the second
     /// dispatch raises the existing one rather than stacking a second.

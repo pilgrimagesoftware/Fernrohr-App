@@ -60,26 +60,29 @@ pub fn open_or_focus(cx: &mut App) {
         });
         return;
     }
-    let handle = cx
-        .open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    SETTINGS_WINDOW_SIZE,
-                    cx,
-                ))),
-                window_min_size: Some(SETTINGS_WINDOW_MIN_SIZE),
-                ..Default::default()
-            },
-            |window, cx| {
-                crate::ui::theme::watch_window(window, cx);
-                let view = cx.new(|cx| SettingsWindow::new(window, cx));
-                let focus = view.read(cx).shortcuts.read(cx).list_focus();
-                window.focus(&focus, cx);
-                cx.new(|cx| Root::new(view, window, cx))
-            },
-        )
-        .expect("failed to open the settings window");
+    let (window, _) = gpui_kit::open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                None,
+                SETTINGS_WINDOW_SIZE,
+                cx,
+            ))),
+            window_min_size: Some(SETTINGS_WINDOW_MIN_SIZE),
+            ..Default::default()
+        },
+        cx,
+        |window, cx| {
+            crate::ui::theme::watch_window(window, cx);
+            let view = cx.new(|cx| SettingsWindow::new(window, cx));
+            let focus = view.read(cx).shortcuts.read(cx).list_focus();
+            window.focus(&focus, cx);
+            view
+        },
+    )
+    .expect("failed to open the settings window");
+    let handle = window
+        .downcast::<Root>()
+        .expect("gpui_kit::open_window roots every window in a Root");
     let _ = handle.update(cx, |_, window, cx| {
         window.on_window_should_close(cx, |_, cx| {
             cx.set_global(SettingsWindowHandle(None));
