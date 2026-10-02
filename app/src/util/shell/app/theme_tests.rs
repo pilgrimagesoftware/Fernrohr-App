@@ -118,3 +118,33 @@ async fn the_status_bar_switcher_switches_the_theme(cx: &mut TestAppContext) {
     let saved: UiConfig = crate::config::load(&ui);
     assert_eq!(saved.theme, ThemePreference::Dark);
 }
+
+/// The switcher is drawn wholly inside the window at its far right end - at a
+/// normal width and at a narrow one, where the capsule row has to give way
+/// rather than push the switcher out. (Layout wasn't what hid it on a real build:
+/// its icon was missing from the asset bundle - see `crate::assets`.)
+#[gpui_kit::test]
+async fn the_switcher_stays_at_the_far_end_at_any_width(cx: &mut TestAppContext) {
+    let (mut first, _second, _ui) = two_windows(cx);
+    for width in [1200., 420.] {
+        first.simulate_resize(gpui_kit::size(gpui_kit::px(width), gpui_kit::px(700.)));
+        first.run_until_parked();
+        let (window_bounds, switch) = first.update(|window, cx| {
+            window.render_frame(cx);
+            let switch = window
+                .try_find("status-theme-switch")
+                .expect("the switcher is drawn")
+                .bounds();
+            (window.bounds(), switch)
+        });
+        assert!(
+            switch.size.width > gpui_kit::px(0.),
+            "it has a size at {width}"
+        );
+        assert!(
+            switch.right() <= window_bounds.size.width
+                && switch.left() > window_bounds.size.width * 0.5,
+            "at {width}px it's inside the window, at its right end: {switch:?}"
+        );
+    }
+}

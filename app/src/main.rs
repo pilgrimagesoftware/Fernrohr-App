@@ -1,5 +1,6 @@
 use gpui_kit::*;
 
+mod assets;
 mod command;
 mod config;
 mod consts;
@@ -20,7 +21,7 @@ fn main() {
     util::pidfile::sweep_stale();
 
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(assets::AppAssets)
         .with_quit_mode(QuitMode::LastWindowClosed)
         .run(|cx: &mut App| {
             gpui_kit::init(cx);
