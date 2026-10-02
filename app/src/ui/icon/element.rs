@@ -23,16 +23,21 @@ use std::sync::Arc;
 /// their text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IconSize {
+    /// Body text (`1rem`).
+    Text,
     /// `text_sm()` text (`0.875rem`): tabs, the Resource panel's kind rows,
-    /// cards, links. Add a variant beside it for an icon next to text of
-    /// another size.
+    /// cards, links.
     Small,
+    /// `text_xs()` text (`0.75rem`).
+    XSmall,
 }
 
 impl IconSize {
     fn rems(self) -> f32 {
         match self {
+            Self::Text => 1.,
             Self::Small => 0.875,
+            Self::XSmall => 0.75,
         }
     }
 

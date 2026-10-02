@@ -9,9 +9,13 @@
 //! icon; [`element`] draws one beside text.
 
 mod element;
+mod inline;
 #[cfg(test)]
 pub(crate) use element::test_hooks;
 pub use element::{IconSize, kind_icon};
+pub use inline::InlineKindIcon;
+#[cfg(test)]
+pub(crate) use inline::test_support;
 
 /// One bundled icon. A closed set: every file this app ships is a variant, so
 /// adding an icon is adding a variant here and a file, and the tests walk
@@ -192,8 +196,6 @@ pub fn for_target(target: &crate::ui::nav::NavTarget) -> KindIcon {
     }
 }
 
-// UNWIRED: the container cards draw it in `resource-kind-icons` 3.3.
-#[allow(dead_code)]
 /// The icon for a container listed in pod detail.
 pub fn for_container() -> KindIcon {
     KindIcon::Container
