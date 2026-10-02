@@ -89,6 +89,19 @@ pub(super) fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorks
     }
 }
 
+/// Refreshes the saved dock arrangement of the main window `window` holds, from
+/// its dock as last drawn - see [`MainWindow::save_dock_layout`] for why the
+/// `LayoutChanged` save alone is not enough. A no-op for any other window.
+pub(super) fn save_window_dock_layout(window: &mut Window, cx: &mut App) {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return;
+    };
+    main_window.update(cx, |main_window, cx| main_window.save_dock_layout(cx));
+}
+
 /// Remembers a closing main window's layout so `save` still writes it after the window
 /// is gone (see [`ClosedWindowLayouts`]).
 ///
@@ -187,6 +200,14 @@ pub(super) fn build_workspace(
     (PanelId, nav::OpenedPanel),
 ) {
     let (dock_area, dock_skin) = DockSkin::dock_area("main", Some(1), window, cx);
+    // Always draw a tab strip, even for a group of one panel. gpui-kit 0.7
+    // (`dock/tab_panel.rs`) draws a lone panel's group as `render_title`, a
+    // title bar that registers no `drag_over`/`on_drop` - the drop targets live
+    // only in `render_tabs`, on each tab and on the strip's empty space - so a
+    // tab dropped on a lone group's title did nothing. The strip also keeps a
+    // lone panel looking like the tab it is. Revisit once `render_title` takes
+    // drops upstream.
+    dock_skin.set_panel_style(gpui_kit::component::dock::PanelStyle::TabBar, cx);
     let scope = PanelScope {
         connection_count,
         ..PanelScope::new(NavTarget::pods(), context_name)

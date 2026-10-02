@@ -15,7 +15,6 @@ use crate::k8s::cluster::discovery_registry::{DiscoveredKinds, DiscoveryRegistry
 use crate::ui::link::{self, GoToEntry, GoToReference};
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::{self, PanelScope};
-use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
@@ -103,7 +102,7 @@ impl PodDetailPanel {
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
         this
@@ -134,7 +133,7 @@ impl PodDetailPanel {
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
             fetching: false,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
         this
@@ -414,7 +413,8 @@ impl Panel for PodDetailPanel {
         panel_title::title_element(
             &self.scope,
             panel_title::title(&self.scope),
-            self.focus_handle.contains_focused(window, cx),
+            &self.focus_handle,
+            panel_title::close_button(cx.entity()),
             window,
             cx,
         )
@@ -422,14 +422,6 @@ impl Panel for PodDetailPanel {
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
         panel_title::tab_name(&self.scope)
-    }
-
-    fn toolbar_buttons(
-        &mut self,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Vec<Button>> {
-        panel_title::toolbar_buttons()
     }
 
     fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {

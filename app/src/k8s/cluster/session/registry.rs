@@ -12,8 +12,11 @@ pub(super) struct ClusterSession {
     pub(super) pods_watch: Option<gpui_kit::Task<()>>,
     /// The client last used to start the Pods watch - kept so section 7.2's
     /// `ConnectionHealth` can restart it on resume without a panel re-subscribing.
-    pub(super) pods_client: Option<Client>,
-    pub(super) watchers: WatchRegistry<&'static str>,
+    pub(super) client: Option<Client>,
+    /// Every other kind a panel watches on this context: one shared table and task
+    /// per kind, present while at least one panel subscribes to it.
+    pub(super) kinds: HashMap<DiscoveredKind, KindWatch>,
+    pub(super) watchers: WatchRegistry<WatchKey>,
     // Kept alive for as long as the session exists; aborts on drop like every other
     // owned background task. `None` for an unbound context, which has no forward to watch.
     _health: Option<gpui_kit::Task<()>>,
@@ -22,6 +25,13 @@ pub(super) struct ClusterSession {
     /// as long as this set is non-empty - see [`ClusterRegistry::hold`]/[`release`](
     /// ClusterRegistry::release).
     pub(super) holders: HashSet<WindowId>,
+}
+
+/// One kind's shared watch on a context: the table its panels render from, and the
+/// task consuming the stream - `None` while the watch is paused.
+pub(super) struct KindWatch {
+    pub(super) table: Entity<ObjectsTable>,
+    pub(super) task: Option<gpui_kit::Task<()>>,
 }
 
 /// App-scoped (not per-window) cluster state, keyed by context name so two windows
@@ -69,7 +79,8 @@ impl ClusterRegistry {
                 connection,
                 pods,
                 pods_watch: None,
-                pods_client: None,
+                client: None,
+                kinds: HashMap::new(),
                 watchers: WatchRegistry::new(),
                 _health: health,
                 holders: HashSet::new(),

@@ -14,7 +14,7 @@ impl MainWindow {
             let focus_handle = picker.read(cx).initial_focus_handle(cx);
             focus_handle.focus(window, cx);
         } else {
-            self.focus_handle.focus(window, cx);
+            self.focus_displayed_panel(window, cx);
         }
     }
 
@@ -83,6 +83,8 @@ impl MainWindow {
                     id,
                     key,
                     panel: None,
+                    group: crate::ui::panel::tabs::group_of(dock_area.read(cx), id),
+                    _focus_watch: Self::watch_panel_focus(&dock_area, id, window, cx),
                 })
                 .collect()
         } else {
@@ -94,6 +96,8 @@ impl MainWindow {
                 // request for pods reuse the same `OpenedPanel` bookkeeping
                 // every other panel gets.
                 panel: Some(first.clone()),
+                group: crate::ui::panel::tabs::group_of(dock_area.read(cx), first_id),
+                _focus_watch: Self::watch_panel_focus(&dock_area, first_id, window, cx),
             }]
         };
         watch_workspace(&dock_area, window, cx);
@@ -105,6 +109,9 @@ impl MainWindow {
                 cx,
             )
         });
+        // 11.1: a new workspace opens its panel on the preferred edge.
+        let resource_side = crate::ui::resource_panel::preferred_side(cx);
+        resource_panel.update(cx, |panel, cx| panel.set_side(resource_side, cx));
         cx.subscribe_in(
             &resource_panel,
             window,
@@ -134,6 +141,9 @@ impl MainWindow {
             status_bar,
             context_bar,
             resource_width: RESOURCE_PANEL_WIDTH,
+            resource_side,
+            resource_collapsed: false,
+            last_focused_panel: None,
         };
         // Entering a workspace doesn't go through `sync_context_children` (its
         // children are built here already synced), so it titles the window itself.
@@ -167,6 +177,14 @@ impl MainWindow {
         };
         match opened {
             nav::OpenedPanel::Pods(panel) => {
+                cx.subscribe_in(
+                    &panel,
+                    window,
+                    move |this: &mut MainWindow, _panel, event, _window, cx| rekey(this, event, cx),
+                )
+                .detach();
+            }
+            nav::OpenedPanel::ObjectList(panel) => {
                 cx.subscribe_in(
                     &panel,
                     window,

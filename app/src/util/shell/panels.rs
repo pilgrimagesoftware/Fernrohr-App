@@ -44,6 +44,13 @@ pub(super) struct OpenPanel {
     /// fields has to switch that panel to the YAML, and switching needs the
     /// entity, not the id.
     pub(super) panel: Option<nav::OpenedPanel>,
+    /// The tab group the panel was last seen in, refreshed on every layout
+    /// change. Once the panel is closed the dock no longer says where it was,
+    /// so this is how focus finds the tab that took its place.
+    pub(super) group: Option<gpui_kit::component::dock::NodeId>,
+    /// Notes this panel as the window's last-focused dock panel whenever focus
+    /// enters it ([`MainWindow::watch_panel_focus`]); dropped with the entry.
+    pub(super) _focus_watch: Option<gpui_kit::Subscription>,
 }
 
 pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
@@ -74,15 +81,14 @@ pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
             Some(object) => NavTarget::Object(object),
             None => return keys,
         },
-        "Resource" => NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind {
-            gvk: GroupVersionKind::gvk(
-                data["group"].as_str().unwrap_or_default(),
-                data["version"].as_str().unwrap_or("v1"),
-                data["kind"].as_str().unwrap_or("Resource"),
-            ),
-            plural: data["plural"].as_str().unwrap_or("resources").to_string(),
-            namespaced: data["namespaced"].as_bool().unwrap_or(false),
-        }),
+        // A list panel, and the placeholder that stands in for one: both save the
+        // kind the same way, and both are a `Kind` target.
+        "ObjectList" | "Resource" => {
+            match crate::k8s::resource::object_list::restore::from_state(data) {
+                Some(saved) => NavTarget::Kind(saved.kind),
+                None => return keys,
+            }
+        }
         _ => return keys,
     };
     keys.push(PanelKey {

@@ -6,6 +6,7 @@
 use super::section::{VisibleSection, VisibleSubgroup};
 use super::{ResourcePanel, ResourceState};
 use crate::ui::nav::NavTarget;
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
@@ -386,6 +387,7 @@ impl ResourcePanel {
                     .child("Resources"),
             )
             .child(div().flex_shrink_0().child(selector))
+            .child(super::edge::header_buttons(self.side))
             .into_any_element()
     }
 
@@ -451,8 +453,26 @@ impl Render for ResourcePanel {
             }
         };
 
+        // The panel's focus indicator: a bar in the accent colour along the top of
+        // its header while focus is anywhere inside it. It has no tab to underline
+        // like the dock panels, and a frame around the content was rejected
+        // (`panel-focus-highlight-inset`), so this bar is all it draws.
+        let focused = self.focus_handle.contains_focused(window, cx);
+        let indicator = if focused {
+            crate::ui::style::accent(cx)
+        } else {
+            gpui_kit::transparent_black()
+        };
         div()
             .size_full()
+            .debug_selector(move || {
+                format!(
+                    "resource-panel-{}",
+                    if focused { "focused" } else { "unfocused" }
+                )
+            })
+            .border_t_2()
+            .border_color(indicator)
             .key_context(super::keyboard::PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_select_next))
@@ -466,5 +486,7 @@ impl Render for ResourcePanel {
             .on_action(cx.listener(Self::on_action_focus_filter))
             .on_action(cx.listener(Self::on_action_clear_filter))
             .child(content)
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("resource-panel-tab-trap", &self.focus_handle)
     }
 }

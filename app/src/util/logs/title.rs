@@ -46,7 +46,8 @@ impl Panel for LogsPanel {
         panel_title::title_element(
             &self.scope,
             self.streaming_title(),
-            self.focus_handle.contains_focused(window, cx),
+            &self.focus_handle,
+            panel_title::close_button(cx.entity()),
             window,
             cx,
         )
@@ -54,14 +55,6 @@ impl Panel for LogsPanel {
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
         panel_title::tab_name(&self.scope)
-    }
-
-    fn toolbar_buttons(
-        &mut self,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Vec<Button>> {
-        panel_title::toolbar_buttons()
     }
 
     fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {

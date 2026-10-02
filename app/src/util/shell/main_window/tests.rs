@@ -12,7 +12,8 @@ use gpui_kit::{AppContext as _, TestAppContext};
 /// Section 10.1-10.3, checked on every panel type the dock holds rather than
 /// on the title-bar helpers alone: each panel's tab names its kind, a
 /// namespace picker is on the bar exactly when the kind is namespaced, and
-/// the close control the dock needs is on every one of them.
+/// none of them puts its close control in the toolbar, since it sits beside
+/// the title instead.
 ///
 /// A cluster-scoped kind is in the list on purpose - it is the case where
 /// the picker must be *absent*, which a test over namespaced kinds alone
@@ -48,6 +49,7 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                 });
                 let (name, controls) = match opened {
                     nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
+                    nav::OpenedPanel::ObjectList(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
@@ -63,10 +65,13 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                     target.item_label(),
                     "the title names the kind, never the cluster"
                 );
-                assert!(
-                    controls > 0,
-                    "every resource panel needs its close control, found \
-                     none on {}",
+                // The close control is drawn beside the title, not at the
+                // title bar's far end (`tab-close-buttons` 4.2; the drawn
+                // control is checked in `tabs/tests/close.rs`).
+                assert_eq!(
+                    controls,
+                    0,
+                    "no toolbar close on {}: it sits beside the title",
                     target.label()
                 );
                 checked.push(target.label());
@@ -79,6 +84,56 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
         expected,
         "every panel type was checked: {checked:?}"
     );
+}
+
+/// `standard-resource-panels` 1.4: every kind but the core Pod kind opens the
+/// generic list over that kind - a namespaced built-in (Deployments), a
+/// cluster-scoped one (Nodes) and a CRD alike - and Pods keep the Pods panel. None
+/// of them gets a placeholder.
+#[gpui_kit::test]
+async fn every_kind_but_pods_opens_a_list_panel(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    let deployments = crate::k8s::cluster::discovery::DiscoveredKind {
+        gvk: kube::core::GroupVersionKind::gvk("apps", "v1", "Deployment"),
+        plural: "deployments".into(),
+        namespaced: true,
+    };
+    let nodes = crate::k8s::cluster::discovery::DiscoveredKind {
+        gvk: kube::core::GroupVersionKind::gvk("", "v1", "Node"),
+        plural: "nodes".into(),
+        namespaced: false,
+    };
+
+    window
+        .update(cx, |main_window, window, cx| {
+            let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            for kind in [deployments, nodes, crd_kind()] {
+                let scope = PanelScope::new(NavTarget::Kind(kind.clone()), "kind-dev".into());
+                let (_id, opened) = dock_area.update(cx, |area, cx| {
+                    nav::add_panel(area, &scope, None, window, cx)
+                });
+                let nav::OpenedPanel::ObjectList(panel) = opened else {
+                    panic!("{} should open a list panel", kind.label());
+                };
+                assert_eq!(
+                    panel.read(cx).kind(),
+                    &kind,
+                    "the list is over its own kind"
+                );
+            }
+            let scope = PanelScope::new(NavTarget::pods(), "kind-dev".into());
+            let (_id, opened) = dock_area.update(cx, |area, cx| {
+                nav::add_panel(area, &scope, None, window, cx)
+            });
+            assert!(
+                matches!(opened, nav::OpenedPanel::Pods(_)),
+                "Pods keep their panel"
+            );
+        })
+        .unwrap();
 }
 
 /// Section 10.2's second half: a panel that reports a narrower namespace is
@@ -210,4 +265,61 @@ async fn the_resource_panel_width_round_trips(cx: &mut TestAppContext) {
     let saved: WorkspaceConfig = config::load(&path);
     assert_eq!(saved.windows[0].resource_panel_width, Some(330.0));
     let _ = std::fs::remove_file(&path);
+}
+
+/// `standard-resource-panels` 5.3, in a real window: a custom resource list's
+/// tab is drawn as its plural kind alone, with no group qualifier, and hovering
+/// the tab shows the group in its tooltip.
+#[gpui_kit::test]
+async fn a_custom_resource_tab_is_drawn_with_its_kind_only(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    window
+        .update(cx, |main_window, window, cx| {
+            let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            let scope = PanelScope::new(NavTarget::Kind(crd_kind()), "kind-dev".into());
+            dock_area.update(cx, |area, cx| {
+                nav::add_panel(area, &scope, None, window, cx)
+            });
+        })
+        .unwrap();
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+
+    let drawn = |vcx: &mut gpui_kit::VisualTestContext, title: &'static str| {
+        vcx.debug_bounds(title).is_some()
+    };
+    assert!(
+        drawn(&mut vcx, "panel-title-Ferns-focused")
+            || drawn(&mut vcx, "panel-title-Ferns-unfocused"),
+        "the CRD's tab reads its plural kind"
+    );
+    assert!(
+        !drawn(&mut vcx, "panel-title-Ferns · ferns.example.com-focused")
+            && !drawn(&mut vcx, "panel-title-Ferns · ferns.example.com-unfocused"),
+        "and carries no group qualifier"
+    );
+
+    let tab = ["panel-title-Ferns-focused", "panel-title-Ferns-unfocused"]
+        .into_iter()
+        .find_map(|title| vcx.debug_bounds(title))
+        .expect("the CRD's tab is drawn");
+    assert!(
+        !drawn(&mut vcx, "panel-title-tooltip-group"),
+        "no tooltip before the hover"
+    );
+    vcx.simulate_mouse_move(tab.center(), None, gpui_kit::Modifiers::none());
+    vcx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    vcx.run_until_parked();
+    assert!(
+        drawn(&mut vcx, "panel-title-tooltip-group"),
+        "hovering the tab shows the API group"
+    );
+    assert!(
+        drawn(&mut vcx, "panel-title-tooltip-context"),
+        "beside the context"
+    );
 }

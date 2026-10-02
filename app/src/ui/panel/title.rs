@@ -14,6 +14,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dock::Panel;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::*;
@@ -194,14 +195,17 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
     (window_contexts > 1).then(|| scope.context_name.clone())
 }
 
-/// `text` as the panel's title element, with a "Context: <name>" tooltip. The dock
+/// `text` as the panel's title element, with a "Context: <name>" tooltip (led
+/// by the API group for a custom resource list, see [`tooltip::tooltip_lines`]). The dock
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
 ///
 /// It is also the panel's focus indicator: underlined in the accent colour
-/// (the user's system accent on macOS) while `focused`. Pass `focus_handle.contains_focused(..)`, not `is_focused`:
-/// a panel whose content takes focus itself (a table row, a text input) moves
-/// the window's focus to that child, and an indicator lit only while the
-/// panel's own handle held focus would go dark the moment the panel was used.
+/// (the user's system accent on macOS) while focus is anywhere inside the panel
+/// `focus_handle` belongs to - `contains_focused`, not `is_focused`: a panel
+/// whose content takes focus itself (a table row, a text input) moves the
+/// window's focus to that child, and an indicator lit only while the panel's
+/// own handle held focus would go dark the moment the panel was used. A press
+/// on it focuses that panel.
 ///
 /// The tab is the one place the dock lets a panel mark itself: the tab strip
 /// draws this element, but reads no per-panel style (`Panel::title_style` only
@@ -214,14 +218,16 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 pub fn title_element(
     scope: &PanelScope,
     text: String,
-    focused: bool,
+    focus_handle: &FocusHandle,
+    close: Button,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     use crate::ui::icon::{self, IconSize};
-    let tooltip = format!("Context: {}", scope.context_name);
+    let focused = focus_handle.contains_focused(window, cx);
+    let tooltip_scope = scope.clone();
     let kind_icon = icon::kind_icon(icon::for_target(&scope.target), IconSize::Small, window, cx);
-    div()
+    let title = div()
         .id(SharedString::from(format!(
             "panel-title-{}-{text}",
             scope.context_name
@@ -239,7 +245,33 @@ pub fn title_element(
         .gap_1p5()
         .child(kind_icon)
         .child(text)
-        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        .tooltip(move |window, cx| title_tooltip(&tooltip_scope, window, cx))
+        // gpui-base 0.7.0's `TabGroup::select_tab` (dock/tab_group.rs) returns
+        // early when the clicked tab is already the active one, before its
+        // `focus_active_panel`, so a click on the displayed tab focused nothing
+        // - a new or restored tab took focus only after switching away and back.
+        // Focusing here covers the label and icon. Once gpui-kit focuses on that
+        // path itself, this can come out. Not stopping propagation: the tab still
+        // selects, and a drag still starts, as before.
+        .on_mouse_down(MouseButton::Left, {
+            let focus_handle = focus_handle.clone();
+            move |_, window, cx| window.focus(&focus_handle, cx)
+        });
+    // The close control sits right after the title, in a tab and in a lone
+    // panel's title bar alike, rather than at the group's far edge
+    // (`tab-close-buttons` 4.2). Its press stops here, so it neither selects
+    // nor focuses the tab nor starts a drag: closing an unfocused group's
+    // panel leaves focus where it was.
+    let close = div()
+        .flex_none()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(close);
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(title)
+        .child(close)
         .into_any_element()
 }
 
@@ -297,23 +329,28 @@ pub fn tab_name(_scope: &PanelScope) -> Option<SharedString> {
     None
 }
 
-/// The close button every resource panel's title bar carries.
+/// The close control every resource panel's title carries, drawn by
+/// [`title_element`] beside the title. It closes `panel`, the panel whose
+/// title draws it.
 ///
-/// It dispatches the dock's own `ClosePanel` action rather than reaching for
-/// the panel's id: the dock is what owns the layout, `ClosePanel` removes
-/// whichever panel the group is displaying, and a container may still refuse
-/// (the last group of a dock cannot be closed). A panel that removed itself
-/// would have to reimplement that refusal rule.
-pub fn close_button() -> Button {
-    use gpui_kit::component::dock::ClosePanel;
-
+/// It names its panel rather than dispatching the dock's `ClosePanel`, which
+/// travels the focus path and so reached the *focused* group: with two groups
+/// stacked, the lower group's close closed the upper group's focused panel
+/// (`tab-close-buttons`). Closing by panel also reaches the window's last
+/// panel, which the tab group's own close refuses to empty the dock for, so
+/// the window can return to the picker.
+pub fn close_button<P: Panel>(panel: Entity<P>) -> Button {
+    let selector = format!("panel-close-{}", panel.entity_id());
     Button::new("panel-close")
         .icon(IconName::Close)
         .xsmall()
         .ghost()
         .tab_stop(false)
         .tooltip("Close panel")
-        .on_click(|_event, window, cx| window.dispatch_action(Box::new(ClosePanel), cx))
+        .debug_selector(move || selector.clone())
+        .on_click(move |_event, window, cx| {
+            crate::util::shell::close_panel(panel.clone(), window, cx)
+        })
 }
 
 /// The namespace picker, or nothing for a cluster-scoped kind.
@@ -384,15 +421,6 @@ pub fn namespace_picker(
     Some(picker.into_any_element())
 }
 
-/// The controls at the trailing end of a resource panel's title bar.
-///
-/// The dock draws the controls menu (`IconName::Ellipsis`) itself for every
-/// panel that has a title bar, so what a panel owes the bar is the close
-/// control beside it.
-pub fn toolbar_buttons() -> Option<Vec<Button>> {
-    Some(vec![close_button()])
-}
-
 /// A panel's failure content: a human-readable message, then - when there is
 /// one - the failure's full technical detail underneath it, muted and
 /// monospace. Both render through `gpui-component`'s own selectable
@@ -451,6 +479,11 @@ fn code_block(text: &str) -> String {
 pub enum ScopeEvent {
     NamespacesChanged(Vec<String>),
 }
+
+mod tooltip;
+use tooltip::title_tooltip;
+#[cfg(test)]
+use tooltip::tooltip_lines;
 
 #[cfg(test)]
 pub(crate) mod test_support;

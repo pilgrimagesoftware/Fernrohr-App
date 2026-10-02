@@ -77,7 +77,7 @@ impl PodsPanel {
             table: cx.new(|_| PodsTable::default()),
             namespaces,
             subscribed: false,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
         };
         this.start_watch_if_connected(&connection, cx);
@@ -197,6 +197,10 @@ impl PodsPanel {
                     .col_resizable(true)
             });
             cx.subscribe_in(&table, window, |_this, table, event, window, cx| {
+                if let TableEvent::ColumnWidthsChanged(widths) = event {
+                    table.update(cx, |table, _| table.delegate_mut().set_widths(widths));
+                    return;
+                }
                 let row_ix = match event {
                     TableEvent::SelectRow(row_ix) => *row_ix,
                     // A single click only selects (drives WarpNamespace/
@@ -283,7 +287,8 @@ impl Panel for PodsPanel {
         panel_title::title_element(
             &self.scope,
             panel_title::title(&self.scope),
-            self.focus_handle.contains_focused(window, cx),
+            &self.focus_handle,
+            panel_title::close_button(cx.entity()),
             window,
             cx,
         )
@@ -293,18 +298,12 @@ impl Panel for PodsPanel {
         panel_title::tab_name(&self.scope)
     }
 
-    fn toolbar_buttons(
-        &mut self,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Vec<Button>> {
-        panel_title::toolbar_buttons()
-    }
-
     fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {
         Some(PanelControl::Toolbar)
     }
 }
 
+#[cfg(test)]
+mod list_keys_tests;
 #[cfg(test)]
 mod tests;

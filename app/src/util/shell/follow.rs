@@ -8,7 +8,9 @@
 
 use super::MainWindow;
 use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
+use crate::k8s::resource::object_list::OpenListedObject;
 use crate::ui::link::FollowReference;
+use crate::ui::nav::NavTarget;
 use crate::ui::viewer::viewer_for;
 use gpui_kit::*;
 
@@ -40,5 +42,31 @@ impl MainWindow {
     }
 }
 
+impl MainWindow {
+    /// Opens (or focuses) the detail panel of an object a list panel's row was
+    /// activated on, in the list's own context (`standard-resource-panels` D5). The
+    /// object's kind came from discovery already, so unlike a followed reference
+    /// there's nothing to look up; and a Namespace row opens that Namespace's detail,
+    /// where `viewer_for` would send a reference to it to the Pods list.
+    pub(super) fn on_action_open_listed_object(
+        &mut self,
+        action: &OpenListedObject,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_target_in(
+            NavTarget::Object(action.target.clone()),
+            action.view,
+            Some(action.context_name.clone()),
+            Vec::new(),
+            window,
+            cx,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod list_keys_tests;

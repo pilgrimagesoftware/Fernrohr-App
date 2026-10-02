@@ -9,8 +9,74 @@ pub(super) fn open_command_palette(window: &mut Window, cx: &mut App) {
     crate::util::palette::open(window, cx);
 }
 
+impl MainWindow {
+    /// The Resource panel beside the dock, on `side`. Expanded, it's a resizable
+    /// split - drag the divider to trade list width for dock space - with the panel
+    /// first on the left or last on the right; collapsed, a strip with the button
+    /// that brings it back, on the same edge.
+    fn workspace_row(
+        dock_area: &Entity<DockArea>,
+        resource_panel: &Entity<crate::ui::resource_panel::ResourcePanel>,
+        width: Pixels,
+        side: crate::ui::resource_panel::ResourceSide,
+        collapsed: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use crate::ui::resource_panel::{ResourceSide, collapsed_strip};
+        // An empty centre - the last panel closed, the window still connected -
+        // shows the key that opens the next kind instead of a blank area.
+        let dock = if dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
+            empty_dock_hint(window, cx)
+        } else {
+            dock_area.clone().into_any_element()
+        };
+        if collapsed {
+            let strip = collapsed_strip(side, cx).into_any_element();
+            let dock = div()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .child(dock)
+                .into_any_element();
+            let (first, second) = match side {
+                ResourceSide::Left => (strip, dock),
+                ResourceSide::Right => (dock, strip),
+            };
+            return div()
+                .size_full()
+                .flex()
+                .child(first)
+                .child(second)
+                .into_any_element();
+        }
+        let panel = resizable_panel()
+            .size(width)
+            .size_range(RESOURCE_PANEL_MIN_WIDTH..RESOURCE_PANEL_MAX_WIDTH)
+            .child(resource_panel.clone());
+        let this = cx.weak_entity();
+        let split = h_resizable("workspace-split").on_resize(move |state, _window, cx| {
+            // The panel's size is the split's first on the left, its last on the right.
+            let sizes = state.read(cx).sizes();
+            let width = match side {
+                ResourceSide::Left => sizes.first(),
+                ResourceSide::Right => sizes.last(),
+            };
+            let Some(width) = width.copied() else {
+                return;
+            };
+            let _ = this.update(cx, |this, _cx| this.set_resource_width(width));
+        });
+        match side {
+            ResourceSide::Left => split.child(panel).child(resizable_panel().child(dock)),
+            ResourceSide::Right => split.child(resizable_panel().child(dock)).child(panel),
+        }
+        .into_any_element()
+    }
+}
+
 impl Render for MainWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.mode {
             WindowMode::Picker(picker) => picker.clone().into_any_element(),
             // The Resource panel is the window's left edge. It used to be a
@@ -27,38 +93,23 @@ impl Render for MainWindow {
                 status_bar,
                 context_bar,
                 resource_width,
+                resource_side,
+                resource_collapsed,
                 ..
             } => div()
                 .size_full()
                 .flex()
                 .flex_col()
                 .child(context_bar.clone())
-                .child(
-                    // The Resource panel is a resizable split, not a fixed-width
-                    // column: drag the divider to trade list width for dock space.
-                    div().flex_1().min_h_0().child(
-                        h_resizable("workspace-split")
-                            .on_resize({
-                                let this = cx.weak_entity();
-                                move |state, _window, cx| {
-                                    let Some(width) = state.read(cx).sizes().first().copied()
-                                    else {
-                                        return;
-                                    };
-                                    let _ = this.update(cx, |this, _cx| {
-                                        this.set_resource_width(width);
-                                    });
-                                }
-                            })
-                            .child(
-                                resizable_panel()
-                                    .size(*resource_width)
-                                    .size_range(RESOURCE_PANEL_MIN_WIDTH..RESOURCE_PANEL_MAX_WIDTH)
-                                    .child(resource_panel.clone()),
-                            )
-                            .child(resizable_panel().child(dock_area.clone().into_any_element())),
-                    ),
-                )
+                .child(div().flex_1().min_h_0().child(Self::workspace_row(
+                    dock_area,
+                    resource_panel,
+                    *resource_width,
+                    *resource_side,
+                    *resource_collapsed,
+                    window,
+                    cx,
+                )))
                 .child(status_bar.clone())
                 .into_any_element(),
         };
@@ -76,6 +127,10 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
             .on_action(cx.listener(Self::on_action_set_tunnel))
             .on_action(cx.listener(Self::on_action_follow_reference))
+            .on_action(cx.listener(Self::on_action_open_listed_object))
+            .on_action(cx.listener(Self::on_action_toggle_resource_panel))
+            .on_action(cx.listener(Self::on_action_move_resource_panel))
+            .on_action(cx.listener(Self::on_action_save_resource_side))
             .child(body)
     }
 }

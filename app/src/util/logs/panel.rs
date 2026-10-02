@@ -49,7 +49,7 @@ impl LogsPanel {
             stream: None,
             current: None,
             scroll_handle: UniformListScrollHandle::default(),
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
         this

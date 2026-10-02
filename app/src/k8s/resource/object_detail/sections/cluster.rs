@@ -1,11 +1,13 @@
-//! A Node's sections: where it is reachable, what it offers, how it's doing,
-//! what it runs, and what it repels.
+//! Cluster-scoped infrastructure kinds' sections. A Node: where it is
+//! reachable, what it offers, how it's doing, what it runs, and what it
+//! repels. A Namespace: its phase, and the conditions that hold it up while it
+//! is being deleted.
 
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
 use super::common::{condition_badges, non_empty, quantities};
-use k8s_openapi::api::core::v1::Node;
+use k8s_openapi::api::core::v1::{Namespace, Node};
 
-pub(super) fn sections(node: &Node) -> Vec<ObjectSection> {
+pub(super) fn node(node: &Node) -> Vec<ObjectSection> {
     let mut fields = Vec::new();
     let status = node.status.as_ref();
     let spec = node.spec.as_ref();
@@ -64,4 +66,25 @@ pub(super) fn sections(node: &Node) -> Vec<ObjectSection> {
     }
 
     vec![ObjectSection::new("Node", fields)]
+}
+
+pub(super) fn namespace(namespace: &Namespace) -> Vec<ObjectSection> {
+    let mut fields = Vec::new();
+    let status = namespace.status.as_ref();
+
+    if let Some(phase) = non_empty(status.and_then(|status| status.phase.as_deref())) {
+        fields.push(ObjectField::text("Phase", phase));
+    }
+    // Every namespace condition reports something stalling its deletion
+    // (`NamespaceContentRemaining`, `NamespaceFinalizersRemaining`, ...), so
+    // each is bad news when it holds.
+    let conditions = status
+        .into_iter()
+        .flat_map(|status| status.conditions.iter().flatten())
+        .map(|condition| (condition.type_.as_str(), condition.status.as_str()));
+    if let Some(badges) = condition_badges(conditions, |_| true) {
+        fields.push(ObjectField::new("Conditions", badges));
+    }
+
+    vec![ObjectSection::new("Namespace", fields)]
 }

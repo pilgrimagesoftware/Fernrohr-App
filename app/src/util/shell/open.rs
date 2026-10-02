@@ -68,6 +68,7 @@ impl MainWindow {
             resource_panel,
             open_panels,
             nav,
+            last_focused_panel,
             ..
         } = &mut self.mode
         else {
@@ -100,10 +101,14 @@ impl MainWindow {
         let id = match open_panels.iter().find(|open| open.key == key) {
             Some(open) => {
                 let id = open.id;
-                if let (Some(OpenedPanel::PodDetail(panel)), Some(view)) =
-                    (open.panel.as_ref(), initial_view)
-                {
-                    panel.update(cx, |panel, cx| panel.set_view(view, cx));
+                match (open.panel.as_ref(), initial_view) {
+                    (Some(OpenedPanel::PodDetail(panel)), Some(view)) => {
+                        panel.update(cx, |panel, cx| panel.set_view(view, cx));
+                    }
+                    (Some(OpenedPanel::ObjectDetail(panel)), Some(view)) => {
+                        panel.update(cx, |panel, cx| panel.set_view(view, cx));
+                    }
+                    _ => {}
                 }
                 dock_area.update(cx, |area, cx| area.select_panel(id, window, cx));
                 id
@@ -113,7 +118,15 @@ impl MainWindow {
                 // followed link - joins the group it was opened from, rather
                 // than the dock's first group: a Pods list in a lower split
                 // opens its pods down there beside it.
-                let source = crate::ui::panel::focus::focused_group(dock_area.read(cx), window, cx);
+                // While focus is outside the dock (the Resource panel, the
+                // palette), the group a dock panel last had focus in stands in.
+                let source = {
+                    let area = dock_area.read(cx);
+                    crate::ui::panel::focus::focused_group(area, window, cx).or_else(|| {
+                        last_focused_panel
+                            .and_then(|panel| crate::ui::panel::tabs::group_of(area, panel))
+                    })
+                };
                 let (id, opened) = dock_area.update(cx, |area, cx| {
                     let (id, opened) = nav::add_panel(area, &scope, initial_view, window, cx);
                     if let Some(node) = source {
@@ -130,6 +143,9 @@ impl MainWindow {
                     key,
                     id,
                     panel: Some(opened.clone()),
+                    // Filled in by the layout change this open emits.
+                    group: None,
+                    _focus_watch: Self::watch_panel_focus(dock_area, id, window, cx),
                 });
                 watch_scope = Some(opened);
                 id
@@ -168,3 +184,6 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod focused_group_tests;

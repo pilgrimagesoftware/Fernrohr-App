@@ -34,7 +34,6 @@ use gpui_kit::component::dock::{
 };
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::*;
-use kube::core::GroupVersionKind;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -42,6 +41,7 @@ use std::rc::Rc;
 mod actions;
 mod app;
 mod contexts;
+mod empty_dock;
 mod follow;
 mod layout;
 mod main_window;
@@ -50,6 +50,8 @@ mod panel_focus;
 mod panels;
 mod persist;
 mod render;
+mod resource_edge;
+mod tab_focus;
 mod tabs;
 mod test_hooks;
 #[cfg(test)]
@@ -68,11 +70,13 @@ pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use layout::{close_window, window_context_count};
 pub use main_window::MainWindow;
 pub use persist::open_saved_or_default;
+pub(crate) use tabs::close_panel;
 pub(crate) use window::open_window;
 
 // Everything else, for the submodules' `use super::*` and the tests: each
 // submodule reaches its siblings through this module.
 use app::*;
+use empty_dock::*;
 use layout::*;
 use panels::*;
 use persist::*;

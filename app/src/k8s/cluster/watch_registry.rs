@@ -117,7 +117,7 @@ impl<K: Eq + Hash> WatchRegistry<K> {
     }
 
     // UNWIRED on the non-test bin target: `connection-status-bar` moved the one
-    // production caller (`ClusterRegistry::pods_pause_info`) over to `first_paused`
+    // production caller (`ClusterRegistry::health`) over to `first_paused`
     // above, so only this module's own tests call the single-key form now.
     #[allow(dead_code)]
     /// Why `key` is paused and how long it's been that way. `None` for an active or

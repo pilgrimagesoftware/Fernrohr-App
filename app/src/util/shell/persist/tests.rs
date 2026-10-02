@@ -366,3 +366,6 @@ async fn resizing_saves_the_layout_once_the_window_settles(cx: &mut TestAppConte
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(&keymap_path);
 }
+
+mod launch;
+mod split_restore;

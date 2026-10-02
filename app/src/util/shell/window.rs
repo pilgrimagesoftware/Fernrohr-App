@@ -5,6 +5,10 @@ use super::*;
 /// A window's body: the cluster picker (no connected context yet) or a connected
 /// workspace. A window opens in `Picker` whenever it has no restored panels, per the
 /// `cluster-picker` and `app-shell` specs.
+// One per window, held in place and never in a collection, so the gap between
+// the two variants' sizes costs nothing; boxing the workspace would only add an
+// indirection to every access.
+#[allow(clippy::large_enum_variant)]
 pub(super) enum WindowMode {
     Picker(Entity<crate::ui::picker::ClusterPicker>),
     Workspace {
@@ -51,13 +55,23 @@ pub(super) enum WindowMode {
         /// The Resource panel's current width: seeded from the saved layout, updated
         /// on every divider drag, and written back by [`save`].
         resource_width: Pixels,
+        /// Which window edge the Resource panel is on (11.2). Per window and not
+        /// saved: moving it here doesn't move it in other windows or the next one.
+        resource_side: crate::ui::resource_panel::ResourceSide,
+        /// Whether the Resource panel is collapsed to a strip on its edge (11.3).
+        /// Per window and not saved; a new window always starts expanded.
+        resource_collapsed: bool,
+        /// The dock panel that last held focus. A new panel opened while focus is
+        /// outside the dock - the Resource panel, the palette - joins this one's
+        /// tab group, as it would have joined the focused group.
+        last_focused_panel: Option<PanelId>,
     },
 }
 
 /// Opens one window, in `Picker` mode if `layout` has no restorable contexts, or
 /// directly into a connected workspace (seeded from the restored layout's contexts)
 /// otherwise.
-pub fn open_window(cx: &mut App, layout: WindowLayout) {
+pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
     let bounds = window_bounds(&layout, cx);
     let contexts = restored_contexts(&layout);
     let resource_width = restored_resource_width(&layout);
@@ -86,6 +100,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
 
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
+                save_window_dock_layout(window, cx);
                 record_closing_layout(window_id, window, cx);
                 true
             });
@@ -114,7 +129,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             view
         },
     )
-    .expect("failed to open window");
+    .expect("failed to open window")
+    .0
 }
 
 /// Subscribes so a successful connect on `picker` swaps this window into
@@ -130,14 +146,16 @@ pub(super) fn watch_picker(
         |this: &mut MainWindow, _picker, event, window, cx| {
             let crate::ui::picker::PickerEvent::Connected { context_name, .. } = event;
             this.enter_workspace(vec![context_name.clone()], window, cx);
+            this.focus_displayed_panel(window, cx);
         },
     )
     .detach();
 }
 
-/// Subscribes so closing `dock_area`'s last panel swaps this window back into
-/// `Picker` mode, per the `app-shell` spec's "closing the last panel returns
-/// to the picker" scenario.
+/// Subscribes to `dock_area`'s layout changes: saving the arrangement, keeping
+/// focus on a panel, and - once the last panel has closed - focusing the
+/// Resource panel, with the window still connected (`app-shell`'s "closing
+/// the last panel keeps the window connected").
 pub(super) fn watch_workspace(
     dock_area: &Entity<DockArea>,
     window: &mut Window,
@@ -155,21 +173,49 @@ pub(super) fn watch_workspace(
             // still its bare context name, so this is the same save it always was for
             // that case, and a new one for a multi-context window (design.md decision 3
             // predates task 2.2's fuller persistence; see that task's own note on why).
-            if let WindowMode::Workspace { contexts, .. } = &this.mode
-                && cx.has_global::<SavedDockLayouts>()
-            {
-                let key = context_lifecycle::dock_layout_key(contexts);
-                let state = dock_area.read(cx).dump(cx);
-                cx.global_mut::<SavedDockLayouts>().0.insert(key, state);
-            }
+            this.save_dock_layout(cx);
+            this.keep_focus_on_a_panel(dock_area, window, cx);
             this.forget_closed_panels(dock_area, cx);
-            if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
-                return;
+            // With its last panel closed the window stays connected (`tab-close-
+            // buttons` 4.1): the picker returns only when the last context is
+            // disconnected. The Resource panel takes focus, so the next kind
+            // is a keystroke away.
+            if dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
+                this.focus_resource_panel(window, cx);
             }
-            this.enter_picker(window, cx);
         },
     )
     .detach();
+}
+
+impl MainWindow {
+    /// Files a workspace window's dock arrangement in [`SavedDockLayouts`],
+    /// under every context it uses (`context_lifecycle::dock_layout_key`).
+    /// A no-op for a picker window, which has no dock.
+    ///
+    /// The dump reads each split's measured sizes, so it is only as good as
+    /// the last frame. `LayoutChanged` fires from the edit itself, before any
+    /// frame has laid the edit out: a split it just created dumps its slots as
+    /// the 100px placeholder (`PANEL_MIN_SIZE`), and the first layout pass's
+    /// rescale to fill the container emits nothing. So this also runs
+    /// whenever the workspace is persisted ([`super::persist::save`], and a
+    /// window closing), when the dock has been drawn as the user sees it.
+    pub(super) fn save_dock_layout(&self, cx: &mut App) {
+        let WindowMode::Workspace {
+            dock_area,
+            contexts,
+            ..
+        } = &self.mode
+        else {
+            return;
+        };
+        if !cx.has_global::<SavedDockLayouts>() {
+            return;
+        }
+        let key = context_lifecycle::dock_layout_key(contexts);
+        let state = dock_area.read(cx).dump(cx);
+        cx.global_mut::<SavedDockLayouts>().0.insert(key, state);
+    }
 }
 
 #[cfg(test)]

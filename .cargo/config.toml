@@ -1,0 +1,11 @@
+# rust-release.yaml (pilgrimagesoftware/github-actions) runs `cargo test` on a
+# bare ubuntu-latest runner with no system packages installed - unlike ci.yml
+# and package.yml, which both apt-get install libfontconfig-dev first.
+# yeslogic-fontconfig-sys's build.rs skips its pkg-config lookup entirely when
+# this is set, loading libfontconfig.so at runtime via dlopen instead - so the
+# build no longer needs fontconfig.pc or its headers present at compile time.
+# ci.yml's Linux job still installs the real libfontconfig-dev package, so
+# this has no effect there; it only unblocks the release workflow's redundant
+# Linux test step, which has no font-rendering path to exercise anyway.
+[env]
+RUST_FONTCONFIG_DLOPEN = "1"

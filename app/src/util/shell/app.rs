@@ -83,6 +83,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
+    crate::k8s::resource::object_list::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
@@ -108,6 +109,13 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     // Kept for the keybindings editor, which edits it live (`keymap::apply`).
     cx.set_global(keymap::LiveKeymap::new(keymap_path.to_path_buf(), keymap));
     cx.bind_keys(crate::ui::resource_panel::panel_bindings());
+    let tab_bindings = crate::ui::panel::focus::tab_bindings(cx);
+    cx.bind_keys(tab_bindings);
+    cx.bind_keys(crate::ui::list_keys::bindings(&[
+        crate::k8s::resource::object_list::LIST_KEY_CONTEXT,
+        crate::k8s::resource::pods::PANEL_KEY_CONTEXT,
+    ]));
+    super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
     crate::ui::text_size::register_handlers(cx);
     crate::ui::report_issue::register_handler(cx);
@@ -131,6 +139,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::pod_detail::register_restore(cx);
     crate::k8s::resource::object_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
+    crate::k8s::resource::object_list::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
     cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(

@@ -1,12 +1,13 @@
 //! Workload controllers' sections - ReplicaSet, Deployment, StatefulSet,
-//! DaemonSet and Job: how many pods they want and have, what they select, and
-//! how they're doing. Owners (a ReplicaSet's Deployment) are Overview's.
+//! DaemonSet, Job and CronJob: how many pods they want and have, what they
+//! select, and how they're doing. Owners (a ReplicaSet's Deployment) are
+//! Overview's; a CronJob's active Jobs are references.
 
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
 use super::common::{condition_badges, non_empty, selector_chips};
 use crate::k8s::object_ref::ObjectRef;
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
-use k8s_openapi::api::batch::v1::Job;
+use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 
 /// The conditions on a workload that are bad news when they hold.
@@ -175,4 +176,48 @@ pub(super) fn job(job: &Job) -> Vec<ObjectSection> {
     }
     selector(&mut fields, spec.and_then(|spec| spec.selector.as_ref()));
     vec![ObjectSection::new("Job", fields)]
+}
+
+pub(super) fn cron_job(cron_job: &CronJob, namespace: &str) -> Vec<ObjectSection> {
+    // Unlike most kinds', a CronJob's `spec` is required.
+    let spec = &cron_job.spec;
+    let status = cron_job.status.as_ref();
+    let mut fields = Vec::new();
+
+    if let Some(schedule) = non_empty(Some(spec.schedule.as_str())) {
+        fields.push(ObjectField::text("Schedule", schedule));
+    }
+    if let Some(zone) = non_empty(spec.time_zone.as_deref()) {
+        fields.push(ObjectField::text("Time Zone", zone));
+    }
+    // The API's default is "not suspended", so an unset flag reads as No.
+    let suspended = spec.suspend.unwrap_or(false);
+    fields.push(ObjectField::text(
+        "Suspend",
+        if suspended { "Yes" } else { "No" },
+    ));
+    if let Some(policy) = non_empty(spec.concurrency_policy.as_deref()) {
+        fields.push(ObjectField::text("Concurrency Policy", policy));
+    }
+    if let Some(last) = status.and_then(|status| status.last_schedule_time.as_ref()) {
+        fields.push(ObjectField::text("Last Schedule", last.0.to_string()));
+    }
+    if let Some(last) = status.and_then(|status| status.last_successful_time.as_ref()) {
+        fields.push(ObjectField::text("Last Successful", last.0.to_string()));
+    }
+    let active: Vec<ObjectRef> = status
+        .and_then(|status| status.active.as_ref())
+        .into_iter()
+        .flatten()
+        .filter_map(|job| {
+            let name = non_empty(job.name.as_deref())?;
+            let namespace = non_empty(job.namespace.as_deref()).unwrap_or(namespace);
+            Some(ObjectRef::namespaced("batch", "Job", namespace, name))
+        })
+        .collect();
+    if !active.is_empty() {
+        fields.push(ObjectField::references("Active Jobs", active, false));
+    }
+
+    vec![ObjectSection::new("Schedule", fields)]
 }

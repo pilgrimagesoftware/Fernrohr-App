@@ -6,14 +6,24 @@ use crate::consts::BOUNDS_SAVE_DEBOUNCE;
 /// Opens the windows recorded at `workspace_path`, or one default window if
 /// the file is missing, empty, or failed to parse (`config::load` already
 /// guarantees defaults-without-touching-the-file in that last case).
+///
+/// Then brings the app to the front with its first window active: a launch from
+/// Finder, the Dock or a terminal otherwise left the window behind whatever
+/// was frontmost, with keyboard input still going there.
 pub fn open_saved_or_default(cx: &mut App, workspace_path: &Path) {
     let workspace: WorkspaceConfig = config::load(workspace_path);
-    if workspace.windows.is_empty() {
-        open_window(cx, WindowLayout::default());
+    let layouts = if workspace.windows.is_empty() {
+        vec![WindowLayout::default()]
     } else {
-        for layout in workspace.windows {
-            open_window(cx, layout);
-        }
+        workspace.windows
+    };
+    let windows: Vec<AnyWindowHandle> = layouts
+        .into_iter()
+        .map(|layout| open_window(cx, layout))
+        .collect();
+    cx.activate(true);
+    if let Some(first) = windows.first() {
+        let _ = first.update(cx, |_, window, _| window.activate_window());
     }
 }
 
@@ -23,6 +33,10 @@ pub fn open_saved_or_default(cx: &mut App, workspace_path: &Path) {
 /// every window, since the app-quit callback fires after the last one
 /// closes. Panel descriptors are left empty until a later change adds panel
 /// kinds worth restoring (see [`open_window`]'s placeholder split).
+///
+/// Each open main window's dock arrangement is refreshed into
+/// [`SavedDockLayouts`] on the way, from the dock as last drawn, so the quit
+/// that writes those layouts out writes the sizes on screen.
 pub fn save(cx: &mut App, workspace_path: &Path) {
     let mut layouts = if cx.has_global::<ClosedWindowLayouts>() {
         cx.global::<ClosedWindowLayouts>().0.clone()
@@ -35,7 +49,10 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
         if !is_main_window(handle, cx) {
             continue;
         }
-        if let Ok(layout) = handle.update(cx, |_, window, cx| layout_from_window(window, cx)) {
+        if let Ok(layout) = handle.update(cx, |_, window, cx| {
+            save_window_dock_layout(window, cx);
+            layout_from_window(window, cx)
+        }) {
             layouts.insert(handle.window_id(), layout);
         }
     }

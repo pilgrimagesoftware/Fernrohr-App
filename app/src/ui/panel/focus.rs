@@ -7,12 +7,57 @@
 //! window (`util::shell::MainWindow`) owns the panels, so it runs the commands.
 //! Directional (left/right/up/down) movement is out of scope: the dock exposes
 //! no per-group bounds to base it on.
+//!
+//! Tab and Shift-Tab are the other half: they move between the controls *inside*
+//! the focused panel and wrap there, never into another panel - crossing panels
+//! is these commands' job. `Root` walks the window's tab stops, so on its own a
+//! Tab past a panel's last control landed in the next panel. Each panel's root is
+//! therefore a gpui-base `focus_trap` over the panel's handle, which `Root`
+//! cycles within; the handle is itself a tab stop ([`panel_focus_handle`]), so
+//! a trap is never empty. And a table took Tab for column selection, which our
+//! tables never use - so focus that tabbed into one stayed there; [`tab_bindings`]
+//! hands Tab in a table back to `Root`.
 
 use crate::command::{Command, CommandRegistry, MenuSlot};
 use gpui_kit::component::dock::{DockArea, DockPlacement, NodeId, PaneRef, PanelId};
 use gpui_kit::{App, Entity, FocusHandle, Window, actions};
 
 actions!(panel_focus, [FocusNextPanel, FocusPreviousPanel]);
+
+/// A panel's own focus handle: a tab stop, so the panel's Tab trap always holds
+/// one even when nothing inside it takes focus.
+pub(crate) fn panel_focus_handle(cx: &mut App) -> FocusHandle {
+    cx.focus_handle().tab_stop(true)
+}
+
+/// Tab and Shift-Tab inside a table, bound to `Root`'s own Tab actions - which
+/// honour the panel's trap - rather than the table's column selection. Bound
+/// after gpui-kit's, so they win in the table's context. `Root` doesn't export
+/// its actions, so they're built by their registered names; a rename upstream
+/// leaves Tab in tables as it was, logged, and fails the traversal tests.
+pub fn tab_bindings(cx: &App) -> Vec<gpui_kit::KeyBinding> {
+    let context = Some(std::rc::Rc::new(
+        gpui_kit::KeyBindingContextPredicate::parse("DataTable").expect("a valid context"),
+    ));
+    [("tab", "root::Tab"), ("shift-tab", "root::TabPrev")]
+        .into_iter()
+        .filter_map(|(keys, name)| {
+            let action = cx
+                .build_action(name, None)
+                .inspect_err(|error| log::warn!("no {name} action to bind {keys} to: {error}"))
+                .ok()?;
+            gpui_kit::KeyBinding::load(
+                keys,
+                action,
+                context.clone(),
+                false,
+                None,
+                cx.keyboard_mapper().as_ref(),
+            )
+            .ok()
+        })
+        .collect()
+}
 
 const FOCUS_NEXT_COMMAND_ID: &str = "panel.focus_next";
 const FOCUS_PREVIOUS_COMMAND_ID: &str = "panel.focus_previous";
@@ -134,20 +179,21 @@ pub fn focused_group(area: &DockArea, window: &Window, cx: &App) -> Option<NodeI
 }
 
 /// Moves keyboard focus one stop in `direction`: the Resource panel (`resource`,
-/// the first stop) then [`dock_stops`]. The current stop is the one focus is
+/// the first stop, when it's drawn - `None` while collapsed) then [`dock_stops`]. The current stop is the one focus is
 /// anywhere inside (`contains_focused`, the same test the tab underline uses),
 /// so a focused table row or filter field counts as its panel. Stops are
 /// rebuilt from the live layout every time, so a panel closed since the last
 /// step simply isn't one.
 pub fn move_focus(
-    resource: FocusHandle,
+    resource: Option<FocusHandle>,
     dock_area: &Entity<DockArea>,
     direction: Direction,
     window: &mut Window,
     cx: &mut App,
 ) {
     let area = dock_area.read(cx);
-    let stops: Vec<FocusHandle> = std::iter::once(resource)
+    let stops: Vec<FocusHandle> = resource
+        .into_iter()
         .chain(
             dock_stops(area, cx)
                 .into_iter()

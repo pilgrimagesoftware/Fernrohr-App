@@ -10,8 +10,22 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let WindowMode::Workspace { resource_panel, .. } = &self.mode {
+        self.focus_resource_panel(window, cx);
+    }
+
+    /// Focuses the Resource panel's list, expanding the panel first if it was
+    /// collapsed: focus on a panel that isn't drawn would be focus nowhere.
+    /// `FocusResources`, and where a window lands once its last panel closes.
+    pub(super) fn focus_resource_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let WindowMode::Workspace {
+            resource_panel,
+            resource_collapsed,
+            ..
+        } = &mut self.mode
+        {
+            *resource_collapsed = false;
             resource_panel.update(cx, |panel, cx| panel.focus_list(window, cx));
+            cx.notify();
         }
     }
 

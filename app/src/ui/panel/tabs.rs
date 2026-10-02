@@ -160,6 +160,13 @@ pub fn focused_group(area: &DockArea, window: &Window, cx: &App) -> Option<TabGr
     tabs_of(area, node)
 }
 
+/// Whether `panel` is the only panel anywhere in `area`'s dock - the one the
+/// tab group's own close refuses to remove.
+pub fn is_only_panel(area: &DockArea, panel: PanelId) -> bool {
+    let mut panels = regions(area).flat_map(|tree| tree.panels());
+    panels.next() == Some(panel) && panels.next().is_none()
+}
+
 fn regions(area: &DockArea) -> impl Iterator<Item = &PaneTree> {
     [
         DockPlacement::Left,
@@ -169,6 +176,17 @@ fn regions(area: &DockArea) -> impl Iterator<Item = &PaneTree> {
     ]
     .into_iter()
     .filter_map(|placement| area.layout(placement))
+}
+
+/// The panel the tab group `node` displays, if `node` is still a tab group.
+pub fn active_panel_of(area: &DockArea, node: NodeId) -> Option<PanelId> {
+    let group = tabs_of(area, node)?;
+    group.panels.get(group.active_ix).copied()
+}
+
+/// The tab group `panel` is in, wherever in the dock.
+pub fn group_of(area: &DockArea, panel: PanelId) -> Option<NodeId> {
+    regions(area).find_map(|tree| tree.find_panel_node(panel))
 }
 
 /// The tabs of the group `node`, wherever in the dock it is.

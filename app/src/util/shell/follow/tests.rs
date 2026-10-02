@@ -285,3 +285,105 @@ async fn following_a_discovered_kind_opens_one_object_panel(cx: &mut TestAppCont
         "the existing panel is focused"
     );
 }
+
+/// Dispatches what activating a list row does: `OpenListedObject` for `target` in
+/// `context`.
+fn open_listed(
+    cx: &mut TestAppContext,
+    window: &WindowHandle<MainWindow>,
+    context: &str,
+    target: crate::ui::nav::ObjectTarget,
+) {
+    window
+        .update(cx, |main_window, window, cx| {
+            main_window.focus_handle.clone().focus(window, cx);
+            window.dispatch_action(
+                Box::new(crate::k8s::resource::object_list::OpenListedObject {
+                    context_name: context.into(),
+                    target,
+                    view: None,
+                }),
+                cx,
+            );
+        })
+        .unwrap();
+    cx.run_until_parked();
+}
+
+/// `standard-resource-panels` 1.5: activating a list row opens that object's detail
+/// panel; activating it again, after something else took focus, focuses the same
+/// panel rather than opening a second.
+#[gpui_kit::test]
+async fn activating_a_listed_object_again_focuses_its_panel(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use kube::core::GroupVersionKind;
+
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    let target = crate::ui::nav::ObjectTarget {
+        kind: DiscoveredKind {
+            gvk: GroupVersionKind::gvk("", "v1", "Service"),
+            plural: "services".into(),
+            namespaced: true,
+        },
+        namespace: Some("staging".into()),
+        name: "web".into(),
+    };
+    let is_service_panel = {
+        let target = target.clone();
+        move |open: &OpenPanel| open.key.target == NavTarget::Object(target.clone())
+    };
+
+    open_listed(cx, &window, "kind-dev", target.clone());
+    let opened = open_matching(cx, &window, &is_service_panel);
+    assert_eq!(opened.len(), 1, "the Service's detail panel opened");
+    let (panel, context, _) = opened[0].clone();
+    assert_eq!(context, "kind-dev", "in the list's context");
+    assert!(is_showing(cx, &window, panel));
+
+    // Something else takes focus...
+    follow(
+        cx,
+        &window,
+        "kind-dev",
+        ObjectRef::cluster_scoped("", "Namespace", "staging"),
+    );
+    assert!(!is_showing(cx, &window, panel));
+
+    // ...and activating the row again brings its one panel back.
+    open_listed(cx, &window, "kind-dev", target);
+    assert_eq!(
+        open_matching(cx, &window, &is_service_panel).len(),
+        1,
+        "no second panel for the same object"
+    );
+    assert!(
+        is_showing(cx, &window, panel),
+        "the existing panel is focused"
+    );
+}
+
+/// A row of a Namespaces list opens that Namespace's detail panel - unlike a
+/// followed reference to it, which opens the Pods list scoped to it.
+#[gpui_kit::test]
+async fn activating_a_namespace_row_opens_its_detail_not_the_pods_list(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use kube::core::GroupVersionKind;
+
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    let target = crate::ui::nav::ObjectTarget {
+        kind: DiscoveredKind {
+            gvk: GroupVersionKind::gvk("", "v1", "Namespace"),
+            plural: "namespaces".into(),
+            namespaced: false,
+        },
+        namespace: None,
+        name: "staging".into(),
+    };
+    open_listed(cx, &window, "kind-dev", target.clone());
+    let opened = open_matching(cx, &window, |open| {
+        open.key.target == NavTarget::Object(target.clone())
+    });
+    assert_eq!(opened.len(), 1, "the Namespace's own detail panel");
+}

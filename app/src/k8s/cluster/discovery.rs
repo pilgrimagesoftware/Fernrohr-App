@@ -69,11 +69,7 @@ impl DiscoveredKind {
     /// (`"Pods"`), as opposed to [`label`]'s singular Kind name (`"Pod"`),
     /// which is right for a single item but wrong for a panel showing many.
     pub fn plural_label(&self) -> String {
-        let mut chars = self.plural.chars();
-        let plural = match chars.next() {
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            None => String::new(),
-        };
+        let plural = self.plural_name();
         if self.gvk.group.is_empty() {
             plural
         } else {
@@ -81,9 +77,27 @@ impl DiscoveredKind {
         }
     }
 
+    /// The capitalized plural alone (`"Certificates"`), with no group
+    /// qualifier - what a custom resource's list tab reads, its group going
+    /// to the tab's tooltip instead.
+    pub fn plural_name(&self) -> String {
+        let mut chars = self.plural.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        }
+    }
+
     /// The core `v1` `Pod` kind, for the callers that mean "Pods" without
     /// having run discovery: the `nav.show_pods` command, and the panel a
     /// freshly connected window lands on.
+    /// Whether this is the built-in core `Pod` kind - the one kind that keeps its
+    /// own typed list (the Pods panel) rather than the generic one. A CRD named
+    /// `Pod` in its own group is not.
+    pub fn is_core_pod(&self) -> bool {
+        self.gvk.group.is_empty() && self.gvk.kind == "Pod"
+    }
+
     pub fn pods() -> Self {
         Self {
             gvk: GroupVersionKind::gvk("", "v1", "Pod"),
@@ -387,5 +401,6 @@ mod tests {
             namespaced: true,
         };
         assert_eq!(widget.plural_label(), "Widgets · example.com");
+        assert_eq!(widget.plural_name(), "Widgets");
     }
 }

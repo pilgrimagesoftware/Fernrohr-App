@@ -1,7 +1,7 @@
-//! Which panel a selected resource kind opens. Section 8.2 of the
-//! `cluster-picker-and-navigation` change: a kind with a concrete panel gets
-//! it, and every other discovered kind gets a placeholder, so the Resource
-//! panel never offers a row that opens nothing.
+//! Which panel a selected resource kind opens: the Pods panel for the core Pod
+//! kind, and the generic list (`ObjectListPanel`) for every other discovered kind,
+//! built-in or CRD (`standard-resource-panels` D4). The placeholder panel is only
+//! a restore fallback now, for a saved panel whose kind is no longer served.
 
 use crate::command::{Command, CommandRegistry};
 use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -104,11 +104,30 @@ impl NavTarget {
 
     /// What a panel *listing* this target titles itself: the plural form for
     /// a resource kind (`"Pods"`), same as [`Self::label`] for anything that
-    /// isn't a list of many items.
+    /// isn't a list of many items. A custom resource's plural stands alone
+    /// (`"Certificates"`); [`Self::custom_group`] carries its group to the
+    /// tab's tooltip instead.
     pub fn list_label(&self) -> String {
         match self {
+            NavTarget::Kind(kind) if self.custom_group().is_some() => kind.plural_name(),
             NavTarget::Kind(kind) => kind.plural_label(),
             NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => self.label(),
+        }
+    }
+
+    /// The API group of a custom resource kind's list - a kind outside the
+    /// built-in API groups - and `None` for every other target. The core
+    /// group (`""`) never counts: a core kind the taxonomy hasn't caught up
+    /// with has no group to show.
+    pub fn custom_group(&self) -> Option<&str> {
+        match self {
+            NavTarget::Kind(kind)
+                if !kind.gvk.group.is_empty()
+                    && !crate::ui::panel::resource::is_built_in(&kind.gvk.group, &kind.plural) =>
+            {
+                Some(&kind.gvk.group)
+            }
+            NavTarget::Kind(_) | NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => None,
         }
     }
 
@@ -122,13 +141,6 @@ impl NavTarget {
             _ => self.list_label(),
         }
     }
-}
-
-/// Whether this build has a concrete panel for `kind`. Pods is the only one
-/// today; everything else falls through to
-/// [`crate::ui::placeholder::PlaceholderPanel`].
-pub fn has_concrete_panel(kind: &DiscoveredKind) -> bool {
-    kind.gvk.group.is_empty() && kind.gvk.kind == "Pod"
 }
 
 /// The commands this module contributes to the app-wide [`CommandRegistry`],
@@ -172,6 +184,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 #[derive(Clone)]
 pub enum OpenedPanel {
     Pods(Entity<crate::k8s::resource::pods::PodsPanel>),
+    ObjectList(Entity<crate::k8s::resource::object_list::ObjectListPanel>),
     Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
     Logs(Entity<crate::util::logs::LogsPanel>),
     PodDetail(Entity<crate::k8s::resource::pod_detail::PodDetailPanel>),
@@ -184,10 +197,25 @@ impl OpenedPanel {
     pub fn panel_id(&self) -> PanelId {
         match self {
             OpenedPanel::Pods(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::ObjectList(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Placeholder(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::PodDetail(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::ObjectDetail(panel) => PanelId::from(panel.entity_id()),
+        }
+    }
+
+    /// The panel's own focus handle - the one its root tracks. Test-only: the
+    /// window finds focus through the dock's panels, which restored panels have too.
+    #[cfg(test)]
+    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
+        match self {
+            OpenedPanel::Pods(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::ObjectList(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::Placeholder(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::Logs(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::PodDetail(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::ObjectDetail(panel) => panel.read(cx).focus_handle(cx),
         }
     }
 }
@@ -209,6 +237,7 @@ pub fn opened_panel_for(
     let view = area.panel(id)?;
     Some(match view.panel_name(cx) {
         "Pods" => OpenedPanel::Pods(Entity::from(view.as_ref())),
+        "ObjectList" => OpenedPanel::ObjectList(Entity::from(view.as_ref())),
         "Logs" => OpenedPanel::Logs(Entity::from(view.as_ref())),
         "Resource" => OpenedPanel::Placeholder(Entity::from(view.as_ref())),
         "PodDetail" => OpenedPanel::PodDetail(Entity::from(view.as_ref())),
@@ -225,9 +254,9 @@ pub fn opened_panel_for(
 /// caller owns deduplication: whether this is a new panel or a focus of an
 /// existing one is the window's bookkeeping, not the panel's.
 ///
-/// `initial_view` is which view a panel that has two should open on - today
-/// only a pod's detail panel does, and only `nav.show_pod_detail_yaml` asks for
-/// anything but the default. It is a parameter rather than part of
+/// `initial_view` is which view a panel that has two should open on - a pod's or
+/// another object's detail panel - and only a YAML request (`y` on the Pods
+/// table or a list) asks for anything but the default. It is a parameter rather than part of
 /// [`NavTarget`] because the target is *identity*: the same target has to mean
 /// "the same panel" whether the user described the pod or asked for its YAML,
 /// or the two would dedup into two panels over one pod.
@@ -254,7 +283,7 @@ pub fn add_panel(
             );
             (id, OpenedPanel::Logs(panel))
         }
-        NavTarget::Kind(kind) if has_concrete_panel(kind) => {
+        NavTarget::Kind(kind) if kind.is_core_pod() => {
             let panel = cx.new(|cx| crate::k8s::resource::pods::PodsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(
@@ -266,9 +295,14 @@ pub fn add_panel(
             );
             (id, OpenedPanel::Pods(panel))
         }
+        // Every other kind, built-in or CRD: the generic live list.
         NavTarget::Kind(kind) => {
             let panel = cx.new(|cx| {
-                crate::ui::placeholder::PlaceholderPanel::new(kind.clone(), scope.clone(), cx)
+                crate::k8s::resource::object_list::ObjectListPanel::new(
+                    kind.clone(),
+                    scope.clone(),
+                    cx,
+                )
             });
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(
@@ -278,7 +312,7 @@ pub fn add_panel(
                 window,
                 cx,
             );
-            (id, OpenedPanel::Placeholder(panel))
+            (id, OpenedPanel::ObjectList(panel))
         }
         // A pod's detail panel. Reads one pod through the cluster's existing
         // session, so it fetches that pod itself rather than joining a watch.
@@ -311,6 +345,10 @@ pub fn add_panel(
                     cx,
                 )
             });
+            // `initial_view` is how a list's `y` lands straight on the YAML.
+            if let Some(view) = initial_view {
+                panel.update(cx, |panel, cx| panel.set_view(view, cx));
+            }
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(
                 panel_handle(panel.clone()),
@@ -326,7 +364,7 @@ pub fn add_panel(
 
 #[cfg(test)]
 mod tests {
-    use super::{NavTarget, SHOW_LOGS_COMMAND_ID, SHOW_PODS_COMMAND_ID, has_concrete_panel};
+    use super::{NavTarget, SHOW_LOGS_COMMAND_ID, SHOW_PODS_COMMAND_ID};
     use crate::command::{CommandRegistry, build_items};
     use crate::k8s::cluster::discovery::DiscoveredKind;
     use gpui_kit::TestAppContext;
@@ -385,24 +423,16 @@ mod tests {
         assert_eq!(pod.item_label(), "Pod: api-7d9f-ftg5t");
     }
 
-    /// Section 8.2: Pods is the one kind with a concrete panel, so it is the
-    /// one kind that does not fall through to a placeholder.
+    /// Only the core Pod kind keeps the Pods panel; every other kind - a CRD's
+    /// own `Pod` in its group included - gets the generic list.
     #[test]
-    fn only_pods_has_a_concrete_panel() {
-        assert!(has_concrete_panel(&DiscoveredKind::pods()));
-        assert!(!has_concrete_panel(&kind("", "Service")));
+    fn only_the_core_pod_kind_is_the_pods_panel() {
+        assert!(DiscoveredKind::pods().is_core_pod());
+        assert!(!kind("", "Service").is_core_pod());
         assert!(
-            !has_concrete_panel(&kind("example.com", "Pod")),
+            !kind("example.com", "Pod").is_core_pod(),
             "a CRD's own Pod kind is not the built-in Pods panel"
         );
-    }
-
-    /// A CRD's `Pod` kind in its own group is a different kind from the built-in
-    /// one, and must not be handed the Pods panel.
-    #[test]
-    fn a_pod_kind_in_another_group_is_not_the_pods_panel() {
-        let crd_pod = kind("example.com", "Pod");
-        assert!(!has_concrete_panel(&crd_pod));
     }
 
     /// Selecting Pods and Logs both name a real target, so the palette entries
