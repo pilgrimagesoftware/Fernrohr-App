@@ -134,14 +134,11 @@ struct Host {
 impl gpui_kit::Render for Host {
     fn render(
         &mut self,
-        window: &mut gpui_kit::Window,
-        cx: &mut gpui_kit::Context<Self>,
+        _window: &mut gpui_kit::Window,
+        _cx: &mut gpui_kit::Context<Self>,
     ) -> impl gpui_kit::IntoElement {
         use gpui_kit::{ParentElement as _, Styled as _};
-        gpui_kit::div()
-            .size_full()
-            .child(self.panel.clone())
-            .children(gpui_kit::component::Root::render_dialog_layer(window, cx))
+        gpui_kit::div().size_full().child(self.panel.clone())
     }
 }
 

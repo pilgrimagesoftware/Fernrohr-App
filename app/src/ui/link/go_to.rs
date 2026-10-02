@@ -13,6 +13,7 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::viewer::viewer_for;
 use gpui_kit::component::Root;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::command::{Command as CommandList, CommandItem, CommandState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
@@ -94,22 +95,18 @@ pub fn open(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let Some(Some(root)) = window.root::<Root>() else {
+    // `WindowExt`'s dialog calls expect a `Root`; a window without one has
+    // nowhere to show the dialog.
+    if !matches!(window.root::<Root>(), Some(Some(_))) {
         return;
-    };
+    }
     let picker = cx.new(|cx| GoToPicker::new(entries, context_name, return_focus, window, cx));
     let state = picker.read(cx).state.clone();
-    root.update(cx, |root, cx| {
-        root.open_dialog(
-            move |dialog, _window, _cx| {
-                let picker = picker.clone();
-                dialog
-                    .title("Go to")
-                    .content(move |content, _window, _cx| content.child(picker.clone()))
-            },
-            window,
-            cx,
-        );
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        let picker = picker.clone();
+        dialog
+            .title("Go to")
+            .content(move |content, _window, _cx| content.child(picker.clone()))
     });
     state.update(cx, |state, cx| state.focus(window, cx));
 }
@@ -153,8 +150,8 @@ impl GoToPicker {
             context_name: self.context_name.clone(),
             target: entry.target.clone(),
         };
-        if let Some(Some(root)) = window.root::<Root>() {
-            root.update(cx, |root, cx| root.close_dialog(window, cx));
+        if matches!(window.root::<Root>(), Some(Some(_))) {
+            window.close_dialog(cx);
         }
         self.return_focus.focus(window, cx);
         window.defer(cx, move |window, cx| {

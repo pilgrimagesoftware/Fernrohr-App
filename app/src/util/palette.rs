@@ -17,6 +17,7 @@
 use crate::command::CommandRegistry;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Root;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -26,9 +27,11 @@ use std::rc::Rc;
 
 /// Opens the palette over `window`'s current focus.
 pub fn open(window: &mut Window, cx: &mut App) {
-    let Some(Some(root)) = window.root::<Root>() else {
+    // `WindowExt`'s dialog calls expect a `Root`; a window without one has
+    // nowhere to show the dialog.
+    if !matches!(window.root::<Root>(), Some(Some(_))) {
         return;
-    };
+    }
     let previous_focus = window.focused(cx);
     let contexts: Vec<SharedString> = window
         .context_stack()
@@ -80,49 +83,43 @@ pub fn open(window: &mut Window, cx: &mut App) {
 
     let state = cx.new(|cx| CommandState::new(window, cx));
     let search_focus = state.read(cx).focus_handle(cx);
-    root.update(cx, |root, cx| {
-        root.open_dialog(
-            move |dialog, _window, _cx| {
-                let state = state.clone();
-                let items = items.clone();
-                let actions: Vec<Box<dyn Action>> =
-                    actions.iter().map(|action| action.boxed_clone()).collect();
-                let previous_focus = previous_focus.clone();
-                let selected = selected.clone();
-                dialog.content(move |content, _window, _cx| {
-                    let actions: Vec<Box<dyn Action>> =
-                        actions.iter().map(|action| action.boxed_clone()).collect();
-                    let previous_focus = previous_focus.clone();
-                    let on_select_selected = selected.clone();
-                    let on_select_state = state.clone();
-                    let confirm_selected = selected.clone();
-                    content.child(
-                        Command::new(&state)
-                            .items(items.clone())
-                            .placeholder("Type a command...")
-                            // Only keyboard moves (arrows, typing) move the selection;
-                            // `Command` reports hover the same way, and hover must not.
-                            .on_select(move |index_path, window, cx| {
-                                if window.last_input_was_keyboard() {
-                                    on_select_selected.set(Some(index_path.row));
-                                    on_select_state.update(cx, |_, cx| cx.notify());
-                                }
-                            })
-                            .on_confirm(move |index_path, window, cx| {
-                                // Enter runs the keyboard selection; a click, the row clicked.
-                                let row = if window.last_input_was_keyboard() {
-                                    confirm_selected.get().unwrap_or(index_path.row)
-                                } else {
-                                    index_path.row
-                                };
-                                run(&actions, row, previous_focus.as_ref(), window, cx)
-                            }),
-                    )
-                })
-            },
-            window,
-            cx,
-        );
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        let state = state.clone();
+        let items = items.clone();
+        let actions: Vec<Box<dyn Action>> =
+            actions.iter().map(|action| action.boxed_clone()).collect();
+        let previous_focus = previous_focus.clone();
+        let selected = selected.clone();
+        dialog.content(move |content, _window, _cx| {
+            let actions: Vec<Box<dyn Action>> =
+                actions.iter().map(|action| action.boxed_clone()).collect();
+            let previous_focus = previous_focus.clone();
+            let on_select_selected = selected.clone();
+            let on_select_state = state.clone();
+            let confirm_selected = selected.clone();
+            content.child(
+                Command::new(&state)
+                    .items(items.clone())
+                    .placeholder("Type a command...")
+                    // Only keyboard moves (arrows, typing) move the selection;
+                    // `Command` reports hover the same way, and hover must not.
+                    .on_select(move |index_path, window, cx| {
+                        if window.last_input_was_keyboard() {
+                            on_select_selected.set(Some(index_path.row));
+                            on_select_state.update(cx, |_, cx| cx.notify());
+                        }
+                    })
+                    .on_confirm(move |index_path, window, cx| {
+                        // Enter runs the keyboard selection; a click, the row clicked.
+                        let row = if window.last_input_was_keyboard() {
+                            confirm_selected.get().unwrap_or(index_path.row)
+                        } else {
+                            index_path.row
+                        };
+                        run(&actions, row, previous_focus.as_ref(), window, cx)
+                    }),
+            )
+        })
     });
     // After the dialog has taken focus for itself, hand it to the search box.
     window.defer(cx, move |window, cx| window.focus(&search_focus, cx));
@@ -140,7 +137,7 @@ fn run(
     let Some(action) = actions.get(row).map(|action| action.boxed_clone()) else {
         return;
     };
-    Root::update(window, cx, |root, window, cx| root.close_dialog(window, cx));
+    window.close_dialog(cx);
     if let Some(focus) = previous_focus {
         window.focus(focus, cx);
     }
@@ -153,8 +150,8 @@ mod tests {
     use crate::command::{Command, CommandRegistry};
     use gpui_kit::component::Root;
     use gpui_kit::{
-        AppContext as _, Context, FocusHandle, IntoElement, ParentElement as _, Render,
-        TestAppContext, VisualTestContext, Window, actions, div,
+        AppContext as _, Context, FocusHandle, IntoElement, Render, TestAppContext,
+        VisualTestContext, Window, actions, div,
     };
     use std::cell::Cell;
     use std::rc::Rc;
@@ -166,11 +163,9 @@ mod tests {
     }
 
     impl Render for Host {
-        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             use gpui_kit::InteractiveElement as _;
-            div()
-                .track_focus(&self.focus)
-                .children(Root::render_dialog_layer(window, cx))
+            div().track_focus(&self.focus)
         }
     }
 

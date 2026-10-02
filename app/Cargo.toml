@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gpui-kit = "=0.6.6"
+gpui-kit = "=0.7.0"
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time"] }
 kube = { version = "=4.2.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws"] }
 kube-runtime = "=4.2.0"
@@ -32,7 +32,7 @@ image = { version = "=0.25.10", default-features = false, features = ["png", "we
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation"] }
 
 [dev-dependencies]
-gpui-kit = { version = "=0.6.6", features = ["test-support"] }
+gpui-kit = { version = "=0.7.0", features = ["test-support"] }
 rcgen = "=0.14.10"
 rustls = "=0.23.45"
 tokio-rustls = "=0.26.5"

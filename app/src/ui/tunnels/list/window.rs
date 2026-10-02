@@ -27,26 +27,28 @@ pub fn open_or_focus(cx: &mut App) {
         return;
     }
 
-    let handle = cx
-        .open_window(
-            WindowOptions {
-                // An explicit, centered starting size: with only a minimum, the
-                // platform default opened this small list-and-editor window huge.
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    TUNNELS_WINDOW_SIZE,
-                    cx,
-                ))),
-                window_min_size: Some(TUNNELS_WINDOW_MIN_SIZE),
-                ..Default::default()
-            },
-            |window, cx| {
-                let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
-                let view = cx.new(|cx| TunnelsWindow::new(tunnels_path, None, window, cx));
-                cx.new(|cx| Root::new(view, window, cx))
-            },
-        )
-        .expect("failed to open the tunnels window");
+    let (window, _) = gpui_kit::open_window(
+        WindowOptions {
+            // An explicit, centered starting size: with only a minimum, the
+            // platform default opened this small list-and-editor window huge.
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                None,
+                TUNNELS_WINDOW_SIZE,
+                cx,
+            ))),
+            window_min_size: Some(TUNNELS_WINDOW_MIN_SIZE),
+            ..Default::default()
+        },
+        cx,
+        |window, cx| {
+            let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
+            cx.new(|cx| TunnelsWindow::new(tunnels_path, None, window, cx))
+        },
+    )
+    .expect("failed to open the tunnels window");
+    let handle = window
+        .downcast::<Root>()
+        .expect("gpui_kit::open_window roots every window in a Root");
 
     let _ = handle.update(cx, |_, window, cx| {
         window.on_window_should_close(cx, |_, cx| {

@@ -20,8 +20,8 @@ use crate::util::context_lifecycle;
 use crate::util::shell::MainWindow;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::Root;
 use gpui_kit::component::Sizable as _;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -199,48 +199,34 @@ impl ContextBarView {
         let title = format!("Disconnect {context_name}?");
         let target = self.main_window.clone();
 
-        Root::update(window, cx, |root, window, cx| {
-            root.open_dialog(
-                move |dialog, _window, _cx| {
-                    let target = target.clone();
-                    let context_name = context_name.clone();
-                    // A plain `Dialog` draws a footer only when one is set;
-                    // `button_props` alone renders no buttons (only the alert
-                    // variant turns it into OK/Cancel).
-                    dialog.title(title.clone()).child(body.clone()).footer(
-                        DialogFooter::new()
-                            .child(
-                                Button::new("context-disconnect-cancel")
-                                    .label("Cancel")
-                                    .on_click(|_event, window, cx| {
-                                        Root::update(window, cx, |root, window, cx| {
-                                            root.close_dialog(window, cx);
-                                        });
-                                    }),
-                            )
-                            .child(
-                                Button::new("context-disconnect-confirm")
-                                    .label("Disconnect")
-                                    .with_variant(ButtonVariant::Danger)
-                                    .on_click(move |_event, window, cx| {
-                                        Root::update(window, cx, |root, window, cx| {
-                                            root.close_dialog(window, cx);
-                                        });
-                                        let context_name = context_name.clone();
-                                        let _ = target.update(cx, |main_window, cx| {
-                                            main_window.disconnect_context(
-                                                context_name,
-                                                window,
-                                                cx,
-                                            );
-                                        });
-                                    }),
-                            ),
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            let target = target.clone();
+            let context_name = context_name.clone();
+            // A plain `Dialog` draws a footer only when one is set;
+            // `button_props` alone renders no buttons (only the alert
+            // variant turns it into OK/Cancel).
+            dialog.title(title.clone()).child(body.clone()).footer(
+                DialogFooter::new()
+                    .child(
+                        Button::new("context-disconnect-cancel")
+                            .label("Cancel")
+                            .on_click(|_event, window, cx| {
+                                window.close_dialog(cx);
+                            }),
                     )
-                },
-                window,
-                cx,
-            );
+                    .child(
+                        Button::new("context-disconnect-confirm")
+                            .label("Disconnect")
+                            .with_variant(ButtonVariant::Danger)
+                            .on_click(move |_event, window, cx| {
+                                window.close_dialog(cx);
+                                let context_name = context_name.clone();
+                                let _ = target.update(cx, |main_window, cx| {
+                                    main_window.disconnect_context(context_name, window, cx);
+                                });
+                            }),
+                    ),
+            )
         });
     }
 
@@ -265,24 +251,16 @@ impl ContextBarView {
                 let _ = target.update(cx, |main_window, cx| {
                     main_window.add_context(context_name, window, cx);
                 });
-                Root::update(window, cx, |root, window, cx| {
-                    root.close_dialog(window, cx);
-                });
+                window.close_dialog(cx);
             }
         })
         .detach();
 
-        Root::update(window, cx, |root, window, cx| {
-            root.open_dialog(
-                move |dialog, _window, _cx| {
-                    dialog
-                        .title("Add a context")
-                        .w(px(480.))
-                        .child(picker.clone())
-                },
-                window,
-                cx,
-            );
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            dialog
+                .title("Add a context")
+                .w(px(480.))
+                .child(picker.clone())
         });
     }
 

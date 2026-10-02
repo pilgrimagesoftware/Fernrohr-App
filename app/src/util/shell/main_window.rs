@@ -11,7 +11,7 @@ impl MainWindow {
     pub(super) fn focus_initial(&self, window: &mut Window, cx: &mut App) {
         if let WindowMode::Picker(picker) = &self.mode {
             let picker = picker.clone();
-            let focus_handle = picker.read(cx).command_focus_handle(cx);
+            let focus_handle = picker.read(cx).initial_focus_handle(cx);
             focus_handle.focus(window, cx);
         } else {
             self.focus_handle.focus(window, cx);
