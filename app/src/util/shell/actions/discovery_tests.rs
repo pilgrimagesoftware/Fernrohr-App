@@ -181,3 +181,62 @@ async fn failing_to_list_groups_shows_a_readable_error(cx: &mut TestAppContext) 
     assert!(message.contains("HTTP 503"), "{message}");
     assert!(!message.contains("Status {"), "{message}");
 }
+
+/// Whether following a link to a `PodMetrics` object - in the group that was down
+/// - opened its panel.
+fn follow_pod_metrics(h: &mut Harness) -> bool {
+    h.vcx.dispatch_action(crate::ui::link::FollowReference {
+        context_name: "demo".into(),
+        target: crate::k8s::object_ref::ObjectRef {
+            group: "metrics.k8s.io".into(),
+            kind: "PodMetrics".into(),
+            namespace: Some("default".into()),
+            name: "web-1".into(),
+        },
+    });
+    h.vcx.run_until_parked();
+    h.vcx.update(|_, cx| {
+        let crate::util::shell::WindowMode::Workspace { open_panels, .. } = &h.main.read(cx).mode
+        else {
+            return false;
+        };
+        open_panels.iter().any(|open| {
+            matches!(&open.key.target, crate::ui::nav::NavTarget::Object(object)
+                if object.kind.gvk.kind == "PodMetrics")
+        })
+    })
+}
+
+/// Refresh refreshes link-following too: a link into the group that was down
+/// leads nowhere until it recovers, and resolves once Refresh lists it.
+#[gpui_kit::test]
+async fn a_link_into_a_recovered_group_resolves_after_refresh(cx: &mut TestAppContext) {
+    let api = cluster_with_a_failing_aggregated_group();
+    let mut h = harness(cx, &api);
+    wait_for(&mut h, |h| kinds(h).is_some());
+    // Link-following's own discovery settles too, while the group is still down,
+    // so the recovery below can't race into it.
+    wait_for(&mut h, |h| {
+        h.vcx.update(|_, cx| {
+            crate::k8s::cluster::discovery_registry::DiscoveryRegistry::kinds(cx, "demo")
+                .read(cx)
+                .kinds()
+                .is_some()
+        })
+    });
+    assert!(
+        !follow_pod_metrics(&mut h),
+        "no viewer while the group is down"
+    );
+
+    recover_metrics(&api);
+    press(
+        &mut h.vcx,
+        crate::ui::resource_panel::REFRESH_DEFAULT_BINDING,
+    );
+    wait_for(&mut h, |h| unavailable(h).is_empty());
+    assert!(
+        follow_pod_metrics(&mut h),
+        "the link resolves after refresh"
+    );
+}
