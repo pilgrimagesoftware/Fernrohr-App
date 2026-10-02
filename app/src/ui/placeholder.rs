@@ -7,7 +7,6 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, register_panel,
 };
@@ -188,6 +187,7 @@ impl Panel for PlaceholderPanel {
             &self.scope,
             panel_title::title(&self.scope),
             &self.focus_handle,
+            panel_title::close_button(cx.entity()),
             window,
             cx,
         )
@@ -195,14 +195,6 @@ impl Panel for PlaceholderPanel {
 
     fn tab_name(&self, _cx: &App) -> Option<SharedString> {
         panel_title::tab_name(&self.scope)
-    }
-
-    fn toolbar_buttons(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Vec<Button>> {
-        panel_title::toolbar_buttons(cx.entity())
     }
 
     fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {

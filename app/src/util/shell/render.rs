@@ -20,10 +20,17 @@ impl MainWindow {
         width: Pixels,
         side: crate::ui::resource_panel::ResourceSide,
         collapsed: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         use crate::ui::resource_panel::{ResourceSide, collapsed_strip};
-        let dock = dock_area.clone().into_any_element();
+        // An empty centre - the last panel closed, the window still connected -
+        // shows the key that opens the next kind instead of a blank area.
+        let dock = if dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
+            empty_dock_hint(window, cx)
+        } else {
+            dock_area.clone().into_any_element()
+        };
         if collapsed {
             let strip = collapsed_strip(side, cx).into_any_element();
             let dock = div()
@@ -69,7 +76,7 @@ impl MainWindow {
 }
 
 impl Render for MainWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.mode {
             WindowMode::Picker(picker) => picker.clone().into_any_element(),
             // The Resource panel is the window's left edge. It used to be a
@@ -100,6 +107,7 @@ impl Render for MainWindow {
                     *resource_width,
                     *resource_side,
                     *resource_collapsed,
+                    window,
                     cx,
                 )))
                 .child(status_bar.clone())
