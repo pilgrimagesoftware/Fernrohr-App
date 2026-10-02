@@ -86,6 +86,12 @@ impl ResourcePanel {
                     this.loading = false;
                     match result {
                         Ok(discovered) => {
+                            // Link-following reads the same kinds the list shows.
+                            crate::k8s::cluster::discovery_registry::DiscoveryRegistry::publish(
+                                cx,
+                                &this.context_name,
+                                discovered.kinds.clone(),
+                            );
                             this.state = ResourceState::Loaded(discovered.kinds);
                             this.notes.unavailable = discovered.unavailable;
                         }

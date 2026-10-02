@@ -6,6 +6,10 @@
 //! in the referencing panel's cluster before it shows the reference as a link.
 //! Built the same way `NamespaceRegistry` is: an entity per context, created on
 //! first use and loaded once that context connects.
+//!
+//! The Resource panel [`publish`](DiscoveryRegistry::publish)es each of its own
+//! results here too - the first and every Refresh - so a group that recovers
+//! becomes linkable the moment it lists, rather than only after a reconnect.
 
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
@@ -33,6 +37,29 @@ impl DiscoveryRegistry {
             .0
             .insert(context_name, kinds.clone());
         kinds
+    }
+
+    /// Makes `kinds` `context_name`'s discovery: the Resource panel's latest result,
+    /// newer than any this registry ran itself.
+    pub fn publish(cx: &mut App, context_name: &str, kinds: Vec<DiscoveredKind>) {
+        if !cx.has_global::<Self>() {
+            cx.set_global(Self::default());
+        }
+        match cx.global::<Self>().0.get(context_name).cloned() {
+            Some(entry) => entry.update(cx, |entry, cx| {
+                entry.kinds = Some(kinds);
+                cx.notify();
+            }),
+            None => {
+                let entry = cx.new(|_| DiscoveredKinds {
+                    kinds: Some(kinds),
+                    loading: false,
+                });
+                cx.global_mut::<Self>()
+                    .0
+                    .insert(context_name.to_string(), entry);
+            }
+        }
     }
 
     /// Seeds `context_name` with a fixed result, so a test never starts a real
@@ -112,7 +139,11 @@ impl DiscoveredKinds {
                                     group.reason
                                 );
                             }
-                            this.kinds = Some(discovered.kinds);
+                            // A result the Resource panel published meanwhile is
+                            // newer than this run's; keep it.
+                            if this.kinds.is_none() {
+                                this.kinds = Some(discovered.kinds);
+                            }
                         }
                         Err(error) => log::warn!("resource discovery failed: {error}"),
                     }
