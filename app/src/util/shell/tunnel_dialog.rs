@@ -1,6 +1,7 @@
 //! The Set Tunnel for Context dialog: its rows, and writing the chosen binding.
 
 use super::*;
+use gpui_kit::component::WindowExt as _;
 
 /// Section 3.2: one row of `on_action_set_tunnel`'s dialog - writes the binding (or,
 /// for `tunnel_id: None`, removes it) and closes the dialog. A plain `Button` rather
@@ -38,35 +39,29 @@ pub(super) fn open_tunnel_dialog(context_name: String, window: &mut Window, cx: 
     let choices = picker_tunnel::tunnel_choices(&store);
     let current = store.binding_for(&context_name);
 
-    Root::update(window, cx, |root, window, cx| {
-        root.open_dialog(
-            move |dialog, _window, _cx| {
-                let mut options: Vec<AnyElement> = Vec::new();
-                options.push(tunnel_dialog_option(
-                    "Direct".to_string(),
-                    current.is_none(),
-                    tunnels_path.clone(),
-                    context_name.clone(),
-                    None,
-                ));
-                for choice in &choices {
-                    let checked = current.as_deref() == Some(choice.id.as_str());
-                    options.push(tunnel_dialog_option(
-                        choice.name.clone(),
-                        checked,
-                        tunnels_path.clone(),
-                        context_name.clone(),
-                        Some(choice.id.clone()),
-                    ));
-                }
-                dialog
-                    .title(format!("Set tunnel for {context_name}"))
-                    .w(px(360.))
-                    .child(div().flex().flex_col().gap_1().children(options))
-            },
-            window,
-            cx,
-        );
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        let mut options: Vec<AnyElement> = Vec::new();
+        options.push(tunnel_dialog_option(
+            "Direct".to_string(),
+            current.is_none(),
+            tunnels_path.clone(),
+            context_name.clone(),
+            None,
+        ));
+        for choice in &choices {
+            let checked = current.as_deref() == Some(choice.id.as_str());
+            options.push(tunnel_dialog_option(
+                choice.name.clone(),
+                checked,
+                tunnels_path.clone(),
+                context_name.clone(),
+                Some(choice.id.clone()),
+            ));
+        }
+        dialog
+            .title(format!("Set tunnel for {context_name}"))
+            .w(px(360.))
+            .child(div().flex().flex_col().gap_1().children(options))
     });
 }
 
@@ -99,9 +94,7 @@ pub(super) fn set_context_tunnel_and_close(
         Ok(()) => crate::ui::tunnels::notify_tunnels_changed(cx),
         Err(error) => log::warn!("failed to set {context_name}'s tunnel binding: {error:?}"),
     }
-    Root::update(window, cx, |root, window, cx| {
-        root.close_dialog(window, cx);
-    });
+    window.close_dialog(cx);
 }
 
 #[cfg(test)]

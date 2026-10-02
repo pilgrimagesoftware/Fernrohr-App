@@ -4,6 +4,7 @@
 use crate::command::CommandRegistry;
 use crate::util::shell::{ToggleCommandPalette, WindowLayout, open_window, register_commands};
 use gpui_kit::TestAppContext;
+use gpui_kit::component::WindowExt as _;
 
 #[gpui_kit::test]
 async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
@@ -49,10 +50,9 @@ async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
     // during a test is released by teardown.
     window
         .update(cx, |_, window, cx| {
-            let Some(Some(root)) = window.root::<gpui_kit::component::Root>() else {
-                return;
-            };
-            root.update(cx, |root, cx| root.close_all_dialogs(window, cx));
+            if matches!(window.root::<gpui_kit::component::Root>(), Some(Some(_))) {
+                window.close_all_dialogs(cx);
+            }
         })
         .unwrap();
     window

@@ -11,6 +11,7 @@ use crate::ui::panel::tabs::{
     self, NextTab, PreviousTab, SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5,
     SelectTab6, SelectTab7, SelectTab8, SelectTab9, TabTarget,
 };
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::dock::ClosePanel;
 
@@ -141,34 +142,24 @@ pub(super) fn losing_a_tunnel(
 /// context bar's Disconnect dialog, with Close Window as the confirm.
 fn open_close_window_dialog(tunneled: Vec<String>, window: &mut Window, cx: &mut App) {
     let body = close_window_confirmation_body(&tunneled);
-    Root::update(window, cx, |root, window, cx| {
-        root.open_dialog(
-            move |dialog, _window, _cx| {
-                dialog.title("Close Window?").child(body.clone()).footer(
-                    DialogFooter::new()
-                        .child(Button::new("close-window-cancel").label("Cancel").on_click(
-                            |_event, window, cx| {
-                                Root::update(window, cx, |root, window, cx| {
-                                    root.close_dialog(window, cx);
-                                });
-                            },
-                        ))
-                        .child(
-                            Button::new("close-window-confirm")
-                                .label("Close Window")
-                                .with_variant(gpui_kit::component::button::ButtonVariant::Danger)
-                                .on_click(|_event, window, cx| {
-                                    Root::update(window, cx, |root, window, cx| {
-                                        root.close_dialog(window, cx);
-                                    });
-                                    close_window(window, cx);
-                                }),
-                        ),
-                )
-            },
-            window,
-            cx,
-        );
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        dialog.title("Close Window?").child(body.clone()).footer(
+            DialogFooter::new()
+                .child(Button::new("close-window-cancel").label("Cancel").on_click(
+                    |_event, window, cx| {
+                        window.close_dialog(cx);
+                    },
+                ))
+                .child(
+                    Button::new("close-window-confirm")
+                        .label("Close Window")
+                        .with_variant(gpui_kit::component::button::ButtonVariant::Danger)
+                        .on_click(|_event, window, cx| {
+                            window.close_dialog(cx);
+                            close_window(window, cx);
+                        }),
+                ),
+        )
     });
 }
 
