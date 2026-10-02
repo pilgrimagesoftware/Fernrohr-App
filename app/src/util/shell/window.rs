@@ -5,6 +5,10 @@ use super::*;
 /// A window's body: the cluster picker (no connected context yet) or a connected
 /// workspace. A window opens in `Picker` whenever it has no restored panels, per the
 /// `cluster-picker` and `app-shell` specs.
+// One per window, held in place and never in a collection, so the gap between
+// the two variants' sizes costs nothing; boxing the workspace would only add an
+// indirection to every access.
+#[allow(clippy::large_enum_variant)]
 pub(super) enum WindowMode {
     Picker(Entity<crate::ui::picker::ClusterPicker>),
     Workspace {
@@ -57,6 +61,10 @@ pub(super) enum WindowMode {
         /// Whether the Resource panel is collapsed to a strip on its edge (11.3).
         /// Per window and not saved; a new window always starts expanded.
         resource_collapsed: bool,
+        /// The dock panel that last held focus. A new panel opened while focus is
+        /// outside the dock - the Resource panel, the palette - joins this one's
+        /// tab group, as it would have joined the focused group.
+        last_focused_panel: Option<PanelId>,
     },
 }
 

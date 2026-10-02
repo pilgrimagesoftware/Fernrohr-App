@@ -1,14 +1,36 @@
 //! Keeping keyboard focus on a panel when the dock changes under it
 //! (`panel-tab-focus-on-close`): closing the focused tab leaves focus on nothing,
 //! since the dock removes the panel without moving focus anywhere. Opening and
-//! switching tabs focus explicitly where they're handled (`open`, `tabs`).
+//! switching tabs focus explicitly where they're handled (`open`, `tabs`). It also
+//! notes the dock panel that last held focus, for where a new panel opens.
 
 use super::{MainWindow, OpenPanel, WindowMode};
 use crate::ui::panel::{focus, tabs};
-use gpui_kit::component::dock::DockArea;
-use gpui_kit::{App, Context, Entity, Window};
+use gpui_kit::component::dock::{DockArea, PanelId};
+use gpui_kit::{App, Context, Entity, Subscription, Window};
 
 impl MainWindow {
+    /// Watches dock panel `id` for focus, noting it as the window's last-focused
+    /// dock panel each time focus enters it - the group a new panel joins while
+    /// focus is outside the dock (`open_target_in`). `None` for an id the dock
+    /// doesn't hold.
+    pub(super) fn watch_panel_focus(
+        dock_area: &Entity<DockArea>,
+        id: PanelId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Subscription> {
+        let handle = dock_area.read(cx).panel(id)?.focus_handle(cx);
+        Some(cx.on_focus_in(&handle, window, move |this, _window, _cx| {
+            if let WindowMode::Workspace {
+                last_focused_panel, ..
+            } = &mut this.mode
+            {
+                *last_focused_panel = Some(id);
+            }
+        }))
+    }
+
     /// Focuses the dock's first displayed panel - a window entering its workspace,
     /// new or restored, starts with a panel's keys live rather than focus on no
     /// panel. With no panel open, the Resource panel, else the window.

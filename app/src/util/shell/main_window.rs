@@ -84,6 +84,7 @@ impl MainWindow {
                     key,
                     panel: None,
                     group: crate::ui::panel::tabs::group_of(dock_area.read(cx), id),
+                    _focus_watch: Self::watch_panel_focus(&dock_area, id, window, cx),
                 })
                 .collect()
         } else {
@@ -96,6 +97,7 @@ impl MainWindow {
                 // every other panel gets.
                 panel: Some(first.clone()),
                 group: crate::ui::panel::tabs::group_of(dock_area.read(cx), first_id),
+                _focus_watch: Self::watch_panel_focus(&dock_area, first_id, window, cx),
             }]
         };
         watch_workspace(&dock_area, window, cx);
@@ -141,6 +143,7 @@ impl MainWindow {
             resource_width: RESOURCE_PANEL_WIDTH,
             resource_side,
             resource_collapsed: false,
+            last_focused_panel: None,
         };
         // Entering a workspace doesn't go through `sync_context_children` (its
         // children are built here already synced), so it titles the window itself.

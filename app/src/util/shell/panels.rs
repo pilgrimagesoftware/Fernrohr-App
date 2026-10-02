@@ -48,6 +48,9 @@ pub(super) struct OpenPanel {
     /// change. Once the panel is closed the dock no longer says where it was,
     /// so this is how focus finds the tab that took its place.
     pub(super) group: Option<gpui_kit::component::dock::NodeId>,
+    /// Notes this panel as the window's last-focused dock panel whenever focus
+    /// enters it ([`MainWindow::watch_panel_focus`]); dropped with the entry.
+    pub(super) _focus_watch: Option<gpui_kit::Subscription>,
 }
 
 pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
