@@ -9,7 +9,6 @@ use super::commands::{
 use super::panel::ObjectListPanel;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::ui::panel::focus_ring::FocusRing as _;
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::Input;
@@ -124,11 +123,6 @@ impl Render for ObjectListPanel {
             .size_full()
             .key_context(PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
-            .focus_ring(
-                "object-list-panel",
-                self.focus_handle.contains_focused(window, cx),
-                cx,
-            )
             .on_action(cx.listener(Self::on_action_focus_filter))
             .on_action(cx.listener(Self::on_action_open_selected))
             .on_action(cx.listener(Self::on_action_warp_namespace))

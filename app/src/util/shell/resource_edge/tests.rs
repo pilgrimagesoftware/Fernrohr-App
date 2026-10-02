@@ -180,23 +180,13 @@ async fn focusing_a_collapsed_panel_expands_it_and_panel_stepping_skips_it(
     assert!(panel_focused(&mut h));
 }
 
-/// (b): clicking the panel focuses it, shows the focus indicator, and its keys then
-/// work - Space toggles the section under the cursor, as Left does.
+/// (b): clicking the panel focuses it, and its keys then work - Space toggles the
+/// section under the cursor, as Left does.
 #[gpui_kit::test]
-async fn a_clicked_panel_shows_focus_and_its_keys_work(cx: &mut TestAppContext) {
+async fn a_clicked_panel_takes_focus_and_its_keys_work(cx: &mut TestAppContext) {
     let mut h = harness(cx);
-    let indicator = |h: &mut Harness, state: &'static str| {
-        h.vcx.update(|window, cx| window.render_frame(cx));
-        h.vcx.debug_bounds(state).is_some()
-    };
-    assert!(indicator(&mut h, "resource-panel-unfocused"));
-
     click(&mut h, "resource-row-Workloads-0");
     assert!(panel_focused(&mut h));
-    assert!(
-        indicator(&mut h, "resource-panel-focused"),
-        "the panel shows it has focus"
-    );
 
     let pods = DiscoveredKind::pods();
     let collapsed = |h: &mut Harness| {
@@ -217,10 +207,11 @@ async fn a_clicked_panel_shows_focus_and_its_keys_work(cx: &mut TestAppContext) 
     assert!(collapsed(&mut h), "Left collapses it too");
 }
 
-/// 12.1: one ring, drawn on whichever panel holds focus - a dock panel once it's
-/// clicked, the Resource panel again after Focus Resources - and on no other.
+/// 12.1: the dock panel's tab title is the focus indicator, drawn as rendered -
+/// underlined once the panel is clicked, plain again once focus moves to the
+/// Resource panel (Focus Resources).
 #[gpui_kit::test]
-async fn the_focus_ring_follows_focus_between_the_dock_and_the_resource_panel(
+async fn the_tab_underline_follows_focus_between_the_dock_and_the_resource_panel(
     cx: &mut TestAppContext,
 ) {
     let mut h = harness(cx);
@@ -228,21 +219,19 @@ async fn the_focus_ring_follows_focus_between_the_dock_and_the_resource_panel(
         h.vcx.update(|window, cx| window.render_frame(cx));
         h.vcx.debug_bounds(selector)
     };
-    let pods = drawn(&mut h, "pods-panel-unfocused").expect("the dock's Pods panel is drawn");
+    let pods = drawn(&mut h, "panel-title-Pods-unfocused").expect("the Pods title is drawn");
     h.vcx.simulate_click(pods.center(), Modifiers::none());
     h.vcx.run_until_parked();
     assert!(
-        drawn(&mut h, "pods-panel-focused").is_some(),
-        "a click rings it"
+        drawn(&mut h, "panel-title-Pods-focused").is_some(),
+        "a click underlines it"
     );
-    assert!(drawn(&mut h, "pods-panel-unfocused").is_none());
-    assert!(drawn(&mut h, "resource-panel-unfocused").is_some());
 
     press(&mut h.vcx, "cmd-0");
-    assert!(drawn(&mut h, "resource-panel-focused").is_some());
+    assert!(panel_focused(&mut h));
     assert!(
-        drawn(&mut h, "pods-panel-unfocused").is_some(),
-        "the ring left the Pods panel"
+        drawn(&mut h, "panel-title-Pods-unfocused").is_some(),
+        "the underline left the Pods panel"
     );
 }
 

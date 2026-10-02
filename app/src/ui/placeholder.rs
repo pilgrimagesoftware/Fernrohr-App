@@ -4,7 +4,6 @@
 //! rather than restoring a list that could never fill.
 
 use crate::k8s::cluster::discovery::DiscoveredKind;
-use crate::ui::panel::focus_ring::FocusRing as _;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
@@ -85,7 +84,7 @@ impl EventEmitter<PanelEvent> for PlaceholderPanel {}
 impl EventEmitter<ScopeEvent> for PlaceholderPanel {}
 
 impl Render for PlaceholderPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let raised = crate::ui::style::surface_raised(cx);
         let space = crate::ui::space::spacing(cx);
@@ -113,13 +112,8 @@ impl Render for PlaceholderPanel {
         div()
             .size_full()
             // Tracked so a click focuses the panel, which is what lights
-            // its focus ring and its tab's underline.
+            // its tab's focus underline.
             .track_focus(&self.focus_handle)
-            .focus_ring(
-                "placeholder-panel",
-                self.focus_handle.contains_focused(window, cx),
-                cx,
-            )
             .flex()
             .flex_col()
             .children(namespace_bar)
