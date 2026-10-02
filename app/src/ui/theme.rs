@@ -84,7 +84,8 @@ fn apply(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App)
     crate::ui::accent::refresh(cx);
 }
 
-/// Sets the frame and code roles' families on the global theme. Called after every
+/// Sets the frame and code roles' families, and their sizes at the current
+/// text size, on the global theme. Called after every
 /// `Theme::change`/`sync_system_appearance`, since those calls are gpui-
 /// component's own theme-mode reset and would otherwise revert `font_family`/
 /// `mono_font_family` to its built-in defaults on the next appearance flip.
@@ -93,6 +94,7 @@ fn apply_fonts(cx: &mut App) {
     let theme = cx.global_mut::<Theme>();
     theme.font_family = FRAME_FAMILY.into();
     theme.mono_font_family = mono;
+    crate::ui::text_size::apply_font_sizes(cx);
 }
 
 /// `Monaco` when installed, else the first installed alternate, else

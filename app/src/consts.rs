@@ -71,3 +71,15 @@ pub const COLLAPSE_VALUE_OVER_CHARS: usize = 100;
 /// `pod-configuration-tab` 5.1: a collapsed value shows its first line's first this-many
 /// characters plus an ellipsis.
 pub const COLLAPSED_VALUE_PREVIEW_CHARS: usize = 20;
+
+/// `visual-refresh-typography-spacing` design.md: every text size, in percent of the
+/// default, that Increase/Decrease Text Size and the Settings stepper step through.
+/// 10% steps from 90 to 150, plus an 85% floor for dense screens. Ascending.
+pub(crate) const TEXT_SIZE_STEPS: [u16; 8] = [85, 90, 100, 110, 120, 130, 140, 150];
+
+/// The frame and data roles' size at 100% text size: the rem every window uses,
+/// gpui-component's own default, which every size the app used before the
+/// text-size preference is relative to.
+pub(crate) const DEFAULT_FONT_SIZE: f32 = 16.;
+/// The code role's size at 100% text size: gpui-component's default mono size.
+pub(crate) const DEFAULT_MONO_FONT_SIZE: f32 = 13.;
