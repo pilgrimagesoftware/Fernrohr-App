@@ -11,6 +11,7 @@ use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::nav::ObjectTarget;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::button::Button;
@@ -20,6 +21,8 @@ use gpui_kit::component::dock::{
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::table::{TableEvent, TableState};
 use gpui_kit::*;
+
+mod keys;
 
 /// A dock panel listing one discovered kind's objects in its scope's cluster,
 /// live, narrowed to its namespace selection and its filter.
@@ -236,6 +239,17 @@ impl ObjectListPanel {
     /// Opens the object at displayed row `row_ix` (`standard-resource-panels` D5):
     /// its detail panel in this panel's context, or the already-open one, focused.
     pub(super) fn open_row(&mut self, row_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_row_as(row_ix, None, window, cx);
+    }
+
+    /// [`Self::open_row`], showing `view` - `y` asks for the YAML.
+    pub(super) fn open_row_as(
+        &mut self,
+        row_ix: usize,
+        view: Option<DetailView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(table) = &self.table else {
             return;
         };
@@ -254,13 +268,14 @@ impl ObjectListPanel {
             Box::new(OpenListedObject {
                 context_name: self.scope.context_name.clone(),
                 target,
+                view,
             }),
             cx,
         );
     }
 
     /// The table's selected row, if any.
-    fn selected_row(&self, cx: &App) -> Option<usize> {
+    pub(super) fn selected_row(&self, cx: &App) -> Option<usize> {
         self.table.as_ref()?.read(cx).selected_row()
     }
 

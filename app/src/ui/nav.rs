@@ -252,9 +252,9 @@ pub fn opened_panel_for(
 /// caller owns deduplication: whether this is a new panel or a focus of an
 /// existing one is the window's bookkeeping, not the panel's.
 ///
-/// `initial_view` is which view a panel that has two should open on - today
-/// only a pod's detail panel does, and only `nav.show_pod_detail_yaml` asks for
-/// anything but the default. It is a parameter rather than part of
+/// `initial_view` is which view a panel that has two should open on - a pod's or
+/// another object's detail panel - and only a YAML request (`y` on the Pods
+/// table or a list) asks for anything but the default. It is a parameter rather than part of
 /// [`NavTarget`] because the target is *identity*: the same target has to mean
 /// "the same panel" whether the user described the pod or asked for its YAML,
 /// or the two would dedup into two panels over one pod.
@@ -343,6 +343,10 @@ pub fn add_panel(
                     cx,
                 )
             });
+            // `initial_view` is how a list's `y` lands straight on the YAML.
+            if let Some(view) = initial_view {
+                panel.update(cx, |panel, cx| panel.set_view(view, cx));
+            }
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(
                 panel_handle(panel.clone()),

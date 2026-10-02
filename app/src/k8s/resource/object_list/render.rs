@@ -3,8 +3,8 @@
 //! won't list.
 
 use super::commands::{
-    FILTER_KEY, FocusFilter, NAMESPACE_KEY, OPEN_KEY, OpenSelected, PANEL_KEY_CONTEXT,
-    WarpNamespace,
+    DESCRIBE_KEY, DescribeSelected, FILTER_KEY, FocusFilter, NAMESPACE_KEY, OPEN_KEY, OpenSelected,
+    PANEL_KEY_CONTEXT, ShowSelectedYaml, WarpNamespace, YAML_KEY,
 };
 use super::panel::ObjectListPanel;
 use super::table::data_table;
@@ -58,7 +58,14 @@ impl ObjectListPanel {
             .text_sm()
             .text_color(cx.theme().muted_foreground)
             .child(Self::hint(&FocusFilter, FILTER_KEY, "Filter", window))
-            .child(Self::hint(&OpenSelected, OPEN_KEY, "Open", window));
+            .child(Self::hint(&OpenSelected, OPEN_KEY, "Open", window))
+            .child(Self::hint(
+                &DescribeSelected,
+                DESCRIBE_KEY,
+                "Describe",
+                window,
+            ))
+            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window));
         if self.kind.namespaced {
             hints = hints.child(Self::hint(
                 &WarpNamespace,
@@ -125,6 +132,10 @@ impl Render for ObjectListPanel {
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_focus_filter))
             .on_action(cx.listener(Self::on_action_open_selected))
+            .capture_action(cx.listener(Self::capture_select_down))
+            .capture_action(cx.listener(Self::capture_select_up))
+            .on_action(cx.listener(Self::on_action_describe_selected))
+            .on_action(cx.listener(Self::on_action_show_selected_yaml))
             .on_action(cx.listener(Self::on_action_warp_namespace))
             .child(
                 div()

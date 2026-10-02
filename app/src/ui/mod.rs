@@ -4,6 +4,7 @@ pub mod context_bar;
 pub mod detail;
 pub mod icon;
 pub mod link;
+pub mod list_keys;
 pub mod menu;
 pub mod nav;
 pub mod panel;
