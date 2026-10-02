@@ -23,12 +23,13 @@ use std::sync::Arc;
 /// their text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IconSize {
-    /// Body text (`1rem`): panel titles and tabs.
+    /// Body text (`1rem`): Configuration card headers, the object viewer's
+    /// reference rows, container card names.
     Text,
-    /// `text_sm()` text (`0.875rem`): cards, links, field values.
+    /// `text_sm()` text (`0.875rem`): tabs, the Resource panel's kind rows,
+    /// cards, links. Add a variant beside it for an icon next to text of
+    /// another size.
     Small,
-    /// `text_xs()` text (`0.75rem`): the Resource panel's section headers.
-    XSmall,
 }
 
 impl IconSize {
@@ -36,7 +37,6 @@ impl IconSize {
         match self {
             Self::Text => 1.,
             Self::Small => 0.875,
-            Self::XSmall => 0.75,
         }
     }
 
@@ -57,6 +57,10 @@ pub fn device_px(logical: Pixels, scale_factor: f32) -> u32 {
 /// and with no accessible name of its own, since the text beside it already
 /// names the kind (`resource-icons` spec).
 pub fn kind_icon(icon: KindIcon, size: IconSize, window: &mut Window, cx: &mut App) -> AnyElement {
+    #[cfg(test)]
+    if test_hooks::HIDDEN.with(std::cell::Cell::get) {
+        return div().into_any_element();
+    }
     let scale_factor = window.scale_factor();
     let device = device_px(size.logical(cx), scale_factor);
     let renderer = cx.svg_renderer();
@@ -73,10 +77,14 @@ pub fn kind_icon(icon: KindIcon, size: IconSize, window: &mut Window, cx: &mut A
         return div().size(logical).flex_none().into_any_element();
     };
     let raster_size = raster.size(0);
-    img(ImageSource::Render(raster))
-        .w(px(raster_size.width.0 as f32 / scale_factor))
-        .h(px(raster_size.height.0 as f32 / scale_factor))
+    div()
         .flex_none()
+        .debug_selector(move || format!("kind-icon-{icon:?}"))
+        .child(
+            img(ImageSource::Render(raster))
+                .w(px(raster_size.width.0 as f32 / scale_factor))
+                .h(px(raster_size.height.0 as f32 / scale_factor)),
+        )
         .into_any_element()
 }
 
@@ -170,6 +178,27 @@ impl IconCache {
             .collect();
         sizes.sort_unstable();
         sizes
+    }
+}
+
+/// A switch for tests that compare a view with and without its icons - the
+/// keyboard route must be the same either way (`resource-icons` spec).
+#[cfg(test)]
+pub(crate) mod test_hooks {
+    thread_local! {
+        pub(crate) static HIDDEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    /// Draws every kind icon as nothing until the guard drops.
+    pub(crate) fn hide_icons() -> impl Drop {
+        struct Shown;
+        impl Drop for Shown {
+            fn drop(&mut self) {
+                HIDDEN.with(|hidden| hidden.set(false));
+            }
+        }
+        HIDDEN.with(|hidden| hidden.set(true));
+        Shown
     }
 }
 

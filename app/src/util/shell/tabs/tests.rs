@@ -3,6 +3,8 @@
 //! tabs of one group, the way `d` leaves them.
 
 use super::{close_window_confirmation_body, losing_a_tunnel};
+
+mod icons;
 use crate::command::{CommandRegistry, MenuSlot};
 use crate::k8s::resource::pods::{PodSelection, SelectedPod};
 use crate::util::shell::test_support::{Handles, focused, handles, press, workspace};

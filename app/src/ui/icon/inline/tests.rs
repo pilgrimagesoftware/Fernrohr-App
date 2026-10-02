@@ -40,7 +40,6 @@ impl Render for Sample {
             .items_start()
             .child(row("text", div(), IconSize::Text, window, cx))
             .child(row("small", div().text_sm(), IconSize::Small, window, cx))
-            .child(row("xsmall", div().text_xs(), IconSize::XSmall, window, cx))
     }
 }
 
@@ -70,15 +69,15 @@ async fn an_inline_icon_takes_its_texts_role_at_every_text_size(cx: &mut TestApp
         vcx.update(|_, cx| crate::ui::text_size::set(size, cx));
         vcx.run_until_parked();
         let mut seen = Vec::new();
-        for name in ["text", "small", "xsmall"] {
+        for name in ["text", "small"] {
             let inline = height(&mut vcx, format!("{name}-inline"));
             let explicit = height(&mut vcx, format!("{name}-explicit"));
             assert_eq!(inline, explicit, "{name} at {}%", size.percent());
             seen.push(inline);
         }
         assert!(
-            seen[0] > seen[1] && seen[1] > seen[2],
-            "three distinct roles at {}%: {seen:?}",
+            seen[0] > seen[1],
+            "two distinct roles at {}%: {seen:?}",
             size.percent()
         );
     }

@@ -79,20 +79,14 @@ impl Render for Sample {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // `items_start`: a flex row stretches its children to its own height,
         // which would measure the row rather than the icon.
-        div()
-            .flex()
-            .items_start()
-            .child(div().debug_selector(|| "icon-text".into()).child(kind_icon(
+        div().flex().items_start().child(
+            div().debug_selector(|| "icon-sm".into()).child(kind_icon(
                 KindIcon::Pod,
-                IconSize::Text,
+                IconSize::Small,
                 window,
                 cx,
-            )))
-            .child(
-                div()
-                    .debug_selector(|| "icon-small".into())
-                    .child(kind_icon(KindIcon::Pod, IconSize::Small, window, cx)),
-            )
+            )),
+        )
     }
 }
 
@@ -115,22 +109,15 @@ fn the_icon_follows_the_text_size(cx: &mut TestAppContext) {
         gpui_kit::init(cx);
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
     });
-    let (text, small) = cx.update(|cx| (IconSize::Text.logical(cx), IconSize::Small.logical(cx)));
-    let default_text = icon_height(cx, "icon-text");
-    let default_small = icon_height(cx, "icon-small");
-    for (height, logical) in [(default_text, text), (default_small, small)] {
-        assert!(
-            height <= logical && height >= logical - px(1.),
-            "{height:?} is within a pixel under its text's {logical:?}"
-        );
-    }
+    let text = cx.update(|cx| IconSize::Small.logical(cx));
+    let default_text = icon_height(cx, "icon-sm");
     assert!(
-        default_small < default_text,
-        "a smaller role is a smaller icon"
+        default_text <= text && default_text >= text - px(1.),
+        "{default_text:?} is within a pixel under its text's {text:?}"
     );
 
     cx.update(|cx| crate::ui::text_size::set(TextSize::MAX, cx));
-    let larger = icon_height(cx, "icon-text");
+    let larger = icon_height(cx, "icon-sm");
     let factor = TextSize::MAX.factor();
     assert!(
         (f32::from(larger) - f32::from(default_text) * factor).abs() <= 1.,

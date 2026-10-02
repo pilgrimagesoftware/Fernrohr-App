@@ -46,14 +46,14 @@ impl RenderOnce for InlineKindIcon {
 }
 
 /// The role whose size, at the current text size, is nearest `text`. The
-/// app's text is always one of the three roles, so this is exact in practice;
-/// a larger heading gets the body role's icon.
+/// app's text beside an icon is always one of the roles, so this is exact in
+/// practice; other text gets the nearest role's icon.
 pub(super) fn role_for(text: Pixels, cx: &App) -> IconSize {
     let distance = |role: IconSize| f32::from((role.logical(cx) - text).abs());
-    [IconSize::Text, IconSize::Small, IconSize::XSmall]
+    [IconSize::Text, IconSize::Small]
         .into_iter()
         .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
-        .expect("three roles")
+        .expect("the roles aren't empty")
 }
 
 #[cfg(test)]

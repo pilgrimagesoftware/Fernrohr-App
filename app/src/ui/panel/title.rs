@@ -181,8 +181,20 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 /// draws this element, but reads no per-panel style (`Panel::title_style` only
 /// reaches the single-panel title bar), so the tab's own background can't be
 /// coloured from here.
-pub fn title_element(scope: &PanelScope, text: String, focused: bool, cx: &App) -> AnyElement {
+///
+/// The panel's kind icon leads the title (`resource-kind-icons` 3.1), sized to
+/// the tab's `text_sm` label. It's decorative, so the tab's keyboard route is
+/// unchanged.
+pub fn title_element(
+    scope: &PanelScope,
+    text: String,
+    focused: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    use crate::ui::icon::{self, IconSize};
     let tooltip = format!("Context: {}", scope.context_name);
+    let kind_icon = icon::kind_icon(icon::for_target(&scope.target), IconSize::Small, window, cx);
     div()
         .id(SharedString::from(format!(
             "panel-title-{}-{text}",
@@ -196,6 +208,10 @@ pub fn title_element(scope: &PanelScope, text: String, focused: bool, cx: &App) 
             let state = if focused { "focused" } else { "unfocused" };
             format!("panel-title-{text}-{state}")
         })
+        .flex()
+        .items_center()
+        .gap_1p5()
+        .child(kind_icon)
         .child(text)
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .into_any_element()
