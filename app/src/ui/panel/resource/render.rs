@@ -6,6 +6,7 @@
 use super::section::{VisibleSection, VisibleSubgroup};
 use super::{ResourcePanel, ResourceState};
 use crate::ui::nav::NavTarget;
+use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
@@ -485,5 +486,7 @@ impl Render for ResourcePanel {
             .on_action(cx.listener(Self::on_action_focus_filter))
             .on_action(cx.listener(Self::on_action_clear_filter))
             .child(content)
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("resource-panel-tab-trap", &self.focus_handle)
     }
 }

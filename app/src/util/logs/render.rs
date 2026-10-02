@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::ui::typography::TypeRole as _;
+use gpui_kit::base::FocusTrapElement as _;
 
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -173,6 +174,8 @@ impl Render for LogsPanel {
             .flex_col()
             .children(control_bar)
             .child(div().flex_1().min_h_0().child(content))
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("logs-panel-tab-trap", &self.focus_handle)
             .into_any_element()
     }
 }

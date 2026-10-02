@@ -77,7 +77,7 @@ impl PodsPanel {
             table: cx.new(|_| PodsTable::default()),
             namespaces,
             subscribed: false,
-            focus_handle: cx.focus_handle(),
+            focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
         };
         this.start_watch_if_connected(&connection, cx);

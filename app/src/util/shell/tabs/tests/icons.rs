@@ -121,16 +121,29 @@ fn tab_route(
         .collect()
 }
 
-/// Tabbing through a window with icons visits the same controls in the same
-/// order as the same window with them hidden: icons are never tab stops.
+/// Tabbing through a panel with icons visits the same controls in the same
+/// order as the same panel with them hidden: icons are never tab stops. Tab
+/// stays inside the focused panel, so this starts in the Resource panel - its
+/// rows show kind icons, and it has controls to tab between whether or not the
+/// cluster is reachable.
 #[gpui_kit::test]
 async fn icons_leave_the_tab_order_unchanged(cx: &mut TestAppContext) {
     let (window, mut vcx) = pods_and_configmaps(cx);
-    // Wherever the window put focus once it opened.
-    let start = window
-        .update(&mut vcx, |_, window, cx| window.focused(cx))
-        .unwrap()
-        .expect("the window focuses something when it opens");
+    let start = vcx.update(|window, cx| {
+        let root = window.root::<Root>().flatten().expect("a Root window");
+        let main_window = root
+            .read(cx)
+            .view()
+            .clone()
+            .downcast::<MainWindow>()
+            .unwrap();
+        main_window
+            .read(cx)
+            .test_resource_panel()
+            .expect("a workspace window")
+            .read(cx)
+            .focus_handle()
+    });
     const PRESSES: usize = 12;
 
     let with_icons = tab_route(window, &mut vcx, &start, PRESSES);
