@@ -69,6 +69,7 @@ pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use layout::{close_window, window_context_count};
 pub use main_window::MainWindow;
 pub use persist::open_saved_or_default;
+pub(crate) use tabs::close_panel;
 pub(crate) use window::open_window;
 
 // Everything else, for the submodules' `use super::*` and the tests: each

@@ -200,6 +200,9 @@ pub(super) fn build_workspace(
     (PanelId, nav::OpenedPanel),
 ) {
     let (dock_area, dock_skin) = DockSkin::dock_area("main", Some(1), window, cx);
+    // Every tab carries its own close control (`tab-close-buttons` 1.1);
+    // gpui-kit 0.7 draws it only when asked.
+    dock_skin.set_close_button_visible(true, cx);
     let scope = PanelScope {
         connection_count,
         ..PanelScope::new(NavTarget::pods(), context_name)

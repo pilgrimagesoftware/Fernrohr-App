@@ -4,6 +4,7 @@
 
 use super::{close_window_confirmation_body, losing_a_tunnel};
 
+mod close;
 mod icons;
 use crate::command::{CommandRegistry, MenuSlot};
 use crate::k8s::resource::pods::{PodSelection, SelectedPod};

@@ -13,7 +13,7 @@ use crate::ui::panel::tabs::{
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::dialog::DialogFooter;
-use gpui_kit::component::dock::ClosePanel;
+use gpui_kit::component::dock::{ClosePanel, DockLayout, Panel};
 
 impl MainWindow {
     /// The tab commands' listeners, and `Cmd-W`'s, for the window's root
@@ -80,10 +80,20 @@ impl MainWindow {
         cx: &mut Context<Self>,
     ) {
         if let WindowMode::Workspace { dock_area, .. } = &self.mode {
+            let dock_area = dock_area.clone();
             let area = dock_area.read(cx);
             if let Some(group) = tabs::focused_group(area, window, cx)
                 && let Some(panel) = area.panel(group.panels[group.active_ix])
             {
+                if tabs::is_only_panel(area, group.panels[group.active_ix]) {
+                    // The tab group refuses to close the dock's last panel,
+                    // so `ClosePanel` would do nothing; emptying the centre
+                    // closes it, and the empty dock returns to the picker.
+                    dock_area.update(cx, |area, cx| {
+                        area.set_center(DockLayout::tabs(), window, cx)
+                    });
+                    return;
+                }
                 window.focus(&panel.focus_handle(cx), cx);
                 window.dispatch_action(Box::new(ClosePanel), cx);
                 return;
@@ -169,6 +179,28 @@ pub(super) fn close_window_confirmation_body(tunneled: &[String]) -> String {
         [context_name] => format!("The tunnel for {context_name} will disconnect."),
         names => format!("The tunnels for {} will disconnect.", names.join(", ")),
     }
+}
+
+/// Closes `panel` in the window `window` belongs to: the title bar close
+/// control's route ([`crate::ui::panel_title::close_button`]).
+///
+/// By panel, not by the dock's `ClosePanel`, which follows focus and would
+/// close the focused group's panel instead. `DockArea::remove_panel` also
+/// removes the dock's last panel, which the tab group's own close refuses;
+/// the empty dock then returns the window to the picker. Focus is handed on by
+/// the window's `LayoutChanged` handling, as for `Cmd-W`.
+pub(crate) fn close_panel<P: Panel>(panel: Entity<P>, window: &mut Window, cx: &mut App) {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return;
+    };
+    let dock_area = match &main_window.read(cx).mode {
+        WindowMode::Workspace { dock_area, .. } => dock_area.clone(),
+        WindowMode::Picker(_) => return,
+    };
+    dock_area.update(cx, |area, cx| area.remove_panel(panel, window, cx));
 }
 
 #[cfg(test)]
