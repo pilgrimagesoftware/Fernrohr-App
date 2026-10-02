@@ -18,11 +18,28 @@ use crate::consts::APP_NAME;
 use super::build_info::{build_details, build_identifier, version};
 use super::window::AboutWindow;
 
+/// The Kubernetes community icon set's credit (`resource-kind-icons` 4.1):
+/// whose the kind icons are, and the licence Fernrohr uses them under. The
+/// licence text ships in the app bundle as `licenses/kubernetes-icons/LICENSE`.
+pub(super) const KUBERNETES_ICONS_CREDIT: &str =
+    "Kubernetes community icon set, under the Apache License 2.0";
+
 /// The icon shown at the top of the window, at its 128px edge length - the
 /// same size macOS's own About box shows the app icon at.
 const ICON_SIZE: f32 = 128.;
 
 impl AboutWindow {
+    /// The heading over a group of credits.
+    fn credit_heading(cx: &Context<Self>, text: &'static str) -> gpui_kit::Div {
+        div()
+            .mt_2()
+            .text_xs()
+            .text_center()
+            .font_semibold()
+            .text_color(cx.theme().muted_foreground)
+            .child(text)
+    }
+
     /// One credit line. Muted and small: the credits are the least of what
     /// someone opens this window to read, and must not compete with the
     /// version.
@@ -125,17 +142,11 @@ impl Render for AboutWindow {
                     .mt_4()
                     .gap_1()
                     .items_center()
-                    .child(
-                        div()
-                            .mt_2()
-                            .text_xs()
-                            .text_center()
-                            .font_semibold()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Built with"),
-                    )
+                    .child(Self::credit_heading(cx, "Built with"))
                     .child(Self::credit(cx, "GPUI"))
-                    .child(Self::credit(cx, "gpui-kit")),
+                    .child(Self::credit(cx, "gpui-kit"))
+                    .child(Self::credit_heading(cx, "Icons"))
+                    .child(Self::credit(cx, KUBERNETES_ICONS_CREDIT)),
             )
             // A macOS About box has no button: it is closed from its window
             // chrome. Elsewhere that is not the expectation, so the window

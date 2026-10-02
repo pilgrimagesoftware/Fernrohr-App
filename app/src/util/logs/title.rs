@@ -47,6 +47,7 @@ impl Panel for LogsPanel {
             &self.scope,
             self.streaming_title(),
             self.focus_handle.contains_focused(window, cx),
+            window,
             cx,
         )
     }

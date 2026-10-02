@@ -6,6 +6,7 @@ use super::fixtures::rich_pod;
 use super::panel::stub_panel;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::object_ref::ObjectRef;
+use crate::ui::icon::test_support::{assert_icon_leads, icon_bounds};
 use crate::ui::link::FollowReference;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, ElementId, TestAppContext};
@@ -224,5 +225,37 @@ async fn g_opens_the_picker_on_a_pod_and_enter_follows_its_namespace(cx: &mut Te
             context_name: "kind-dev".into(),
             target: ObjectRef::cluster_scoped("", "Namespace", "staging"),
         }]
+    );
+}
+
+/// `resource-kind-icons` 3.3: every reference leads with its kind's icon - a
+/// followable link and plain text alike.
+#[gpui_kit::test]
+async fn every_reference_leads_with_its_kinds_icon(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = stub_panel(cx, ConnectionState::Connecting);
+    window
+        .update(cx, |panel, _window, cx| {
+            panel.test_set_loaded(rich_pod(), cx)
+        })
+        .unwrap();
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+
+    assert_icon_leads(
+        &mut vcx,
+        "kind-icon Namespace-0 Namespace".into(),
+        reference_id("Namespace", 0),
+    );
+    // The selector names the icon drawn, so another kind's isn't found.
+    assert!(icon_bounds(&mut vcx, "kind-icon Namespace-0 Pod".into()).is_none());
+    // Not followable here (no ReplicaSet viewer is discovered), still iconned.
+    assert_icon_leads(
+        &mut vcx,
+        "kind-icon Controlled By-0 ReplicaSet".into(),
+        reference_id("Controlled By", 0),
     );
 }

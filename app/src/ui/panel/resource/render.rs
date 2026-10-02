@@ -6,14 +6,15 @@
 use super::section::{VisibleSection, VisibleSubgroup};
 use super::{ResourcePanel, ResourceState};
 use crate::ui::nav::NavTarget;
+use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::component::sidebar::{Sidebar, SidebarItem as _, SidebarMenuItem};
-use gpui_kit::component::{Icon, IconName};
+use gpui_kit::component::sidebar::{Sidebar, SidebarMenuItem};
+use gpui_kit::component::{Icon, IconName, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -25,42 +26,88 @@ impl ResourcePanel {
         SidebarMenuItem::new(label).disable(true)
     }
 
-    /// One row's `SidebarMenuItem`: a click sets it highlighted (section
-    /// 4.1's "a click selects the same way"), and a second click - or the
-    /// context menu's "Open" - opens it through the same [`Self::request_open`]
-    /// path `Enter` uses.
-    fn kind_item(
+    /// One kind's row: its icon (`resource-kind-icons` 3.2), then its label. A
+    /// click sets it highlighted (section 4.1's "a click selects the same
+    /// way"), and a second click - or the context menu's "Open" - opens it
+    /// through the same [`Self::request_open`] path `Enter` uses.
+    ///
+    /// Drawn here rather than as a `SidebarMenuItem`, whose icon slot takes
+    /// only a monochrome `Icon`; the sizing, hover and active styling match
+    /// it, so a row looks as it did.
+    fn kind_row(
         &self,
+        id: String,
         label: String,
         target: NavTarget,
         active: bool,
-        cx: &Context<Self>,
-    ) -> SidebarMenuItem {
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use crate::ui::icon::{self, IconSize};
+        let theme = cx.theme().clone();
         let this = cx.weak_entity();
         let click_target = target.clone();
         let menu_target = target.clone();
         let menu_panel = this.clone();
-        let highlighted = self.highlighted() == Some(&target);
-        SidebarMenuItem::new(label)
-            .icon(target.icon())
-            .active(active || highlighted)
-            .on_click(move |event, _window, cx| {
-                let _ = this.update(cx, |this, cx| {
-                    this.set_highlighted(Some(click_target.clone()), cx);
-                    if event.click_count() >= 2 {
-                        this.request_open(click_target.clone(), cx);
-                    }
-                });
-            })
-            .context_menu(move |menu, _window, _cx| {
-                let target = menu_target.clone();
-                let panel = menu_panel.clone();
-                menu.item(
-                    PopupMenuItem::new("Open").on_click(move |_event, _window, cx| {
-                        let _ = panel.update(cx, |this, cx| this.request_open(target.clone(), cx));
+        let is_active = active || self.highlighted() == Some(&target);
+        let icon_selector = format!("{id}-icon");
+        let kind_icon = div()
+            .flex_none()
+            .debug_selector(move || icon_selector)
+            .child(icon::kind_icon(
+                icon::for_target(&target),
+                IconSize::Small,
+                window,
+                cx,
+            ));
+        div()
+            .id(SharedString::from(id))
+            .test_support()
+            .w_full()
+            .child(
+                h_flex()
+                    .id("item")
+                    .size_full()
+                    .h_7()
+                    .overflow_x_hidden()
+                    .flex_shrink_0()
+                    .p_2()
+                    .gap_x_2()
+                    .rounded(theme.radius)
+                    .text_sm()
+                    .when(!is_active, |this| {
+                        this.hover(|this| {
+                            this.bg(theme.sidebar_accent.opacity(0.8))
+                                .text_color(theme.sidebar_accent_foreground)
+                        })
+                    })
+                    .when(is_active, |this| {
+                        this.font_medium()
+                            .bg(theme.tokens.sidebar_accent)
+                            .text_color(theme.sidebar_accent_foreground)
+                    })
+                    .child(kind_icon)
+                    .child(h_flex().flex_1().overflow_x_hidden().child(label))
+                    .on_click(move |event, _window, cx| {
+                        let _ = this.update(cx, |this, cx| {
+                            this.set_highlighted(Some(click_target.clone()), cx);
+                            if event.click_count() >= 2 {
+                                this.request_open(click_target.clone(), cx);
+                            }
+                        });
+                    })
+                    .context_menu(move |menu, _window, _cx| {
+                        let target = menu_target.clone();
+                        let panel = menu_panel.clone();
+                        menu.item(PopupMenuItem::new("Open").on_click(
+                            move |_event, _window, cx| {
+                                let _ = panel
+                                    .update(cx, |this, cx| this.request_open(target.clone(), cx));
+                            },
+                        ))
                     }),
-                )
-            })
+            )
+            .into_any_element()
     }
 
     /// `kinds` as rows, ids prefixed with `prefix` so two lists never share one.
@@ -77,14 +124,14 @@ impl ResourcePanel {
                 NavTarget::Kind(kind) => super::api_version_label(kind),
                 _ => String::new(),
             };
-            let item = self.kind_item(label, target, active, cx);
             let id = format!("resource-row-{prefix}-{index}");
             let selector = id.clone();
+            let row = self.kind_row(id.clone(), label, target, active, window, cx);
             rows = rows.child(
                 div()
                     .id(SharedString::from(format!("{id}-tip")))
                     .debug_selector(move || selector.clone())
-                    .child(item.render(id, window, cx))
+                    .child(row)
                     .tooltip(move |window, cx| {
                         gpui_kit::component::tooltip::Tooltip::new(tooltip.clone())
                             .build(window, cx)

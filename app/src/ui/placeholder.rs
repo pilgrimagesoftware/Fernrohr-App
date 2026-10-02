@@ -204,6 +204,7 @@ impl Panel for PlaceholderPanel {
             &self.scope,
             panel_title::title(&self.scope),
             self.focus_handle.contains_focused(window, cx),
+            window,
             cx,
         )
     }

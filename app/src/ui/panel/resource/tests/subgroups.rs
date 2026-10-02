@@ -422,3 +422,43 @@ async fn a_filter_opens_a_collapsed_subgroup_until_cleared(cx: &mut TestAppConte
         "collapsed again once the filter clears"
     );
 }
+
+/// `resource-kind-icons` 3.2: a core kind's row leads with its own icon, and a
+/// CRD's row in its Custom Resources subgroup with the custom-resource one.
+#[gpui_kit::test]
+async fn rows_lead_with_their_kinds_icon(cx: &mut TestAppContext) {
+    let (_window, mut vcx) = loaded_panel(cx);
+    for (row, icon) in [
+        ("resource-row-Workloads-0", "Pod"),
+        ("resource-row-subgroup-argoproj.io-0", "CustomResource"),
+    ] {
+        let row_bounds = vcx
+            .debug_bounds(row.to_string().leak())
+            .unwrap_or_else(|| panic!("{row} is drawn"));
+        let slot = vcx
+            .debug_bounds(format!("{row}-icon").leak())
+            .unwrap_or_else(|| panic!("{row} has an icon"));
+        let drawn = vcx
+            .debug_bounds(format!("kind-icon-{icon}").leak())
+            .unwrap_or_else(|| panic!("a {icon} icon is drawn"));
+        assert!(
+            row_bounds.contains(&slot.center()),
+            "{row}'s icon sits in its row"
+        );
+        assert!(
+            slot.left() - row_bounds.left() < gpui_kit::px(16.),
+            "the icon leads {row}"
+        );
+        assert!(
+            drawn.size.height > gpui_kit::px(0.),
+            "the {icon} icon has a size"
+        );
+    }
+    // Which icon each row's slot holds: only the Pod row draws Pod's.
+    assert_eq!(
+        vcx.debug_bounds("kind-icon-Pod").map(|b| b.origin),
+        vcx.debug_bounds("resource-row-Workloads-0-icon")
+            .map(|b| b.origin),
+        "the Pod icon is the Workloads Pod row's"
+    );
+}

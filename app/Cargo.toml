@@ -54,6 +54,17 @@ copyright = "Copyright (c) 2026 Pilgrimage Software"
 category = "Utility"
 before-packaging-command = "cargo build --release --package fernrohr"
 icons = ["../images/fernrohr-icon.png", "../images/fernrohr-icon.icns"]
+# Third-party licences that must ship beside the app. The Kubernetes icon set
+# is used under Apache-2.0, which asks for its licence text with every copy
+# (resource-kind-icons 4.1); the README records where it came from. The
+# bundled fonts are SIL OFL 1.1, whose condition 2 asks the same of every copy
+# of the font software, embedded ones included.
+resources = [
+    { src = "assets/icons/kubernetes/LICENSE", target = "licenses/kubernetes-icons/LICENSE" },
+    { src = "assets/icons/kubernetes/README.md", target = "licenses/kubernetes-icons/README.md" },
+    { src = "assets/fonts/Adamina-OFL.txt", target = "licenses/fonts/Adamina-OFL.txt" },
+    { src = "assets/fonts/Manrope-OFL.txt", target = "licenses/fonts/Manrope-OFL.txt" },
+]
 
 [package.metadata.packager.deb]
 depends = ["libsecret-1-0"]

@@ -8,8 +8,9 @@ use super::config_fixture::{
     PASSWORD, USERNAME, db, harness, reveal_password_by_keyboard, shown, wait_for,
 };
 use crate::k8s::resource::pod_detail::model::DetailSection;
+use crate::ui::icon::test_support::{assert_icon_leads, icon_bounds};
 use gpui_kit::component::dock::BasePanel as _;
-use gpui_kit::{TestAppContext, VisualTestContext};
+use gpui_kit::{ElementId, TestAppContext, VisualTestContext};
 use std::sync::atomic::Ordering;
 
 #[gpui_kit::test]
@@ -116,4 +117,36 @@ async fn tab_keys_follow_tab_order(cx: &mut TestAppContext) {
             "after `{key}`"
         );
     }
+}
+
+/// `resource-kind-icons` 3.3: each Configuration card's header leads with its
+/// object's kind icon - here one ConfigMap and one Secret.
+#[gpui_kit::test]
+async fn each_card_header_leads_with_its_kinds_icon(cx: &mut TestAppContext) {
+    let h = harness(cx);
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    let panel = h.panel.clone();
+    wait_for(&mut vcx, &panel, |panel| panel.pod().is_some());
+    h.window
+        .update(&mut vcx, |_, window, cx| {
+            panel.read(cx).focus_handle.clone().focus(window, cx)
+        })
+        .unwrap();
+    vcx.simulate_keystrokes("3");
+    wait_for(&mut vcx, &panel, |panel| {
+        panel.active_tab() == DetailSection::Configuration && panel.configuration.cards.len() == 2
+    });
+
+    let mut kinds = Vec::new();
+    for card in 0..2 {
+        let header = ElementId::NamedInteger(format!("config-{card}").into(), 0);
+        let kind = ["ConfigMap", "Secret"]
+            .into_iter()
+            .find(|kind| icon_bounds(&mut vcx, format!("kind-icon {header} {kind}")).is_some())
+            .unwrap_or_else(|| panic!("card {card}'s header has a ConfigMap or Secret icon"));
+        assert_icon_leads(&mut vcx, format!("kind-icon {header} {kind}"), header);
+        kinds.push(kind);
+    }
+    kinds.sort_unstable();
+    assert_eq!(kinds, ["ConfigMap", "Secret"]);
 }
