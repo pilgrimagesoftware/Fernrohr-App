@@ -2,6 +2,7 @@
 //! container picker, and the control bar (jump to top/bottom, follow toggle).
 
 use super::*;
+use crate::ui::panel::focus_ring::FocusRing as _;
 use crate::ui::typography::TypeRole as _;
 
 impl Render for LogsPanel {
@@ -167,8 +168,13 @@ impl Render for LogsPanel {
         div()
             .size_full()
             // Tracked so a click focuses the panel, which is what lights its
-            // tab's focus underline.
+            // focus ring and its tab's underline.
             .track_focus(&self.focus_handle)
+            .focus_ring(
+                "logs-panel",
+                self.focus_handle.contains_focused(window, cx),
+                cx,
+            )
             .flex()
             .flex_col()
             .children(control_bar)

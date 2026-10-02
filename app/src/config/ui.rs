@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 pub struct UiConfig {
     pub theme: Theme,
     pub text_size: TextSize,
+    /// The window edge a new window's Resource panel opens on. Moving the panel
+    /// in a window doesn't change it; Make Resource Panel's Side the Default does.
+    pub resource_side: ResourceSide,
 }
 
 impl Default for UiConfig {
@@ -12,6 +15,7 @@ impl Default for UiConfig {
         Self {
             theme: Theme::System,
             text_size: TextSize::DEFAULT,
+            resource_side: ResourceSide::default(),
         }
     }
 }
@@ -95,6 +99,16 @@ pub enum Theme {
     System,
 }
 
+/// A window edge the Resource panel docks to. `ui::resource_panel` draws it;
+/// this is the stored vocabulary (`resource_side = "right"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ResourceSide {
+    #[default]
+    Left,
+    Right,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +118,7 @@ mod tests {
         let config = UiConfig {
             theme: Theme::Dark,
             text_size: TextSize::from(120),
+            resource_side: ResourceSide::Right,
         };
         let text = toml::to_string(&config).unwrap();
         let parsed: UiConfig = toml::from_str(&text).unwrap();
@@ -123,10 +138,19 @@ mod tests {
     }
 
     #[test]
+    fn the_resource_side_is_stored_by_name_and_defaults_to_left() {
+        let parsed: UiConfig = toml::from_str("resource_side = \"right\"\n").unwrap();
+        assert_eq!(parsed.resource_side, ResourceSide::Right);
+        let parsed: UiConfig = toml::from_str("theme = \"dark\"\n").unwrap();
+        assert_eq!(parsed.resource_side, ResourceSide::Left);
+    }
+
+    #[test]
     fn text_size_is_stored_as_a_bare_percentage() {
         let config = UiConfig {
             theme: Theme::System,
             text_size: TextSize::from(130),
+            ..UiConfig::default()
         };
         let text = toml::to_string(&config).unwrap();
         assert!(text.contains("text_size = 130"), "{text}");

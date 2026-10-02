@@ -1,8 +1,9 @@
 //! Where the Resource panel sits and whether it shows: the window edge it's on
 //! (`cluster-picker-and-navigation` 11.2) and its collapsed state (11.3), both per
-//! window and not saved. This module owns the two commands and the header buttons
-//! that dispatch them; `MainWindow` owns the state and acts on them, since it lays
-//! out the panel beside the dock.
+//! window and not saved - the side a new window starts on is
+//! [`super::side_preference`]'s. This module owns the two commands and the header
+//! buttons that dispatch them; `MainWindow` owns the state and acts on them, since
+//! it lays out the panel beside the dock.
 
 use crate::command::{Command, CommandRegistry, MenuSlot};
 use gpui_kit::assets::IconName;
@@ -18,13 +19,7 @@ pub(crate) const TOGGLE_DEFAULT_BINDING: &str = "cmd-b";
 pub(crate) const MOVE_COMMAND_ID: &str = "resource.move_panel";
 pub(crate) const MOVE_DEFAULT_BINDING: &str = "cmd-alt-b";
 
-/// The window edge the Resource panel is docked to.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ResourceSide {
-    #[default]
-    Left,
-    Right,
-}
+pub use crate::config::ui::ResourceSide;
 
 impl ResourceSide {
     /// The other edge.
