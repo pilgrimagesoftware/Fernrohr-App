@@ -136,6 +136,7 @@ pub(super) fn watch_picker(
         |this: &mut MainWindow, _picker, event, window, cx| {
             let crate::ui::picker::PickerEvent::Connected { context_name, .. } = event;
             this.enter_workspace(vec![context_name.clone()], window, cx);
+            this.focus_displayed_panel(window, cx);
         },
     )
     .detach();

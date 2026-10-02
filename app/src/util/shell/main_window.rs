@@ -14,7 +14,7 @@ impl MainWindow {
             let focus_handle = picker.read(cx).initial_focus_handle(cx);
             focus_handle.focus(window, cx);
         } else {
-            self.focus_handle.focus(window, cx);
+            self.focus_displayed_panel(window, cx);
         }
     }
 

@@ -6,9 +6,34 @@
 use super::{MainWindow, OpenPanel, WindowMode};
 use crate::ui::panel::{focus, tabs};
 use gpui_kit::component::dock::DockArea;
-use gpui_kit::{Context, Entity, Window};
+use gpui_kit::{App, Context, Entity, Window};
 
 impl MainWindow {
+    /// Focuses the dock's first displayed panel - a window entering its workspace,
+    /// new or restored, starts with a panel's keys live rather than focus on no
+    /// panel. With no panel open, the Resource panel, else the window.
+    pub(super) fn focus_displayed_panel(&self, window: &mut Window, cx: &mut App) {
+        let target = match &self.mode {
+            WindowMode::Workspace {
+                dock_area,
+                resource_panel,
+                resource_collapsed,
+                ..
+            } => {
+                let area = dock_area.read(cx);
+                focus::dock_stops(area, cx)
+                    .first()
+                    .and_then(|&panel| area.panel(panel))
+                    .map(|view| view.focus_handle(cx))
+                    .or_else(|| {
+                        (!*resource_collapsed).then(|| resource_panel.read(cx).focus_handle())
+                    })
+            }
+            WindowMode::Picker(_) => None,
+        };
+        window.focus(&target.unwrap_or_else(|| self.focus_handle.clone()), cx);
+    }
+
     /// Run on every dock layout change, before closed panels are forgotten. If
     /// the change closed the panel that held focus, focus moves to the tab now
     /// displayed in its group; with the group gone, to the first open panel; with
@@ -64,5 +89,7 @@ impl MainWindow {
     }
 }
 
+#[cfg(test)]
+mod open_tests;
 #[cfg(test)]
 mod tests;
