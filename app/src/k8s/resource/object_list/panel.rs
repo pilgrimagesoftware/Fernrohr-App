@@ -344,20 +344,11 @@ impl BasePanel for ObjectListPanel {
         "ObjectList"
     }
 
-    fn dump(&self, _cx: &App) -> PanelState {
-        let gvk = &self.kind.gvk;
+    fn dump(&self, cx: &App) -> PanelState {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(serde_json::json!({
-                "context_name": self.scope.context_name,
-                "namespaces": self.scope.namespaces,
-                "group": gvk.group,
-                "version": gvk.version,
-                "kind": gvk.kind,
-                "plural": self.kind.plural,
-                "namespaced": self.kind.namespaced,
-            })),
+            info: PanelInfo::Panel(super::restore::dump(self, cx)),
         }
     }
 }

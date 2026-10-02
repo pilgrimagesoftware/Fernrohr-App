@@ -189,9 +189,6 @@ impl ObjectTableDelegate {
         &self.columns
     }
 
-    // UNWIRED: the panel saves this with its layout (`standard-resource-panels`
-    // 1.6); until then only tests read it.
-    #[allow(dead_code)]
     /// The column layout to save: ids and widths, left to right.
     pub(super) fn layout(&self) -> ColumnLayout {
         self.columns

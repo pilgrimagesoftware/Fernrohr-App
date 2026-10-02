@@ -6,6 +6,7 @@
 mod commands;
 mod panel;
 mod render;
+pub(crate) mod restore;
 mod row;
 mod store;
 mod table;
@@ -13,5 +14,6 @@ mod watch;
 
 pub use commands::{OpenListedObject, register_commands};
 pub use panel::ObjectListPanel;
+pub use restore::register_restore;
 pub use store::ObjectsTable;
 pub use watch::watch_kind;

@@ -34,7 +34,6 @@ use gpui_kit::component::dock::{
 };
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::*;
-use kube::core::GroupVersionKind;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;

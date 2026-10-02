@@ -74,15 +74,14 @@ pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
             Some(object) => NavTarget::Object(object),
             None => return keys,
         },
-        "Resource" => NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind {
-            gvk: GroupVersionKind::gvk(
-                data["group"].as_str().unwrap_or_default(),
-                data["version"].as_str().unwrap_or("v1"),
-                data["kind"].as_str().unwrap_or("Resource"),
-            ),
-            plural: data["plural"].as_str().unwrap_or("resources").to_string(),
-            namespaced: data["namespaced"].as_bool().unwrap_or(false),
-        }),
+        // A list panel, and the placeholder that stands in for one: both save the
+        // kind the same way, and both are a `Kind` target.
+        "ObjectList" | "Resource" => {
+            match crate::k8s::resource::object_list::restore::from_state(data) {
+                Some(saved) => NavTarget::Kind(saved.kind),
+                None => return keys,
+            }
+        }
         _ => return keys,
     };
     keys.push(PanelKey {
