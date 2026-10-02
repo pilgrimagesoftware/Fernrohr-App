@@ -83,6 +83,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
+    crate::k8s::resource::object_list::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
