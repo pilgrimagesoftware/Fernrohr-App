@@ -332,7 +332,7 @@ impl ResourcePanel {
     /// can't size, which clipped the selector at the right edge and let it collapse to
     /// nothing when the panel was narrowed. The frame carries the sidebar's background
     /// and right border (the sidebar's own is turned off) so the two read as one panel.
-    fn with_header(&self, content: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn with_header(&self, content: AnyElement, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         div()
             .size_full()
@@ -348,6 +348,7 @@ impl ResourcePanel {
                     .px(space.panel_inset)
                     .pt(space.panel_inset)
                     .child(self.header(cx))
+                    .children(self.unavailable_row(cx))
             })
             .child(div().flex_1().min_h_0().child(content))
             .into_any_element()
@@ -387,6 +388,7 @@ impl ResourcePanel {
                     .child("Resources"),
             )
             .child(div().flex_shrink_0().child(selector))
+            .child(super::notes::refresh_button(self.discovering()))
             .child(super::edge::header_buttons(self.side))
             .into_any_element()
     }
@@ -448,8 +450,9 @@ impl Render for ResourcePanel {
             ResourceState::Loading => {
                 self.render_status("Discovering resource kinds...".to_string(), cx)
             }
-            ResourceState::Failed(reason) => {
-                self.render_status(format!("Could not discover resource kinds: {reason}"), cx)
+            ResourceState::Failed { message, detail } => {
+                let (message, detail) = (message.clone(), detail.clone());
+                self.render_failure(&message, &detail, cx)
             }
         };
 

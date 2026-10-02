@@ -234,6 +234,7 @@ fn the_view_menu_is_grouped() {
             "Decrease Text Size",
             "Reset Text Size",
             "---",
+            "Resources: Refresh",
             "Make Resource Panel's Side the Default",
             "Collapse/Expand Resource Panel",
             "Move Resource Panel to Other Side",
