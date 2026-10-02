@@ -73,6 +73,26 @@ fn click(h: &mut Harness, id: &'static str) {
     h.vcx.run_until_parked();
 }
 
+/// Confirms the open Disconnect dialog from the keyboard: Tab past Cancel to
+/// Disconnect, then Space presses it. A pointer click races the dialog's open
+/// animation on a slow machine; the keyboard route doesn't, and it's the one the
+/// keyboard-first rule asks to be tested.
+fn confirm_by_keyboard(h: &mut Harness) {
+    for _ in 0..2 {
+        h.vcx.simulate_keystrokes("tab");
+        h.vcx.run_until_parked();
+    }
+    let space = gpui_kit::Keystroke::parse("space").expect("valid");
+    h.vcx.simulate_event(gpui_kit::KeyDownEvent {
+        keystroke: space.clone(),
+        is_held: false,
+        prefer_character_input: false,
+    });
+    h.vcx
+        .simulate_event(gpui_kit::KeyUpEvent { keystroke: space });
+    h.vcx.run_until_parked();
+}
+
 /// 1.1 and 1.4: both contexts' capsules are drawn along the window's bottom edge -
 /// the status bar - and nothing draws them at the top, where the context bar was.
 #[gpui_kit::test]
@@ -121,12 +141,12 @@ async fn disconnect_confirms_then_removes_the_capsule_and_the_last_returns_to_th
     h.vcx.run_until_parked();
     assert!(dialog_open(&mut h), "it asks first");
     assert_eq!(capsules(&mut h).len(), 2, "nothing closed yet");
-    click(&mut h, "context-disconnect-confirm");
+    confirm_by_keyboard(&mut h);
     assert_eq!(capsules(&mut h), ["staging"]);
 
     h.vcx.dispatch_action(DisconnectActiveContext);
     h.vcx.run_until_parked();
-    click(&mut h, "context-disconnect-confirm");
+    confirm_by_keyboard(&mut h);
     assert!(
         h.vcx
             .update(|_, cx| h.main.read(cx).test_status_bar())
@@ -144,6 +164,6 @@ async fn a_capsules_menu_offers_disconnect(cx: &mut TestAppContext) {
     h.vcx.simulate_keystrokes("enter");
     h.vcx.run_until_parked();
     assert!(dialog_open(&mut h), "the menu's Disconnect asks first");
-    click(&mut h, "context-disconnect-confirm");
+    confirm_by_keyboard(&mut h);
     assert_eq!(capsules(&mut h), ["kind-dev"], "staging's capsule went");
 }
