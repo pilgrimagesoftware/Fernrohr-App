@@ -13,6 +13,7 @@ fn kind(kind: &str, namespaced: bool) -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", kind),
         plural: format!("{}s", kind.to_lowercase()),
         namespaced,
+        verbs: Default::default(),
     }
 }
 
@@ -184,6 +185,7 @@ fn deployments() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
         plural: "deployments".into(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 

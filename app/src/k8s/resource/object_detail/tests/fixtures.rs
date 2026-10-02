@@ -16,6 +16,7 @@ pub(super) fn kind(group: &str, version: &str, kind: &str, namespaced: bool) -> 
         gvk: GroupVersionKind::gvk(group, version, kind),
         plural: format!("{}s", kind.to_lowercase()),
         namespaced,
+        verbs: Default::default(),
     }
 }
 

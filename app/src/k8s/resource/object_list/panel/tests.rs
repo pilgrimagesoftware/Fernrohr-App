@@ -21,6 +21,7 @@ fn deployments() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
         plural: "deployments".into(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -29,6 +30,7 @@ fn nodes() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", "Node"),
         plural: "nodes".into(),
         namespaced: false,
+        verbs: Default::default(),
     }
 }
 
@@ -426,3 +428,5 @@ async fn double_clicking_a_header_divider_fits_its_column(cx: &mut TestAppContex
     assert!(after[0] < before[0], "Name fitted: {before:?} -> {after:?}");
     assert_eq!(after[1..], before[1..], "and only Name");
 }
+
+mod poll;

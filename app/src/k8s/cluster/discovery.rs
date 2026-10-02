@@ -6,7 +6,7 @@
 
 use kube::Client;
 use kube::core::GroupVersionKind;
-use kube::discovery::{Discovery, Scope};
+use kube::discovery::{Discovery, Scope, verbs};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 /// `events.k8s.io`), and a bare name would collapse them into a single row.
 /// The Resource panel keys its rows on the whole `GroupVersionKind`, and the
 /// panels it opens need it to address the resource.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug)]
 pub struct DiscoveredKind {
     pub gvk: GroupVersionKind,
     /// Plural resource name (`pods`) - what API requests address.
@@ -25,6 +25,48 @@ pub struct DiscoveredKind {
     /// Whether objects of this kind live in a namespace. Decides whether its
     /// panel offers a namespace picker (section 10.2).
     pub namespaced: bool,
+    /// What the API server lets a client do with the kind, as discovery
+    /// reported it. Not part of the kind's identity: a kind restored from a
+    /// saved layout, which records no verbs, is the same kind discovery
+    /// reports, so equality, hashing and ordering leave it out.
+    pub verbs: KindVerbs,
+}
+
+/// The verbs a list panel cares about. A kind that can be listed but not
+/// watched (`componentstatuses`) is polled instead; one that can't be listed
+/// at all says so rather than showing an empty table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KindVerbs {
+    pub list: bool,
+    pub watch: bool,
+}
+
+/// Both, as every kind but a handful supports - what a kind built without
+/// discovery (a restored layout, a test) assumes.
+impl Default for KindVerbs {
+    fn default() -> Self {
+        Self {
+            list: true,
+            watch: true,
+        }
+    }
+}
+
+/// Identity: group, version, kind, plural and scope - not [`KindVerbs`].
+impl PartialEq for DiscoveredKind {
+    fn eq(&self, other: &Self) -> bool {
+        self.gvk == other.gvk && self.plural == other.plural && self.namespaced == other.namespaced
+    }
+}
+
+impl Eq for DiscoveredKind {}
+
+impl std::hash::Hash for DiscoveredKind {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.gvk.hash(state);
+        self.plural.hash(state);
+        self.namespaced.hash(state);
+    }
 }
 
 /// Ordered by group, then kind, then version - the core group first (its group
@@ -103,6 +145,7 @@ impl DiscoveredKind {
             gvk: GroupVersionKind::gvk("", "v1", "Pod"),
             plural: "pods".to_string(),
             namespaced: true,
+            verbs: Default::default(),
         }
     }
 }
@@ -122,6 +165,10 @@ pub async fn discover_kinds(client: Client) -> kube::Result<Vec<DiscoveredKind>>
                 gvk: GroupVersionKind::gvk(&resource.group, &resource.version, &resource.kind),
                 plural: resource.plural,
                 namespaced: matches!(capabilities.scope, Scope::Namespaced),
+                verbs: KindVerbs {
+                    list: capabilities.supports_operation(verbs::LIST),
+                    watch: capabilities.supports_operation(verbs::WATCH),
+                },
             });
         }
     }
@@ -230,6 +277,7 @@ mod tests {
         assert_eq!(pod.gvk.version, "v1");
         assert_eq!(pod.plural, "pods");
         assert!(pod.namespaced, "Pods are namespaced");
+        assert_eq!(pod.verbs, KindVerbs::default(), "Pods list and watch");
     }
 
     /// A cluster serving a CRD alongside its built-in resources: the CRD's kind
@@ -345,7 +393,8 @@ mod tests {
             (
                 "/api/v1",
                 r#"{"kind":"APIResourceList","groupVersion":"v1","resources":[
-                    {"name":"componentstatuses","singularName":"","namespaced":false,"kind":"ComponentStatus","verbs":["get"]}
+                    {"name":"componentstatuses","singularName":"","namespaced":false,"kind":"ComponentStatus","verbs":["get","list"]},
+                    {"name":"bindings","singularName":"","namespaced":true,"kind":"Binding","verbs":["create"]}
                 ]}"#,
             ),
         ]);
@@ -358,6 +407,19 @@ mod tests {
             .find(|kind| kind.gvk.kind == "ComponentStatus")
             .expect("discovered regardless of its verbs");
         assert!(!status.namespaced, "ComponentStatus is cluster-scoped");
+        // `unwatchable-kinds`: its verbs come along, so its list panel polls.
+        assert_eq!(
+            status.verbs,
+            KindVerbs {
+                list: true,
+                watch: false
+            }
+        );
+        let binding = kinds
+            .iter()
+            .find(|kind| kind.gvk.kind == "Binding")
+            .expect("discovered regardless of its verbs");
+        assert!(!binding.verbs.list, "a create-only kind can't be listed");
     }
 
     #[test]
@@ -367,16 +429,19 @@ mod tests {
                 gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
                 plural: "deployments".into(),
                 namespaced: true,
+                verbs: Default::default(),
             },
             DiscoveredKind {
                 gvk: GroupVersionKind::gvk("", "v1", "Service"),
                 plural: "services".into(),
                 namespaced: true,
+                verbs: Default::default(),
             },
             DiscoveredKind {
                 gvk: GroupVersionKind::gvk("", "v1", "Pod"),
                 plural: "pods".into(),
                 namespaced: true,
+                verbs: Default::default(),
             },
         ];
         let mut sorted = kinds.clone();
@@ -392,6 +457,7 @@ mod tests {
             gvk: GroupVersionKind::gvk("", "v1", "Pod"),
             plural: "pods".into(),
             namespaced: true,
+            verbs: Default::default(),
         };
         assert_eq!(pod.plural_label(), "Pods");
 
@@ -399,6 +465,7 @@ mod tests {
             gvk: GroupVersionKind::gvk("example.com", "v1", "Widget"),
             plural: "widgets".into(),
             namespaced: true,
+            verbs: Default::default(),
         };
         assert_eq!(widget.plural_label(), "Widgets · example.com");
         assert_eq!(widget.plural_name(), "Widgets");

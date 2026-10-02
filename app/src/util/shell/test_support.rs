@@ -70,6 +70,7 @@ pub(super) fn crd_kind() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("ferns.example.com", "v1", "Fern"),
         plural: "ferns".to_string(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -79,6 +80,7 @@ pub(super) fn cluster_scoped_kind() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("widgets.example.com", "v1", "Widget"),
         plural: "widgets".to_string(),
         namespaced: false,
+        verbs: Default::default(),
     }
 }
 

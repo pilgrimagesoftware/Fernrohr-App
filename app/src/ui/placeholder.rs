@@ -223,6 +223,7 @@ mod tests {
             gvk: GroupVersionKind::gvk(group, "v1", kind),
             plural: format!("{kind}s"),
             namespaced: true,
+            verbs: Default::default(),
         }
     }
 

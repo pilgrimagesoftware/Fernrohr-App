@@ -53,6 +53,7 @@ pub fn target_from_state(state: &Value) -> Option<ObjectTarget> {
         ),
         plural: state["plural"].as_str()?.to_string(),
         namespaced: state["namespaced"].as_bool()?,
+        verbs: Default::default(),
     };
     Some(ObjectTarget {
         namespace: kind

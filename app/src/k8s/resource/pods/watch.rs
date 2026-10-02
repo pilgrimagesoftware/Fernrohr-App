@@ -24,6 +24,8 @@ pub fn watch_all_namespaces(
         },
         on_unauthorized,
         crate::k8s::cluster::watch_stream::OnRefused::Retry,
+        // A Pod list always carries a `resourceVersion`.
+        crate::k8s::cluster::watch_stream::OnNoResourceVersion::Retry,
         cx,
     )
 }

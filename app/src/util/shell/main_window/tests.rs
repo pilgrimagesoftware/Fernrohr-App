@@ -98,11 +98,13 @@ async fn every_kind_but_pods_opens_a_list_panel(cx: &mut TestAppContext) {
         gvk: kube::core::GroupVersionKind::gvk("apps", "v1", "Deployment"),
         plural: "deployments".into(),
         namespaced: true,
+        verbs: Default::default(),
     };
     let nodes = crate::k8s::cluster::discovery::DiscoveredKind {
         gvk: kube::core::GroupVersionKind::gvk("", "v1", "Node"),
         plural: "nodes".into(),
         namespaced: false,
+        verbs: Default::default(),
     };
 
     window

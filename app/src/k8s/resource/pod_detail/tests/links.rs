@@ -102,6 +102,7 @@ async fn an_owner_becomes_a_link_once_its_kind_is_discovered(cx: &mut TestAppCon
                     gvk: GroupVersionKind::gvk("apps", "v1", "ReplicaSet"),
                     plural: "replicasets".into(),
                     namespaced: true,
+                    verbs: Default::default(),
                 }],
                 cx,
             );

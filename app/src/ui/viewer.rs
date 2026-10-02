@@ -86,6 +86,7 @@ mod tests {
             gvk: GroupVersionKind::gvk(group, "v1", kind),
             plural: format!("{}s", kind.to_lowercase()),
             namespaced,
+            verbs: Default::default(),
         }
     }
 

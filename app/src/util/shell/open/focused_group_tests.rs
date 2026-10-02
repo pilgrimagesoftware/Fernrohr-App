@@ -20,6 +20,7 @@ fn services() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", "Service"),
         plural: "services".into(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 

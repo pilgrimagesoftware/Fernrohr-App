@@ -79,6 +79,7 @@ fn panel(name: &str, cx: &mut VisualTestContext) -> Entity<PlaceholderPanel> {
         gvk: GroupVersionKind::gvk("", "v1", name),
         plural: format!("{name}s"),
         namespaced: true,
+        verbs: Default::default(),
     };
     cx.update(|_window, cx| {
         cx.new(|cx| {

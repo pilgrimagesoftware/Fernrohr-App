@@ -31,6 +31,7 @@ fn add_right_panel(window: WindowHandle<MainWindow>, cx: &mut VisualTestContext)
                 gvk: GroupVersionKind::gvk("", "v1", "Fern"),
                 plural: "Ferns".into(),
                 namespaced: true,
+                verbs: Default::default(),
             };
             let panel: Entity<PlaceholderPanel> = cx.new(|cx| {
                 PlaceholderPanel::with_namespaces(
@@ -135,6 +136,7 @@ async fn a_focused_filter_field_passes_cmd_bracket_to_the_panel_command(cx: &mut
                 gvk: GroupVersionKind::gvk("", "v1", "Pod"),
                 plural: "pods".into(),
                 namespaced: true,
+                verbs: Default::default(),
             };
             main_window
                 .test_resource_panel()
