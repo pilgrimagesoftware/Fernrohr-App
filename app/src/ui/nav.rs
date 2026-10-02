@@ -205,7 +205,9 @@ impl OpenedPanel {
         }
     }
 
-    /// The panel's own focus handle - the one its root tracks.
+    /// The panel's own focus handle - the one its root tracks. Test-only: the
+    /// window finds focus through the dock's panels, which restored panels have too.
+    #[cfg(test)]
     pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         match self {
             OpenedPanel::Pods(panel) => panel.read(cx).focus_handle(cx),
