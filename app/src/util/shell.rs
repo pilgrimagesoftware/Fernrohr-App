@@ -60,13 +60,15 @@ mod window_title;
 
 // The surface the rest of the crate uses, named explicitly: a glob would
 // collide with the `gpui_kit::*` import above (`gpui_kit::init` versus
-// `app::init`).
+// `app::init`, `gpui_kit::open_window` versus `window::open_window`). Named
+// here, these shadow both globs, so `use super::*` in a submodule sees ours.
 #[cfg(test)]
 pub(crate) use app::register_commands;
 pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use layout::{close_window, window_context_count};
 pub use main_window::MainWindow;
 pub use persist::open_saved_or_default;
+pub(crate) use window::open_window;
 
 // Everything else, for the submodules' `use super::*` and the tests: each
 // submodule reaches its siblings through this module.
