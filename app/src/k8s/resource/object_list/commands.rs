@@ -15,7 +15,8 @@ actions!(
         OpenSelected,
         DescribeSelected,
         ShowSelectedYaml,
-        WarpNamespace
+        WarpNamespace,
+        RefreshList
     ]
 );
 
@@ -47,6 +48,8 @@ pub(super) const NAMESPACE_KEY: &str = "w";
 /// every list answers them alike (`standard-resource-panels` 5.1).
 pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const YAML_KEY: &str = "y";
+/// Re-lists a polled kind now (`unwatchable-kinds`).
+pub(super) const REFRESH_KEY: &str = "r";
 
 const FILTER_COMMAND_ID: &str = "object_list.focus_filter";
 const OPEN_COMMAND_ID: &str = "object_list.open";
@@ -54,6 +57,7 @@ const NAMESPACE_COMMAND_ID: &str = "object_list.warp_namespace";
 const DESCRIBE_COMMAND_ID: &str = "object_list.describe";
 const YAML_COMMAND_ID: &str = "object_list.yaml";
 const FIT_COMMAND_ID: &str = "object_list.fit_columns";
+const REFRESH_COMMAND_ID: &str = "object_list.refresh";
 
 /// Registers the panel's shortcuts. None is in the menu bar, like their Pods
 /// twins: the bar holds global commands only (`menu-organization`), and the
@@ -110,6 +114,15 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Fit Columns to Contents",
         crate::ui::table_fit::FIT_COLUMNS_KEY,
         Box::new(crate::ui::table_fit::FitAllColumns),
+        None,
+    );
+    // Re-lists a polled kind now; a watched kind is already current, so it
+    // does nothing there.
+    register(
+        REFRESH_COMMAND_ID,
+        "List: Refresh",
+        REFRESH_KEY,
+        Box::new(RefreshList),
         None,
     );
 }

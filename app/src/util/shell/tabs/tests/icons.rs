@@ -15,6 +15,7 @@ fn configmaps() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", "ConfigMap"),
         plural: "configmaps".to_string(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 

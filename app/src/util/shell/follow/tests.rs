@@ -251,6 +251,7 @@ async fn following_a_discovered_kind_opens_one_object_panel(cx: &mut TestAppCont
         gvk: GroupVersionKind::gvk("apps", "v1", "ReplicaSet"),
         plural: "replicasets".into(),
         namespaced: true,
+        verbs: Default::default(),
     };
     cx.update(|cx| DiscoveryRegistry::insert_test(cx, "kind-dev", vec![replica_sets.clone()]));
     let owner = ObjectRef::namespaced("apps", "ReplicaSet", "staging", "web-7d9f");
@@ -325,6 +326,7 @@ async fn activating_a_listed_object_again_focuses_its_panel(cx: &mut TestAppCont
             gvk: GroupVersionKind::gvk("", "v1", "Service"),
             plural: "services".into(),
             namespaced: true,
+            verbs: Default::default(),
         },
         namespace: Some("staging".into()),
         name: "web".into(),
@@ -377,6 +379,7 @@ async fn activating_a_namespace_row_opens_its_detail_not_the_pods_list(cx: &mut 
             gvk: GroupVersionKind::gvk("", "v1", "Namespace"),
             plural: "namespaces".into(),
             namespaced: false,
+            verbs: Default::default(),
         },
         namespace: None,
         name: "staging".into(),

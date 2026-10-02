@@ -88,6 +88,7 @@ fn restored_list_panels_are_keyed_by_their_kind() {
         gvk: GroupVersionKind::gvk("", "v1", "Service"),
         plural: "services".into(),
         namespaced: true,
+        verbs: Default::default(),
     };
     for panel_name in ["ObjectList", "Resource"] {
         let state = PanelState {

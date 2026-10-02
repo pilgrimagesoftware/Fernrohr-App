@@ -39,6 +39,11 @@ pub(crate) const STATUS_ESCALATE_AFTER: Duration = Duration::from_secs(30);
 /// with a problem to show.
 pub(crate) const STATUS_TICK_INTERVAL: Duration = Duration::from_secs(1);
 
+/// `unwatchable-kinds`: how often a list panel re-lists a kind it can't watch -
+/// one whose discovery has no `watch` verb, or whose list carries no
+/// `resourceVersion` to start a watch from (`componentstatuses`).
+pub(crate) const LIST_POLL_INTERVAL: Duration = Duration::from_secs(30);
+
 /// How long a window must stop moving or resizing before its layout is saved
 /// (Fernrohr#51). A drag fires a bounds change per frame; this coalesces them
 /// into one write, while keeping a kill or crash from losing the layout.

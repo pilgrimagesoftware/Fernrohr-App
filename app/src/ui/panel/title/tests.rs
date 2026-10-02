@@ -85,6 +85,7 @@ fn kind(kind: &str, namespaced: bool) -> NavTarget {
         gvk: GroupVersionKind::gvk("", "v1", kind),
         plural: format!("{}s", kind.to_lowercase()),
         namespaced,
+        verbs: Default::default(),
     })
 }
 
@@ -115,6 +116,7 @@ fn grouped(group: &str, kind: &str, plural: &str) -> NavTarget {
         gvk: GroupVersionKind::gvk(group, "v1", kind),
         plural: plural.to_string(),
         namespaced: true,
+        verbs: Default::default(),
     })
 }
 

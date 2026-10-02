@@ -8,6 +8,8 @@ use crate::util::resource_index::ResourceIndex;
 use kube::api::DynamicObject;
 use kube_runtime::watcher;
 use std::collections::HashSet;
+use std::sync::Arc;
+use tokio::sync::Notify;
 
 /// One kind's live rows for one watch, kept up to date by [`ObjectsTable::apply`] as
 /// `watcher::Event`s arrive off the drain. The same relist handling as the Pods
@@ -23,6 +25,21 @@ pub struct ObjectsTable {
     /// The kind's own columns, whose cells each row is built with - `None` for
     /// a kind with base columns only.
     columns: Option<&'static KindColumns>,
+    /// How the rows are kept current: a watch, polling, or not at all.
+    mode: ListMode,
+}
+
+/// How a kind's rows are kept current (`unwatchable-kinds`).
+#[derive(Clone, Debug, Default)]
+pub enum ListMode {
+    /// A `kube_runtime` watch, the normal case.
+    #[default]
+    Watched,
+    /// Re-listed every `consts::LIST_POLL_INTERVAL`, for a kind that can be
+    /// listed but not watched. `refresh` wakes the poller for a re-list now.
+    Polled { refresh: Arc<Notify> },
+    /// Discovery reports no `list` verb, so there are no rows to show.
+    Unlistable,
 }
 
 impl ObjectsTable {
@@ -48,6 +65,33 @@ impl ObjectsTable {
     /// Records the server's refusal to list this kind; the watch has stopped.
     pub fn set_refused(&mut self, message: String) {
         self.refused = Some(message);
+    }
+
+    /// How the rows are kept current.
+    pub fn mode(&self) -> &ListMode {
+        &self.mode
+    }
+
+    pub fn set_mode(&mut self, mode: ListMode) {
+        self.mode = mode;
+    }
+
+    /// Asks a polled table's poller to re-list now. Nothing for a watched or
+    /// unlistable one - a watch is already current.
+    pub fn request_refresh(&self) {
+        if let ListMode::Polled { refresh } = &self.mode {
+            refresh.notify_one();
+        }
+    }
+
+    /// Replaces every row with `objects` - one poll's list, applied as a
+    /// watch's relist is, so an object gone from the list goes from the table.
+    pub fn replace_all(&mut self, objects: Vec<DynamicObject>) {
+        self.apply(watcher::Event::Init);
+        for object in objects {
+            self.apply(watcher::Event::InitApply(object));
+        }
+        self.apply(watcher::Event::InitDone);
     }
 
     /// Applies one watch event. `Apply`/`InitApply` upsert by uid and `Delete` removes

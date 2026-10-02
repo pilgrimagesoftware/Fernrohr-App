@@ -4,7 +4,9 @@
 //! fitting the columns (`ui::table_fit`).
 
 use super::ObjectListPanel;
-use crate::k8s::resource::object_list::commands::{DescribeSelected, ShowSelectedYaml};
+use crate::k8s::resource::object_list::commands::{
+    DescribeSelected, RefreshList, ShowSelectedYaml,
+};
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::list_keys::{self, Step};
 use gpui_kit::base::actions::{SelectDown, SelectUp};
@@ -44,6 +46,16 @@ impl ObjectListPanel {
             let size = crate::ui::table_fit::table_size(cx);
             crate::ui::table_fit::fit_all_columns(&table, size, window, cx);
         }
+    }
+
+    /// Re-lists a polled kind now (`unwatchable-kinds`).
+    pub(in crate::k8s::resource::object_list) fn on_action_refresh(
+        &mut self,
+        _: &RefreshList,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.objects.read(cx).request_refresh();
     }
 
     /// The table's selected row. Test-only.

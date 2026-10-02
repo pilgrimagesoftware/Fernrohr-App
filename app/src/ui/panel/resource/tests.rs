@@ -29,6 +29,7 @@ fn kind(group: &str, kind: &str) -> DiscoveredKind {
         gvk: GroupVersionKind::gvk(group, "v1", kind),
         plural: format!("{}s", kind.to_lowercase()),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 

@@ -4,9 +4,10 @@
 
 use super::commands::{
     DESCRIBE_KEY, DescribeSelected, FILTER_KEY, FocusFilter, NAMESPACE_KEY, OPEN_KEY, OpenSelected,
-    PANEL_KEY_CONTEXT, ShowSelectedYaml, WarpNamespace, YAML_KEY,
+    PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList, ShowSelectedYaml, WarpNamespace, YAML_KEY,
 };
 use super::panel::ObjectListPanel;
+use super::store::ListMode;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::ui::panel_title::{self, ScopeEvent};
@@ -50,6 +51,17 @@ impl ObjectListPanel {
             )
             .into_any_element();
         }
+        // `unwatchable-kinds`: a kind discovery offers no `list` for has no rows
+        // to show, so say so rather than drawing an empty table.
+        let polled = match self.objects.read(cx).mode() {
+            ListMode::Unlistable => {
+                return status("This kind can't be listed".into())
+                    .debug_selector(|| "object-list-unlistable".into())
+                    .into_any_element();
+            }
+            ListMode::Polled { .. } => true,
+            ListMode::Watched => false,
+        };
         let rows = self.visible_rows(cx);
         let filter = self.filter_input(window, cx);
         let table = self.sync_table(rows, window, cx);
@@ -67,6 +79,9 @@ impl ObjectListPanel {
                 window,
             ))
             .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window));
+        if polled {
+            hints = hints.child(Self::hint(&RefreshList, REFRESH_KEY, "Refresh", window));
+        }
         if self.kind.namespaced {
             hints = hints.child(Self::hint(
                 &WarpNamespace,
@@ -81,6 +96,7 @@ impl ObjectListPanel {
             .flex_col()
             .gap(space.control_gap)
             .p(space.panel_inset)
+            .children(Self::notes(&self.kind, polled, cx))
             .child(
                 div()
                     .on_action(cx.listener(Self::on_action_clear_filter))
@@ -96,6 +112,60 @@ impl ObjectListPanel {
                     .child(hints),
             )
             .into_any_element()
+    }
+}
+
+impl ObjectListPanel {
+    /// The notes above a list's table: that a polled kind's rows are a periodic
+    /// list, with a control to re-list now, and ComponentStatus's deprecation.
+    fn notes(
+        kind: &crate::k8s::cluster::discovery::DiscoveredKind,
+        polled: bool,
+        cx: &App,
+    ) -> Option<AnyElement> {
+        use gpui_kit::component::Sizable as _;
+        use gpui_kit::component::button::{Button, ButtonVariants as _};
+        let deprecated = kind.gvk.group.is_empty() && kind.gvk.kind == "ComponentStatus";
+        if !polled && !deprecated {
+            return None;
+        }
+        let space = crate::ui::space::spacing(cx);
+        let seconds = crate::consts::LIST_POLL_INTERVAL.as_secs();
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .children(polled.then(|| {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(space.control_gap)
+                        .debug_selector(|| "object-list-polled".into())
+                        .child(format!("Polled every {seconds}s"))
+                        .child(
+                            Button::new("object-list-refresh")
+                                .label("Refresh")
+                                .debug_selector(|| "object-list-refresh".into())
+                                .xsmall()
+                                .ghost()
+                                .on_click(|_, window, cx| {
+                                    window.dispatch_action(Box::new(RefreshList), cx)
+                                }),
+                        )
+                }))
+                .children(deprecated.then(|| {
+                    div()
+                        .debug_selector(|| "object-list-deprecated".into())
+                        .child(
+                            "ComponentStatus is deprecated (Kubernetes v1.19+) and may be \
+                             empty on managed control planes.",
+                        )
+                }))
+                .into_any_element(),
+        )
     }
 }
 
@@ -139,6 +209,7 @@ impl Render for ObjectListPanel {
             .on_action(cx.listener(Self::on_action_show_selected_yaml))
             .on_action(cx.listener(Self::on_action_warp_namespace))
             .on_action(cx.listener(Self::on_action_fit_columns))
+            .on_action(cx.listener(Self::on_action_refresh))
             .child(
                 div()
                     .size_full()
