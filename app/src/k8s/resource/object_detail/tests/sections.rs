@@ -202,3 +202,188 @@ fn other_kinds_and_malformed_objects_get_no_sections() {
     }));
     assert!(sections_for(&nodes(), &malformed).is_empty());
 }
+
+/// `standard-resource-panels` 3.5: every kind the object-detail spec lists
+/// gets its own sections, from a minimal object of that kind - and those
+/// sections say something. An object that fails to deserialize as its kind
+/// would get no sections at all, so this also catches a projection the API's
+/// required fields would trip.
+#[test]
+fn every_listed_kind_gets_sections_with_fields() {
+    let template = json!({ "spec": { "containers": [] } });
+    let selector = json!({ "matchLabels": { "app": "web" } });
+    let cases = [
+        (
+            "",
+            "Node",
+            false,
+            json!({ "status": { "capacity": { "cpu": "1" } } }),
+        ),
+        ("", "ConfigMap", true, json!({ "data": { "key": "value" } })),
+        (
+            "",
+            "Secret",
+            true,
+            json!({ "data": { "token": "c2VjcmV0" } }),
+        ),
+        (
+            "",
+            "PersistentVolumeClaim",
+            true,
+            json!({ "status": { "phase": "Pending" } }),
+        ),
+        (
+            "",
+            "ServiceAccount",
+            true,
+            json!({ "automountServiceAccountToken": false }),
+        ),
+        (
+            "apps",
+            "ReplicaSet",
+            true,
+            json!({ "spec": { "selector": selector } }),
+        ),
+        (
+            "apps",
+            "Deployment",
+            true,
+            json!({ "spec": { "selector": selector, "template": template } }),
+        ),
+        (
+            "apps",
+            "StatefulSet",
+            true,
+            json!({ "spec": { "selector": selector, "template": template, "serviceName": "web" } }),
+        ),
+        (
+            "apps",
+            "DaemonSet",
+            true,
+            json!({ "spec": { "selector": selector, "template": template } }),
+        ),
+        (
+            "batch",
+            "Job",
+            true,
+            json!({ "spec": { "template": template } }),
+        ),
+        (
+            "batch",
+            "CronJob",
+            true,
+            json!({ "spec": { "schedule": "@daily", "jobTemplate": { "spec": { "template": template } } } }),
+        ),
+        (
+            "",
+            "Service",
+            true,
+            json!({ "spec": { "type": "ClusterIP" } }),
+        ),
+        (
+            "networking.k8s.io",
+            "Ingress",
+            true,
+            json!({ "spec": { "ingressClassName": "nginx" } }),
+        ),
+        (
+            "",
+            "Endpoints",
+            true,
+            json!({ "subsets": [{ "addresses": [{ "ip": "10.0.0.1" }] }] }),
+        ),
+        (
+            "discovery.k8s.io",
+            "EndpointSlice",
+            true,
+            json!({ "addressType": "IPv4", "endpoints": [] }),
+        ),
+        (
+            "networking.k8s.io",
+            "NetworkPolicy",
+            true,
+            json!({ "spec": { "podSelector": {} } }),
+        ),
+        (
+            "",
+            "Namespace",
+            false,
+            json!({ "status": { "phase": "Active" } }),
+        ),
+        (
+            "",
+            "PersistentVolume",
+            false,
+            json!({ "spec": { "capacity": { "storage": "1Gi" } } }),
+        ),
+        (
+            "storage.k8s.io",
+            "StorageClass",
+            false,
+            json!({ "provisioner": "example.com/csi" }),
+        ),
+        (
+            "rbac.authorization.k8s.io",
+            "Role",
+            true,
+            json!({ "rules": [] }),
+        ),
+        (
+            "rbac.authorization.k8s.io",
+            "ClusterRole",
+            false,
+            json!({ "rules": [] }),
+        ),
+        (
+            "rbac.authorization.k8s.io",
+            "RoleBinding",
+            true,
+            json!({ "roleRef": { "apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "r" } }),
+        ),
+        (
+            "rbac.authorization.k8s.io",
+            "ClusterRoleBinding",
+            false,
+            json!({ "roleRef": { "apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "r" } }),
+        ),
+    ];
+
+    for (group, kind_name, namespaced, body) in cases {
+        let api_version = if group.is_empty() {
+            "v1".to_string()
+        } else {
+            format!("{group}/v1")
+        };
+        let mut json = json!({
+            "apiVersion": api_version,
+            "kind": kind_name,
+            "metadata": { "name": "example" },
+        });
+        if namespaced {
+            json["metadata"]["namespace"] = json!("staging");
+        }
+        for (key, value) in body.as_object().expect("an object body") {
+            json[key] = value.clone();
+        }
+
+        let sections = sections_for(&kind(group, "v1", kind_name, namespaced), &object(json));
+
+        assert!(!sections.is_empty(), "{kind_name} gets sections");
+        assert!(
+            sections.iter().any(|section| !section.fields.is_empty()),
+            "{kind_name}'s sections show at least one field: {sections:?}"
+        );
+    }
+}
+
+/// A kind outside the list gets no sections - Overview only.
+#[test]
+fn an_unlisted_kind_gets_no_sections() {
+    let lease = object(json!({
+        "apiVersion": "coordination.k8s.io/v1",
+        "kind": "Lease",
+        "metadata": { "name": "example", "namespace": "kube-system" },
+    }));
+
+    assert!(sections_for(&kind("coordination.k8s.io", "v1", "Lease", true), &lease).is_empty());
+}
