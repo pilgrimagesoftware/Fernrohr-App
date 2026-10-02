@@ -14,7 +14,7 @@ impl MainWindow {
             let focus_handle = picker.read(cx).initial_focus_handle(cx);
             focus_handle.focus(window, cx);
         } else {
-            self.focus_handle.focus(window, cx);
+            self.focus_displayed_panel(window, cx);
         }
     }
 
@@ -83,6 +83,7 @@ impl MainWindow {
                     id,
                     key,
                     panel: None,
+                    group: crate::ui::panel::tabs::group_of(dock_area.read(cx), id),
                 })
                 .collect()
         } else {
@@ -94,6 +95,7 @@ impl MainWindow {
                 // request for pods reuse the same `OpenedPanel` bookkeeping
                 // every other panel gets.
                 panel: Some(first.clone()),
+                group: crate::ui::panel::tabs::group_of(dock_area.read(cx), first_id),
             }]
         };
         watch_workspace(&dock_area, window, cx);

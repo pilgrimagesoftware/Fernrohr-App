@@ -198,11 +198,12 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
 ///
 /// It also marks the panel's focus, beside the ring around its content
-/// ([`super::focus_ring`]): underlined in the accent colour (the user's
-/// system accent on macOS) while `focused`. Pass `focus_handle.contains_focused(..)`, not `is_focused`:
-/// a panel whose content takes focus itself (a table row, a text input) moves
-/// the window's focus to that child, and an indicator lit only while the
-/// panel's own handle held focus would go dark the moment the panel was used.
+/// ([`super::focus_ring`]): underlined in the accent colour (the user's system
+/// accent on macOS) while focus is anywhere inside the panel `focus_handle`
+/// belongs to - `contains_focused`, not `is_focused`: a panel whose content
+/// takes focus itself (a table row, a text input) moves the window's focus to
+/// that child, and an indicator lit only while the panel's own handle held focus
+/// would go dark the moment the panel was used. A press on it focuses that panel.
 ///
 /// The tab is the one place the dock lets a panel mark itself: the tab strip
 /// draws this element, but reads no per-panel style (`Panel::title_style` only
@@ -215,11 +216,12 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
 pub fn title_element(
     scope: &PanelScope,
     text: String,
-    focused: bool,
+    focus_handle: &FocusHandle,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     use crate::ui::icon::{self, IconSize};
+    let focused = focus_handle.contains_focused(window, cx);
     let tooltip = format!("Context: {}", scope.context_name);
     let kind_icon = icon::kind_icon(icon::for_target(&scope.target), IconSize::Small, window, cx);
     div()
@@ -241,6 +243,17 @@ pub fn title_element(
         .child(kind_icon)
         .child(text)
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        // gpui-base 0.7.0's `TabGroup::select_tab` (dock/tab_group.rs) returns
+        // early when the clicked tab is already the active one, before its
+        // `focus_active_panel`, so a click on the displayed tab focused nothing
+        // - a new or restored tab took focus only after switching away and back.
+        // Focusing here covers the label and icon. Once gpui-kit focuses on that
+        // path itself, this can come out. Not stopping propagation: the tab still
+        // selects, and a drag still starts, as before.
+        .on_mouse_down(MouseButton::Left, {
+            let focus_handle = focus_handle.clone();
+            move |_, window, cx| window.focus(&focus_handle, cx)
+        })
         .into_any_element()
 }
 

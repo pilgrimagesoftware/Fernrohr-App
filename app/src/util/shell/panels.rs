@@ -44,6 +44,10 @@ pub(super) struct OpenPanel {
     /// fields has to switch that panel to the YAML, and switching needs the
     /// entity, not the id.
     pub(super) panel: Option<nav::OpenedPanel>,
+    /// The tab group the panel was last seen in, refreshed on every layout
+    /// change. Once the panel is closed the dock no longer says where it was,
+    /// so this is how focus finds the tab that took its place.
+    pub(super) group: Option<gpui_kit::component::dock::NodeId>,
 }
 
 pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {

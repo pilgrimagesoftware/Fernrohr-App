@@ -302,6 +302,14 @@ impl ObjectListPanel {
         filter.read(cx).focus_handle(cx).focus(window, cx);
     }
 
+    /// Whether the filter box holds focus. Test-only.
+    #[cfg(test)]
+    pub(crate) fn filter_focused(&self, window: &Window, cx: &App) -> bool {
+        self.filter
+            .as_ref()
+            .is_some_and(|filter| filter.read(cx).focus_handle(cx).is_focused(window))
+    }
+
     /// Narrows a namespaced kind's list to the selected object's namespace - the
     /// Pods panel's `w`.
     pub(super) fn on_action_warp_namespace(
@@ -359,7 +367,7 @@ impl Panel for ObjectListPanel {
         panel_title::title_element(
             &self.scope,
             panel_title::title(&self.scope),
-            self.focus_handle.contains_focused(window, cx),
+            &self.focus_handle,
             window,
             cx,
         )

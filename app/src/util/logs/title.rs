@@ -46,7 +46,7 @@ impl Panel for LogsPanel {
         panel_title::title_element(
             &self.scope,
             self.streaming_title(),
-            self.focus_handle.contains_focused(window, cx),
+            &self.focus_handle,
             window,
             cx,
         )

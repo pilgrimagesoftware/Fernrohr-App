@@ -171,6 +171,17 @@ fn regions(area: &DockArea) -> impl Iterator<Item = &PaneTree> {
     .filter_map(|placement| area.layout(placement))
 }
 
+/// The panel the tab group `node` displays, if `node` is still a tab group.
+pub fn active_panel_of(area: &DockArea, node: NodeId) -> Option<PanelId> {
+    let group = tabs_of(area, node)?;
+    group.panels.get(group.active_ix).copied()
+}
+
+/// The tab group `panel` is in, wherever in the dock.
+pub fn group_of(area: &DockArea, panel: PanelId) -> Option<NodeId> {
+    regions(area).find_map(|tree| tree.find_panel_node(panel))
+}
+
 /// The tabs of the group `node`, wherever in the dock it is.
 fn tabs_of(area: &DockArea, node: NodeId) -> Option<TabGroup> {
     regions(area).find_map(|tree| {
