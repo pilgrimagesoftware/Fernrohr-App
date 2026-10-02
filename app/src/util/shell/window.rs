@@ -92,6 +92,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
 
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
+                save_window_dock_layout(window, cx);
                 record_closing_layout(window_id, window, cx);
                 true
             });
@@ -162,13 +163,7 @@ pub(super) fn watch_workspace(
             // still its bare context name, so this is the same save it always was for
             // that case, and a new one for a multi-context window (design.md decision 3
             // predates task 2.2's fuller persistence; see that task's own note on why).
-            if let WindowMode::Workspace { contexts, .. } = &this.mode
-                && cx.has_global::<SavedDockLayouts>()
-            {
-                let key = context_lifecycle::dock_layout_key(contexts);
-                let state = dock_area.read(cx).dump(cx);
-                cx.global_mut::<SavedDockLayouts>().0.insert(key, state);
-            }
+            this.save_dock_layout(cx);
             this.keep_focus_on_a_panel(dock_area, window, cx);
             this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
@@ -178,6 +173,36 @@ pub(super) fn watch_workspace(
         },
     )
     .detach();
+}
+
+impl MainWindow {
+    /// Files a workspace window's dock arrangement in [`SavedDockLayouts`],
+    /// under every context it uses (`context_lifecycle::dock_layout_key`).
+    /// A no-op for a picker window, which has no dock.
+    ///
+    /// The dump reads each split's measured sizes, so it is only as good as
+    /// the last frame. `LayoutChanged` fires from the edit itself, before any
+    /// frame has laid the edit out: a split it just created dumps its slots as
+    /// the 100px placeholder (`PANEL_MIN_SIZE`), and the first layout pass's
+    /// rescale to fill the container emits nothing. So this also runs
+    /// whenever the workspace is persisted ([`super::persist::save`], and a
+    /// window closing), when the dock has been drawn as the user sees it.
+    pub(super) fn save_dock_layout(&self, cx: &mut App) {
+        let WindowMode::Workspace {
+            dock_area,
+            contexts,
+            ..
+        } = &self.mode
+        else {
+            return;
+        };
+        if !cx.has_global::<SavedDockLayouts>() {
+            return;
+        }
+        let key = context_lifecycle::dock_layout_key(contexts);
+        let state = dock_area.read(cx).dump(cx);
+        cx.global_mut::<SavedDockLayouts>().0.insert(key, state);
+    }
 }
 
 #[cfg(test)]

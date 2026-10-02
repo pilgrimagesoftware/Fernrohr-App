@@ -89,6 +89,19 @@ pub(super) fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorks
     }
 }
 
+/// Refreshes the saved dock arrangement of the main window `window` holds, from
+/// its dock as last drawn - see [`MainWindow::save_dock_layout`] for why the
+/// `LayoutChanged` save alone is not enough. A no-op for any other window.
+pub(super) fn save_window_dock_layout(window: &mut Window, cx: &mut App) {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return;
+    };
+    main_window.update(cx, |main_window, cx| main_window.save_dock_layout(cx));
+}
+
 /// Remembers a closing main window's layout so `save` still writes it after the window
 /// is gone (see [`ClosedWindowLayouts`]).
 ///

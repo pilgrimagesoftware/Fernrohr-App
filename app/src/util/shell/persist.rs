@@ -23,6 +23,10 @@ pub fn open_saved_or_default(cx: &mut App, workspace_path: &Path) {
 /// every window, since the app-quit callback fires after the last one
 /// closes. Panel descriptors are left empty until a later change adds panel
 /// kinds worth restoring (see [`open_window`]'s placeholder split).
+///
+/// Each open main window's dock arrangement is refreshed into
+/// [`SavedDockLayouts`] on the way, from the dock as last drawn, so the quit
+/// that writes those layouts out writes the sizes on screen.
 pub fn save(cx: &mut App, workspace_path: &Path) {
     let mut layouts = if cx.has_global::<ClosedWindowLayouts>() {
         cx.global::<ClosedWindowLayouts>().0.clone()
@@ -35,7 +39,10 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
         if !is_main_window(handle, cx) {
             continue;
         }
-        if let Ok(layout) = handle.update(cx, |_, window, cx| layout_from_window(window, cx)) {
+        if let Ok(layout) = handle.update(cx, |_, window, cx| {
+            save_window_dock_layout(window, cx);
+            layout_from_window(window, cx)
+        }) {
             layouts.insert(handle.window_id(), layout);
         }
     }
