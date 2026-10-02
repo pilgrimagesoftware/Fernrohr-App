@@ -5,6 +5,7 @@
 use super::model::{ContainerDetail, ContainerSummary, EnvValue};
 use super::panel::PodDetailPanel;
 use crate::ui::detail::{self, BadgeTone};
+use crate::ui::icon::{InlineKindIcon, for_container};
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
@@ -26,6 +27,11 @@ pub(super) fn container_section_key(name: &str) -> String {
 /// tells the cards apart.
 pub(super) fn container_toggle_id(name: &str) -> ElementId {
     ElementId::Name(format!("container-toggle-{name}").into())
+}
+
+/// Container `name`'s card icon, to `debug_bounds`.
+pub(super) fn container_icon_selector(name: &str) -> String {
+    format!("kind-icon container-{name} Container")
 }
 
 /// The id of container `name`'s expanded detail, drawn only while open.
@@ -125,6 +131,10 @@ impl PodDetailPanel {
                     .items_center()
                     .gap_2()
                     .child(div().size(px(8.)).rounded_full().bg(ready_color))
+                    .child(
+                        InlineKindIcon::new(for_container())
+                            .selector(container_icon_selector(&container.name)),
+                    )
                     .child(
                         div()
                             .font_weight(FontWeight::MEDIUM)

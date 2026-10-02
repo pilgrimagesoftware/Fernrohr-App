@@ -6,13 +6,14 @@ use super::fixtures::rich_pod;
 use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::resource::pod_detail::container_view::{
-    container_detail_id, container_section_key, container_toggle_id,
+    container_detail_id, container_icon_selector, container_section_key, container_toggle_id,
 };
 use crate::k8s::resource::pod_detail::fetch::PodDetailState;
 use crate::k8s::resource::pod_detail::model::{DetailSection, DetailView};
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
 use crate::k8s::resource::pod_detail::register_commands;
 use crate::keymap::{self, KeymapConfig};
+use crate::ui::icon::test_support::icon_bounds;
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
@@ -212,4 +213,26 @@ async fn card_content_is_inset_from_the_panel_and_card_edges(cx: &mut TestAppCon
         "the chevron ends {:?} from the right edge",
         width - toggle.right()
     );
+}
+
+/// `resource-kind-icons` 3.3: each container card shows the container icon
+/// before its name, right of the chevron's gutter.
+#[gpui_kit::test]
+async fn each_container_card_shows_the_container_icon(cx: &mut TestAppContext) {
+    let h = harness(cx);
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    focus_panel(&mut vcx, &h);
+    vcx.simulate_keystrokes("2");
+    vcx.run_until_parked();
+
+    for name in ["app", "sidecar"] {
+        let icon = icon_bounds(&mut vcx, container_icon_selector(name))
+            .unwrap_or_else(|| panic!("{name}'s card has the container icon"));
+        let chevron = bounds(&mut vcx, &h, container_toggle_id(name));
+        assert!(icon.size.height > Pixels::ZERO, "{name}: {icon:?}");
+        assert!(
+            icon.left() >= chevron.right(),
+            "{name}: icon {icon:?}, chevron {chevron:?}"
+        );
+    }
 }
