@@ -100,10 +100,14 @@ impl MainWindow {
         let id = match open_panels.iter().find(|open| open.key == key) {
             Some(open) => {
                 let id = open.id;
-                if let (Some(OpenedPanel::PodDetail(panel)), Some(view)) =
-                    (open.panel.as_ref(), initial_view)
-                {
-                    panel.update(cx, |panel, cx| panel.set_view(view, cx));
+                match (open.panel.as_ref(), initial_view) {
+                    (Some(OpenedPanel::PodDetail(panel)), Some(view)) => {
+                        panel.update(cx, |panel, cx| panel.set_view(view, cx));
+                    }
+                    (Some(OpenedPanel::ObjectDetail(panel)), Some(view)) => {
+                        panel.update(cx, |panel, cx| panel.set_view(view, cx));
+                    }
+                    _ => {}
                 }
                 dock_area.update(cx, |area, cx| area.select_panel(id, window, cx));
                 id

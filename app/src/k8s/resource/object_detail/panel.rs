@@ -179,7 +179,8 @@ impl ObjectDetailPanel {
         )
     }
 
-    pub(super) fn set_view(&mut self, view: DetailView, cx: &mut Context<Self>) {
+    /// Shows `view`: the window sets it on open, for a request that named one.
+    pub(crate) fn set_view(&mut self, view: DetailView, cx: &mut Context<Self>) {
         self.viewing = view;
         cx.notify();
     }

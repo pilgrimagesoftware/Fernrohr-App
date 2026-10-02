@@ -56,7 +56,7 @@ impl MainWindow {
     ) {
         self.open_target_in(
             NavTarget::Object(action.target.clone()),
-            None,
+            action.view,
             Some(action.context_name.clone()),
             Vec::new(),
             window,
@@ -67,3 +67,6 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod list_keys_tests;

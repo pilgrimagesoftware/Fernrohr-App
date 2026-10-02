@@ -1,6 +1,28 @@
 //! Drawing the Pods panel: its table, hint bar and states.
 
 use super::*;
+use crate::ui::list_keys::{self, Step};
+use gpui_kit::base::actions::{SelectDown, SelectUp};
+
+/// Up/Down with no pod selected, or with focus on the panel rather than its table
+/// (`standard-resource-panels` 5.2, [`list_keys`]).
+impl PodsPanel {
+    fn capture_select_down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
+        self.step(Step::Down, window, cx);
+    }
+
+    fn capture_select_up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
+        self.step(Step::Up, window, cx);
+    }
+
+    fn step(&mut self, step: Step, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(table) = self.pod_table.clone()
+            && list_keys::step(&table, step, window, cx)
+        {
+            cx.stop_propagation();
+        }
+    }
+}
 
 impl Render for PodsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -163,6 +185,8 @@ impl Render for PodsPanel {
             .size_full()
             .key_context(PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
+            .capture_action(cx.listener(Self::capture_select_down))
+            .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(Self::on_action_warp_namespace))
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_show_pod_logs))

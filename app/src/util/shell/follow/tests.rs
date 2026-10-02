@@ -301,6 +301,7 @@ fn open_listed(
                 Box::new(crate::k8s::resource::object_list::OpenListedObject {
                     context_name: context.into(),
                     target,
+                    view: None,
                 }),
                 cx,
             );
