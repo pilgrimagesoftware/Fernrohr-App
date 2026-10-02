@@ -7,7 +7,6 @@ use crate::command::{Command, CommandRegistry};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::panel_title::PanelScope;
-use gpui_kit::assets::IconName;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
 use gpui_kit::*;
 
@@ -121,13 +120,6 @@ impl NavTarget {
             NavTarget::Pod(pod) => format!("{}: {}", self.label(), pod.name),
             NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
             _ => self.list_label(),
-        }
-    }
-
-    pub fn icon(&self) -> IconName {
-        match self {
-            NavTarget::Kind(_) | NavTarget::Pod(_) | NavTarget::Object(_) => IconName::Box,
-            NavTarget::Logs => IconName::ScrollText,
         }
     }
 }

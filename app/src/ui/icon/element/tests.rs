@@ -79,21 +79,14 @@ impl Render for Sample {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // `items_start`: a flex row stretches its children to its own height,
         // which would measure the row rather than the icon.
-        div()
-            .flex()
-            .items_start()
-            .child(div().debug_selector(|| "icon-sm".into()).child(kind_icon(
+        div().flex().items_start().child(
+            div().debug_selector(|| "icon-sm".into()).child(kind_icon(
                 KindIcon::Pod,
                 IconSize::Small,
                 window,
                 cx,
-            )))
-            .child(div().debug_selector(|| "icon-xs".into()).child(kind_icon(
-                KindIcon::Pod,
-                IconSize::XSmall,
-                window,
-                cx,
-            )))
+            )),
+        )
     }
 }
 
@@ -116,18 +109,11 @@ fn the_icon_follows_the_text_size(cx: &mut TestAppContext) {
         gpui_kit::init(cx);
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
     });
-    let (text, small) = cx.update(|cx| (IconSize::Small.logical(cx), IconSize::XSmall.logical(cx)));
+    let text = cx.update(|cx| IconSize::Small.logical(cx));
     let default_text = icon_height(cx, "icon-sm");
-    let default_small = icon_height(cx, "icon-xs");
-    for (height, logical) in [(default_text, text), (default_small, small)] {
-        assert!(
-            height <= logical && height >= logical - px(1.),
-            "{height:?} is within a pixel under its text's {logical:?}"
-        );
-    }
     assert!(
-        default_small < default_text,
-        "a smaller role is a smaller icon"
+        default_text <= text && default_text >= text - px(1.),
+        "{default_text:?} is within a pixel under its text's {text:?}"
     );
 
     cx.update(|cx| crate::ui::text_size::set(TextSize::MAX, cx));
