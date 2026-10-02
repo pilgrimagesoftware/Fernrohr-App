@@ -64,6 +64,14 @@ impl Category {
     }
 }
 
+/// Whether `group`/`plural` is a kind the taxonomy names - a built-in API
+/// kind - rather than one that falls through to [`Category::CustomResources`].
+/// A list tab titles a kind outside it by its plural alone, its group in the
+/// tooltip (`standard-resource-panels` 5.3).
+pub(crate) fn is_built_in(group: &str, plural: &str) -> bool {
+    Category::for_gvk(group, plural) != Category::CustomResources
+}
+
 impl std::fmt::Display for Category {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.title())

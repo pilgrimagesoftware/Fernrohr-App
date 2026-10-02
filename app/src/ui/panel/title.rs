@@ -194,7 +194,8 @@ pub fn heading_context(scope: &PanelScope, window_contexts: usize) -> Option<Str
     (window_contexts > 1).then(|| scope.context_name.clone())
 }
 
-/// `text` as the panel's title element, with a "Context: <name>" tooltip. The dock
+/// `text` as the panel's title element, with a "Context: <name>" tooltip (led
+/// by the API group for a custom resource list, see [`tooltip::tooltip_lines`]). The dock
 /// draws this in the tab (see [`tab_name`]) and in the title bar.
 ///
 /// It also marks the panel's focus, beside the ring around its content
@@ -222,7 +223,7 @@ pub fn title_element(
 ) -> AnyElement {
     use crate::ui::icon::{self, IconSize};
     let focused = focus_handle.contains_focused(window, cx);
-    let tooltip = format!("Context: {}", scope.context_name);
+    let tooltip_scope = scope.clone();
     let kind_icon = icon::kind_icon(icon::for_target(&scope.target), IconSize::Small, window, cx);
     div()
         .id(SharedString::from(format!(
@@ -242,7 +243,7 @@ pub fn title_element(
         .gap_1p5()
         .child(kind_icon)
         .child(text)
-        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        .tooltip(move |window, cx| title_tooltip(&tooltip_scope, window, cx))
         // gpui-base 0.7.0's `TabGroup::select_tab` (dock/tab_group.rs) returns
         // early when the clicked tab is already the active one, before its
         // `focus_active_panel`, so a click on the displayed tab focused nothing
@@ -465,6 +466,11 @@ fn code_block(text: &str) -> String {
 pub enum ScopeEvent {
     NamespacesChanged(Vec<String>),
 }
+
+mod tooltip;
+use tooltip::title_tooltip;
+#[cfg(test)]
+use tooltip::tooltip_lines;
 
 #[cfg(test)]
 pub(crate) mod test_support;

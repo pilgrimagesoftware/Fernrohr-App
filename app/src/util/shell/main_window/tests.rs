@@ -262,3 +262,60 @@ async fn the_resource_panel_width_round_trips(cx: &mut TestAppContext) {
     assert_eq!(saved.windows[0].resource_panel_width, Some(330.0));
     let _ = std::fs::remove_file(&path);
 }
+
+/// `standard-resource-panels` 5.3, in a real window: a custom resource list's
+/// tab is drawn as its plural kind alone, with no group qualifier, and hovering
+/// the tab shows the group in its tooltip.
+#[gpui_kit::test]
+async fn a_custom_resource_tab_is_drawn_with_its_kind_only(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    window
+        .update(cx, |main_window, window, cx| {
+            let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            let scope = PanelScope::new(NavTarget::Kind(crd_kind()), "kind-dev".into());
+            dock_area.update(cx, |area, cx| {
+                nav::add_panel(area, &scope, None, window, cx)
+            });
+        })
+        .unwrap();
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+
+    let drawn = |vcx: &mut gpui_kit::VisualTestContext, title: &'static str| {
+        vcx.debug_bounds(title).is_some()
+    };
+    assert!(
+        drawn(&mut vcx, "panel-title-Ferns-focused")
+            || drawn(&mut vcx, "panel-title-Ferns-unfocused"),
+        "the CRD's tab reads its plural kind"
+    );
+    assert!(
+        !drawn(&mut vcx, "panel-title-Ferns · ferns.example.com-focused")
+            && !drawn(&mut vcx, "panel-title-Ferns · ferns.example.com-unfocused"),
+        "and carries no group qualifier"
+    );
+
+    let tab = ["panel-title-Ferns-focused", "panel-title-Ferns-unfocused"]
+        .into_iter()
+        .find_map(|title| vcx.debug_bounds(title))
+        .expect("the CRD's tab is drawn");
+    assert!(
+        !drawn(&mut vcx, "panel-title-tooltip-group"),
+        "no tooltip before the hover"
+    );
+    vcx.simulate_mouse_move(tab.center(), None, gpui_kit::Modifiers::none());
+    vcx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    vcx.run_until_parked();
+    assert!(
+        drawn(&mut vcx, "panel-title-tooltip-group"),
+        "hovering the tab shows the API group"
+    );
+    assert!(
+        drawn(&mut vcx, "panel-title-tooltip-context"),
+        "beside the context"
+    );
+}

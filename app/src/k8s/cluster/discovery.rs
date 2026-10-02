@@ -69,15 +69,22 @@ impl DiscoveredKind {
     /// (`"Pods"`), as opposed to [`label`]'s singular Kind name (`"Pod"`),
     /// which is right for a single item but wrong for a panel showing many.
     pub fn plural_label(&self) -> String {
-        let mut chars = self.plural.chars();
-        let plural = match chars.next() {
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            None => String::new(),
-        };
+        let plural = self.plural_name();
         if self.gvk.group.is_empty() {
             plural
         } else {
             format!("{} · {}", plural, self.gvk.group)
+        }
+    }
+
+    /// The capitalized plural alone (`"Certificates"`), with no group
+    /// qualifier - what a custom resource's list tab reads, its group going
+    /// to the tab's tooltip instead.
+    pub fn plural_name(&self) -> String {
+        let mut chars = self.plural.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
         }
     }
 
@@ -394,5 +401,6 @@ mod tests {
             namespaced: true,
         };
         assert_eq!(widget.plural_label(), "Widgets · example.com");
+        assert_eq!(widget.plural_name(), "Widgets");
     }
 }
