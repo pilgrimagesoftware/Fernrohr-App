@@ -1,7 +1,3 @@
-//! Until the 4.2 commands and Settings stepper call them, `set` and `current`
-//! are UNWIRED: these tests exercise them directly, which isn't yet coverage of
-//! a user-reachable path.
-
 use super::{current, init, set};
 use crate::config::{self, ui::TextSize, ui::Theme as ThemePreference, ui::UiConfig};
 use crate::consts::{DEFAULT_FONT_SIZE, DEFAULT_MONO_FONT_SIZE};

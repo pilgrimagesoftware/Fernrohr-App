@@ -17,6 +17,10 @@ use gpui_kit::component::Theme;
 use gpui_kit::*;
 use std::path::PathBuf;
 
+mod commands;
+
+pub(crate) use commands::{register_commands, register_handlers};
+
 /// The current preference, and the preference file it's saved to. No file
 /// means nothing is saved, which is what tests that never call [`init`] get.
 struct Preference {
@@ -38,9 +42,6 @@ pub fn init(size: TextSize, path: PathBuf, cx: &mut App) {
 }
 
 /// The current text size: the one last set, else the default.
-// UNWIRED: the text-size commands and the Settings stepper (section 4.2) call
-// `current` and `set`.
-#[allow(dead_code)]
 pub fn current(cx: &App) -> TextSize {
     cx.try_global::<Preference>()
         .map_or(TextSize::DEFAULT, |preference| preference.size)
@@ -49,7 +50,6 @@ pub fn current(cx: &App) -> TextSize {
 /// Makes `size` the text size: every open window redraws at it, and it's
 /// saved to the preference file. A no-op when `size` is already current,
 /// so stepping past a bound neither redraws nor writes.
-#[allow(dead_code)]
 pub fn set(size: TextSize, cx: &mut App) {
     if size == current(cx) {
         return;
