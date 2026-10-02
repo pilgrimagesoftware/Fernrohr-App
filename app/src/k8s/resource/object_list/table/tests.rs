@@ -42,10 +42,12 @@ fn names(delegate: &ObjectTableDelegate) -> Vec<&str> {
         .collect()
 }
 
+// Events and ComponentStatuses have only the base columns - section 2 gives
+// Service, Node and the other built-ins their own - so these test the base set.
 #[test]
 fn a_namespaced_kind_has_name_namespace_and_age() {
     assert_eq!(
-        ids(&ListColumn::for_kind(&kind("Service", true))),
+        ids(&ListColumn::for_kind(&kind("Event", true))),
         ["name", "namespace", "age"]
     );
 }
@@ -53,7 +55,7 @@ fn a_namespaced_kind_has_name_namespace_and_age() {
 #[test]
 fn a_cluster_scoped_kind_has_no_namespace_column() {
     assert_eq!(
-        ids(&ListColumn::for_kind(&kind("Node", false))),
+        ids(&ListColumn::for_kind(&kind("ComponentStatus", false))),
         ["name", "age"]
     );
 }
@@ -63,7 +65,7 @@ fn a_cluster_scoped_kind_has_no_namespace_column() {
 #[test]
 fn age_sorts_by_seconds_not_by_text() {
     let now = Timestamp::now();
-    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind("Service", true)));
+    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind("Event", true)));
     delegate.set_rows(vec![
         row("two-hours", Some("a"), 7200, now),
         row("thirty-seconds", Some("a"), 30, now),
@@ -123,7 +125,7 @@ fn name_sorts_alphabetically_and_survives_new_rows() {
 #[test]
 fn the_selection_follows_its_object_across_a_sort() {
     let now = Timestamp::now();
-    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind("Service", true)));
+    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind("Event", true)));
     delegate.set_rows(vec![
         row("b", Some("x"), 1, now),
         row("a", Some("x"), 1, now),
@@ -144,7 +146,7 @@ fn the_selection_follows_its_object_across_a_sort() {
 
 #[test]
 fn a_saved_layout_restores_order_and_widths_and_tolerates_change() {
-    let columns = ListColumn::for_kind(&kind("Service", true));
+    let columns = ListColumn::for_kind(&kind("Event", true));
     let saved = vec![
         SavedColumn {
             id: "age".into(),

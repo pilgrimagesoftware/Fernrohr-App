@@ -9,6 +9,7 @@
 //! frame. An object that doesn't deserialize as its kind gets empty cells, and
 //! a kind with no table gets the base columns only.
 
+mod config_network;
 mod workloads;
 
 use jiff::Timestamp;
@@ -130,6 +131,13 @@ pub fn for_kind(group: &str, kind: &str) -> Option<&'static KindColumns> {
         ("apps", "DaemonSet") => &workloads::DAEMON_SET,
         ("batch", "Job") => &workloads::JOB,
         ("batch", "CronJob") => &workloads::CRON_JOB,
+        ("", "ConfigMap") => &config_network::CONFIG_MAP,
+        ("", "Secret") => &config_network::SECRET,
+        ("", "Service") => &config_network::SERVICE,
+        ("", "Endpoints") => &config_network::ENDPOINTS,
+        ("networking.k8s.io", "Ingress") => &config_network::INGRESS,
+        ("networking.k8s.io", "NetworkPolicy") => &config_network::NETWORK_POLICY,
+        ("discovery.k8s.io", "EndpointSlice") => &config_network::ENDPOINT_SLICE,
         _ => return None,
     })
 }
