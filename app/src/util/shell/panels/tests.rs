@@ -75,6 +75,44 @@ fn restored_panel_keys_preserve_kind_context_and_namespace() {
     assert_eq!(keys[0].namespaces, vec!["kube-system"]);
 }
 
+/// `standard-resource-panels` 1.6: a restored list panel - and a placeholder from an
+/// older layout - is keyed by its kind, context and namespaces, so opening the same
+/// kind again focuses it rather than adding a second.
+#[test]
+fn restored_list_panels_are_keyed_by_their_kind() {
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use gpui_kit::component::dock::{PanelInfo, PanelState};
+    use kube::core::GroupVersionKind;
+
+    let services = DiscoveredKind {
+        gvk: GroupVersionKind::gvk("", "v1", "Service"),
+        plural: "services".into(),
+        namespaced: true,
+    };
+    for panel_name in ["ObjectList", "Resource"] {
+        let state = PanelState {
+            panel_name: panel_name.to_string(),
+            children: Vec::new(),
+            info: PanelInfo::Panel(serde_json::json!({
+                "context_name": "kind-dev",
+                "namespaces": ["staging"],
+                "group": "", "version": "v1", "kind": "Service",
+                "plural": "services", "namespaced": true,
+                "columns": [],
+            })),
+        };
+        let keys = super::restored_panel_keys(&state);
+        assert_eq!(keys.len(), 1, "{panel_name}");
+        assert_eq!(
+            keys[0].target,
+            NavTarget::Kind(services.clone()),
+            "{panel_name}"
+        );
+        assert_eq!(keys[0].context_name, "kind-dev");
+        assert_eq!(keys[0].namespaces, vec!["staging"]);
+    }
+}
+
 /// `PanelKey`'s dedup has to tell two contexts' panels over the same target
 /// apart, or a pod (or Logs) opened on one context would focus the other
 /// context's panel instead of opening its own - the structural half of

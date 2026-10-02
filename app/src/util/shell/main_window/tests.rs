@@ -48,6 +48,7 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                 });
                 let (name, controls) = match opened {
                     nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
+                    nav::OpenedPanel::ObjectList(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
@@ -79,6 +80,56 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
         expected,
         "every panel type was checked: {checked:?}"
     );
+}
+
+/// `standard-resource-panels` 1.4: every kind but the core Pod kind opens the
+/// generic list over that kind - a namespaced built-in (Deployments), a
+/// cluster-scoped one (Nodes) and a CRD alike - and Pods keep the Pods panel. None
+/// of them gets a placeholder.
+#[gpui_kit::test]
+async fn every_kind_but_pods_opens_a_list_panel(cx: &mut TestAppContext) {
+    let window = connected_window(cx, "kind-dev").await;
+    cx.run_until_parked();
+    let deployments = crate::k8s::cluster::discovery::DiscoveredKind {
+        gvk: kube::core::GroupVersionKind::gvk("apps", "v1", "Deployment"),
+        plural: "deployments".into(),
+        namespaced: true,
+    };
+    let nodes = crate::k8s::cluster::discovery::DiscoveredKind {
+        gvk: kube::core::GroupVersionKind::gvk("", "v1", "Node"),
+        plural: "nodes".into(),
+        namespaced: false,
+    };
+
+    window
+        .update(cx, |main_window, window, cx| {
+            let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            for kind in [deployments, nodes, crd_kind()] {
+                let scope = PanelScope::new(NavTarget::Kind(kind.clone()), "kind-dev".into());
+                let (_id, opened) = dock_area.update(cx, |area, cx| {
+                    nav::add_panel(area, &scope, None, window, cx)
+                });
+                let nav::OpenedPanel::ObjectList(panel) = opened else {
+                    panic!("{} should open a list panel", kind.label());
+                };
+                assert_eq!(
+                    panel.read(cx).kind(),
+                    &kind,
+                    "the list is over its own kind"
+                );
+            }
+            let scope = PanelScope::new(NavTarget::pods(), "kind-dev".into());
+            let (_id, opened) = dock_area.update(cx, |area, cx| {
+                nav::add_panel(area, &scope, None, window, cx)
+            });
+            assert!(
+                matches!(opened, nav::OpenedPanel::Pods(_)),
+                "Pods keep their panel"
+            );
+        })
+        .unwrap();
 }
 
 /// Section 10.2's second half: a panel that reports a narrower namespace is

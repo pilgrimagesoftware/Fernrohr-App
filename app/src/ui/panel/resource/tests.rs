@@ -6,7 +6,7 @@ use super::{ResourcePanel, ResourceState};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::session::ClusterRegistry;
-use crate::ui::nav::{NavTarget, has_concrete_panel};
+use crate::ui::nav::NavTarget;
 use gpui_kit::{AppContext as _, TestAppContext, WindowHandle};
 use kube::core::GroupVersionKind;
 
@@ -154,21 +154,26 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
                         panic!("a discovered kind, not one object's detail")
                     }
                 };
-                // Whether or not this build has a concrete panel, the row
-                // resolves to a target `build_layout` can render.
-                let _ = has_concrete_panel(opened);
+                // Every row resolves to a kind `add_panel` opens a list for.
+                let _ = opened;
             }
 
             let (_, fern_target, _) = &rows[0];
-            assert!(!has_concrete_panel(match fern_target {
-                NavTarget::Kind(kind) => kind,
-                NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => unreachable!(),
-            }));
+            assert!(
+                !match fern_target {
+                    NavTarget::Kind(kind) => kind,
+                    NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => unreachable!(),
+                }
+                .is_core_pod()
+            );
             let (_, pod_target, _) = &rows[1];
-            assert!(has_concrete_panel(match pod_target {
-                NavTarget::Kind(kind) => kind,
-                NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => unreachable!(),
-            }));
+            assert!(
+                match pod_target {
+                    NavTarget::Kind(kind) => kind,
+                    NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => unreachable!(),
+                }
+                .is_core_pod()
+            );
         })
         .unwrap();
 }

@@ -84,6 +84,13 @@ impl DiscoveredKind {
     /// The core `v1` `Pod` kind, for the callers that mean "Pods" without
     /// having run discovery: the `nav.show_pods` command, and the panel a
     /// freshly connected window lands on.
+    /// Whether this is the built-in core `Pod` kind - the one kind that keeps its
+    /// own typed list (the Pods panel) rather than the generic one. A CRD named
+    /// `Pod` in its own group is not.
+    pub fn is_core_pod(&self) -> bool {
+        self.gvk.group.is_empty() && self.gvk.kind == "Pod"
+    }
+
     pub fn pods() -> Self {
         Self {
             gvk: GroupVersionKind::gvk("", "v1", "Pod"),

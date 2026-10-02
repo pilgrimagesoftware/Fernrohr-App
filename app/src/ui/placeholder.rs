@@ -1,47 +1,32 @@
-//! The panel a discovered kind opens when this build has no concrete
-//! implementation for it yet.
-//!
-//! Section 8.2 of the `cluster-picker-and-navigation` change: every row in the
-//! Resource panel is openable, so a kind nobody has written a table for still
-//! gives the user a panel that names it and says what is missing - rather than
-//! the row doing nothing at all, which would leave a listed kind looking broken.
+//! The panel a saved list comes back as when its cluster no longer serves its kind
+//! (`standard-resource-panels` D4). Every discovered kind opens a real list now, so
+//! this is only a restore fallback: it names the kind and says why there's no list,
+//! rather than restoring a list that could never fill.
 
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
-    BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
+    BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, register_panel,
 };
 use gpui_kit::*;
-use kube::core::GroupVersionKind;
 
+/// Restores a saved `Resource` panel - what a placeholder saves - through the list
+/// panel's restore: it comes back as a list once its kind is served again, and as a
+/// placeholder only while its cluster no longer reports the kind
+/// (`standard-resource-panels` D4).
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Resource", |context, _window, cx| {
         let PanelInfo::Panel(state) = context.info() else {
             panic!("Resource layout state must be a panel");
         };
-        let context_name = state["context_name"]
-            .as_str()
-            .expect("Resource layout state must name its cluster")
-            .to_string();
-        let namespaces = serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
-        let kind = DiscoveredKind {
-            gvk: GroupVersionKind::gvk(
-                state["group"].as_str().unwrap_or_default(),
-                state["version"].as_str().unwrap_or("v1"),
-                state["kind"].as_str().unwrap_or("Resource"),
-            ),
-            plural: state["plural"].as_str().unwrap_or("resources").to_string(),
-            namespaced: state["namespaced"].as_bool().unwrap_or(false),
-        };
-        let scope = PanelScope::new(crate::ui::nav::NavTarget::Kind(kind.clone()), context_name)
-            .scoped_to(namespaces);
-        panel_handle(cx.new(|cx| PlaceholderPanel::new(kind, scope, cx)))
+        crate::k8s::resource::object_list::restore::restore(state, cx)
     });
 }
 
-/// A dock panel standing in for a kind this build has no table for.
+/// A dock panel standing in for a kind its cluster no longer serves: a saved list
+/// panel restored after discovery stopped reporting its kind.
 pub struct PlaceholderPanel {
     kind: DiscoveredKind,
     scope: PanelScope,
@@ -153,19 +138,15 @@ impl Render for PlaceholderPanel {
                             .text_sm()
                             .text_color(theme.muted_foreground)
                             .child(format!(
-                                "{} has no panel implementation yet.",
+                                "Cluster {} no longer serves {}.",
+                                self.scope.context_name,
                                 self.kind.gvk.api_version()
                             )),
                     )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child(format!(
-                                "Discovered from cluster {}.",
-                                self.scope.context_name
-                            )),
-                    ),
+                    .child(div().text_sm().text_color(theme.muted_foreground).child(
+                        "This panel came back with a saved layout. It reopens as a \
+                                 list once the cluster serves the kind again.",
+                    )),
             )
     }
 }

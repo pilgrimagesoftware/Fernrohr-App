@@ -4,11 +4,11 @@
 use super::*;
 
 impl ClusterRegistry {
-    /// Applies one health edge to `context_name`'s Pods watch - the only watched kind
-    /// today. Pausing drops the watch task (stops consuming without unsubscribing);
-    /// resuming restarts it from the last client used, and only if a panel is still
-    /// subscribed - a health edge arriving after every panel unsubscribed has nothing
-    /// to pause or resume.
+    /// Applies one health edge to every watch on `context_name` - the Pods watch and each
+    /// kind's. Pausing drops each watch task (stops consuming without unsubscribing);
+    /// resuming restarts each from the last client used, and only while a panel is still
+    /// subscribed - a health edge arriving after every panel unsubscribed has nothing to
+    /// pause or resume.
     ///
     /// `pub(crate)` rather than private: this is the same real pause/resume entry point
     /// production code drives from a tunnel flap or a 401 (see [`Self::ensure_init`] and
@@ -26,19 +26,21 @@ impl ClusterRegistry {
         }
         match edge {
             HealthTransition::Pause(reason) => {
-                let paused = cx
+                let session = cx
                     .global_mut::<Self>()
                     .sessions
                     .get_mut(context_name)
-                    .unwrap()
-                    .watchers
-                    .pause(&"pods", reason);
-                if paused {
-                    cx.global_mut::<Self>()
-                        .sessions
-                        .get_mut(context_name)
-                        .unwrap()
-                        .pods_watch = None;
+                    .unwrap();
+                if session.watchers.pause(&WatchKey::Pods, reason) {
+                    session.pods_watch = None;
+                }
+                for (kind, watch) in &mut session.kinds {
+                    if session
+                        .watchers
+                        .pause(&WatchKey::Kind(kind.clone()), reason)
+                    {
+                        watch.task = None;
+                    }
                 }
             }
             HealthTransition::Resume => {
@@ -47,16 +49,41 @@ impl ClusterRegistry {
                     .sessions
                     .get_mut(context_name)
                     .unwrap();
-                let should_restart =
-                    session.watchers.resume(&"pods") && session.watchers.refcount(&"pods") > 0;
-                let client = session.pods_client.clone();
-                if should_restart && let Some(client) = client {
-                    let watch = Self::start_pods_watch(cx, context_name, client);
+                let should_restart = session.watchers.resume(&WatchKey::Pods)
+                    && session.watchers.refcount(&WatchKey::Pods) > 0;
+                let client = session.client.clone();
+                let kinds: Vec<DiscoveredKind> = session
+                    .kinds
+                    .keys()
+                    .filter(|kind| {
+                        let key = WatchKey::Kind((*kind).clone());
+                        session.watchers.resume(&key) && session.watchers.refcount(&key) > 0
+                    })
+                    .cloned()
+                    .collect();
+                let Some(client) = client else {
+                    return;
+                };
+                if should_restart {
+                    let watch = Self::start_pods_watch(cx, context_name, client.clone());
                     cx.global_mut::<Self>()
                         .sessions
                         .get_mut(context_name)
                         .unwrap()
                         .pods_watch = Some(watch);
+                }
+                for kind in kinds {
+                    let task = Self::start_kind_watch(cx, context_name, client.clone(), &kind);
+                    if let Some(watch) = cx
+                        .global_mut::<Self>()
+                        .sessions
+                        .get_mut(context_name)
+                        .unwrap()
+                        .kinds
+                        .get_mut(&kind)
+                    {
+                        watch.task = Some(task);
+                    }
                 }
             }
         }

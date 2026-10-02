@@ -83,6 +83,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
+    crate::k8s::resource::object_list::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
@@ -131,6 +132,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::pod_detail::register_restore(cx);
     crate::k8s::resource::object_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
+    crate::k8s::resource::object_list::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
     cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(

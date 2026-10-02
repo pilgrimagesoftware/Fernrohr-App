@@ -2,8 +2,8 @@
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::context_health::ContextHealth;
 use crate::k8s::cluster::health::HealthTransition;
-use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::cluster::session::test_support::test_client;
+use crate::k8s::cluster::session::{ClusterRegistry, WatchKey};
 use crate::k8s::cluster::watch_registry::PauseReason;
 use gpui_kit::TestAppContext;
 
@@ -145,10 +145,15 @@ async fn health_reads_paused_on_a_kind_other_than_pods(cx: &mut TestAppContext) 
             .sessions
             .get_mut("kind-dev")
             .unwrap();
-        session.watchers.subscribe("events");
+        let events = WatchKey::Kind(crate::k8s::cluster::discovery::DiscoveredKind {
+            gvk: kube::core::GroupVersionKind::gvk("", "v1", "Event"),
+            plural: "events".into(),
+            namespaced: true,
+        });
+        session.watchers.subscribe(events.clone());
         session
             .watchers
-            .pause(&"events", PauseReason::CredentialRefresh);
+            .pause(&events, PauseReason::CredentialRefresh);
     });
 
     match cx.update(|cx| ClusterRegistry::health(cx, "kind-dev")) {
