@@ -306,7 +306,7 @@ mod tests {
     #[gpui_kit::test]
     fn report_issue_action_opens_a_dialog(cx: &mut gpui_kit::TestAppContext) {
         cx.executor().allow_parking();
-        cx.update(|cx| register_handler(cx));
+        cx.update(register_handler);
         let window = open_test_window(cx);
         window
             .update(cx, |_, window, _| window.activate_window())
@@ -338,7 +338,7 @@ mod tests {
     #[gpui_kit::test]
     fn escape_closes_the_dialog(cx: &mut gpui_kit::TestAppContext) {
         cx.executor().allow_parking();
-        cx.update(|cx| register_handler(cx));
+        cx.update(register_handler);
         let window = open_test_window(cx);
         window
             .update(cx, |_, window, _| window.activate_window())
