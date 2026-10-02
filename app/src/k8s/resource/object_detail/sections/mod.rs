@@ -5,10 +5,10 @@
 //! This dispatch is where a kind gains a structured viewer; nothing that shows
 //! a reference to it needs to change.
 
+mod cluster;
 mod common;
 mod config;
 mod network;
-mod node;
 mod service_account;
 mod storage;
 mod workloads;
@@ -22,7 +22,8 @@ use serde::de::DeserializeOwned;
 pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec<ObjectSection> {
     let namespace = object.metadata.namespace.as_deref().unwrap_or_default();
     match (kind.gvk.group.as_str(), kind.gvk.kind.as_str()) {
-        ("", "Node") => typed(object).map(|node| node::sections(&node)),
+        ("", "Node") => typed(object).map(|node| cluster::node(&node)),
+        ("", "Namespace") => typed(object).map(|namespace| cluster::namespace(&namespace)),
         ("", "ConfigMap") => typed(object).map(|config_map| config::config_map(&config_map)),
         // Read from the (already redacted) JSON rather than the typed form:
         // the placeholders aren't valid base64, which `Secret::data` expects.
@@ -42,6 +43,9 @@ pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec
         }
         ("apps", "DaemonSet") => typed(object).map(|set| workloads::daemon_set(&set)),
         ("batch", "Job") => typed(object).map(|job| workloads::job(&job)),
+        ("batch", "CronJob") => {
+            typed(object).map(|cron_job| workloads::cron_job(&cron_job, namespace))
+        }
         ("", "Service") => typed(object).map(|service| network::service(&service)),
         ("", "Endpoints") => {
             typed(object).map(|endpoints| network::endpoints(&endpoints, namespace))

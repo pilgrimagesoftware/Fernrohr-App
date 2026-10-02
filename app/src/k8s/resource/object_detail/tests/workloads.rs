@@ -139,3 +139,84 @@ fn a_failed_job_shows_its_counts_and_a_warning() {
         FieldValue::Badges(vec![("Failed".into(), BadgeTone::Warning)])
     );
 }
+
+/// `standard-resource-panels` 3.3: a CronJob shows its schedule, suspend flag,
+/// concurrency policy and last runs, and each active Job as a reference.
+#[test]
+fn a_cron_job_shows_its_schedule_and_references_its_active_jobs() {
+    let cron_job = object(json!({
+        "apiVersion": "batch/v1",
+        "kind": "CronJob",
+        "metadata": { "name": "backup", "namespace": "staging" },
+        "spec": {
+            "schedule": "0 3 * * *",
+            "timeZone": "Europe/Berlin",
+            "concurrencyPolicy": "Forbid",
+            "jobTemplate": { "spec": { "template": { "spec": { "containers": [] } } } },
+        },
+        "status": {
+            "lastScheduleTime": "2026-10-01T03:00:00Z",
+            "lastSuccessfulTime": "2026-10-01T03:04:12Z",
+            "active": [
+                { "kind": "Job", "namespace": "staging", "name": "backup-29312345" },
+                { "kind": "Job", "name": "backup-29312346" },
+            ],
+        },
+    }));
+
+    let sections = sections_for(&kind("batch", "v1", "CronJob", true), &cron_job);
+
+    assert_eq!(sections[0].title, "Schedule");
+    assert_eq!(field(&sections, "Schedule").value.text(), "0 3 * * *");
+    assert_eq!(field(&sections, "Time Zone").value.text(), "Europe/Berlin");
+    assert_eq!(
+        field(&sections, "Suspend").value.text(),
+        "No",
+        "an unset flag is the API's default: not suspended"
+    );
+    assert_eq!(
+        field(&sections, "Concurrency Policy").value.text(),
+        "Forbid"
+    );
+    assert!(
+        field(&sections, "Last Schedule")
+            .value
+            .text()
+            .starts_with("2026-10-01T03:00:00")
+    );
+    assert!(
+        field(&sections, "Last Successful")
+            .value
+            .text()
+            .starts_with("2026-10-01T03:04:12")
+    );
+    assert_eq!(
+        field(&sections, "Active Jobs").value,
+        FieldValue::References {
+            targets: vec![
+                ObjectRef::namespaced("batch", "Job", "staging", "backup-29312345"),
+                ObjectRef::namespaced("batch", "Job", "staging", "backup-29312346"),
+            ],
+            qualified: false,
+        },
+        "a Job with no namespace of its own is in the CronJob's"
+    );
+}
+
+#[test]
+fn a_suspended_cron_job_says_so() {
+    let cron_job = object(json!({
+        "apiVersion": "batch/v1",
+        "kind": "CronJob",
+        "metadata": { "name": "backup", "namespace": "staging" },
+        "spec": {
+            "schedule": "@hourly",
+            "suspend": true,
+            "jobTemplate": { "spec": { "template": { "spec": { "containers": [] } } } },
+        },
+    }));
+
+    let sections = sections_for(&kind("batch", "v1", "CronJob", true), &cron_job);
+
+    assert_eq!(field(&sections, "Suspend").value.text(), "Yes");
+}

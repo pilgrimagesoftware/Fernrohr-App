@@ -5,6 +5,7 @@
 //! Explicit imports throughout rather than `use super::*`: `gpui_kit::*`
 //! re-exports a `test` macro that would shadow the built-in one.
 
+mod cluster;
 mod fetch;
 mod fixtures;
 mod header;
