@@ -212,3 +212,24 @@ async fn after_a_close_clicking_another_tab_focuses_it(cx: &mut TestAppContext) 
     let pods = h.handles.pods.clone();
     assert!(focused(h.window, &pods, &mut h.vcx), "the clicked tab");
 }
+
+/// 3.1, the reported "won't take focus until you switch tabs and back": clicking
+/// the tab already displayed focuses its panel. gpui-base's `select_tab` skips
+/// focus for the active tab; `panel_title::title_element` covers it.
+#[gpui_kit::test]
+async fn clicking_the_already_active_tab_focuses_its_panel(cx: &mut TestAppContext) {
+    let mut h = harness(cx);
+    let (_, detail_focus) = describe(&mut h, "web-1");
+    let resource = h.handles.resource.clone();
+    h.window
+        .update(&mut h.vcx, |_, window, cx| resource.focus(window, cx))
+        .unwrap();
+    h.vcx.run_until_parked();
+    assert!(!focused(h.window, &detail_focus, &mut h.vcx));
+
+    click_tab(&mut h, "Pod: web-1");
+    assert!(
+        focused(h.window, &detail_focus, &mut h.vcx),
+        "the displayed tab's panel has focus"
+    );
+}

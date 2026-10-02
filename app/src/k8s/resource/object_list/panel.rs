@@ -367,7 +367,7 @@ impl Panel for ObjectListPanel {
         panel_title::title_element(
             &self.scope,
             panel_title::title(&self.scope),
-            self.focus_handle.contains_focused(window, cx),
+            &self.focus_handle,
             window,
             cx,
         )
