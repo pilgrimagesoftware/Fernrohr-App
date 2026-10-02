@@ -236,3 +236,17 @@ async fn each_container_card_shows_the_container_icon(cx: &mut TestAppContext) {
         );
     }
 }
+
+/// `resource-kind-icons` 3.5: the pod detail header leads the pod's name with
+/// a header-size Pod icon, at 100% and at 150% text.
+#[gpui_kit::test]
+async fn the_header_leads_with_a_header_size_pod_icon(cx: &mut TestAppContext) {
+    let h = harness(cx);
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    vcx.run_until_parked();
+    crate::ui::panel_title::test_support::assert_header_icon_leads_at_every_text_size(&mut vcx);
+    assert!(
+        vcx.debug_bounds("kind-icon-Pod").is_some(),
+        "the header's icon is the Pod icon"
+    );
+}

@@ -126,6 +126,32 @@ pub fn item_heading(name: String, context: Option<String>, muted: Hsla) -> impl 
         }))
 }
 
+/// A detail panel header's title block led by its resource's kind icon, at
+/// [`IconSize::Header`](crate::ui::icon::IconSize::Header) (`resource-kind-icons`
+/// 3.5). Shared by the pod detail and object viewer headers.
+pub fn with_header_icon(
+    icon: crate::ui::icon::KindIcon,
+    heading: impl IntoElement,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    use crate::ui::icon::{self, IconSize};
+    let space = crate::ui::space::spacing(cx);
+    div()
+        .flex()
+        .items_center()
+        .gap(space.control_gap)
+        .min_w_0()
+        .child(
+            div()
+                .flex_none()
+                .debug_selector(|| "detail-header-icon".into())
+                .child(icon::kind_icon(icon, IconSize::Header, window, cx)),
+        )
+        .child(div().flex_1().min_w_0().child(heading))
+        .into_any_element()
+}
+
 /// `text` for an [`ellipsizing_box`], with a tooltip of the full text that
 /// appears only while the box has ellipsized it.
 fn ellipsized_text(id: SharedString, text: String) -> InteractiveText {
@@ -426,5 +452,7 @@ pub enum ScopeEvent {
     NamespacesChanged(Vec<String>),
 }
 
+#[cfg(test)]
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;

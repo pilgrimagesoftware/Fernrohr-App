@@ -156,6 +156,18 @@ impl Render for PodDetailPanel {
             .gap_1()
             .child(toggle_key)
             .child(if yaml { "Show fields" } else { "Show YAML" });
+        // Built before `tab_key`, which holds `window` for the rest of the
+        // header: drawing the icon needs it mutably.
+        let heading = panel_title::with_header_icon(
+            crate::ui::icon::for_kind("", "Pod"),
+            panel_title::item_heading(
+                self.pod.name.clone(),
+                panel_title::heading_context(&self.scope, window_contexts),
+                cx.theme().muted_foreground,
+            ),
+            window,
+            cx,
+        );
         let tab_key = |section: DetailSection| -> Kbd {
             let (action, literal): (&dyn Action, &str) = match section {
                 DetailSection::Overview => (&SelectOverviewTab as &dyn Action, OVERVIEW_TAB_KEY),
@@ -193,16 +205,7 @@ impl Render for PodDetailPanel {
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(rems(8.))
-                    .child(panel_title::item_heading(
-                        self.pod.name.clone(),
-                        panel_title::heading_context(&self.scope, window_contexts),
-                        cx.theme().muted_foreground,
-                    )),
-            )
+            .child(div().flex_1().min_w(rems(8.)).child(heading))
             .child(
                 div()
                     .flex()
