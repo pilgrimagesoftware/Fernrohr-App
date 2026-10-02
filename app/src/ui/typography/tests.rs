@@ -1,5 +1,5 @@
-//! `visual-refresh-typography-spacing` 2.1: the bundled families register and
-//! the three roles resolve to them.
+//! `visual-refresh-typography-spacing` 2.1 and 2.3: the bundled families register,
+//! the three roles resolve to them, and every face is static with one per weight.
 
 use super::recorder::with_recorded_text;
 use super::{BUNDLED_FONTS, DATA_FAMILY, FRAME_FAMILY, TypeRole as _};
@@ -7,25 +7,27 @@ use crate::config::ui::Theme as ThemePreference;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{AvailableSpace, ParentElement as _, Styled as _, div, point, px, size};
 
-/// The family a TrueType/OpenType file declares, the way the platform text
-/// systems resolve it: the name table's typographic family (name ID 16) when
-/// the file has one, else its legacy family (name ID 1). A variable font
-/// needs the first - Manrope's legacy family is "Manrope ExtraLight", its
-/// default instance's name. Decodes UTF-16BE (platforms 0 and 3) or
-/// single-byte (platform 1). Enough of the format to read a family name,
-/// nothing more.
-fn declared_families(font: &[u8]) -> Vec<String> {
+/// `font`'s `tag` table, if it has one.
+fn table<'a>(font: &'a [u8], tag: &[u8; 4]) -> Option<&'a [u8]> {
     let u16_at = |at: usize| u16::from_be_bytes([font[at], font[at + 1]]) as usize;
     let u32_at = |at: usize| u32::from_be_bytes(font[at..at + 4].try_into().unwrap()) as usize;
-    let name_table = (0..u16_at(4))
+    (0..u16_at(4))
         .map(|table| 12 + table * 16)
-        .find(|&record| &font[record..record + 4] == b"name")
-        .map(|record| u32_at(record + 8))
-        .expect("a font file has a name table");
-    let strings = name_table + u16_at(name_table + 4);
-    let records: Vec<usize> = (0..u16_at(name_table + 2))
-        .map(|ix| name_table + 6 + ix * 12)
-        .collect();
+        .find(|&record| &font[record..record + 4] == tag)
+        .map(|record| &font[u32_at(record + 8)..][..u32_at(record + 12)])
+}
+
+/// The family a TrueType/OpenType file declares, the way the platform text
+/// systems resolve it: the name table's typographic family (name ID 16) when
+/// the file has one, else its legacy family (name ID 1). A static face of a
+/// big family needs the first - Manrope SemiBold's legacy family is
+/// "Manrope SemiBold". Decodes UTF-16BE (platforms 0 and 3) or single-byte
+/// (platform 1). Enough of the format to read a family name, nothing more.
+fn declared_families(font: &[u8]) -> Vec<String> {
+    let name = table(font, b"name").expect("a font file has a name table");
+    let u16_at = |at: usize| u16::from_be_bytes([name[at], name[at + 1]]) as usize;
+    let strings = u16_at(4);
+    let records: Vec<usize> = (0..u16_at(2)).map(|ix| 6 + ix * 12).collect();
     let name_id = if records.iter().any(|&record| u16_at(record + 6) == 16) {
         16
     } else {
@@ -35,7 +37,7 @@ fn declared_families(font: &[u8]) -> Vec<String> {
         .into_iter()
         .filter(|&record| u16_at(record + 6) == name_id)
         .map(|record| {
-            let bytes = &font[strings + u16_at(record + 10)..][..u16_at(record + 8)];
+            let bytes = &name[strings + u16_at(record + 10)..][..u16_at(record + 8)];
             match u16_at(record) {
                 1 => bytes.iter().map(|&b| char::from(b)).collect(),
                 _ => String::from_utf16_lossy(
@@ -52,6 +54,13 @@ fn declared_families(font: &[u8]) -> Vec<String> {
     families.sort();
     families.dedup();
     families
+}
+
+/// A face's weight, as the platform's font matcher sees it: the OS/2 table's
+/// `usWeightClass` (400 regular, 700 bold).
+fn weight_class(font: &[u8]) -> u16 {
+    let os2 = table(font, b"OS/2").expect("a font file has an OS/2 table");
+    u16::from_be_bytes([os2[4], os2[5]])
 }
 
 /// `theme::init` registers exactly the bundled files, and those files are
@@ -97,12 +106,70 @@ fn init_registers_the_bundled_files_the_roles_resolve_to() {
     });
 }
 
-/// The reader above, on the two bundled files, so a wrong offset shows up as a
-/// wrong name here rather than as a puzzling role failure.
+/// The reader above, on the bundled files, so a wrong offset shows up as a
+/// wrong name here rather than as a puzzling role failure. Every file but
+/// Adamina's is a Manrope face.
 #[test]
 fn the_bundled_files_declare_adamina_and_manrope() {
-    assert_eq!(declared_families(BUNDLED_FONTS[0]), ["Adamina"]);
-    assert_eq!(declared_families(BUNDLED_FONTS[1]), ["Manrope"]);
+    let (adamina, manrope) = BUNDLED_FONTS.split_first().unwrap();
+    assert_eq!(declared_families(adamina), ["Adamina"]);
+    for face in manrope {
+        assert_eq!(declared_families(face), ["Manrope"]);
+    }
+}
+
+/// 2.3: GPUI has no font-variation support, so a variable file draws every
+/// weight at its default instance - the thin text 1.1 traced. No bundled
+/// file may carry an `fvar` table.
+#[test]
+fn no_bundled_font_is_variable() {
+    for (ix, font) in BUNDLED_FONTS.iter().enumerate() {
+        assert!(
+            table(font, b"fvar").is_none(),
+            "BUNDLED_FONTS[{ix}] ({:?}) is a variable font",
+            declared_families(font)
+        );
+    }
+}
+
+/// 2.3: every weight data text is set in has a Manrope face of its own, so
+/// the platform's matcher resolves semibold and regular to different faces
+/// rather than drawing both from one. Asserted on the bundled files' weight
+/// classes: the test text system resolves any font to the same face.
+#[test]
+fn every_data_weight_has_its_own_manrope_face() {
+    use gpui_kit::FontWeight;
+
+    let manrope: Vec<u16> = BUNDLED_FONTS
+        .iter()
+        .filter(|font| declared_families(font) == [DATA_FAMILY])
+        .map(|font| weight_class(font))
+        .collect();
+    let face_for = |weight: FontWeight| {
+        let class = weight.0 as u16;
+        let faces: Vec<usize> = (0..manrope.len())
+            .filter(|&ix| manrope[ix] == class)
+            .collect();
+        assert_eq!(
+            faces.len(),
+            1,
+            "one Manrope face at weight {class}, in {manrope:?}"
+        );
+        faces[0]
+    };
+    for weight in [
+        FontWeight::NORMAL,
+        FontWeight::MEDIUM,
+        FontWeight::SEMIBOLD,
+        FontWeight::BOLD,
+    ] {
+        face_for(weight);
+    }
+    assert_ne!(
+        face_for(FontWeight::SEMIBOLD),
+        face_for(FontWeight::NORMAL),
+        "semibold and regular resolve to different faces"
+    );
 }
 
 /// Each role, set on an element, is the family its text is drawn in: frame

@@ -15,7 +15,7 @@
 //! Adamina and Manrope are bundled with the app (SIL Open Font License, see
 //! `assets/fonts/*-OFL.txt`); neither is a system font on macOS or Linux.
 //! Adamina ships one weight, so frame hierarchy comes from size and colour,
-//! not bold.
+//! not bold. See [`BUNDLED_FONTS`] for why every file is a static face.
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
@@ -25,12 +25,22 @@ pub(crate) const FRAME_FAMILY: &str = "Adamina";
 /// The data role's family.
 pub(crate) const DATA_FAMILY: &str = "Manrope";
 
-const ADAMINA_FONT: &[u8] = include_bytes!("../../assets/fonts/Adamina-Regular.ttf");
-const MANROPE_FONT: &[u8] = include_bytes!("../../assets/fonts/Manrope-Variable.ttf");
-
 /// Every font file the app bundles, registered with the text system at
 /// startup by `ui::theme::init`.
-pub(crate) const BUNDLED_FONTS: &[&[u8]] = &[ADAMINA_FONT, MANROPE_FONT];
+///
+/// All static, one file per weight - never a variable font. GPUI has no
+/// font-variation support: it picks one face per family and weight, so a
+/// variable file draws every weight at its default instance (Manrope's is
+/// ExtraLight, which is what made data text look thin; `visual-refresh-
+/// typography-spacing` 1.1). Manrope ships the weights the app asks for -
+/// regular, medium, semibold, bold - and Adamina has only Regular.
+pub(crate) const BUNDLED_FONTS: &[&[u8]] = &[
+    include_bytes!("../../assets/fonts/Adamina-Regular.ttf"),
+    include_bytes!("../../assets/fonts/Manrope-Regular.ttf"),
+    include_bytes!("../../assets/fonts/Manrope-Medium.ttf"),
+    include_bytes!("../../assets/fonts/Manrope-SemiBold.ttf"),
+    include_bytes!("../../assets/fonts/Manrope-Bold.ttf"),
+];
 
 /// Picks a type role for an element. The frame role is the window's default,
 /// so [`TypeRole::frame_font`] is only for frame text nested inside a data
