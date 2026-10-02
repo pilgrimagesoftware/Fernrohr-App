@@ -9,6 +9,8 @@
 //! frame. An object that doesn't deserialize as its kind gets empty cells, and
 //! a kind with no table gets the base columns only.
 
+mod workloads;
+
 use jiff::Timestamp;
 use kube::api::DynamicObject;
 use serde::de::DeserializeOwned;
@@ -16,9 +18,6 @@ use std::cmp::Ordering;
 
 /// One cell's value, typed so its column sorts the way the value reads:
 /// numbers numerically, ratios by their first number, ages by time.
-// UNWIRED: the per-kind tables construct these in `standard-resource-panels`
-// 2.2-2.4; until then only the tests do.
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Cell {
     /// No value: the object doesn't set it, or didn't deserialize.
@@ -36,8 +35,6 @@ pub enum Cell {
 impl Cell {
     /// `Text`, or `Empty` for an empty string - so a column of text sorts the
     /// unset ones together.
-    // UNWIRED: see the enum.
-    #[allow(dead_code)]
     pub fn text(text: impl Into<String>) -> Self {
         let text = text.into();
         if text.is_empty() {
@@ -125,16 +122,21 @@ impl KindColumns {
 /// The extra columns a `group`/`kind` list shows, or `None` for a kind that
 /// shows the base columns only - every kind not in the spec's table, CRDs
 /// included. Pods have their own table and never come here.
-// UNWIRED: the per-kind tables arrive in `standard-resource-panels` 2.2-2.4.
-pub fn for_kind(_group: &str, _kind: &str) -> Option<&'static KindColumns> {
-    None
+pub fn for_kind(group: &str, kind: &str) -> Option<&'static KindColumns> {
+    Some(match (group, kind) {
+        ("apps", "Deployment") => &workloads::DEPLOYMENT,
+        ("apps", "ReplicaSet") => &workloads::REPLICA_SET,
+        ("apps", "StatefulSet") => &workloads::STATEFUL_SET,
+        ("apps", "DaemonSet") => &workloads::DAEMON_SET,
+        ("batch", "Job") => &workloads::JOB,
+        ("batch", "CronJob") => &workloads::CRON_JOB,
+        _ => return None,
+    })
 }
 
 /// `object` deserialized as `T` and projected by `project`, or every column
 /// empty if it doesn't deserialize - a malformed object never panics, it just
 /// shows the base columns.
-// UNWIRED: see `for_kind`.
-#[allow(dead_code)]
 fn typed_cells<T: DeserializeOwned>(
     object: &DynamicObject,
     project: impl FnOnce(&T) -> Vec<Cell>,

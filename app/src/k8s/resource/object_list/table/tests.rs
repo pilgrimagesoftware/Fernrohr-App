@@ -176,3 +176,107 @@ fn a_saved_layout_restores_order_and_widths_and_tolerates_change() {
     assert_eq!(saved_ids, ["namespace", "age", "name"]);
     assert_eq!(layout[2].width, 310.);
 }
+
+fn deployments() -> DiscoveredKind {
+    DiscoveredKind {
+        gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
+        plural: "deployments".into(),
+        namespaced: true,
+    }
+}
+
+/// A Deployment row named `name` with `available` of 3 replicas available.
+fn deployment_row(name: &str, available: i64, now: Timestamp) -> ListRow {
+    use super::super::columns::Cell;
+    ListRow::new(
+        ObjectRow {
+            uid: format!("uid-{name}"),
+            name: name.into(),
+            namespace: Some("staging".into()),
+            created: Some(now),
+            cells: vec![
+                Cell::Ratio(available, 3),
+                Cell::Number(3),
+                Cell::Number(available),
+            ],
+        },
+        now,
+    )
+}
+
+/// `standard-resource-panels` 2.2: a Deployments list shows its own columns
+/// between Namespace and Age, as `kubectl get deployments` lays them out, and
+/// sorting by Available orders by the count, not its text.
+#[test]
+fn a_deployments_list_shows_and_sorts_its_own_columns_numerically() {
+    let columns = ListColumn::for_kind(&deployments());
+    assert_eq!(
+        ids(&columns),
+        [
+            "name",
+            "namespace",
+            "ready",
+            "up_to_date",
+            "available",
+            "age"
+        ]
+    );
+    let available = columns
+        .iter()
+        .position(|column| column.id == "available")
+        .unwrap();
+
+    let now: Timestamp = "2026-10-02T12:00:00Z".parse().unwrap();
+    let mut delegate = ObjectTableDelegate::new(columns);
+    delegate.set_rows(vec![
+        deployment_row("ten", 10, now),
+        deployment_row("nine", 9, now),
+        deployment_row("hundred", 100, now),
+    ]);
+    delegate.resort(available, ColumnSort::Ascending);
+
+    assert_eq!(
+        names(&delegate),
+        ["nine", "ten", "hundred"],
+        "as text, \"10\" and \"100\" would sort before \"9\""
+    );
+    assert_eq!(
+        cell_text(&delegate.rows()[0], &delegate.columns()[available]),
+        "9"
+    );
+}
+
+/// A layout saved before the kind had its own columns still restores: the
+/// saved columns keep their order and widths, and the new ones join after.
+#[test]
+fn a_layout_saved_before_the_kinds_own_columns_still_restores() {
+    let saved = vec![
+        SavedColumn {
+            id: "age".into(),
+            width: 90.,
+        },
+        SavedColumn {
+            id: "name".into(),
+            width: 300.,
+        },
+        SavedColumn {
+            id: "namespace".into(),
+            width: 140.,
+        },
+    ];
+
+    let columns = apply_layout(ListColumn::for_kind(&deployments()), &saved);
+
+    assert_eq!(
+        ids(&columns),
+        [
+            "age",
+            "name",
+            "namespace",
+            "ready",
+            "up_to_date",
+            "available"
+        ]
+    );
+    assert_eq!(columns[1].width, px(300.));
+}
