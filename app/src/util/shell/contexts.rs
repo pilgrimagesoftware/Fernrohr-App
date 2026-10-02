@@ -145,6 +145,7 @@ impl MainWindow {
             };
             dock_area.update(cx, |area, cx| match opened {
                 OpenedPanel::Pods(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::ObjectList(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),

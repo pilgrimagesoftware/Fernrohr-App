@@ -131,6 +131,7 @@ impl ObjectListPanel {
     }
 
     /// The kind this panel lists.
+    #[cfg(test)]
     pub fn kind(&self) -> &DiscoveredKind {
         &self.kind
     }
