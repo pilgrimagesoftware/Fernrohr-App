@@ -22,9 +22,6 @@ use gpui_kit::*;
 
 /// The frame role's family.
 pub(crate) const FRAME_FAMILY: &str = "Adamina";
-// UNWIRED: the data views opt into the data role in the next step (tasks.md
-// 2.2); until then only the tests use it.
-#[allow(dead_code)]
 /// The data role's family.
 pub(crate) const DATA_FAMILY: &str = "Manrope";
 
@@ -35,8 +32,6 @@ const MANROPE_FONT: &[u8] = include_bytes!("../../assets/fonts/Manrope-Variable.
 /// startup by `ui::theme::init`.
 pub(crate) const BUNDLED_FONTS: &[&[u8]] = &[ADAMINA_FONT, MANROPE_FONT];
 
-// UNWIRED: see `DATA_FAMILY`.
-#[allow(dead_code)]
 /// Picks a type role for an element. The frame role is the window's default,
 /// so [`TypeRole::frame_font`] is only for frame text nested inside a data
 /// element.

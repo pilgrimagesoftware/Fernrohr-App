@@ -291,10 +291,11 @@ impl TableDelegate for PodTableDelegate {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         use crate::ui::style::{self, Tone};
+        use crate::ui::typography::TypeRole as _;
         let row = &self.rows[row_ix].row;
         let column = self.columns[col_ix];
         let text = cell_text(row, column);
-        let cell = div().whitespace_nowrap();
+        let cell = div().data_font().whitespace_nowrap();
         match column {
             PodColumn::Status => cell
                 .text_color(style::status(row.status_tone, cx))

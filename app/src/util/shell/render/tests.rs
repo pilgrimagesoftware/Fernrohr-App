@@ -60,3 +60,67 @@ async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
         .unwrap();
     cx.run_until_parked();
 }
+
+/// `visual-refresh-typography-spacing` 2.2: a real window's frame - the
+/// panels' tabs (a tab's label is its panel's title), the Resource panel's
+/// heading, the context bar and the status bar - is drawn in the frame role's
+/// family, inherited from the theme through `Root`.
+#[test]
+fn a_windows_frame_is_drawn_in_the_frame_family() {
+    use crate::config::workspace::{NamespaceScope, PanelDescriptor, SortState};
+    use crate::ui::typography::FRAME_FAMILY;
+    use crate::ui::typography::recorder::with_recorded_text;
+    use gpui_kit::test::TestWindowExt as _;
+
+    with_recorded_text(|cx, recorded| {
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::runtime::init(cx);
+            crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
+        });
+        let pods = |namespace: &str| PanelDescriptor::Pods {
+            cluster_context: "kind-dev".to_string(),
+            namespace: NamespaceScope::Single(namespace.to_string()),
+            filter: String::new(),
+            sort: SortState {
+                column: "name".into(),
+                ascending: true,
+            },
+        };
+        // Two panels in one group, so the dock draws a tab bar.
+        let layout = WindowLayout {
+            contexts: vec!["kind-dev".to_string()],
+            panels: vec![pods("default"), pods("kube-system")],
+            ..Default::default()
+        };
+        cx.update(|cx| open_window(cx, layout));
+        cx.run_until_parked();
+        let window = cx.update(|cx| cx.windows()[0]);
+        window
+            .update(cx, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+
+        let mut vcx = gpui_kit::VisualTestContext::from_window(window, cx);
+        assert!(
+            vcx.debug_bounds("panel-title-Pods-unfocused").is_some()
+                || vcx.debug_bounds("panel-title-Pods-focused").is_some(),
+            "the Pods tabs were drawn"
+        );
+        for (surface, text) in [
+            ("a tab", "Pods"),
+            ("the Resource panel's heading", "Resources"),
+            ("the context bar", "kind-dev"),
+            ("the status bar", "Connected"),
+        ] {
+            assert_eq!(
+                recorded.family_of(text).as_ref(),
+                FRAME_FAMILY,
+                "{surface} ({text:?}) is frame text"
+            );
+        }
+        window
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+    });
+}

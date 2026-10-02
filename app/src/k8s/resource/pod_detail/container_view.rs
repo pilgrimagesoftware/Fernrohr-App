@@ -5,6 +5,7 @@
 use super::model::{ContainerDetail, ContainerSummary, EnvValue};
 use super::panel::PodDetailPanel;
 use crate::ui::detail::{self, BadgeTone};
+use crate::ui::typography::TypeRole as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
@@ -109,7 +110,10 @@ impl PodDetailPanel {
         // Two columns: the chevron alone in a gutter, and every line of text
         // in one column beside it, so the name lines up with the lines
         // under it rather than sitting indented past the chevron.
+        // Data text throughout; the card's only button (the chevron) is an
+        // icon, so nothing here needs the frame role back.
         let body = div()
+            .data_font()
             .flex()
             .flex_col()
             .flex_1()
@@ -200,7 +204,6 @@ impl PodDetailPanel {
 /// left out when it sets none of it.
 fn render_container_detail(name: &str, detail: &ContainerDetail, cx: &App) -> AnyElement {
     let theme = cx.theme();
-    let mono = theme.mono_font_family.clone();
     let group = |label: &'static str, body: AnyElement| {
         div()
             .flex()
@@ -219,7 +222,7 @@ fn render_container_detail(name: &str, detail: &ContainerDetail, cx: &App) -> An
         div()
             .flex()
             .flex_col()
-            .font_family(mono.clone())
+            .code_font(cx)
             .text_sm()
             .children(lines.iter().map(|line| div().child(line.clone())))
             .into_any_element()
@@ -260,12 +263,13 @@ fn render_container_detail(name: &str, detail: &ContainerDetail, cx: &App) -> An
                             .flex()
                             .flex_wrap()
                             .gap_x_1()
-                            .child(div().font_family(mono.clone()).child(var.name.clone()));
+                            .child(div().code_font(cx).child(var.name.clone()));
                         // A reference reads as a muted description, never as
                         // a value - see `EnvValue`.
                         match &var.value {
-                            EnvValue::Literal(value) => row
-                                .child(div().font_family(mono.clone()).child(format!("= {value}"))),
+                            EnvValue::Literal(value) => {
+                                row.child(div().code_font(cx).child(format!("= {value}")))
+                            }
                             EnvValue::Reference(source) => row.child(
                                 div()
                                     .text_color(theme.muted_foreground)

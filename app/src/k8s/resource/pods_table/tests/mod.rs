@@ -6,6 +6,7 @@
 // built-in `#[test]` for these plain synchronous tests.
 use crate::k8s::resource::pods::{PodRow, PodSelection};
 
+mod fonts;
 mod selection;
 mod sorting;
 

@@ -2,6 +2,7 @@
 //! container picker, and the control bar (jump to top/bottom, follow toggle).
 
 use super::*;
+use crate::ui::typography::TypeRole as _;
 
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -23,7 +24,7 @@ impl Render for LogsPanel {
             div()
                 .size_full()
                 .p_3()
-                .font_family(cx.theme().mono_font_family.clone())
+                .code_font(cx)
                 .overflow_x_scrollbar()
                 .child(
                     uniform_list(

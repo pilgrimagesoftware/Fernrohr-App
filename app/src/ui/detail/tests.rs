@@ -70,3 +70,85 @@ fn a_revealed_secret_value_is_shown_in_full() {
     assert_eq!(text, long);
     assert!(!text.contains('…'));
 }
+
+/// The detail pieces 2.2 checks, as one view: `Button` needs a view to be
+/// rendering, which `VisualTestContext::draw`'s closure isn't.
+struct FontSample;
+
+impl gpui_kit::Render for FontSample {
+    fn render(
+        &mut self,
+        _: &mut gpui_kit::Window,
+        cx: &mut gpui_kit::Context<Self>,
+    ) -> impl IntoElement {
+        use crate::k8s::resource::secret_value::Reveal;
+        use gpui_kit::Styled as _;
+        use gpui_kit::component::ActiveTheme as _;
+
+        // The window's own default, as `Root` gives it.
+        div()
+            .font_family(cx.theme().font_family.clone())
+            .child(super::section_heading("Metadata", cx))
+            .child(super::row(
+                "Labels",
+                super::chips(&["app=web".to_string()], cx),
+                cx,
+            ))
+            .child(super::row(
+                "token",
+                super::secret_key_row(
+                    "token",
+                    12,
+                    None::<&Reveal>,
+                    "show-token".into(),
+                    "token-value".into(),
+                    |_, _| {},
+                    cx,
+                ),
+                cx,
+            ))
+    }
+}
+
+/// `visual-refresh-typography-spacing` 2.2: a chip and a field row are data
+/// text; a section heading, and a button inside a data value, stay frame text.
+#[test]
+fn chips_and_rows_are_data_text_and_headings_and_buttons_frame_text() {
+    use crate::ui::typography::recorder::with_recorded_text;
+    use crate::ui::typography::{DATA_FAMILY, FRAME_FAMILY};
+    use gpui_kit::test::TestWindowExt as _;
+
+    with_recorded_text(|cx, recorded| {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
+        });
+        let window: gpui_kit::AnyWindowHandle = cx.add_window(|_, _| FontSample).into();
+        window
+            .update(cx, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+        assert_eq!(
+            recorded.family_of("app=web").as_ref(),
+            DATA_FAMILY,
+            "a chip"
+        );
+        assert_eq!(
+            recorded.family_of("Labels").as_ref(),
+            DATA_FAMILY,
+            "a field label"
+        );
+        assert_eq!(
+            recorded.family_of("Metadata").as_ref(),
+            FRAME_FAMILY,
+            "a section heading"
+        );
+        assert_eq!(
+            recorded.family_of("Show").as_ref(),
+            FRAME_FAMILY,
+            "a button in a data value"
+        );
+        window
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+    });
+}

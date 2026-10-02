@@ -43,6 +43,11 @@ impl RecordingTextSystem {
         self.added.lock().clone()
     }
 
+    /// Every line laid out so far, with the families of its runs.
+    pub(crate) fn lines(&self) -> Vec<(String, Vec<SharedString>)> {
+        self.lines.lock().clone()
+    }
+
     /// The families `text` was drawn in, from the last line laid out that
     /// contains it. `None` if no line contains it.
     pub(crate) fn families_of(&self, text: &str) -> Option<Vec<SharedString>> {
@@ -58,8 +63,8 @@ impl RecordingTextSystem {
     /// line if it was never drawn or was drawn in a mix of families.
     pub(crate) fn family_of(&self, text: &str) -> SharedString {
         let families = self.families_of(text).unwrap_or_else(|| {
-            let lines: Vec<String> = self.lines.lock().iter().map(|(l, _)| l.clone()).collect();
-            panic!("{text:?} was never laid out; lines drawn: {lines:?}")
+            let drawn: Vec<String> = self.lines().into_iter().map(|(line, _)| line).collect();
+            panic!("{text:?} was never laid out; lines drawn: {drawn:?}")
         });
         match families.as_slice() {
             [family] => family.clone(),

@@ -12,6 +12,7 @@ use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
 use crate::k8s::resource::events;
 use crate::ui::panel_title;
+use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
@@ -83,7 +84,7 @@ impl PodDetailPanel {
         };
         div()
             .size_full()
-            .font_family(cx.theme().mono_font_family.clone())
+            .code_font(cx)
             .whitespace_nowrap()
             .child(yaml)
             .into_any_element()

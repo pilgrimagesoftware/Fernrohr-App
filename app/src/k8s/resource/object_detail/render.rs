@@ -8,6 +8,7 @@ use super::panel::ObjectDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::events;
 use crate::k8s::resource::pod_detail::DetailView;
+use crate::ui::typography::TypeRole as _;
 use crate::ui::{detail, link, panel_title};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -105,7 +106,7 @@ impl ObjectDetailPanel {
         };
         div()
             .size_full()
-            .font_family(cx.theme().mono_font_family.clone())
+            .code_font(cx)
             .whitespace_nowrap()
             .child(yaml)
             .into_any_element()

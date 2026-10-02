@@ -9,6 +9,7 @@
 //! expanded is the panel's state, kept per value and never saved.
 
 use crate::consts::{COLLAPSE_VALUE_OVER_CHARS, COLLAPSED_VALUE_PREVIEW_CHARS};
+use crate::ui::typography::TypeRole as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -76,18 +77,20 @@ impl Collapsible {
                 })
                 .label(if self.expanded { "Collapse" } else { "Expand" })
                 .xsmall()
+                .frame_font(cx)
                 .ghost()
                 .on_click(move |_event, window, cx| on_toggle(window, cx))
         });
         let value = div()
             .id(self.value_id)
-            .font_family(theme.mono_font_family.clone())
+            .code_font(cx)
             .text_sm()
             .role(accesskit::Role::Label)
             .aria_value(shown.clone())
             .child(shown)
             .test_support();
         div()
+            .data_font()
             .flex()
             .flex_col()
             .child(
