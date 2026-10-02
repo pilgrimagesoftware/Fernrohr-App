@@ -23,8 +23,9 @@ pub(super) fn card(cx: &App) -> Div {
         .shadow_lg()
         .flex()
         .flex_col()
-        .gap_4()
-        .p_6()
+        .gap(crate::ui::space::spacing(cx).section_gap)
+        // Half again the panel inset: the card floats alone in its window.
+        .p(crate::ui::space::spacing(cx).panel_inset * 1.5)
 }
 
 /// Displayed width of the logo, in logical pixels. The embedded asset is 1241px

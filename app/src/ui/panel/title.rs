@@ -362,12 +362,13 @@ pub fn toolbar_buttons() -> Option<Vec<Button>> {
 /// readable nor selectable; this is Logs' and Pod detail's shared fix for
 /// both halves at once, so the two panels cannot drift back apart on either.
 pub fn error_content(message: String, detail: Option<String>, cx: &App) -> impl IntoElement {
+    let space = crate::ui::space::spacing(cx);
     div()
         .size_full()
-        .p_3()
+        .p(space.panel_inset)
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(space.control_gap)
         .child(gpui_kit::component::text::markdown(escape_markdown(&message)).selectable(true))
         .children(detail.map(|detail| {
             div()

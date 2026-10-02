@@ -11,10 +11,13 @@ pub mod picker_keys;
 pub mod picker_tunnel;
 pub mod placeholder;
 pub mod settings;
+pub mod space;
 pub mod status_bar;
 pub mod style;
+pub mod text_size;
 pub mod theme;
 pub mod tunnels;
+pub mod typography;
 pub mod viewer;
 
 pub use panel::resource as resource_panel;

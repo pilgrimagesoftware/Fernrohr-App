@@ -13,7 +13,7 @@ use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
 use gpui_kit::component::kbd::Kbd;
-use gpui_kit::component::table::{DataTable, TableEvent, TableState};
+use gpui_kit::component::table::{TableEvent, TableState};
 use gpui_kit::*;
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;

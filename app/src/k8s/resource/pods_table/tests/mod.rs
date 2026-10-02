@@ -6,8 +6,10 @@
 // built-in `#[test]` for these plain synchronous tests.
 use crate::k8s::resource::pods::{PodRow, PodSelection};
 
+mod fonts;
 mod selection;
 mod sorting;
+mod spacing;
 
 /// Four rows with a distinct, non-alphabetical value in every column, so
 /// sorting by any one of them actually reorders the set rather than

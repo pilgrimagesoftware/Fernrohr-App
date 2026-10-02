@@ -69,9 +69,9 @@ impl Render for AboutWindow {
             .flex()
             .flex_col()
             .items_center()
-            .gap_2()
-            .px_8()
-            .py_8()
+            .gap(crate::ui::space::spacing(cx).control_gap)
+            // Twice the panel inset: the About window is a single centred card.
+            .p(crate::ui::space::spacing(cx).panel_inset * 2.)
             .bg(cx.theme().background)
             .child(img(ICON.clone()).w(px(ICON_SIZE)).h(px(ICON_SIZE)))
             .child(div().text_2xl().font_semibold().child(APP_NAME))

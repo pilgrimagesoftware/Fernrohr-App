@@ -120,8 +120,8 @@ impl Render for TunnelEditor {
             div()
                 .flex()
                 .flex_col()
-                .gap_2()
-                .p_2()
+                .gap(crate::ui::space::spacing(cx).control_gap)
+                .p(crate::ui::space::spacing(cx).card_padding)
                 .border_1()
                 .border_color(theme.danger)
                 .rounded_md()
@@ -129,7 +129,7 @@ impl Render for TunnelEditor {
                 .child(
                     div()
                         .flex()
-                        .gap_2()
+                        .gap(crate::ui::space::spacing(cx).control_gap)
                         .child(
                             Button::new("tunnel-delete-confirm")
                                 .label("Delete")
@@ -161,8 +161,8 @@ impl Render for TunnelEditor {
         div()
             .flex()
             .flex_col()
-            .gap_3()
-            .p_3()
+            .gap(crate::ui::space::spacing(cx).section_gap)
+            .p(crate::ui::space::spacing(cx).panel_inset)
             .track_focus(&self.focus_handle)
             .child(div().text_base().font_semibold().child(if is_new {
                 "New Tunnel"

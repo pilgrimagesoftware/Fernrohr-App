@@ -12,6 +12,7 @@ use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
 use crate::k8s::resource::events;
 use crate::ui::panel_title;
+use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
@@ -61,7 +62,13 @@ impl PodDetailPanel {
             .flex()
             .flex_col()
             .child(tabs)
-            .child(div().flex().flex_col().pt_2().child(content))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .pt(crate::ui::space::spacing(cx).section_gap)
+                    .child(content),
+            )
             .into_any_element()
     }
 
@@ -83,7 +90,7 @@ impl PodDetailPanel {
         };
         div()
             .size_full()
-            .font_family(cx.theme().mono_font_family.clone())
+            .code_font(cx)
             .whitespace_nowrap()
             .child(yaml)
             .into_any_element()
@@ -92,15 +99,16 @@ impl PodDetailPanel {
 
 impl Render for PodDetailPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let space = crate::ui::space::spacing(cx);
         let content = match &self.state {
             PodDetailState::Loading => div()
                 .size_full()
-                .p_3()
+                .p(space.panel_inset)
                 .child("Loading pod...")
                 .into_any_element(),
             PodDetailState::NotFound => div()
                 .size_full()
-                .p_3()
+                .p(space.panel_inset)
                 .child("This pod no longer exists.")
                 .into_any_element(),
             PodDetailState::Failed { message, detail } => panel_title::error_content(
@@ -115,7 +123,7 @@ impl Render for PodDetailPanel {
                 // the layout wider than the panel actually is.
                 DetailView::Structured => div()
                     .size_full()
-                    .p_3()
+                    .p(space.panel_inset)
                     .overflow_y_scrollbar()
                     .child(self.render_structured(cx))
                     .into_any_element(),
@@ -123,7 +131,7 @@ impl Render for PodDetailPanel {
                 // it keeps both-axis scroll rather than wrapping lines.
                 DetailView::Yaml => div()
                     .size_full()
-                    .p_3()
+                    .p(space.panel_inset)
                     .overflow_scrollbar()
                     .child(self.render_yaml(cx))
                     .into_any_element(),
@@ -179,8 +187,9 @@ impl Render for PodDetailPanel {
             .flex()
             .items_center()
             .justify_between()
-            .gap_2()
-            .p_2()
+            .gap(space.control_gap)
+            .px(space.panel_inset)
+            .py(space.control_gap)
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
@@ -200,7 +209,7 @@ impl Render for PodDetailPanel {
                     .flex_wrap()
                     .justify_end()
                     .min_w_0()
-                    .gap_x_3()
+                    .gap_x(space.control_gap)
                     .gap_y_1()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)

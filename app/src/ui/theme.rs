@@ -3,24 +3,20 @@
 //! the preference is `System` - so light/dark mode is a day-one concern
 //! rather than something bolted on after the picker and main window exist.
 //!
-//! Also owns the app's two chosen font families - Manrope for UI text,
-//! Monaco (with a real installed fallback) for monospace/terminal contexts -
-//! reasserted on every appearance change alongside the theme mode, so a
-//! light/dark flip can't revert either field to gpui-component's own
-//! defaults.
+//! Also registers the bundled fonts and sets the theme's two font fields from
+//! the type roles (`ui::typography`): the frame role, Adamina, as
+//! `font_family`, and the code role, Monaco (with a real installed fallback),
+//! as `mono_font_family`. Both are reasserted on every appearance change
+//! alongside the theme mode, so a light/dark flip can't revert either field to
+//! gpui-component's own defaults.
 
 use crate::config::ui::Theme as ThemePreference;
+use crate::ui::typography::{BUNDLED_FONTS, FRAME_FAMILY};
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
 use std::borrow::Cow;
 
 impl Global for ThemePreference {}
-
-/// Bundled with the app (SIL Open Font License - see
-/// `assets/fonts/Manrope-OFL.txt`) rather than depending on it being
-/// installed on the host: Manrope is not a system font on macOS or Linux.
-const MANROPE_FONT: &[u8] = include_bytes!("../../assets/fonts/Manrope-Variable.ttf");
-const MANROPE_FAMILY: &str = "Manrope";
 
 /// Monospace families tried, in order, when Monaco isn't installed - not
 /// bundled (Monaco is a macOS system font, and shipping a full monospace
@@ -39,14 +35,15 @@ const MONO_FONT_ALTERNATES: &[&str] = &[
 
 /// Stores `preference` as a global and applies it once, before any window
 /// exists - `System` falls back to `cx.window_appearance()` since there is no
-/// `Window` yet to ask. Registers the bundled Manrope font with the text
-/// system first: `apply` needs it loaded before it can set `font_family`.
+/// `Window` yet to ask. Registers the bundled fonts with the text system
+/// first: `apply` needs them loaded before it can set `font_family`.
 pub fn init(preference: ThemePreference, cx: &mut App) {
-    if let Err(error) = cx
-        .text_system()
-        .add_fonts(vec![Cow::Borrowed(MANROPE_FONT)])
-    {
-        log::warn!("failed to register the bundled Manrope font: {error}");
+    let fonts = BUNDLED_FONTS
+        .iter()
+        .map(|font| Cow::Borrowed(*font))
+        .collect();
+    if let Err(error) = cx.text_system().add_fonts(fonts) {
+        log::warn!("failed to register the bundled fonts: {error}");
     }
     cx.set_global(preference);
     apply(preference, None, cx);
@@ -87,15 +84,17 @@ fn apply(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App)
     crate::ui::accent::refresh(cx);
 }
 
-/// Sets both chosen font families on the global theme. Called after every
+/// Sets the frame and code roles' families, and their sizes at the current
+/// text size, on the global theme. Called after every
 /// `Theme::change`/`sync_system_appearance`, since those calls are gpui-
 /// component's own theme-mode reset and would otherwise revert `font_family`/
 /// `mono_font_family` to its built-in defaults on the next appearance flip.
 fn apply_fonts(cx: &mut App) {
     let mono = first_installed_mono_font(cx);
     let theme = cx.global_mut::<Theme>();
-    theme.font_family = MANROPE_FAMILY.into();
+    theme.font_family = FRAME_FAMILY.into();
     theme.mono_font_family = mono;
+    crate::ui::text_size::apply_font_sizes(cx);
 }
 
 /// `Monaco` when installed, else the first installed alternate, else
@@ -114,7 +113,7 @@ fn first_installed_mono_font(cx: &App) -> SharedString {
 
 #[cfg(test)]
 mod tests {
-    use super::{MANROPE_FAMILY, ThemePreference, init};
+    use super::{FRAME_FAMILY, ThemePreference, init};
     use gpui_kit::TestAppContext;
     use gpui_kit::component::Theme;
 
@@ -123,7 +122,9 @@ mod tests {
     /// does not, since `apply_fonts` runs unconditionally at the end of
     /// `apply` regardless of which mode branch ran.
     #[gpui_kit::test]
-    async fn every_preference_ends_with_manrope_and_a_real_mono_font(cx: &mut TestAppContext) {
+    async fn every_preference_ends_with_the_frame_font_and_a_real_mono_font(
+        cx: &mut TestAppContext,
+    ) {
         for preference in [
             ThemePreference::Light,
             ThemePreference::Dark,
@@ -136,8 +137,8 @@ mod tests {
                 let theme = cx.global::<Theme>();
                 assert_eq!(
                     theme.font_family.as_ref(),
-                    MANROPE_FAMILY,
-                    "{preference:?} should set the UI font to Manrope"
+                    FRAME_FAMILY,
+                    "{preference:?} should set the UI font to the frame role's"
                 );
                 assert!(
                     !theme.mono_font_family.is_empty(),

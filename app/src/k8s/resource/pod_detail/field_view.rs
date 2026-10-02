@@ -5,6 +5,7 @@ use super::model::{PodField, PodFieldValue, reference_text};
 use super::panel::PodDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::detail;
+use crate::ui::typography::TypeRole as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -42,6 +43,7 @@ impl PodDetailPanel {
                             Button::new(label)
                                 .label(if open { "Hide" } else { "Show" })
                                 .xsmall()
+                                .frame_font(cx)
                                 .ghost()
                                 .tab_stop(false)
                                 .on_click(move |_event, _window, cx| {
@@ -93,7 +95,7 @@ impl PodDetailPanel {
                 PodFieldValue::ManagedFields(entries) => div()
                     .flex()
                     .flex_col()
-                    .gap_2()
+                    .gap(crate::ui::space::spacing(cx).control_gap)
                     .children(entries.iter().enumerate().map(|(index, entry)| {
                         // Keyed by index, not manager name: two entries can
                         // share a manager (a status subresource update versus
@@ -107,7 +109,7 @@ impl PodDetailPanel {
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .p_2()
+                            .p(crate::ui::space::spacing(cx).card_padding)
                             .rounded_md()
                             .bg(crate::ui::style::surface_card(cx))
                             .border_1()
@@ -122,6 +124,7 @@ impl PodDetailPanel {
                                         Button::new(key)
                                             .label(if open { "Hide" } else { "Show" })
                                             .xsmall()
+                                            .frame_font(cx)
                                             .ghost()
                                             .tab_stop(false)
                                             .on_click(move |_event, _window, cx| {
@@ -145,7 +148,7 @@ impl PodDetailPanel {
                                 // push the panel wider than it is.
                                 Collapsible::new().open(open).content(
                                     div()
-                                        .font_family(theme.mono_font_family.clone())
+                                        .code_font(cx)
                                         .text_sm()
                                         .child(entry.fields_json.clone()),
                                 ),

@@ -6,6 +6,7 @@ use super::state::CardContents;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
 use crate::ui::detail::{self, Collapsible};
+use crate::ui::typography::TypeRole as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
 use std::rc::Rc;
@@ -55,7 +56,7 @@ impl PodDetailPanel {
         div()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap(crate::ui::space::spacing(cx).control_gap)
             .children(entries.iter().enumerate().map(|(card, entry)| {
                 let header = crate::ui::link::references(
                     format!("config-{card}"),
@@ -71,11 +72,14 @@ impl PodDetailPanel {
                     .get(&entry.target)
                     .map(|contents| self.render_contents(card, &entry.target, contents, cx))
                     .unwrap_or_else(|| div().into_any_element());
+                // A card is data; its Show and Expand buttons set the frame
+                // role back themselves (`ui::detail`).
                 div()
+                    .data_font()
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .p_2()
+                    .p(crate::ui::space::spacing(cx).card_padding)
                     .rounded_md()
                     .border_1()
                     .border_color(theme.border)

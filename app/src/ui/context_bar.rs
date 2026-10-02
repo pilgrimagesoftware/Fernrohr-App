@@ -31,10 +31,6 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
-/// The bar's fixed height - layout-only, so it stays local rather than in
-/// `consts.rs` (see `.claude/rules/rust-structure.md`).
-const CONTEXT_BAR_HEIGHT: f32 = 36.;
-
 /// One chip's rendered content, computed from the window's state and the caches
 /// below - a plain struct rather than an `AnyElement`, mirroring
 /// `ui/status_bar.rs`'s `StatusItem` so the same "testable without rendering" rule
@@ -374,6 +370,7 @@ impl Render for ContextBarView {
         let theme = cx.theme().clone();
         let this = cx.weak_entity();
         let chips = self.chips(cx);
+        let space = crate::ui::space::spacing(cx);
         let rendered: Vec<AnyElement> = chips
             .into_iter()
             .enumerate()
@@ -382,10 +379,11 @@ impl Render for ContextBarView {
         div()
             .flex()
             .items_center()
-            .gap_2()
-            .h(px(CONTEXT_BAR_HEIGHT))
+            .gap(space.control_gap)
+            // A row of chips, so a table row's height: it grows with the text.
+            .h(space.row_height)
             .flex_shrink_0()
-            .px_3()
+            .px(space.panel_inset)
             .border_b_1()
             .border_color(theme.border)
             .children(rendered)

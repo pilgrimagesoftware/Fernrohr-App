@@ -22,7 +22,7 @@ pub fn key_hints(window: &mut Window, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_wrap()
-        .gap_3()
+        .gap(crate::ui::space::spacing(cx).control_gap)
         .text_sm()
         .text_color(cx.theme().muted_foreground)
         .child(hint(arrows.into_any_element(), "Select"))

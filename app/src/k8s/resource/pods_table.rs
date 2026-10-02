@@ -7,7 +7,7 @@
 use std::cmp::Ordering;
 
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
-use gpui_kit::component::table::{Column, ColumnSort, TableDelegate, TableState};
+use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::*;
 
 use super::pods::{PodRow, PodSelection};
@@ -131,6 +131,20 @@ fn cell_text(row: &PodRow, col: PodColumn) -> String {
 pub(super) struct PodTableRow {
     pub(super) row: PodRow,
     pub(super) selection: PodSelection,
+}
+
+/// The Pods panel's table over `state`: striped, bordered, scrollable both
+/// ways, its rows `ui::space`'s row height.
+pub(super) fn data_table(
+    state: &Entity<TableState<PodTableDelegate>>,
+    cx: &App,
+) -> DataTable<PodTableDelegate> {
+    use gpui_kit::component::{Sizable as _, Size};
+    DataTable::new(state)
+        .stripe(true)
+        .bordered(true)
+        .scrollbar_visible(true, true)
+        .with_size(Size::Size(crate::ui::space::spacing(cx).row_height))
 }
 
 /// The [`TableDelegate`] backing a Pods panel's table: owns the column order,
@@ -291,10 +305,14 @@ impl TableDelegate for PodTableDelegate {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         use crate::ui::style::{self, Tone};
+        use crate::ui::typography::TypeRole as _;
         let row = &self.rows[row_ix].row;
         let column = self.columns[col_ix];
         let text = cell_text(row, column);
-        let cell = div().whitespace_nowrap();
+        let cell = div()
+            .debug_selector(|| format!("pod-cell-{row_ix}-{col_ix}"))
+            .data_font()
+            .whitespace_nowrap();
         match column {
             PodColumn::Status => cell
                 .text_color(style::status(row.status_tone, cx))

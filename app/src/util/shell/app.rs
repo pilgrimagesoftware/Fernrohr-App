@@ -87,6 +87,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
     crate::ui::settings::register_commands(registry);
+    crate::ui::text_size::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -107,6 +108,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.set_global(keymap::LiveKeymap::new(keymap_path.to_path_buf(), keymap));
     cx.bind_keys(crate::ui::resource_panel::panel_bindings());
     crate::ui::settings::init(cx);
+    crate::ui::text_size::register_handlers(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
     });

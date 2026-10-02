@@ -9,6 +9,7 @@
 use crate::k8s::resource::events::EventSummary;
 use crate::k8s::resource::secret_value::{Reveal, RevealError};
 use crate::ui::style::{self, Tone};
+use crate::ui::typography::TypeRole as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -52,9 +53,11 @@ pub fn tone_color(tone: BadgeTone, cx: &App) -> Hsla {
 }
 
 /// One field row: a fixed-width label, quieter than its value (muted and a
-/// size down), and the value beside it.
+/// size down), and the value beside it. Both are data text; a button inside
+/// the value sets the frame role back itself.
 pub fn row(label: impl Into<SharedString>, value: impl IntoElement, cx: &App) -> AnyElement {
     div()
+        .data_font()
         .flex()
         .gap_3()
         .py_1()
@@ -103,7 +106,7 @@ pub fn striped(rows: impl IntoIterator<Item = AnyElement>, cx: &App) -> AnyEleme
 /// than tab between them: an accent bar beside the title, in a heavier weight.
 pub fn section_heading(title: impl Into<SharedString>, cx: &App) -> AnyElement {
     div()
-        .pt_3()
+        .pt(crate::ui::space::spacing(cx).section_gap)
         .pb_1()
         .flex()
         .items_center()
@@ -123,6 +126,7 @@ pub fn section_heading(title: impl Into<SharedString>, cx: &App) -> AnyElement {
 pub fn chips(chips: &[String], cx: &App) -> AnyElement {
     let theme = cx.theme();
     div()
+        .data_font()
         .flex()
         .flex_wrap()
         .gap_1()
@@ -142,6 +146,7 @@ pub fn chips(chips: &[String], cx: &App) -> AnyElement {
 pub fn badges<'a>(badges: impl IntoIterator<Item = (&'a str, BadgeTone)>, cx: &App) -> AnyElement {
     let background = cx.theme().background;
     div()
+        .data_font()
         .flex()
         .flex_wrap()
         .gap_1()
@@ -161,6 +166,7 @@ pub fn badges<'a>(badges: impl IntoIterator<Item = (&'a str, BadgeTone)>, cx: &A
 /// One line per entry.
 pub fn lines(rows: &[String]) -> AnyElement {
     div()
+        .data_font()
         .flex()
         .flex_col()
         .children(rows.iter().map(|row| div().text_sm().child(row.clone())))
@@ -172,6 +178,7 @@ pub fn lines(rows: &[String]) -> AnyElement {
 pub fn key_values(pairs: &[(String, String)], cx: &App) -> AnyElement {
     let theme = cx.theme();
     div()
+        .data_font()
         .flex()
         .flex_col()
         .gap_2()
@@ -185,12 +192,7 @@ pub fn key_values(pairs: &[(String, String)], cx: &App) -> AnyElement {
                         .text_color(theme.muted_foreground)
                         .child(key.clone()),
                 )
-                .child(
-                    div()
-                        .font_family(theme.mono_font_family.clone())
-                        .text_sm()
-                        .child(value.clone()),
-                )
+                .child(div().code_font(cx).text_sm().child(value.clone()))
         }))
         .into_any_element()
 }
@@ -216,9 +218,10 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
             .into_any_element();
     }
     div()
+        .data_font()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(crate::ui::space::spacing(cx).control_gap)
         .children(events.iter().map(|event| {
             // A normal event's reason reads as plain text; only the others
             // take a status colour.
@@ -230,7 +233,7 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
                 .flex()
                 .flex_col()
                 .gap_1()
-                .p_2()
+                .p(crate::ui::space::spacing(cx).card_padding)
                 .rounded_md()
                 .bg(style::surface_card(cx))
                 .border_1()
@@ -284,7 +287,8 @@ pub fn secret_key_row(
             IconName::Eye
         })
         .label(if shown { "Hide" } else { "Show" })
-        .xsmall();
+        .xsmall()
+        .frame_font(cx);
     // Show is tinted danger: it is about to put a sensitive value on screen.
     // Hide puts it away again, so it needs no warning.
     let button = if shown {
@@ -296,7 +300,7 @@ pub fn secret_key_row(
     let value = reveal.map(|reveal| {
         div()
             .id(value_id)
-            .font_family(theme.mono_font_family.clone())
+            .code_font(cx)
             .text_sm()
             .child(revealed_text(reveal))
             .test_support()
@@ -310,11 +314,7 @@ pub fn secret_key_row(
                 .items_center()
                 .gap_2()
                 .text_sm()
-                .child(
-                    div()
-                        .font_family(theme.mono_font_family.clone())
-                        .child(key.to_string()),
-                )
+                .child(div().code_font(cx).child(key.to_string()))
                 .child(
                     div()
                         .text_color(theme.muted_foreground)

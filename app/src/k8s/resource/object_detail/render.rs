@@ -8,6 +8,7 @@ use super::panel::ObjectDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::events;
 use crate::k8s::resource::pod_detail::DetailView;
+use crate::ui::typography::TypeRole as _;
 use crate::ui::{detail, link, panel_title};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -105,7 +106,7 @@ impl ObjectDetailPanel {
         };
         div()
             .size_full()
-            .font_family(cx.theme().mono_font_family.clone())
+            .code_font(cx)
             .whitespace_nowrap()
             .child(yaml)
             .into_any_element()
@@ -119,16 +120,17 @@ impl ObjectDetailPanel {
 
 impl Render for ObjectDetailPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let space = crate::ui::space::spacing(cx);
         let content = match &self.state {
             ObjectDetailState::Loading => div()
                 .size_full()
-                .p_3()
+                .p(space.panel_inset)
                 .child(format!("Loading {}...", self.kind_noun()))
                 .into_any_element(),
             ObjectDetailState::NotFound => div()
                 .id("object-not-found")
                 .size_full()
-                .p_3()
+                .p(space.panel_inset)
                 .child(format!("This {} doesn't exist.", self.kind_noun()))
                 .test_support()
                 .into_any_element(),
@@ -141,13 +143,13 @@ impl Render for ObjectDetailPanel {
             ObjectDetailState::Loaded(_, _) => match self.viewing {
                 DetailView::Structured => div()
                     .size_full()
-                    .p_3()
+                    .p(space.panel_inset)
                     .overflow_y_scrollbar()
                     .child(self.render_structured(cx))
                     .into_any_element(),
                 DetailView::Yaml => div()
                     .size_full()
-                    .p_3()
+                    .p(space.panel_inset)
                     .overflow_scrollbar()
                     .child(self.render_yaml(cx))
                     .into_any_element(),
@@ -176,8 +178,9 @@ impl Render for ObjectDetailPanel {
             .flex()
             .items_center()
             .justify_between()
-            .gap_2()
-            .p_2()
+            .gap(space.control_gap)
+            .px(space.panel_inset)
+            .py(space.control_gap)
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
@@ -197,7 +200,7 @@ impl Render for ObjectDetailPanel {
                     .flex_wrap()
                     .justify_end()
                     .min_w_0()
-                    .gap_x_3()
+                    .gap_x(space.control_gap)
                     .gap_y_1()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)

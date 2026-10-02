@@ -25,9 +25,10 @@ fn main() {
         .run(|cx: &mut App| {
             gpui_kit::init(cx);
             runtime::init(cx);
-            let ui_config: config::ui::UiConfig =
-                config::load(&util::paths::preference_dir().join("ui.toml"));
+            let ui_path = util::paths::preference_dir().join("ui.toml");
+            let ui_config: config::ui::UiConfig = config::load(&ui_path);
             ui::theme::init(ui_config.theme, cx);
+            ui::text_size::init(ui_config.text_size, ui_path, cx);
             let workspace_path = util::shell::default_workspace_path();
             let keymap_path = util::paths::preference_dir().join("keymap.toml");
             util::shell::init(cx, workspace_path.clone(), &keymap_path);

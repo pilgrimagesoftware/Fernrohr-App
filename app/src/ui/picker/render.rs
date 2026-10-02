@@ -22,7 +22,7 @@ impl Render for ClusterPicker {
                         .flex()
                         .flex_col()
                         .items_center()
-                        .gap_6()
+                        .gap(crate::ui::space::spacing(cx).section_gap * 1.5)
                         .child(logo())
                         .child(content),
                 )
