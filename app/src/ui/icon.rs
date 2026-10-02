@@ -9,9 +9,13 @@
 //! icon; [`element`] draws one beside text.
 
 mod element;
+mod inline;
 // UNWIRED: see `ui::icon`'s note in `ui/mod.rs`.
 #[allow(unused_imports)]
 pub use element::{IconSize, device_px, kind_icon};
+pub use inline::InlineKindIcon;
+#[cfg(test)]
+pub(crate) use inline::test_support;
 
 /// One bundled icon. A closed set: every file this app ships is a variant, so
 /// adding an icon is adding a variant here and a file, and the tests walk

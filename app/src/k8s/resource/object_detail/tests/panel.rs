@@ -8,6 +8,7 @@ use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::object_detail::restore::{dump_target, target_from_state};
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::keymap::{self, KeymapConfig};
+use crate::ui::icon::test_support::assert_icon_leads;
 use crate::ui::link::FollowReference;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, ElementId, TestAppContext, VisualTestContext};
@@ -183,6 +184,32 @@ async fn g_then_enter_follows_the_first_reference(cx: &mut TestAppContext) {
         followed.borrow().last().map(|follow| follow.target.clone()),
         Some(ObjectRef::cluster_scoped("", "Namespace", "staging")),
         "the Namespace row comes first"
+    );
+}
+
+/// `resource-kind-icons` 3.3: the object viewer's references lead with their
+/// kind's icon - here the ReplicaSet's Deployment owner.
+#[gpui_kit::test]
+async fn a_reference_leads_with_its_kinds_icon(cx: &mut TestAppContext) {
+    init(cx);
+    let (window, panel) = stub_panel(
+        cx,
+        target(replica_sets(), Some("staging"), "web-7d9f"),
+        vec![replica_sets(), deployments()],
+    );
+    window
+        .update(cx, |_, _, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.test_set_loaded(owned_replica_set(), cx)
+            })
+        })
+        .unwrap();
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+    assert_icon_leads(
+        &mut vcx,
+        format!("kind-icon {} Deployment", owner_link()),
+        owner_link(),
     );
 }
 

@@ -3,6 +3,7 @@
 
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::object_ref::ObjectRef;
+use crate::ui::icon::{InlineKindIcon, for_kind};
 use crate::ui::viewer::viewer_for;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -23,11 +24,14 @@ pub struct FollowReference {
     pub target: ObjectRef,
 }
 
-/// `target`, shown as `text`: a link when it can be followed, plain unstyled
-/// text when it can't - never a link that leads nowhere.
+/// `target`, shown as its kind's icon then `text`: a link when it can be
+/// followed, plain unstyled text when it can't - never a link that leads
+/// nowhere. The icon is inside the link, so it is part of what a click hits,
+/// and sizes itself to the text the reference sits in.
 ///
 /// `id` must be unique among the panel's references; it is what a click
-/// targets, and what a test finds the reference by.
+/// targets, and what a test finds the reference by. Its icon is
+/// `kind-icon {id} {KindIcon:?}` to `debug_bounds`.
 fn reference(
     id: impl Into<ElementId>,
     target: &ObjectRef,
@@ -36,9 +40,21 @@ fn reference(
     kinds: Option<&[DiscoveredKind]>,
     cx: &App,
 ) -> AnyElement {
-    let text = text.into();
+    let id = id.into();
+    let kind_icon = for_kind(&target.group, &target.kind);
+    let icon = InlineKindIcon::new(kind_icon).selector(format!("kind-icon {id} {kind_icon:?}"));
+    let content = div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(icon)
+        .child(text.into());
     if viewer_for(target, kinds).is_none() {
-        return div().id(id).child(text).test_support().into_any_element();
+        return div()
+            .id(id)
+            .child(content)
+            .test_support()
+            .into_any_element();
     }
     let action = FollowReference {
         context_name: context_name.to_string(),
@@ -69,7 +85,7 @@ fn reference(
         .on_click(move |_event, window, cx| {
             window.dispatch_action(Box::new(action.clone()), cx);
         })
-        .child(text)
+        .child(content)
         .test_support()
         .into_any_element()
 }
