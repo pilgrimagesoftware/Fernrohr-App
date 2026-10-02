@@ -64,6 +64,9 @@ pub struct PodField {
 pub enum PodFieldValue {
     /// One short value on the row.
     Text(String),
+    /// A state, in its severity's colour and still reading as text without it
+    /// - the pod's phase.
+    Status { text: String, tone: BadgeTone },
     /// Values naming other objects - the pod's namespace, node, service
     /// account, owners, image pull secrets. One entry per object, never one
     /// joined string; whether each is followable is decided at render time by
@@ -104,7 +107,7 @@ impl PodFieldValue {
     #[cfg(test)]
     pub fn text(&self) -> String {
         match self {
-            PodFieldValue::Text(text) => text.clone(),
+            PodFieldValue::Text(text) | PodFieldValue::Status { text, .. } => text.clone(),
             PodFieldValue::References { targets, qualified } => targets
                 .iter()
                 .map(|target| reference_text(target, *qualified))
@@ -144,6 +147,8 @@ impl PodFieldValue {
 pub struct ManagedFieldEntry {
     pub manager: String,
     pub operation: String,
+    /// When the manager last wrote, if recorded.
+    pub time: Option<jiff::Timestamp>,
     pub fields_json: String,
 }
 
@@ -165,6 +170,8 @@ pub struct ContainerSummary {
     /// `state`'s health: running is good, stuck (a waiting reason the Pods
     /// table also counts as bad) or failed is bad, any other wait a warning.
     pub state_tone: BadgeTone,
+    /// Why it waits, or what it said on exit, when the cluster gave a message.
+    pub state_message: Option<String>,
     pub ports: Vec<String>,
     pub requests: Vec<String>,
     pub limits: Vec<String>,

@@ -27,24 +27,23 @@ pub(super) fn managed_field_entry(
     ManagedFieldEntry {
         manager,
         operation,
+        time: entry.time.as_ref().map(|time| time.0),
         fields_json,
     }
 }
 
-/// Joins `spec.containers` (or `spec.init_containers`) with their matching
-/// `status.container_statuses` entry by name - the two live on separate parts
-/// of the `Pod` object, and a container with no status yet (still scheduling)
-/// still gets a row, just without ready/restart/state data.
+/// Joins `containers` with their matching entry in `statuses` by name - the
+/// two live on separate parts of the `Pod` object, and a container with no
+/// status yet (still scheduling) still gets a row, just without
+/// ready/restart/state data. `spec.containers` pair with
+/// `status.containerStatuses` and `spec.initContainers` with
+/// `status.initContainerStatuses`: reading an init container's state from the
+/// app containers' statuses showed it with someone else's state, or none.
 pub(super) fn summarize_containers(
     containers: &[k8s_openapi::api::core::v1::Container],
-    status: Option<&k8s_openapi::api::core::v1::PodStatus>,
+    statuses: &[k8s_openapi::api::core::v1::ContainerStatus],
     namespace: &str,
 ) -> Vec<ContainerSummary> {
-    let statuses = status
-        .and_then(|status| status.container_statuses.as_ref())
-        .map(|statuses| statuses.as_slice())
-        .unwrap_or_default();
-
     containers
         .iter()
         .map(|container| {
@@ -77,9 +76,12 @@ pub(super) fn summarize_containers(
                     .and_then(|status| status.state.as_ref())
                     .map(format_container_state)
                     .unwrap_or_else(|| "Waiting".to_string()),
+                state_message: matching
+                    .and_then(|status| status.state.as_ref())
+                    .and_then(container_state_message),
                 state_tone: matching
                     .and_then(|status| status.state.as_ref())
-                    .map_or(BadgeTone::Warning, container_state_tone),
+                    .map_or(BadgeTone::Info, container_state_tone),
                 ports,
                 requests,
                 limits,
@@ -104,7 +106,7 @@ pub(super) fn format_quantities(
 
 /// The one human string a `ContainerState` union renders as - a reason when
 /// the cluster gave one (`ImagePullBackOff`, `Completed`), the bare state
-/// name otherwise.
+/// name otherwise, and a terminated container's exit code.
 pub(super) fn format_container_state(state: &k8s_openapi::api::core::v1::ContainerState) -> String {
     if let Some(running) = &state.running {
         let _ = running;
@@ -117,16 +119,39 @@ pub(super) fn format_container_state(state: &k8s_openapi::api::core::v1::Contain
         };
     }
     if let Some(terminated) = &state.terminated {
+        let exit = terminated.exit_code;
         return match non_empty(&terminated.reason) {
-            Some(reason) => format!("Terminated: {reason}"),
-            None => "Terminated".to_string(),
+            Some(reason) => format!("Terminated: {reason} (exit {exit})"),
+            None => format!("Terminated (exit {exit})"),
         };
     }
     "Unknown".to_string()
 }
 
-/// How healthy a container's state is - the same reading of waiting reasons
-/// the Pods table's Status colour uses, so the two never disagree.
+/// The message a waiting or terminated container's state carries - why it
+/// waits, or what it said on the way out - when the cluster gave one.
+pub(super) fn container_state_message(
+    state: &k8s_openapi::api::core::v1::ContainerState,
+) -> Option<String> {
+    let message = state
+        .waiting
+        .as_ref()
+        .and_then(|waiting| waiting.message.clone())
+        .or_else(|| {
+            state
+                .terminated
+                .as_ref()
+                .and_then(|terminated| terminated.message.clone())
+        })?;
+    let message = message.trim();
+    (!message.is_empty()).then(|| message.to_string())
+}
+
+/// How healthy a container's state is (`resource-detail-ui-improvements`):
+/// running, or terminated cleanly (`Completed`), is success; waiting is info -
+/// under way - unless its reason is one the Pods table's Status colour also
+/// counts as stuck (`CrashLoopBackOff`, `ImagePullBackOff`, ...), which is
+/// danger, as is a non-zero exit.
 pub(super) fn container_state_tone(
     state: &k8s_openapi::api::core::v1::ContainerState,
 ) -> BadgeTone {
@@ -142,12 +167,12 @@ pub(super) fn container_state_tone(
         return if stuck {
             BadgeTone::Bad
         } else {
-            BadgeTone::Warning
+            BadgeTone::Info
         };
     }
     if let Some(terminated) = &state.terminated {
         return if terminated.exit_code == 0 {
-            BadgeTone::Unknown
+            BadgeTone::Good
         } else {
             BadgeTone::Bad
         };

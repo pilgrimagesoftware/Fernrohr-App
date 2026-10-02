@@ -30,6 +30,11 @@ pub(super) fn container_toggle_id(name: &str) -> ElementId {
 }
 
 /// Container `name`'s card icon, to `debug_bounds`.
+/// Container `name`'s image copy control.
+pub(in crate::k8s::resource::pod_detail) fn copy_image_id(name: &str) -> ElementId {
+    ElementId::Name(format!("copy-image-{name}").into())
+}
+
 pub(super) fn container_icon_selector(name: &str) -> String {
     format!("kind-icon container-{name} Container")
 }
@@ -140,14 +145,22 @@ impl PodDetailPanel {
                             .font_weight(FontWeight::MEDIUM)
                             .child(container.name.clone()),
                     )
-                    .child(
+                    .child({
+                        let selector = format!("container-state-{}", container.name);
                         div()
                             .text_sm()
                             .text_color(detail::tone_color(container.state_tone, cx))
-                            .child(container.state.clone()),
-                    ),
+                            .debug_selector(move || selector.clone())
+                            .child(container.state.clone())
+                    }),
             )
-            .child(div().text_sm().min_w_0().child(container.image.clone()))
+            .children(container.state_message.clone().map(muted_line))
+            .child(crate::ui::copy::copyable(
+                div().text_sm().min_w_0().child(container.image.clone()),
+                copy_image_id(&container.name),
+                container.image.clone(),
+                format!("image-{}", container.name),
+            ))
             .when(container.restart_count > 0, |this| {
                 this.child(
                     div()

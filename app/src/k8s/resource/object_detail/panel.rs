@@ -37,6 +37,8 @@ pub struct ObjectDetailPanel {
     /// Revealed Secret values, by key - only while shown, and never saved.
     pub(super) revealed:
         std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
+    /// The YAML view's folds and scroll position.
+    pub(super) yaml_view: crate::ui::yaml_view::YamlViewState,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -82,6 +84,7 @@ impl ObjectDetailPanel {
             viewing: DetailView::Structured,
             fetching: false,
             revealed: Default::default(),
+            yaml_view: Default::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
