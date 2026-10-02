@@ -15,6 +15,7 @@ pub mod status_bar;
 pub mod style;
 pub mod theme;
 pub mod tunnels;
+pub mod typography;
 pub mod viewer;
 
 pub use panel::resource as resource_panel;
