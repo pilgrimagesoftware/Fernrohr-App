@@ -110,4 +110,28 @@ mod tests {
             "the second dispatch raised the existing window rather than opening another"
         );
     }
+
+    /// `resource-kind-icons` 4.1: the About window credits the Kubernetes
+    /// icon set and names its licence.
+    #[test]
+    fn the_credits_name_the_kubernetes_icon_set_and_its_licence() {
+        use super::super::pane::KUBERNETES_ICONS_CREDIT;
+        use crate::ui::typography::recorder::with_recorded_text;
+
+        assert!(KUBERNETES_ICONS_CREDIT.contains("Kubernetes"));
+        assert!(KUBERNETES_ICONS_CREDIT.contains("Apache License 2.0"));
+        with_recorded_text(|cx, recorded| {
+            cx.update(|cx| {
+                gpui_kit::init(cx);
+                super::register_about_action(cx);
+            });
+            cx.update(|cx| cx.dispatch_action(&About));
+            cx.run_until_parked();
+            assert!(
+                recorded.families_of(KUBERNETES_ICONS_CREDIT).is_some(),
+                "the credit line is drawn"
+            );
+            assert!(recorded.families_of("Icons").is_some(), "under its heading");
+        });
+    }
 }
