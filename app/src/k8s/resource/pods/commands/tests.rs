@@ -55,12 +55,13 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
             "pods.warp_namespace",
             "pods.describe",
             "pods.logs",
-            "pods.yaml"
+            "pods.yaml",
+            "pods.fit_columns"
         ]
     );
     assert_eq!(
         crate::command::build_items(&registry, &[PANEL_KEY_CONTEXT]).len(),
-        4,
+        5,
         "each is a palette item"
     );
 

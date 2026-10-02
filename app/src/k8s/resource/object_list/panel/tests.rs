@@ -363,3 +363,66 @@ async fn double_clicking_a_row_opens_its_object(cx: &mut TestAppContext) {
         "a cluster-scoped object"
     );
 }
+
+fn column_widths(h: &mut Harness) -> Vec<gpui_kit::Pixels> {
+    h.vcx.update(|_, cx| {
+        let table = h.panel.read(cx).table.clone().expect("the table is drawn");
+        table
+            .read(cx)
+            .delegate()
+            .columns()
+            .iter()
+            .map(|column| column.width)
+            .collect()
+    })
+}
+
+/// `0-column-autofit`, the keyboard route: `=` fits every column to its
+/// contents - here short names, so Name narrows from its default.
+#[gpui_kit::test]
+async fn equals_fits_the_columns_to_their_contents(cx: &mut TestAppContext) {
+    let mut h = harness(cx, deployments(), vec![object("web", Some("staging"))]);
+    focus_table(&mut h);
+    let before = column_widths(&mut h);
+
+    press(&mut h.vcx, "=");
+
+    let after = column_widths(&mut h);
+    assert!(after[0] < before[0], "Name fitted: {before:?} -> {after:?}");
+}
+
+/// The mouse route: a double-click on Name's header divider fits Name alone.
+#[gpui_kit::test]
+async fn double_clicking_a_header_divider_fits_its_column(cx: &mut TestAppContext) {
+    use gpui_kit::{Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, point};
+    let mut h = harness(cx, deployments(), vec![object("web", Some("staging"))]);
+    let before = column_widths(&mut h);
+    let header = h
+        .vcx
+        .debug_bounds("table-header-0")
+        .expect("Name's header is drawn");
+    let padding = h
+        .vcx
+        .update(|_, cx| crate::ui::table_fit::table_size(cx).table_cell_padding());
+    let at = point(header.left() - padding.left + before[0], header.center().y);
+    for click_count in [1, 2] {
+        h.vcx.simulate_event(MouseDownEvent {
+            button: MouseButton::Left,
+            position: at,
+            modifiers: Modifiers::none(),
+            click_count,
+            first_mouse: false,
+        });
+        h.vcx.simulate_event(MouseUpEvent {
+            button: MouseButton::Left,
+            position: at,
+            modifiers: Modifiers::none(),
+            click_count,
+        });
+    }
+    h.vcx.run_until_parked();
+
+    let after = column_widths(&mut h);
+    assert!(after[0] < before[0], "Name fitted: {before:?} -> {after:?}");
+    assert_eq!(after[1..], before[1..], "and only Name");
+}

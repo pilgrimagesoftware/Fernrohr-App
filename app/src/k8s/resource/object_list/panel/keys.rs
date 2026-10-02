@@ -1,6 +1,7 @@
 //! The list's own keys beyond Enter and `/`: describe and YAML
 //! (`standard-resource-panels` 5.1) - `d` and `y` on the selected row, as the Pods
-//! table answers them - and Up/Down from no selection (5.2, [`list_keys`]).
+//! table answers them - Up/Down from no selection (5.2, [`list_keys`]), and
+//! fitting the columns (`ui::table_fit`).
 
 use super::ObjectListPanel;
 use crate::k8s::resource::object_list::commands::{DescribeSelected, ShowSelectedYaml};
@@ -29,6 +30,19 @@ impl ObjectListPanel {
     ) {
         if let Some(row_ix) = self.selected_row(cx) {
             self.open_row_as(row_ix, Some(DetailView::Yaml), window, cx);
+        }
+    }
+
+    /// Fits every column to its contents (`ui::table_fit`).
+    pub(in crate::k8s::resource::object_list) fn on_action_fit_columns(
+        &mut self,
+        _: &crate::ui::table_fit::FitAllColumns,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(table) = self.table.clone() {
+            let size = crate::ui::table_fit::table_size(cx);
+            crate::ui::table_fit::fit_all_columns(&table, size, window, cx);
         }
     }
 

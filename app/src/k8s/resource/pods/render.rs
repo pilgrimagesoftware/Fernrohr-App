@@ -16,6 +16,19 @@ impl PodsPanel {
         self.step(Step::Up, window, cx);
     }
 
+    /// Fits every column to its contents (`ui::table_fit`).
+    fn on_action_fit_columns(
+        &mut self,
+        _: &crate::ui::table_fit::FitAllColumns,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(table) = self.pod_table.clone() {
+            let size = crate::ui::table_fit::table_size(cx);
+            crate::ui::table_fit::fit_all_columns(&table, size, window, cx);
+        }
+    }
+
     fn step(&mut self, step: Step, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(table) = self.pod_table.clone()
             && list_keys::step(&table, step, window, cx)
@@ -192,6 +205,7 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
+            .on_action(cx.listener(Self::on_action_fit_columns))
             .child(
                 div()
                     .size_full()

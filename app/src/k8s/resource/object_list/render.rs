@@ -138,6 +138,7 @@ impl Render for ObjectListPanel {
             .on_action(cx.listener(Self::on_action_describe_selected))
             .on_action(cx.listener(Self::on_action_show_selected_yaml))
             .on_action(cx.listener(Self::on_action_warp_namespace))
+            .on_action(cx.listener(Self::on_action_fit_columns))
             .child(
                 div()
                     .size_full()

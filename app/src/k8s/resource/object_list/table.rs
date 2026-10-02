@@ -167,17 +167,25 @@ pub(super) fn cell_text(row: &ListRow, column: &ListColumn) -> String {
 }
 
 /// The panel's table over `state`: striped, bordered, scrollable both ways, its
-/// rows `ui::space`'s row height - the same table the Pods panel draws.
+/// rows `ui::space`'s row height - the same table the Pods panel draws - with a
+/// double-click on a header divider fitting the column on its left.
 pub(super) fn data_table(
     state: &Entity<TableState<ObjectTableDelegate>>,
     cx: &App,
-) -> DataTable<ObjectTableDelegate> {
-    use gpui_kit::component::{Sizable as _, Size};
-    DataTable::new(state)
-        .stripe(true)
-        .bordered(true)
-        .scrollbar_visible(true, true)
-        .with_size(Size::Size(crate::ui::space::spacing(cx).row_height))
+) -> impl IntoElement + use<> {
+    use gpui_kit::component::Sizable as _;
+    let size = crate::ui::table_fit::table_size(cx);
+    div()
+        .size_full()
+        .relative()
+        .child(
+            DataTable::new(state)
+                .stripe(true)
+                .bordered(true)
+                .scrollbar_visible(true, true)
+                .with_size(size),
+        )
+        .child(crate::ui::table_fit::divider_double_click(state, size))
 }
 
 /// What a row's "Open" calls with the row it was raised on.
@@ -198,6 +206,9 @@ pub(super) struct ObjectTableDelegate {
     selected: Option<(Option<String>, String)>,
     /// Asks the panel to open the row a context menu was raised on.
     on_open: Option<OpenRow>,
+    /// The header cells' drawn bounds, for a divider double-click to fit a
+    /// column (`ui::table_fit`).
+    header: crate::ui::table_fit::HeaderBounds,
 }
 
 impl ObjectTableDelegate {
@@ -209,6 +220,7 @@ impl ObjectTableDelegate {
             sort: None,
             selected: None,
             on_open: None,
+            header: Default::default(),
         }
     }
 
@@ -363,6 +375,22 @@ impl TableDelegate for ObjectTableDelegate {
         self.reorder_columns(col_ix, to_ix);
     }
 
+    /// The column's title, as the default draws it, with its bounds recorded
+    /// for the divider double-click.
+    fn render_th(
+        &mut self,
+        col_ix: usize,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let title = self.columns[col_ix].title.clone();
+        self.header.track(col_ix, div().size_full().child(title))
+    }
+
+    fn cell_text(&self, row_ix: usize, col_ix: usize, _cx: &App) -> String {
+        cell_text(&self.rows[row_ix], &self.columns[col_ix])
+    }
+
     fn perform_sort(
         &mut self,
         col_ix: usize,
@@ -397,3 +425,15 @@ pub(super) fn reselect(
 
 #[cfg(test)]
 mod tests;
+
+impl crate::ui::table_fit::FitColumns for ObjectTableDelegate {
+    fn header_bounds(&self) -> &crate::ui::table_fit::HeaderBounds {
+        &self.header
+    }
+
+    fn set_column_width(&mut self, col_ix: usize, width: Pixels) {
+        if let Some(column) = self.columns.get_mut(col_ix) {
+            column.width = width;
+        }
+    }
+}

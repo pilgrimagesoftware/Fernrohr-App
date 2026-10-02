@@ -53,10 +53,11 @@ const OPEN_COMMAND_ID: &str = "object_list.open";
 const NAMESPACE_COMMAND_ID: &str = "object_list.warp_namespace";
 const DESCRIBE_COMMAND_ID: &str = "object_list.describe";
 const YAML_COMMAND_ID: &str = "object_list.yaml";
+const FIT_COMMAND_ID: &str = "object_list.fit_columns";
 
 /// Registers the panel's shortcuts. Open, describe and YAML sit in Navigate, the
-/// namespace warp in View (all like their Pods twins); focusing the filter is
-/// palette-only.
+/// namespace warp and fitting the columns in View (all like their Pods twins);
+/// focusing the filter is palette-only.
 pub fn register_commands(registry: &mut CommandRegistry) {
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {
         registry.register(Command {
@@ -101,6 +102,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Filter to Selected Object's Namespace",
         NAMESPACE_KEY,
         Box::new(WarpNamespace),
+        Some(MenuSlot::View),
+    );
+    // The keyboard twin of a double-click on a header divider (`ui::table_fit`).
+    register(
+        FIT_COMMAND_ID,
+        "List: Fit Columns to Contents",
+        crate::ui::table_fit::FIT_COLUMNS_KEY,
+        Box::new(crate::ui::table_fit::FitAllColumns),
         Some(MenuSlot::View),
     );
 }
