@@ -124,3 +124,58 @@ fn a_windows_frame_is_drawn_in_the_frame_family() {
             .unwrap();
     });
 }
+
+/// `visual-refresh-typography-spacing` 3.2, context and status bars: each
+/// bar's first item sits at least the panel inset from the window's edge, at
+/// 150% text so the inset is the scaled token.
+#[gpui_kit::test]
+async fn the_bars_items_are_inset_from_the_window_edge(cx: &mut TestAppContext) {
+    use crate::ui::space::{TextScale, spacing};
+    use gpui_kit::test::TestWindowExt as _;
+
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        TextScale::new(1.5).expect("a valid scale").set(cx);
+        open_window(
+            cx,
+            WindowLayout {
+                contexts: vec!["kind-dev".to_string()],
+                ..Default::default()
+            },
+        );
+    });
+    cx.run_until_parked();
+    let window = cx.update(|cx| cx.windows()[0]);
+    let (inset, chip) = window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            let chip = window
+                .try_find(gpui_kit::ElementId::from(gpui_kit::SharedString::from(
+                    "context-chip-kind-dev",
+                )))
+                .expect("the context bar's chip is drawn")
+                .bounds();
+            (spacing(cx).panel_inset, chip)
+        })
+        .unwrap();
+    assert!(
+        chip.left() >= inset,
+        "the context chip starts {:?} from the edge, under {inset:?}",
+        chip.left()
+    );
+
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window, cx);
+    let item = vcx
+        .debug_bounds("status-item-kind-dev")
+        .expect("the status bar's item is drawn");
+    assert!(
+        item.left() >= inset,
+        "the status item starts {:?} from the edge, under {inset:?}",
+        item.left()
+    );
+    window
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+}

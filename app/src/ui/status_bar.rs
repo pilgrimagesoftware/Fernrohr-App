@@ -18,8 +18,9 @@ use gpui_kit::component::{ActiveTheme as _, Icon};
 use gpui_kit::*;
 use std::time::{Duration, Instant};
 
-/// The bar's fixed height - layout-only, so it stays local rather than in `consts.rs`
-/// (see `.claude/rules/rust-structure.md`).
+/// The bar's height at the default text size - layout-only, so it stays local rather
+/// than in `consts.rs` (see `.claude/rules/rust-structure.md`). It scales with the
+/// text, as the spacing tokens do.
 const STATUS_BAR_HEIGHT: f32 = 28.;
 
 /// One status bar item's content, computed from [`ClusterRegistry::health`] - a plain
@@ -228,7 +229,9 @@ impl StatusBarView {
 
     fn render_item(item: &StatusItem, theme: &gpui_kit::component::Theme) -> impl IntoElement {
         let color = Self::color(theme, item.severity);
+        let selector = format!("status-item-{}", item.context_name);
         div()
+            .debug_selector(move || selector)
             .flex()
             .items_center()
             .gap_1p5()
@@ -248,13 +251,15 @@ impl Render for StatusBarView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let items = self.items(cx);
+        let space = crate::ui::space::spacing(cx);
+        let scale = crate::ui::space::TextScale::current(cx).factor();
         div()
             .flex()
             .items_center()
-            .gap_4()
-            .h(px(STATUS_BAR_HEIGHT))
+            .gap(space.section_gap)
+            .h(px((STATUS_BAR_HEIGHT * scale).round()))
             .flex_shrink_0()
-            .px_3()
+            .px(space.panel_inset)
             .border_t_1()
             .border_color(theme.border)
             .children(items.iter().map(|item| Self::render_item(item, &theme)))
