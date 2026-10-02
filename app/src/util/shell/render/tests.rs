@@ -2,9 +2,11 @@
 // next to `#[gpui_kit::test]` items blows the macro-expansion budget (see
 // `util/shell.rs`), and would shadow the built-in `#[test]`.
 use crate::command::CommandRegistry;
+use crate::util::shell::{MainWindow, WindowMode};
 use crate::util::shell::{ToggleCommandPalette, WindowLayout, open_window, register_commands};
-use gpui_kit::TestAppContext;
+use gpui_kit::component::Root;
 use gpui_kit::component::WindowExt as _;
+use gpui_kit::{AppContext as _, Keystroke, TestAppContext, VisualTestContext};
 
 #[gpui_kit::test]
 async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
@@ -172,4 +174,68 @@ async fn the_bars_items_are_inset_from_the_window_edge(cx: &mut TestAppContext) 
     window
         .update(cx, |_, window, _| window.remove_window())
         .unwrap();
+}
+
+/// ⌘⇧P opens the palette from a freshly opened window whatever the picker
+/// shows - including no kubeconfig contexts, or an unreadable kubeconfig,
+/// where the picker draws no context list. Launch focus used to go to that
+/// undrawn list, leaving no focus path for the palette's binding to reach
+/// `MainWindow` on: a machine without a kubeconfig (CI's runners) never
+/// opened it. The states are set directly, so this doesn't depend on the
+/// machine's real kubeconfig.
+#[gpui_kit::test]
+async fn the_palette_opens_from_the_keyboard_in_every_picker_state(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        let mut registry = CommandRegistry::new();
+        register_commands(&mut registry);
+        let bindings = crate::keymap::bindings(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            cx.keyboard_mapper().as_ref(),
+        );
+        cx.bind_keys(bindings);
+        cx.set_global(registry);
+    });
+    let palette_key = Keystroke::parse(crate::util::shell::TOGGLE_PALETTE_DEFAULT_BINDING)
+        .expect("a valid keystroke")
+        .unparse();
+
+    for (state, contexts) in [
+        ("no contexts", Ok(Vec::new())),
+        (
+            "an unreadable kubeconfig",
+            Err("missing kubeconfig".to_string()),
+        ),
+        ("contexts to pick", Ok(vec!["kind-dev".to_string()])),
+    ] {
+        let window = cx.add_window(|window, cx| {
+            let view = cx.new(|cx| {
+                let main_window = MainWindow::test_picker_window(window, cx);
+                if let WindowMode::Picker(picker) = &main_window.mode {
+                    picker.update(cx, |picker, _| picker.test_set_contexts(contexts));
+                }
+                main_window
+            });
+            // As `open_window` does at launch.
+            view.update(cx, |view, cx| view.focus_initial(window, cx));
+            Root::new(view, window, cx)
+        });
+        let mut vcx = VisualTestContext::from_window(window.into(), cx);
+        vcx.run_until_parked();
+        vcx.simulate_keystrokes(&palette_key);
+        vcx.run_until_parked();
+
+        let opened = vcx.update(|window, cx| window.has_active_dialog(cx));
+        // Closed before asserting, so a failure reports the state rather than
+        // the leak detector's complaint about the palette's model.
+        vcx.update(|window, cx| window.close_all_dialogs(cx));
+        assert!(opened, "the palette opens with {state}");
+        window
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+        cx.run_until_parked();
+    }
 }

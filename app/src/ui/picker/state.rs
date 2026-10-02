@@ -191,6 +191,26 @@ impl ClusterPicker {
         self.command_state.read(cx).focus_handle(cx)
     }
 
+    /// Test-only: replaces what the kubeconfig gave, so a test outside this
+    /// module can show any of the picker's states without a real kubeconfig.
+    #[cfg(test)]
+    pub(crate) fn test_set_contexts(&mut self, contexts: Result<Vec<String>, String>) {
+        self.contexts = contexts;
+    }
+
+    /// Where keyboard focus belongs when the picker is shown: its context list,
+    /// or - with no contexts to list (none configured, or the kubeconfig
+    /// unreadable) - the picker card, the only focusable element those states
+    /// draw. Focusing the list there would focus an element that isn't drawn,
+    /// leaving no focus path, so the window's own actions (the command palette)
+    /// would be unreachable from the keyboard.
+    pub fn initial_focus_handle(&self, cx: &App) -> FocusHandle {
+        match &self.contexts {
+            Ok(contexts) if !contexts.is_empty() => self.command_focus_handle(cx),
+            _ => self.focus_handle.clone(),
+        }
+    }
+
     /// `window-context-bar` section 3.2's "+" popover: the same picker, minus the
     /// contexts `used` already names. Filtering post-construction, rather than a
     /// second contexts source, is what keeps every other rule - tunnel bindings,
