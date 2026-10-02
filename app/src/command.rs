@@ -1,5 +1,27 @@
 use gpui_kit::Action;
 
+/// The application menu's seven top-level menus. A command names at most
+/// one - the menu is a curated subset of commands, not every command sorted
+/// into a bucket, so most commands (panel-scoped shortcuts especially) carry
+/// `None` and stay palette/keymap-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuSlot {
+    /// Between About and Services: Settings… (`settings.open`). About, Hide
+    /// and Quit are platform items `ui::menu` builds itself.
+    App,
+    /// This app's stand-in for a conventional File menu: there are no
+    /// documents to open/save/close, but there is a cluster context to pick
+    /// and switch - see `app-menu-and-fonts/design.md` on why this is named
+    /// `Context` rather than forcing a `File` label onto content that isn't
+    /// files.
+    Context,
+    Edit,
+    View,
+    Navigate,
+    Window,
+    Help,
+}
+
 /// A registered command: metadata (for the palette and keymap) plus the
 /// GPUI [`Action`] it dispatches. Wraps GPUI's action system rather than
 /// replacing it - see design D4.
@@ -13,6 +35,8 @@ pub struct Command {
     /// windows/views with that `KeyContext` active.
     pub context: Option<&'static str>,
     pub action: Box<dyn Action>,
+    /// Which top-level application menu shows this command, if any.
+    pub menu: Option<MenuSlot>,
 }
 
 impl Command {
@@ -42,9 +66,6 @@ impl CommandRegistry {
         self.commands.push(command);
     }
 
-    // UNWIRED: no caller looks a command up by id outside `dispatch` (also
-    // unwired) and this module's own tests yet.
-    #[allow(dead_code)]
     pub fn get(&self, id: &str) -> Option<&Command> {
         self.commands.iter().find(|command| command.id == id)
     }
@@ -58,6 +79,15 @@ impl CommandRegistry {
         self.commands
             .iter()
             .filter(|command| command.is_available(active_contexts))
+            .collect()
+    }
+
+    /// Commands assigned to `slot`, in registration order - the same order
+    /// the palette lists them, so the menu and the palette agree.
+    pub fn for_menu(&self, slot: MenuSlot) -> Vec<&Command> {
+        self.commands
+            .iter()
+            .filter(|command| command.menu == Some(slot))
             .collect()
     }
 
@@ -82,7 +112,7 @@ impl CommandRegistry {
 /// Case-insensitive subsequence match: every character of `query`, in
 /// order, appears somewhere in `candidate` (not necessarily contiguous).
 /// This is what makes "new win" match "New Window".
-// UNWIRED: `build_items` below still relies on gpui-component's own
+// UNWIRED: the palette (`util::palette`) still relies on gpui-component's own
 // substring filtering; nothing calls this stronger match yet.
 #[allow(dead_code)]
 pub fn fuzzy_match(query: &str, candidate: &str) -> bool {
@@ -97,11 +127,16 @@ pub fn fuzzy_match(query: &str, candidate: &str) -> bool {
         .all(|q| candidate_chars.any(|c| c == q))
 }
 
+/// Test-only: the palette itself (`util::palette`) builds its rows from
+/// [`CommandRegistry::available`] directly, so it can dispatch where focus was; these
+/// tests pin that same context gating.
+///
 /// Builds palette items for every command available in `active_contexts`,
 /// using gpui-component's own `Command` palette - it already does
 /// substring filtering and shows each item's active keybinding, so this
 /// just supplies the entries. See [`fuzzy_match`] for the stronger
 /// (subsequence) matching this module contributes on top.
+#[cfg(test)]
 pub fn build_items(
     registry: &CommandRegistry,
     active_contexts: &[&str],
@@ -134,6 +169,7 @@ mod tests {
             default_binding: "cmd-t",
             context,
             action: Box::new(TestAction),
+            menu: None,
         });
         registry
     }
@@ -183,6 +219,7 @@ mod tests {
             default_binding: "cmd-g",
             context: None,
             action: Box::new(TestAction),
+            menu: None,
         });
         registry.register(Command {
             id: "scoped.command",
@@ -190,6 +227,7 @@ mod tests {
             default_binding: "cmd-s",
             context: Some("Editor"),
             action: Box::new(TestAction),
+            menu: None,
         });
 
         assert_eq!(super::build_items(&registry, &[]).len(), 1);

@@ -4,6 +4,13 @@
 //! no secret material - a tunnel's private key lives in the OS keychain, keyed by
 //! tunnel id (section 5.2), never in this file. `no_secret_fields` below guards against
 //! that boundary eroding as fields get added.
+//!
+//! Section 1.1 of `tunnel-management-ui` dropped `remote_host`/`remote_port`: a tunnel
+//! now describes only how to reach a bastion, and the forward target is derived from
+//! the connecting context's kubeconfig `server:` URL (`k8s::cluster::kubeconfig::
+//! server_for_context`). No `deny_unknown_fields` here, so a `tunnels.toml` written by
+//! an older build still parses with those two fields simply ignored; the next save
+//! omits them.
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller;
 // section 6's context binding UI is the first caller of `TunnelStore` itself.
 #![allow(dead_code)]
@@ -31,8 +38,10 @@ pub struct TunnelConfig {
     pub bastion_port: u16,
     /// Extra `user@host[:port]` hops for `-J`, nearest-to-target last.
     pub jump_hosts: Vec<String>,
-    pub remote_host: String,
-    pub remote_port: u16,
+    /// How to authenticate to the bastion. A non-secret marker only - the actual key
+    /// material for `KeychainKey` lives in the OS keychain (`tunnel::secrets`), keyed
+    /// by tunnel id, never here.
+    pub auth: TunnelAuth,
 }
 
 impl Default for TunnelConfig {
@@ -43,10 +52,20 @@ impl Default for TunnelConfig {
             bastion_host: String::new(),
             bastion_port: 22,
             jump_hosts: Vec::new(),
-            remote_host: String::new(),
-            remote_port: 0,
+            auth: TunnelAuth::default(),
         }
     }
+}
+
+/// A tunnel's authentication method. `SshConfig` (the default) leaves auth to the
+/// system `ssh` client - its own `~/.ssh/config` and running agent; `KeychainKey`
+/// marks that a private key for this tunnel is expected in the OS keychain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TunnelAuth {
+    #[default]
+    SshConfig,
+    KeychainKey,
 }
 
 #[cfg(test)]
@@ -63,8 +82,7 @@ mod tests {
                 bastion_host: "bastion.example.com".into(),
                 bastion_port: 22,
                 jump_hosts: vec!["ops@hop1.example.com".into()],
-                remote_host: "10.0.1.5".into(),
-                remote_port: 6443,
+                auth: TunnelAuth::KeychainKey,
             },
         );
         let mut context_bindings = BTreeMap::new();
@@ -87,6 +105,45 @@ mod tests {
     fn tolerates_unknown_fields() {
         let parsed: TunnelsConfig = toml::from_str("future_field = true\n").unwrap();
         assert_eq!(parsed, TunnelsConfig::default());
+    }
+
+    /// Tasks.md 1.1: a `tunnels.toml` written by a build that still had
+    /// `remote_host`/`remote_port` on `TunnelConfig` must keep loading - the tunnel and
+    /// its context binding intact - and the next save must omit both fields.
+    #[test]
+    fn legacy_remote_target_fields_are_ignored_on_load_and_dropped_on_save() {
+        let legacy = r#"
+[tunnels.prod-bastion]
+name = "Prod bastion"
+bastion_user = "ops"
+bastion_host = "bastion.example.com"
+bastion_port = 22
+jump_hosts = []
+remote_host = "10.0.1.5"
+remote_port = 6443
+
+[context_bindings]
+prod = "prod-bastion"
+"#;
+
+        let parsed: TunnelsConfig = toml::from_str(legacy).unwrap();
+
+        let tunnel = parsed.tunnels.get("prod-bastion").expect("tunnel loads");
+        assert_eq!(tunnel.bastion_host, "bastion.example.com");
+        assert_eq!(
+            parsed.context_bindings.get("prod"),
+            Some(&"prod-bastion".to_string())
+        );
+
+        let saved = toml::to_string(&parsed).unwrap();
+        assert!(
+            !saved.contains("remote_host"),
+            "remote_host must not survive a save"
+        );
+        assert!(
+            !saved.contains("remote_port"),
+            "remote_port must not survive a save"
+        );
     }
 
     /// Guards the design intent documented on the module and struct: a tunnel's

@@ -34,5 +34,18 @@ jobs:
       - name: Build
         run: cargo build --workspace --locked
 
+      # `--include-ignored` keeps the real-keychain tests (`#[ignore]`d so a plain
+      # `cargo test` never pops a macOS Keychain access prompt) running here, since
+      # macOS is the only runner with a real keychain daemon to test against.
       - name: Test
+        if: runner.os != 'Linux'
+        timeout-minutes: 15
+        run: cargo test --workspace --locked -- --include-ignored
+
+      # No keychain daemon here, so the `#[ignore]`d real-keychain tests stay skipped.
+      # Both Test steps are bounded so a hung test fails fast instead of holding the
+      # runner for the 6-hour job default.
+      - name: Test
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: cargo test --workspace --locked

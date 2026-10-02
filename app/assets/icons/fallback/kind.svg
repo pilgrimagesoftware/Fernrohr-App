@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generic kind: a Fernrohr fallback drawn to match the Kubernetes community icon
+     set (blue heptagon, white rim and glyph). Original artwork, under
+     Fernrohr's MIT licence; not part of the Kubernetes set. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="18mm" height="17.5mm" viewBox="0 0 18 17.5">
+  <path d="M 9.000,0.900 L 15.255,3.912 L 16.799,10.680 L 12.471,16.108 L 5.529,16.108 L 1.201,10.680 L 2.745,3.912 Z" fill="#326ce5" stroke="#ffffff" stroke-width="0.6" stroke-linejoin="round"/>
+  <g fill="none" stroke="#ffffff" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5.8" y="5.7" width="2.8" height="2.8" rx="0.4"/>
+    <rect x="9.4" y="5.7" width="2.8" height="2.8" rx="0.4"/>
+    <rect x="5.8" y="9.3" width="2.8" height="2.8" rx="0.4"/>
+    <rect x="9.4" y="9.3" width="2.8" height="2.8" rx="0.4"/>
+  </g>
+</svg>

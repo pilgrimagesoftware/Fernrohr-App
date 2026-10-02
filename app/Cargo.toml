@@ -4,24 +4,86 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gpui-kit = "=0.6.6"
+gpui-kit = "=0.7.0"
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time"] }
 kube = { version = "=4.2.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws"] }
 kube-runtime = "=4.2.0"
 k8s-openapi = { version = "=0.28.0", features = ["v1_36"] }
 dirs = "=7.0.0"
 serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+serde_yaml_ng = "=0.10.0"
 toml = "=1.1.6"
-rust-i18n = "=4.2.2"
+rust-i18n = "=4.2.3"
 log = "=0.4.34"
 jiff = "=0.2.37"
 futures-util = "=0.3.34"
 keyring = "=4.2.0"
 parking_lot = "=0.12.5"
+percent-encoding = "=2.3.2"
+# Resampling the picker's logo and the About icon to their device resolution
+# (`ui::raster`). Already in the build through gpui, which decodes images with
+# it; pinned to that same version, with only the two decoders those assets need.
+image = { version = "=0.25.10", default-features = false, features = ["png", "webp"] }
+
+# The user's accent colour for the focused-panel mark (`ui::accent`). Already
+# in the build through gpui's macOS backend; pinned to that same version.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation"] }
 
 [dev-dependencies]
-gpui-kit = { version = "=0.6.6", features = ["test-support"] }
+gpui-kit = { version = "=0.7.0", features = ["test-support"] }
 rcgen = "=0.14.10"
 rustls = "=0.23.45"
 tokio-rustls = "=0.26.5"
-tokio-tungstenite = "=0.29.0"
+tokio-tungstenite = "=0.30.0"
+
+# cargo-packager configuration (`cargo install cargo-packager`). Invoked in CI as
+# `cargo packager --release --formats <fmt>` from this directory; the binary is
+# auto-detected from the crate's default `[[bin]]` target (src/main.rs).
+#
+# Icon path is relative to this manifest's directory: cargo-packager `cd`s to the
+# directory of the Cargo.toml it read `[package.metadata.packager]` from before
+# resolving any relative paths in the config.
+[package.metadata.packager]
+name = "fernrohr"
+product-name = "Fernrohr"
+identifier = "com.pilgrimagesoftware.fernrohr"
+description = "Desktop UI for Kubernetes cluster monitoring"
+homepage = "https://github.com/pilgrimagesoftware/Fernrohr-App"
+authors = ["Paul Schifferer <paul@schifferers.net>"]
+publisher = "Pilgrimage Software"
+license_file = "../LICENSE.md"
+copyright = "Copyright (c) 2026 Pilgrimage Software"
+category = "Utility"
+before-packaging-command = "cargo build --release --package fernrohr"
+icons = ["../images/fernrohr-icon.png", "../images/fernrohr-icon.icns"]
+# Third-party licences that must ship beside the app. The Kubernetes icon set
+# is used under Apache-2.0, which asks for its licence text with every copy
+# (resource-kind-icons 4.1); the README records where it came from. The
+# bundled fonts are SIL OFL 1.1, whose condition 2 asks the same of every copy
+# of the font software, embedded ones included.
+resources = [
+    { src = "assets/icons/kubernetes/LICENSE", target = "licenses/kubernetes-icons/LICENSE" },
+    { src = "assets/icons/kubernetes/README.md", target = "licenses/kubernetes-icons/README.md" },
+    { src = "assets/fonts/Adamina-OFL.txt", target = "licenses/fonts/Adamina-OFL.txt" },
+    { src = "assets/fonts/Manrope-OFL.txt", target = "licenses/fonts/Manrope-OFL.txt" },
+]
+
+[package.metadata.packager.deb]
+depends = ["libsecret-1-0"]
+
+[package.metadata.packager.appimage]
+libs = ["libsecret-1.so.0"]
+
+[package.metadata.packager.dmg]
+window-size = { width = 660, height = 400 }
+
+# `-` is an ad-hoc signature: no certificate, so it can't pass Gatekeeper, but
+# arm64 macOS won't run an unsigned binary and TCC keys its permission grants
+# to a signature. cargo-packager signs the .app before building the dmg from it
+# (so the copy inside is signed too), then signs the dmg itself. It reads the
+# identity only from here, never from APPLE_SIGNING_IDENTITY, so package.yml
+# swaps this line for that secret when one is set (Fernrohr-App#63).
+[package.metadata.packager.macos]
+signing-identity = "-"

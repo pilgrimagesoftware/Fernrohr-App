@@ -36,6 +36,30 @@ Commits are automatically signed. Never skip hooks with `--no-verify`.
 - PRs require CI to pass and at least one approval
 - Auto-merge enabled when all checks pass
 
+## Keyboard Navigation Is First-Class
+
+Fernrohr is keyboard-first. Every feature must be fully usable from both the keyboard and the
+mouse. A feature that only one of them can reach isn't done.
+
+- Every action (select, open, connect, edit, delete, confirm, cancel) has a keyboard route and a
+  mouse route.
+- **Every user-facing action is a registered command** (`src/command.rs`: id, title, default
+  binding, `KeyContext`, menu slot), so each one is in the **command palette** (⌘⇧P), has a
+  keybinding that `keymap.toml` can override, and gets a menu item where one fits. Panel-local
+  actions are commands too, scoped to the panel's `KeyContext`, so the palette offers them while
+  that panel has focus. The only exception is pure cursor movement (↑/↓ one row). `keymap::bindings`
+  binds every registered command, so don't add raw `KeyBinding`s for actions.
+- One selection, moved by both clicks and keyboard navigation; hover never moves it. gpui-component's
+  `Command` selects on hover, so use `window.last_input_was_keyboard()` to tell keyboard input from
+  hover (see `ClusterPicker::follow_keyboard` in `src/ui/picker.rs`).
+- Show shortcuts in a hint row from the live keymap (`Kbd::binding_for_action`), and make dialogs
+  work from the keyboard: Tab, Enter or Space, Escape, and sensible focus.
+- Tests cover the keyboard route with real keystrokes (`VisualTestContext::simulate_keystrokes`),
+  not only direct handler calls.
+
+The full rule, which the meta repo loads for agents automatically, is
+`.claude/rules/keyboard-first.md` in the parent Fernrohr repo.
+
 ## Running Checks Locally
 
 ### Build
@@ -49,7 +73,16 @@ cargo run                      # Run application
 ```bash
 cargo test                     # Run all tests
 cargo test --lib             # Run library tests only
+cargo test -- --ignored       # Also run the real-keychain tests (expect a macOS
+                               # Keychain access prompt on each freshly built binary)
 ```
+
+A plain `cargo test` never touches the real OS keychain: tests that exercise it for
+real (`tunnel::secrets`, `util::keychain`) are `#[ignore]`d, since every freshly built
+test binary triggers a macOS Keychain permission prompt on first access. Everything
+else that only uses a secret store incidentally (`TunnelStore` CRUD/bind, the tunnel
+editor, the connect path) gets an in-memory-only secret store under `cfg(test)`
+instead, so it never reaches the keychain at all.
 
 ### Linting and Formatting
 ```bash

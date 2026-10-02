@@ -1,0 +1,40 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re-)run the release for, e.g. v0.1.0"
+        required: true
+        type: string
+
+jobs:
+  release:
+    uses: pilgrimagesoftware/github-actions/.github/workflows/rust-release.yaml@master
+    with:
+      tag: ${{ inputs.tag }}
+      # ci.yml already runs the whole workspace on both Linux and macOS for
+      # every push and PR; this re-runs that same suite against the tagged ref.
+      test-args: "--workspace"
+      publish-to-crates-io: false
+      release-branch: master
+      merge-back-branch: develop
+    secrets:
+      PSW_CI_APP_ID: ${{ secrets.PSW_CI_APP_ID }}
+      PSW_CI_PRIVATE_KEY: ${{ secrets.PSW_CI_PRIVATE_KEY }}
+
+  # Packages Fernrohr for the released tag and attaches the installers to the
+  # release the job above created.
+  package:
+    needs: release
+    uses: ./.github/workflows/package.yml
+    with:
+      tag: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+      ref: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+    secrets: inherit
