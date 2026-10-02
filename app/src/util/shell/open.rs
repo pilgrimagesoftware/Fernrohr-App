@@ -130,6 +130,8 @@ impl MainWindow {
                     key,
                     id,
                     panel: Some(opened.clone()),
+                    // Filled in by the layout change this open emits.
+                    group: None,
                 });
                 watch_scope = Some(opened);
                 id

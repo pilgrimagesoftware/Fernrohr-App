@@ -168,6 +168,7 @@ pub(super) fn watch_workspace(
                 let state = dock_area.read(cx).dump(cx);
                 cx.global_mut::<SavedDockLayouts>().0.insert(key, state);
             }
+            this.keep_focus_on_a_panel(dock_area, window, cx);
             this.forget_closed_panels(dock_area, cx);
             if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
                 return;

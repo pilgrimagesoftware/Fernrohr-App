@@ -50,6 +50,7 @@ mod panels;
 mod persist;
 mod render;
 mod resource_edge;
+mod tab_focus;
 mod tabs;
 mod test_hooks;
 #[cfg(test)]

@@ -185,6 +185,18 @@ impl OpenedPanel {
             OpenedPanel::ObjectDetail(panel) => PanelId::from(panel.entity_id()),
         }
     }
+
+    /// The panel's own focus handle - the one its root tracks.
+    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
+        match self {
+            OpenedPanel::Pods(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::ObjectList(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::Placeholder(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::Logs(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::PodDetail(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::ObjectDetail(panel) => panel.read(cx).focus_handle(cx),
+        }
+    }
 }
 
 /// Recovers the typed handle behind `id`, for a panel this window did not itself
