@@ -20,6 +20,7 @@ jiff = "=0.2.37"
 futures-util = "=0.3.34"
 keyring = "=4.2.0"
 parking_lot = "=0.12.5"
+percent-encoding = "=2.3.2"
 
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.

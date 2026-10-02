@@ -12,4 +12,5 @@ mod build_info;
 mod pane;
 mod window;
 
+pub(crate) use build_info::{build_identifier, version};
 pub(crate) use window::register_about_action;

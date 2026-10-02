@@ -18,14 +18,14 @@ const BUILD_DATE: &str = env!("FERNROHR_BUILD_DATE");
 
 /// The running binary's released version - the crate's own version, so the
 /// window cannot go stale against it.
-pub(super) fn version() -> &'static str {
+pub(crate) fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
 /// The build identifier: the date the binary was built, and the commit it
 /// was built from. Two builds of one version made from different commits
 /// differ here, which is the whole point of showing it.
-pub(super) fn build_identifier() -> String {
+pub(crate) fn build_identifier() -> String {
     format_build(BUILD_DATE, BUILD_COMMIT)
 }
 
