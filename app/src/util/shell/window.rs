@@ -38,16 +38,13 @@ pub(super) enum WindowMode {
         /// dock's active panel once the user clicks tabs directly (section 12
         /// tracks that).
         nav: Box<NavTarget>,
-        /// `connection-status-bar`: one item per context this window uses, shown along
-        /// the workspace's bottom edge. Absent in `Picker` mode - the picker already
-        /// shows its own connect progress (proposal.md's non-goals).
+        /// `connection-status-bar`: one capsule per context this window uses, shown
+        /// along the workspace's bottom edge, then the add control. Absent in `Picker`
+        /// mode - the picker shows its own connect progress. `contexts` and `active`
+        /// above are its source of truth - every edit to either goes through
+        /// [`MainWindow::sync_context_children`], which keeps the bar and the Resource
+        /// panel's dropdown from disagreeing.
         status_bar: Entity<crate::ui::status_bar::StatusBarView>,
-        /// `window-context-bar` section 3: one chip per context this window uses,
-        /// shown along the workspace's top edge, below the title bar. `contexts` and
-        /// `active` above are this bar's source of truth - every edit to either goes
-        /// through [`MainWindow::sync_context_children`], which is what keeps the bar,
-        /// the status bar, and the Resource panel's dropdown from disagreeing.
-        context_bar: Entity<ContextBarView>,
         /// The Resource panel's current width: seeded from the saved layout, updated
         /// on every divider drag, and written back by [`save`].
         resource_width: Pixels,

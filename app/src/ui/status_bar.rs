@@ -1,22 +1,33 @@
-//! `connection-status-bar`: the workspace window's bottom status bar, one item per
-//! cluster context the window uses - context name, state icon and text, and, for any
-//! state other than connected, elapsed time - colored by [`Severity`]. `util/shell.rs`
-//! renders this under the workspace body in `WindowMode::Workspace`, not in picker mode.
+//! `connection-status-bar`: the workspace window's bottom status bar, one capsule per
+//! cluster context the window uses - context name, bound tunnel, state icon and text,
+//! and, for any state other than connected, elapsed time - colored by [`Severity`],
+//! then the add-context control. `util/shell.rs` renders this under the workspace body
+//! in `WindowMode::Workspace`, not in picker mode.
 //!
-//! The bar takes the window's contexts as a `Vec<String>` (design.md decision 3): today
-//! that is always `MainWindow`'s single `context_name`, wrapped in a one-element vector,
-//! so the later `window-context-bar` change that makes it a real list is a one-line
-//! switch at the call site rather than a signature change here.
+//! `toolbar-layout-with-gpui-kit` folded the old context bar in here, so each context
+//! appears once in the chrome: [`capsule`] draws the capsules and owns add and
+//! disconnect. Tunnel names are cached and refreshed only on [`TunnelsRevision`], the
+//! same rule `ui/picker.rs` follows - `render` never reads `tunnels.toml` itself.
 
 use crate::consts::STATUS_TICK_INTERVAL;
 use crate::k8s::cluster::context_health::{ContextHealth, Severity, severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::cluster::watch_registry::PauseReason;
-use crate::k8s::resource::pods::format_age;
+use crate::ui::picker::load_tunnels;
+use crate::ui::picker_tunnel::TunnelChoice;
+use crate::ui::tunnels::TunnelsRevision;
+use crate::util::shell::MainWindow;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::{ActiveTheme as _, Icon};
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+mod capsule;
+mod commands;
+
+pub(crate) use commands::{AddContext, DisconnectActiveContext, register_commands};
 
 /// The bar's height at the default text size - layout-only, so it stays local rather
 /// than in `consts.rs` (see `.claude/rules/rust-structure.md`). It scales with the
@@ -30,6 +41,10 @@ const STATUS_BAR_HEIGHT: f32 = 28.;
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusItem {
     pub context_name: String,
+    /// The bound tunnel's name, `None` for a direct connection.
+    pub tunnel: Option<String>,
+    /// Whether this is the window's active context - the Resource panel's.
+    pub active: bool,
     pub health: ContextHealth,
     pub severity: Severity,
     pub icon: IconName,
@@ -63,6 +78,19 @@ impl Clock {
 /// The workspace window's bottom status bar. See the module doc comment.
 pub struct StatusBarView {
     context_names: Vec<String>,
+    /// Index into `context_names` of the window's active context.
+    active: usize,
+    /// The window this bar belongs to - every action (a capsule click, add,
+    /// disconnect) only *asks* `MainWindow` to change its state, the one-writer rule
+    /// the Resource panel's cluster dropdown follows too. Invalid for a bar built
+    /// outside a window ([`Self::new`]), where those actions do nothing.
+    main_window: WeakEntity<MainWindow>,
+    tunnels_path: PathBuf,
+    /// Every configured tunnel and every context's binding, for each capsule's tunnel
+    /// label - loaded at construction and refreshed only on [`TunnelsRevision`].
+    tunnel_choices: Vec<TunnelChoice>,
+    tunnel_bindings: BTreeMap<String, String>,
+    _tunnels_observation: Subscription,
     clock: Clock,
     // Kept alive for the view's lifetime; never read again once subscribed.
     _registry_observation: Subscription,
@@ -74,11 +102,28 @@ pub struct StatusBarView {
 }
 
 impl StatusBarView {
+    /// A bar outside any window, for tests: it reports and draws its contexts, but
+    /// its add and disconnect controls have no window to act on.
+    #[cfg(test)]
     pub fn new(context_names: Vec<String>, cx: &mut Context<Self>) -> Self {
-        Self::new_with_clock(context_names, Clock::System, cx)
+        Self::new_with_clock(context_names, WeakEntity::new_invalid(), Clock::System, cx)
     }
 
-    fn new_with_clock(context_names: Vec<String>, clock: Clock, cx: &mut Context<Self>) -> Self {
+    /// The bar for `main_window`'s workspace, whose actions reach that window.
+    pub(crate) fn for_window(
+        context_names: Vec<String>,
+        main_window: WeakEntity<MainWindow>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_with_clock(context_names, main_window, Clock::System, cx)
+    }
+
+    fn new_with_clock(
+        context_names: Vec<String>,
+        main_window: WeakEntity<MainWindow>,
+        clock: Clock,
+        cx: &mut Context<Self>,
+    ) -> Self {
         // `ClusterRegistry`'s own writes already notify on every mutating call (see
         // `session.rs`'s `pause_and_resume_each_notify_registry_observers` test), which
         // covers a session appearing, and every pause/resume. `ConnectionState` changes
@@ -89,8 +134,22 @@ impl StatusBarView {
         let registry_observation =
             cx.observe_global::<ClusterRegistry>(|this, cx| this.refresh(cx));
         let connection_observations = Self::observe_connections(&context_names, cx);
+        let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
+        let (tunnel_choices, tunnel_bindings) = load_tunnels(&tunnels_path);
+        let tunnels_observation = cx.observe_global::<TunnelsRevision>(|this, cx| {
+            let (choices, bindings) = load_tunnels(&this.tunnels_path);
+            this.tunnel_choices = choices;
+            this.tunnel_bindings = bindings;
+            cx.notify();
+        });
         let mut this = Self {
             context_names,
+            active: 0,
+            main_window,
+            tunnels_path,
+            tunnel_choices,
+            tunnel_bindings,
+            _tunnels_observation: tunnels_observation,
             clock,
             _registry_observation: registry_observation,
             _connection_observations: connection_observations,
@@ -121,6 +180,22 @@ impl StatusBarView {
         self._connection_observations = Self::observe_connections(&context_names, cx);
         self.context_names = context_names;
         self.refresh(cx);
+    }
+
+    /// Marks `active` (an index into the bar's contexts) as the window's active
+    /// context. `MainWindow::sync_context_children` calls this beside
+    /// [`Self::set_context_names`].
+    pub(crate) fn set_active(&mut self, active: usize, cx: &mut Context<Self>) {
+        self.active = active;
+        cx.notify();
+    }
+
+    fn tunnel_label(&self, context_name: &str) -> Option<String> {
+        let id = self.tunnel_bindings.get(context_name)?;
+        self.tunnel_choices
+            .iter()
+            .find(|choice| &choice.id == id)
+            .map(|choice| choice.name.clone())
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -171,7 +246,12 @@ impl StatusBarView {
         let mut items: Vec<StatusItem> = self
             .context_names
             .iter()
-            .map(|context_name| Self::item_for(context_name, cx, now))
+            .enumerate()
+            .map(|(index, context_name)| StatusItem {
+                tunnel: self.tunnel_label(context_name),
+                active: index == self.active,
+                ..Self::item_for(context_name, cx, now)
+            })
             .collect();
         items.sort_by_key(|item| item.health == ContextHealth::Connected);
         items
@@ -183,6 +263,8 @@ impl StatusBarView {
         let elapsed = Self::elapsed(&health, now);
         StatusItem {
             context_name: context_name.to_string(),
+            tunnel: None,
+            active: false,
             severity: severity(&health, now),
             health,
             icon,
@@ -217,34 +299,6 @@ impl StatusBarView {
             | ContextHealth::Failed { since, .. } => Some(now.saturating_duration_since(*since)),
         }
     }
-
-    fn color(theme: &gpui_kit::component::Theme, severity: Severity) -> Hsla {
-        match severity {
-            Severity::Muted => theme.muted_foreground,
-            Severity::Info => theme.info,
-            Severity::Warning => theme.warning,
-            Severity::Danger => theme.danger,
-        }
-    }
-
-    fn render_item(item: &StatusItem, theme: &gpui_kit::component::Theme) -> impl IntoElement {
-        let color = Self::color(theme, item.severity);
-        let selector = format!("status-item-{}", item.context_name);
-        div()
-            .debug_selector(move || selector)
-            .flex()
-            .items_center()
-            .gap_1p5()
-            .text_sm()
-            .text_color(color)
-            .child(Icon::new(item.icon).size(px(12.)).text_color(color))
-            .child(item.context_name.clone())
-            .child(item.text)
-            .children(
-                item.elapsed
-                    .map(|elapsed| format!("({} ago)", format_age(elapsed.as_secs() as i64))),
-            )
-    }
 }
 
 impl Render for StatusBarView {
@@ -253,16 +307,22 @@ impl Render for StatusBarView {
         let items = self.items(cx);
         let space = crate::ui::space::spacing(cx);
         let scale = crate::ui::space::TextScale::current(cx).factor();
+        let this = cx.weak_entity();
         div()
             .flex()
             .items_center()
-            .gap(space.section_gap)
+            .gap(space.control_gap)
             .h(px((STATUS_BAR_HEIGHT * scale).round()))
             .flex_shrink_0()
             .px(space.panel_inset)
             .border_t_1()
             .border_color(theme.border)
-            .children(items.iter().map(|item| Self::render_item(item, &theme)))
+            .children(
+                items
+                    .into_iter()
+                    .map(|item| capsule::render_capsule(item, this.clone(), &theme)),
+            )
+            .child(capsule::render_add_button(this))
     }
 }
 

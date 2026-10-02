@@ -5,7 +5,7 @@ use super::*;
 impl MainWindow {
     /// Test-only: a bare `Picker`-mode window, for tests elsewhere in the crate
     /// that only need a real `WeakEntity<MainWindow>` to satisfy a constructor
-    /// (`ui/context_bar.rs::ContextBarView::new`, which stores one but never reads
+    /// (`ui/status_bar.rs::StatusBarView::for_window`, which stores one but never reads
     /// it outside a click handler) - `mode` and `focus_handle` above have no
     /// visibility modifier, so nothing outside this module can build a
     /// `MainWindow` literal directly.
@@ -70,14 +70,12 @@ impl MainWindow {
         }
     }
 
-    /// Test-only access to the embedded context bar, so a test can assert the
-    /// *real* bar [`Self::sync_context_children`] pushes into - not a second,
-    /// disconnected `ContextBarView` built only for the test - reflects an
-    /// active-context change.
+    /// Test-only access to the window's status bar, so a test can assert the *real*
+    /// bar [`Self::sync_context_children`] pushes into reflects a context change.
     #[cfg(test)]
-    pub(crate) fn test_context_bar(&self) -> Option<Entity<ContextBarView>> {
+    pub(crate) fn test_status_bar(&self) -> Option<Entity<crate::ui::status_bar::StatusBarView>> {
         match &self.mode {
-            WindowMode::Workspace { context_bar, .. } => Some(context_bar.clone()),
+            WindowMode::Workspace { status_bar, .. } => Some(status_bar.clone()),
             WindowMode::Picker(_) => None,
         }
     }

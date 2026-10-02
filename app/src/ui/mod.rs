@@ -1,6 +1,5 @@
 pub mod about_window;
 pub mod accent;
-pub mod context_bar;
 pub mod detail;
 pub mod icon;
 pub mod link;

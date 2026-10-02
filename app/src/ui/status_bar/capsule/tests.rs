@@ -1,6 +1,7 @@
-//! `window-context-bar` section 3's view-level tests: what one chip renders
-//! ([`ChipData`], via [`ContextBarView::chips`]) and that a chip click reaches
-//! [`MainWindow::set_active_context`].
+//! The capsules' view-level tests, carried over from the context bar they replaced
+//! (`window-context-bar` section 3, `toolbar-layout-with-gpui-kit` 1.1): what one
+//! capsule reports ([`StatusItem`], via [`StatusBarView::items`]) and that a capsule
+//! click reaches [`MainWindow::set_active_context`].
 //!
 //! Two scenarios this module deliberately does not cover, because they are
 //! already proven elsewhere and repeating them here would only pin the same
@@ -15,9 +16,8 @@
 //!     windows. `open_disconnect_dialog` only feeds it two already-tested numbers
 //!     (`MainWindow::context_panel_count`, `ClusterRegistry::holder_count`).
 //!
-//! Not `use super::*;` - see the comment above `mod tests;` in `context_bar.rs`
+//! Not `use super::*;` - see the comment above `mod tests;` in `status_bar.rs`
 //! for why a glob here crashes the compiler.
-use super::{ChipData, ContextBarView};
 use crate::config::tunnels::{TunnelAuth, TunnelConfig};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::context_health::Severity;
@@ -27,6 +27,7 @@ use crate::k8s::cluster::watch_registry::PauseReason;
 use crate::tunnel::store::TunnelStore;
 use crate::ui::picker_tunnel::TunnelChoice;
 use crate::ui::resource_panel::ResourceEvent;
+use crate::ui::status_bar::{StatusBarView, StatusItem};
 use crate::util::shell::MainWindow;
 use gpui_kit::{AppContext as _, TestAppContext, WeakEntity};
 use kube::{Client, Config};
@@ -58,14 +59,14 @@ fn test_client(cx: &mut TestAppContext) -> Client {
 fn temp_tunnels_path(label: &str) -> PathBuf {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "fernrohr-context-bar-{label}-{}-{n}.toml",
+        "fernrohr-status-capsule-{label}-{}-{n}.toml",
         std::process::id()
     ));
     let _ = std::fs::remove_file(&path);
     path
 }
 
-/// A `WeakEntity<MainWindow>` to satisfy [`ContextBarView::new`]'s constructor.
+/// A `WeakEntity<MainWindow>` to satisfy [`StatusBarView::for_window`].
 /// Only the click-handling test below ever upgrades it; every other test just
 /// needs a value of the right type to build a bar at all.
 fn dummy_main_window(cx: &mut TestAppContext) -> WeakEntity<MainWindow> {
@@ -88,10 +89,12 @@ async fn chip_labels_show_context_name_and_no_tunnel_when_direct(cx: &mut TestAp
     let main_window = dummy_main_window(cx);
 
     let bar = cx.update(|cx| {
-        cx.new(|cx| ContextBarView::new(vec!["kind-dev".to_string()], 0, main_window.clone(), cx))
+        cx.new(|cx| {
+            StatusBarView::for_window(vec!["kind-dev".to_string()], main_window.clone(), cx)
+        })
     });
 
-    let chips: Vec<ChipData> = cx.update(|cx| bar.read(cx).chips(cx));
+    let chips: Vec<StatusItem> = cx.update(|cx| bar.read(cx).items(cx));
     assert_eq!(chips.len(), 1);
     assert_eq!(chips[0].context_name, "kind-dev");
     assert!(
@@ -118,9 +121,8 @@ async fn a_bound_context_shows_its_tunnels_name(cx: &mut TestAppContext) {
 
     let bar = cx.update(|cx| {
         cx.new(|cx| {
-            let mut bar = ContextBarView::new(
+            let mut bar = StatusBarView::for_window(
                 vec!["kind-dev".to_string(), "staging".to_string()],
-                0,
                 main_window.clone(),
                 cx,
             );
@@ -138,7 +140,7 @@ async fn a_bound_context_shows_its_tunnels_name(cx: &mut TestAppContext) {
         })
     });
 
-    let chips: Vec<ChipData> = cx.update(|cx| bar.read(cx).chips(cx));
+    let chips: Vec<StatusItem> = cx.update(|cx| bar.read(cx).items(cx));
     let kind_dev = chips
         .iter()
         .find(|chip| chip.context_name == "kind-dev")
@@ -175,7 +177,7 @@ async fn a_tunnel_bound_after_the_bar_exists_appears_once_tunnels_revision_fires
     let bar = cx.update(|cx| {
         cx.new(|cx| {
             let mut bar =
-                ContextBarView::new(vec!["kind-dev".to_string()], 0, main_window.clone(), cx);
+                StatusBarView::for_window(vec!["kind-dev".to_string()], main_window.clone(), cx);
             // Test-only override, the same pattern `ui/picker/tests.rs` uses on
             // `ClusterPicker`'s own `tunnels_path`: a fresh bar otherwise reads
             // this machine's real `tunnels.toml`, which this test must not touch.
@@ -185,7 +187,7 @@ async fn a_tunnel_bound_after_the_bar_exists_appears_once_tunnels_revision_fires
     });
 
     assert_eq!(
-        cx.update(|cx| bar.read(cx).chips(cx))[0].tunnel,
+        cx.update(|cx| bar.read(cx).items(cx))[0].tunnel,
         None,
         "no tunnel bound yet"
     );
@@ -208,7 +210,7 @@ async fn a_tunnel_bound_after_the_bar_exists_appears_once_tunnels_revision_fires
     store.bind("kind-dev", "qa-bastion").unwrap();
 
     assert_eq!(
-        cx.update(|cx| bar.read(cx).chips(cx))[0].tunnel,
+        cx.update(|cx| bar.read(cx).items(cx))[0].tunnel,
         None,
         "the bar must not read tunnels.toml on its own - only the revision observer does"
     );
@@ -217,7 +219,7 @@ async fn a_tunnel_bound_after_the_bar_exists_appears_once_tunnels_revision_fires
     cx.run_until_parked();
 
     assert_eq!(
-        cx.update(|cx| bar.read(cx).chips(cx))[0].tunnel,
+        cx.update(|cx| bar.read(cx).items(cx))[0].tunnel,
         Some("QA".to_string()),
         "the newly bound tunnel appears once TunnelsRevision fires"
     );
@@ -247,11 +249,13 @@ async fn chip_health_reflects_cluster_registry_health(cx: &mut TestAppContext) {
     let main_window = dummy_main_window(cx);
 
     let bar = cx.update(|cx| {
-        cx.new(|cx| ContextBarView::new(vec!["kind-dev".to_string()], 0, main_window.clone(), cx))
+        cx.new(|cx| {
+            StatusBarView::for_window(vec!["kind-dev".to_string()], main_window.clone(), cx)
+        })
     });
 
     assert_eq!(
-        cx.update(|cx| bar.read(cx).chips(cx))[0].severity,
+        cx.update(|cx| bar.read(cx).items(cx))[0].severity,
         Severity::Muted,
         "a healthy connection's dot is muted"
     );
@@ -265,7 +269,7 @@ async fn chip_health_reflects_cluster_registry_health(cx: &mut TestAppContext) {
     });
 
     assert_eq!(
-        cx.update(|cx| bar.read(cx).chips(cx))[0].severity,
+        cx.update(|cx| bar.read(cx).items(cx))[0].severity,
         Severity::Warning,
         "a context paused for reconnecting reads as a warning"
     );
@@ -275,11 +279,11 @@ async fn chip_health_reflects_cluster_registry_health(cx: &mut TestAppContext) {
 /// call the Resource panel's own cluster dropdown makes
 /// (`ui/panel/resource.rs::ResourceEvent::SwitchContext`'s handler in
 /// `util/shell.rs::enter_workspace`) - and the *real* bar `sync_context_children`
-/// pushes state into (not a second, disconnected `ContextBarView` built only for
+/// pushes state into (not a second, disconnected `StatusBarView` built only for
 /// this test) reflects the new active chip. `util/shell/tests.rs`'s own
 /// `set_active_context_switches_active_and_syncs_children` already proves
 /// `MainWindow`'s side of this; what's new here is that the click handler this
-/// module owns actually reaches it, and that `ContextBarView::chips` reports the
+/// module owns actually reaches it, and that `StatusBarView::chips` reports the
 /// result correctly.
 #[gpui_kit::test]
 async fn chip_click_reaches_set_active_context_and_updates_the_real_bar(cx: &mut TestAppContext) {
@@ -301,15 +305,15 @@ async fn chip_click_reaches_set_active_context_and_updates_the_real_bar(cx: &mut
     let bar = window
         .update(cx, |main_window, _window, _cx| {
             main_window
-                .test_context_bar()
-                .expect("a workspace-mode window has a context bar")
+                .test_status_bar()
+                .expect("a workspace-mode window has a status bar")
         })
         .unwrap();
 
     let active_chip = |cx: &mut TestAppContext| -> String {
         cx.update(|cx| {
             bar.read(cx)
-                .chips(cx)
+                .items(cx)
                 .into_iter()
                 .find(|chip| chip.active)
                 .expect("exactly one chip is active")
@@ -318,7 +322,7 @@ async fn chip_click_reaches_set_active_context_and_updates_the_real_bar(cx: &mut
     };
     assert_eq!(active_chip(cx), "kind-dev");
 
-    // Not `window.update`: `on_chip_clicked` reaches back into
+    // Not `window.update`: `activate` reaches back into
     // `MainWindow::set_active_context` through the same `WeakEntity<MainWindow>`
     // that is this window's own root view, and gpui rejects a second update of an
     // entity already mid-update. `update_window` borrows the window's `Window`/
@@ -327,7 +331,7 @@ async fn chip_click_reaches_set_active_context_and_updates_the_real_bar(cx: &mut
     // mid-update either.
     let any_window: gpui_kit::AnyWindowHandle = window.into();
     cx.update_window(any_window, |_root_view, window, app| {
-        bar.update(app, |bar, cx| bar.on_chip_clicked(1, window, cx));
+        bar.update(app, |bar, cx| bar.activate("staging", window, cx));
     })
     .unwrap();
 

@@ -123,11 +123,14 @@ impl MainWindow {
             },
         )
         .detach();
-        let status_bar =
-            cx.new(|cx| crate::ui::status_bar::StatusBarView::new(contexts.clone(), cx));
         let main_window_handle = cx.weak_entity();
-        let context_bar =
-            cx.new(|cx| ContextBarView::new(contexts.clone(), 0, main_window_handle, cx));
+        let status_bar = cx.new(|cx| {
+            crate::ui::status_bar::StatusBarView::for_window(
+                contexts.clone(),
+                main_window_handle,
+                cx,
+            )
+        });
         self.mode = WindowMode::Workspace {
             dock_area,
             _dock_skin: dock_skin,
@@ -137,7 +140,6 @@ impl MainWindow {
             open_panels,
             nav: Box::new(NavTarget::pods()),
             status_bar,
-            context_bar,
             resource_width: RESOURCE_PANEL_WIDTH,
             resource_side,
             resource_collapsed: false,
@@ -246,7 +248,7 @@ impl MainWindow {
     }
 
     /// How many of this window's open panels use `context_name` - the count the
-    /// Disconnect confirmation (`ui/context_bar.rs`) states before closing them.
+    /// Disconnect confirmation (`ui/status_bar/capsule.rs`) states before closing them.
     /// `0` in `Picker` mode, or for a context this window doesn't use.
     pub(crate) fn context_panel_count(&self, context_name: &str) -> usize {
         let WindowMode::Workspace { open_panels, .. } = &self.mode else {
