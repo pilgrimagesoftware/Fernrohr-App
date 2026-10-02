@@ -7,16 +7,14 @@ use super::*;
 
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Logs", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("Logs layout state must be a panel");
-        };
-        let context_name = state["context_name"]
-            .as_str()
-            .expect("Logs layout state must name its cluster")
-            .to_string();
-        let namespaces = serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
-        let scope = PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
-        panel_handle(cx.new(|cx| LogsPanel::new(scope, cx)))
+        crate::ui::unrestored::restore_with(&context, cx, |state, cx| {
+            let context_name =
+                crate::ui::unrestored::required_str(state, "context_name")?.to_string();
+            let namespaces =
+                serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
+            let scope = PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
+            Ok(panel_handle(cx.new(|cx| LogsPanel::new(scope, cx))))
+        })
     });
 }
 

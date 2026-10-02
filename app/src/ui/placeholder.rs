@@ -18,10 +18,9 @@ use gpui_kit::*;
 /// (`standard-resource-panels` D4).
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Resource", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("Resource layout state must be a panel");
-        };
-        crate::k8s::resource::object_list::restore::restore(state, cx)
+        crate::ui::unrestored::restore_with(&context, cx, |state, cx| {
+            crate::k8s::resource::object_list::restore::restore(state, cx)
+        })
     });
 }
 

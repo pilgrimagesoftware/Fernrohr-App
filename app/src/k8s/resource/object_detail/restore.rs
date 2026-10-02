@@ -6,24 +6,22 @@ use super::panel::ObjectDetailPanel;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::nav::{NavTarget, ObjectTarget};
 use crate::ui::panel_title::PanelScope;
-use gpui_kit::component::dock::{PanelInfo, panel_handle, register_panel};
+use gpui_kit::component::dock::{panel_handle, register_panel};
 use gpui_kit::*;
 use kube::core::GroupVersionKind;
 use serde_json::{Value, json};
 
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "ObjectDetail", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("ObjectDetail layout state must be a panel");
-        };
-        let context_name = state["context_name"]
-            .as_str()
-            .expect("ObjectDetail layout state must name its cluster")
-            .to_string();
-        let target =
-            target_from_state(state).expect("ObjectDetail layout state must name its object");
-        let scope = PanelScope::new(NavTarget::Object(target.clone()), context_name);
-        panel_handle(cx.new(|cx| ObjectDetailPanel::new(target, scope, cx)))
+        crate::ui::unrestored::restore_with(&context, cx, |state, cx| {
+            let context_name =
+                crate::ui::unrestored::required_str(state, "context_name")?.to_string();
+            let target = target_from_state(state).ok_or("its state doesn't name its object")?;
+            let scope = PanelScope::new(NavTarget::Object(target.clone()), context_name);
+            Ok(panel_handle(
+                cx.new(|cx| ObjectDetailPanel::new(target, scope, cx)),
+            ))
+        })
     });
 }
 

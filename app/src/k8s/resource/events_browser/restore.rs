@@ -9,7 +9,7 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::base::dock::PanelView;
-use gpui_kit::component::dock::{PanelInfo, panel_handle, register_panel};
+use gpui_kit::component::dock::{panel_handle, register_panel};
 use gpui_kit::component::table::ColumnSort;
 use gpui_kit::*;
 use serde_json::{Value, json};
@@ -18,10 +18,7 @@ use std::sync::Arc;
 /// Registers the dock's restore for saved events browsers.
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Events", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("Events layout state must be a panel");
-        };
-        restore(state, cx)
+        crate::ui::unrestored::restore_with(&context, cx, restore)
     });
 }
 
@@ -82,17 +79,18 @@ pub(crate) fn from_state(state: &Value) -> Option<SavedEvents> {
 }
 
 /// Rebuilds the browser `state` describes, with its saved namespaces and sort.
-pub(crate) fn restore(state: &Value, cx: &mut App) -> Arc<dyn PanelView> {
-    let saved = from_state(state).expect("an events browser's layout state must name its cluster");
+/// `Err` for state that doesn't name its cluster.
+pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>, String> {
+    let saved = from_state(state).ok_or("its state doesn't name its cluster")?;
     let scope = PanelScope::new(
         NavTarget::Kind(DiscoveredKind::events()),
         saved.context_name.clone(),
     )
     .scoped_to(saved.namespaces.clone());
-    panel_handle(cx.new(|cx| {
+    Ok(panel_handle(cx.new(|cx| {
         let mut panel = EventsPanel::new(scope, cx);
         panel.initial_sort = saved.sort;
         panel.filters = saved.filters;
         panel
-    }))
+    })))
 }
