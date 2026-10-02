@@ -318,13 +318,24 @@ impl Render for StatusBarView {
             .px(space.panel_inset)
             .border_t_1()
             .border_color(theme.border)
-            .children(
-                items
-                    .into_iter()
-                    .map(|item| capsule::render_capsule(item, this.clone(), &theme)),
+            // The capsules and add control scroll sideways when a window holds
+            // more contexts than fit, so the theme switcher keeps its end.
+            .child(
+                div()
+                    .id("status-capsules")
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_x_scroll()
+                    .flex()
+                    .items_center()
+                    .gap(space.control_gap)
+                    .children(
+                        items
+                            .into_iter()
+                            .map(|item| capsule::render_capsule(item, this.clone(), &theme)),
+                    )
+                    .child(capsule::render_add_button(this)),
             )
-            .child(capsule::render_add_button(this))
-            .child(div().flex_1())
             .child(theme_switch::render_theme_switch(cx))
     }
 }
