@@ -21,14 +21,14 @@ async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
 
     let window = cx.update(|cx| cx.windows()[0]);
 
-    // Leak-safe: with no dialog open, `render_dialog_layer` returns
-    // `None` before touching any dialog state.
-    let dialog_open_before = window
-        .update(cx, |_, window, cx| {
-            gpui_kit::component::Root::render_dialog_layer(window, cx).is_some()
-        })
-        .unwrap();
-    assert!(!dialog_open_before);
+    // `has_active_dialog` reads the Root's dialog state without drawing the
+    // dialog, so it is leak-safe on both sides of the dispatch.
+    let dialog_open = |cx: &mut TestAppContext| {
+        window
+            .update(cx, |_, window, cx| window.has_active_dialog(cx))
+            .unwrap()
+    };
+    assert!(!dialog_open(cx));
 
     window
         .update(cx, |_, window, cx| {
@@ -37,13 +37,7 @@ async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
         .unwrap();
     cx.run_until_parked();
 
-    // Not re-checked via `render_dialog_layer` here: actually rendering
-    // gpui-component's `Command` widget installs a model that outlives
-    // `close_all_dialogs`/`remove_window` and trips the test harness's
-    // leaked-entity check - reproduced directly against gpui-component
-    // 0.6.6, not something under our control. `open_command_palette`
-    // reaching this point without panicking, immediately after the
-    // action dispatch above, is what's covered instead.
+    assert!(dialog_open(cx), "the palette opened as a dialog");
 
     // Close the dialog before the test ends, or the leak detector flags
     // its CommandState entity: the harness asserts every entity created

@@ -154,6 +154,5 @@ impl Render for SettingsWindow {
                     })
                     .child(div().flex_1().min_h_0().child(self.shortcuts.clone())),
             )
-            .children(Root::render_dialog_layer(window, cx))
     }
 }

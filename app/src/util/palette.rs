@@ -150,8 +150,8 @@ mod tests {
     use crate::command::{Command, CommandRegistry};
     use gpui_kit::component::Root;
     use gpui_kit::{
-        AppContext as _, Context, FocusHandle, IntoElement, ParentElement as _, Render,
-        TestAppContext, VisualTestContext, Window, actions, div,
+        AppContext as _, Context, FocusHandle, IntoElement, Render, TestAppContext,
+        VisualTestContext, Window, actions, div,
     };
     use std::cell::Cell;
     use std::rc::Rc;
@@ -163,11 +163,9 @@ mod tests {
     }
 
     impl Render for Host {
-        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             use gpui_kit::InteractiveElement as _;
-            div()
-                .track_focus(&self.focus)
-                .children(Root::render_dialog_layer(window, cx))
+            div().track_focus(&self.focus)
         }
     }
 

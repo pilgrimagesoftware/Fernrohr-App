@@ -10,7 +10,7 @@ pub(super) fn open_command_palette(window: &mut Window, cx: &mut App) {
 }
 
 impl Render for MainWindow {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body: AnyElement = match &self.mode {
             WindowMode::Picker(picker) => picker.clone().into_any_element(),
             // The Resource panel is the window's left edge. It used to be a
@@ -77,15 +77,6 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_set_tunnel))
             .on_action(cx.listener(Self::on_action_follow_reference))
             .child(body)
-            // gpui-component's `Root` only records open dialogs, sheets and
-            // notifications; the window's own view has to draw them. Without these
-            // layers `Root::open_dialog` (the palette, "+", Disconnect,
-            // `context.set_tunnel`) opens nothing visible.
-            .children(gpui_kit::component::Root::render_sheet_layer(window, cx))
-            .children(gpui_kit::component::Root::render_dialog_layer(window, cx))
-            .children(gpui_kit::component::Root::render_notification_layer(
-                window, cx,
-            ))
     }
 }
 

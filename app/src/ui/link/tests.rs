@@ -40,7 +40,7 @@ impl Focusable for Source {
 }
 
 impl Render for Source {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut context = KeyContext::default();
         context.add("SourcePanel");
         context.add(LINKS_KEY_CONTEXT);
@@ -60,9 +60,6 @@ impl Render for Source {
                 }),
             )
             .child("source")
-            // The window's root view draws the dialog layer, as `MainWindow`
-            // does - `Root` itself doesn't.
-            .children(Root::render_dialog_layer(window, cx))
     }
 }
 
