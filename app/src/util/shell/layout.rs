@@ -200,6 +200,14 @@ pub(super) fn build_workspace(
     (PanelId, nav::OpenedPanel),
 ) {
     let (dock_area, dock_skin) = DockSkin::dock_area("main", Some(1), window, cx);
+    // Always draw a tab strip, even for a group of one panel. gpui-kit 0.7
+    // (`dock/tab_panel.rs`) draws a lone panel's group as `render_title`, a
+    // title bar that registers no `drag_over`/`on_drop` - the drop targets live
+    // only in `render_tabs`, on each tab and on the strip's empty space - so a
+    // tab dropped on a lone group's title did nothing. The strip also keeps a
+    // lone panel looking like the tab it is. Revisit once `render_title` takes
+    // drops upstream.
+    dock_skin.set_panel_style(gpui_kit::component::dock::PanelStyle::TabBar, cx);
     let scope = PanelScope {
         connection_count,
         ..PanelScope::new(NavTarget::pods(), context_name)

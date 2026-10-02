@@ -19,14 +19,14 @@ use gpui_kit::{
     AppContext as _, Entity, FocusHandle, Modifiers, MouseButton, TestAppContext, VisualTestContext,
 };
 
-struct Harness {
-    vcx: VisualTestContext,
+pub(super) struct Harness {
+    pub(super) vcx: VisualTestContext,
     main: Entity<MainWindow>,
 }
 
 impl Harness {
     /// A workspace window on `kind-dev` holding only Pods, inside `Root`.
-    fn new(cx: &mut TestAppContext) -> Self {
+    pub(super) fn new(cx: &mut TestAppContext) -> Self {
         cx.executor().allow_parking();
         let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
         cx.update(|cx| {
@@ -49,7 +49,7 @@ impl Harness {
         }
     }
 
-    fn dock(&mut self) -> Entity<DockArea> {
+    pub(super) fn dock(&mut self) -> Entity<DockArea> {
         self.vcx.update(|_, cx| match &self.main.read(cx).mode {
             WindowMode::Workspace { dock_area, .. } => dock_area.clone(),
             WindowMode::Picker(_) => panic!("the window is in workspace mode"),
@@ -57,7 +57,7 @@ impl Harness {
     }
 
     /// The window's only panel at the start: Pods.
-    fn pods(&mut self) -> PanelId {
+    pub(super) fn pods(&mut self) -> PanelId {
         let dock = self.dock();
         self.vcx.update(|_, cx| {
             dock.read(cx)
@@ -69,7 +69,7 @@ impl Harness {
 
     /// Opens a list panel over the core kind `plural` the way the app does
     /// (`open_target`), so the window records it among its open panels.
-    fn open_list(&mut self, plural: &str) -> PanelId {
+    pub(super) fn open_list(&mut self, plural: &str) -> PanelId {
         let target = NavTarget::Kind(DiscoveredKind {
             gvk: kube::core::GroupVersionKind::gvk("", "v1", plural),
             plural: plural.into(),
@@ -93,7 +93,7 @@ impl Harness {
         id
     }
 
-    fn in_dock(&mut self, id: PanelId) -> bool {
+    pub(super) fn in_dock(&mut self, id: PanelId) -> bool {
         let dock = self.dock();
         self.vcx.update(|_, cx| dock.read(cx).panel(id).is_some())
     }
@@ -108,7 +108,7 @@ impl Harness {
         })
     }
 
-    fn focus(&mut self, id: PanelId) {
+    pub(super) fn focus(&mut self, id: PanelId) {
         let handle = self.focus_handle(id);
         self.vcx.update(|window, cx| window.focus(&handle, cx));
         self.vcx.run_until_parked();
@@ -248,7 +248,7 @@ async fn a_background_tabs_close_control_closes_that_tab(cx: &mut TestAppContext
 
 /// Two groups stacked, with Pods in the upper one and RoleBindings in the
 /// lower one.
-fn stacked(h: &mut Harness) -> (PanelId, PanelId) {
+pub(super) fn stacked(h: &mut Harness) -> (PanelId, PanelId) {
     let pods = h.pods();
     let bindings = h.open_list("rolebindings");
     let dock = h.dock();
