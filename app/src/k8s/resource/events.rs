@@ -75,7 +75,7 @@ pub async fn list(
 /// `Scheduled`, among others), which record `series.lastObservedTime` and
 /// `eventTime` instead - reading only the legacy pair would sort those last and
 /// age them "unknown".
-fn event_time(event: &K8sEvent) -> Option<Timestamp> {
+pub(crate) fn event_time(event: &K8sEvent) -> Option<Timestamp> {
     event
         .last_timestamp
         .as_ref()
@@ -89,6 +89,52 @@ fn event_time(event: &K8sEvent) -> Option<Timestamp> {
         })
         .or_else(|| event.event_time.as_ref().map(|time| time.0))
         .or_else(|| event.first_timestamp.as_ref().map(|time| time.0))
+}
+
+/// When an event first happened: the legacy `firstTimestamp`, else the
+/// `events.k8s.io/v1` `eventTime` an event written through that API records
+/// instead.
+pub(crate) fn first_seen(event: &K8sEvent) -> Option<Timestamp> {
+    event
+        .first_timestamp
+        .as_ref()
+        .map(|time| time.0)
+        .or_else(|| event.event_time.as_ref().map(|time| time.0))
+}
+
+/// How many times the event has happened: the legacy `count`, else a
+/// series-style event's `series.count`, else once.
+pub(crate) fn event_count(event: &K8sEvent) -> i32 {
+    event
+        .count
+        .or_else(|| event.series.as_ref().and_then(|series| series.count))
+        .unwrap_or(1)
+}
+
+/// `value` when it is set and non-empty.
+pub(crate) fn text(value: &Option<String>) -> Option<String> {
+    value
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// The component that reported the event: `events.k8s.io/v1`'s
+/// `reportingComponent`, else the legacy `source.component`.
+pub(crate) fn reporter(event: &K8sEvent) -> Option<String> {
+    text(&event.reporting_component).or_else(|| {
+        event
+            .source
+            .as_ref()
+            .and_then(|source| text(&source.component))
+    })
+}
+
+/// Which instance of the component reported it: `reportingInstance`, else the
+/// legacy `source.host`.
+pub(crate) fn reporting_instance(event: &K8sEvent) -> Option<String> {
+    text(&event.reporting_instance)
+        .or_else(|| event.source.as_ref().and_then(|source| text(&source.host)))
 }
 
 /// Each event's age-and-tone summary, newest first. `Warning`-type events read
@@ -115,16 +161,7 @@ pub fn summarize(events: &[K8sEvent], now: Timestamp) -> Vec<EventSummary> {
             };
             // Like the timestamps, a series-style event counts its repeats on
             // `series.count` rather than the legacy `count`.
-            let count = event
-                .count
-                .or_else(|| event.series.as_ref().and_then(|series| series.count))
-                .unwrap_or(1);
-            let text = |value: &Option<String>| {
-                value
-                    .as_deref()
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string)
-            };
+            let count = event_count(event);
             EventSummary {
                 reason: text(&event.reason).unwrap_or_else(|| "Unknown".to_string()),
                 message: text(&event.message).unwrap_or_default(),
