@@ -28,6 +28,7 @@ fn row(name: &str, namespace: Option<&str>, age_secs: i64, now: Timestamp) -> Li
             name: name.into(),
             namespace: namespace.map(Into::into),
             created: Some(now - SignedDuration::from_secs(age_secs)),
+            cells: Vec::new(),
         },
         now,
     )

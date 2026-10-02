@@ -20,7 +20,7 @@ impl ClusterRegistry {
             .kinds
             .contains_key(kind)
         {
-            let table = cx.new(|_| ObjectsTable::default());
+            let table = cx.new(|_| ObjectsTable::for_kind(kind));
             cx.global_mut::<Self>()
                 .sessions
                 .get_mut(context_name)

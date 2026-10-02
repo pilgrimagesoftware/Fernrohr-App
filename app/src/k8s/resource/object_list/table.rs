@@ -3,9 +3,10 @@
 //!
 //! Columns are identified by a string key, not a position or a closed enum
 //! (`standard-resource-panels` D2), so a saved column order and widths survive a
-//! kind gaining columns, and section 2's per-kind columns join the base ones
-//! without a new type per kind. Today every kind has the base columns: Name,
-//! Namespace for a namespaced kind, and Age.
+//! kind gaining columns, and the per-kind columns join the base ones without a
+//! new type per kind. Every kind has the base columns - Name, Namespace for a
+//! namespaced kind, and Age - and a built-in kind its own between them
+//! ([`super::columns`]).
 
 use std::cmp::Ordering;
 
@@ -14,6 +15,7 @@ use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, T
 use gpui_kit::*;
 use serde::{Deserialize, Serialize};
 
+use super::columns;
 use super::row::ObjectRow;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 
@@ -28,6 +30,9 @@ pub(super) struct ListColumn {
     pub(super) id: SharedString,
     title: SharedString,
     pub(super) width: Pixels,
+    /// For one of the kind's own columns, which of a row's
+    /// [`ObjectRow::cells`] it shows; `None` for a base column.
+    cell: Option<usize>,
 }
 
 impl ListColumn {
@@ -36,15 +41,28 @@ impl ListColumn {
             id: id.into(),
             title: title.into(),
             width: px(width),
+            cell: None,
         }
     }
 
-    /// `kind`'s columns in their default order: Name, Namespace for a namespaced
-    /// kind only, then Age.
+    /// `kind`'s columns in their default order, as `kubectl get` lays them
+    /// out: Name, Namespace for a namespaced kind only, the kind's own columns,
+    /// then Age.
     pub(super) fn for_kind(kind: &DiscoveredKind) -> Vec<ListColumn> {
         let mut columns = vec![ListColumn::new(NAME, "Name", 260.)];
         if kind.namespaced {
             columns.push(ListColumn::new(NAMESPACE, "Namespace", 150.));
+        }
+        if let Some(own) = columns::for_kind(&kind.gvk.group, &kind.gvk.kind) {
+            columns.extend(
+                own.columns
+                    .iter()
+                    .enumerate()
+                    .map(|(cell, def)| ListColumn {
+                        cell: Some(cell),
+                        ..ListColumn::new(def.id, def.title, def.width)
+                    }),
+            );
         }
         columns.push(ListColumn::new(AGE, "Age", 70.));
         columns
@@ -79,18 +97,29 @@ pub(super) fn apply_layout(columns: Vec<ListColumn>, saved: &[SavedColumn]) -> V
     ordered
 }
 
-/// One listed object as the table shows it: the row, and its age now, measured
-/// once per refresh so the sort and the text agree.
+/// One listed object as the table shows it: the row, its age now, and the
+/// moment that "now" was - taken once per refresh, so every time-like cell's
+/// sort and text agree.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ListRow {
     pub(super) object: ObjectRow,
     pub(super) age_secs: i64,
+    now: jiff::Timestamp,
 }
 
 impl ListRow {
     pub(super) fn new(object: ObjectRow, now: jiff::Timestamp) -> Self {
         let age_secs = object.age_secs(now);
-        Self { object, age_secs }
+        Self {
+            object,
+            age_secs,
+            now,
+        }
+    }
+
+    /// The row's cell for `column`, if it is one of the kind's own columns.
+    fn cell(&self, column: &ListColumn) -> Option<&columns::Cell> {
+        self.object.cells.get(column.cell?)
     }
 
     /// The object's identity within its kind: namespace (if any) and name. What
@@ -100,8 +129,17 @@ impl ListRow {
     }
 }
 
-/// How `a` and `b` order on `column`. Age sorts by seconds, not by its text.
+/// How `a` and `b` order on `column`. Age sorts by seconds, and a kind's own
+/// column by its cells' values - numerically where they are numbers.
 pub(super) fn compare(a: &ListRow, b: &ListRow, column: &ListColumn) -> Ordering {
+    if column.cell.is_some() {
+        let empty = columns::Cell::Empty;
+        let (a_cell, b_cell) = (
+            a.cell(column).unwrap_or(&empty),
+            b.cell(column).unwrap_or(&empty),
+        );
+        return a_cell.compare(b_cell, a.now);
+    }
     match column.id.as_ref() {
         NAME => a.object.name.cmp(&b.object.name),
         NAMESPACE => a.object.namespace.cmp(&b.object.namespace),
@@ -114,6 +152,12 @@ pub(super) fn compare(a: &ListRow, b: &ListRow, column: &ListColumn) -> Ordering
 
 /// `column`'s text for `row`.
 pub(super) fn cell_text(row: &ListRow, column: &ListColumn) -> String {
+    if column.cell.is_some() {
+        return row
+            .cell(column)
+            .map(|cell| cell.display(row.now))
+            .unwrap_or_default();
+    }
     match column.id.as_ref() {
         NAME => row.object.name.clone(),
         NAMESPACE => row.object.namespace.clone().unwrap_or_default(),

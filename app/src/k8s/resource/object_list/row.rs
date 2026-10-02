@@ -1,7 +1,8 @@
 //! One listed object, reduced to what a list row shows. Built once per watch
 //! event, when the store stores it, never per frame - the one place a kind's
-//! per-kind cells (`standard-resource-panels` section 2) will be computed too.
+//! per-kind cells (`standard-resource-panels` section 2) are computed too.
 
+use super::columns::{Cell, KindColumns};
 use jiff::Timestamp;
 use kube::api::DynamicObject;
 
@@ -15,16 +16,23 @@ pub struct ObjectRow {
     pub namespace: Option<String>,
     /// When the object was created; Age is measured from it at render time.
     pub created: Option<Timestamp>,
+    /// The kind's own columns' cells, in [`KindColumns::columns`] order. Empty
+    /// for a kind with base columns only.
+    pub cells: Vec<Cell>,
 }
 
 impl ObjectRow {
-    pub fn new(object: &DynamicObject) -> Self {
+    /// `object`'s row, with `columns`' cells if its kind has its own.
+    pub fn new(object: &DynamicObject, columns: Option<&KindColumns>) -> Self {
         let meta = &object.metadata;
         Self {
             uid: meta.uid.clone().unwrap_or_default(),
             name: meta.name.clone().unwrap_or_default(),
             namespace: meta.namespace.clone(),
             created: meta.creation_timestamp.as_ref().map(|time| time.0),
+            cells: columns
+                .map(|columns| columns.cells_for(object))
+                .unwrap_or_default(),
         }
     }
 
