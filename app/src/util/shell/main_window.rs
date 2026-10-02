@@ -105,6 +105,9 @@ impl MainWindow {
                 cx,
             )
         });
+        // 11.1: a new workspace opens its panel on the preferred edge.
+        let resource_side = crate::ui::resource_panel::preferred_side(cx);
+        resource_panel.update(cx, |panel, cx| panel.set_side(resource_side, cx));
         cx.subscribe_in(
             &resource_panel,
             window,
@@ -134,7 +137,7 @@ impl MainWindow {
             status_bar,
             context_bar,
             resource_width: RESOURCE_PANEL_WIDTH,
-            resource_side: crate::ui::resource_panel::ResourceSide::default(),
+            resource_side,
             resource_collapsed: false,
         };
         // Entering a workspace doesn't go through `sync_context_children` (its

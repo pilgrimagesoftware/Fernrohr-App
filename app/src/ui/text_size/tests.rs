@@ -74,6 +74,7 @@ async fn a_change_is_saved_without_touching_the_rest_of_the_file(cx: &mut TestAp
     let stored = UiConfig {
         theme: ThemePreference::Dark,
         text_size: TextSize::DEFAULT,
+        resource_side: crate::config::ui::ResourceSide::Right,
     };
     config::save(&path, &stored).expect("temp file written");
     cx.update(|cx| {
@@ -84,6 +85,7 @@ async fn a_change_is_saved_without_touching_the_rest_of_the_file(cx: &mut TestAp
     let reloaded: UiConfig = config::load(&path);
     assert_eq!(reloaded.text_size, TextSize::from(120));
     assert_eq!(reloaded.theme, ThemePreference::Dark);
+    assert_eq!(reloaded.resource_side, stored.resource_side);
 
     // A relaunch starts at the saved size.
     let mut relaunch = TestAppContext::single();

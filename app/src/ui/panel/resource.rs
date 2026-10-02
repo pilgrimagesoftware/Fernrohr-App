@@ -27,17 +27,23 @@ mod edge;
 mod keyboard;
 mod render;
 mod section;
+mod side_preference;
 
 pub(crate) use actions::FocusResources;
 #[cfg(test)]
-pub(crate) use edge::{
-    MOVE_COMMAND_ID, MOVE_DEFAULT_BINDING, TOGGLE_COMMAND_ID, TOGGLE_DEFAULT_BINDING,
-};
+pub(crate) use edge::TOGGLE_DEFAULT_BINDING;
+#[cfg(test)]
+pub(crate) use edge::{MOVE_COMMAND_ID, MOVE_DEFAULT_BINDING, TOGGLE_COMMAND_ID};
 pub use edge::{MoveResourcePanel, ResourceSide, ToggleResourcePanel, collapsed_strip};
+#[cfg(test)]
+pub(crate) use side_preference::SAVE_SIDE_COMMAND_ID;
+pub(crate) use side_preference::set_preferred_side;
+pub use side_preference::{SaveResourceSide, init_side_preference, preferred_side};
 
 /// The Resource panel's commands: its own keys, and moving or collapsing it.
 pub(crate) fn register_commands(registry: &mut crate::command::CommandRegistry) {
     actions::register_commands(registry);
+    side_preference::register_commands(registry);
     edge::register_commands(registry);
 }
 

@@ -1,7 +1,7 @@
 //! The Resource panel's move, collapse and focus, driven through a real window:
 //! keystrokes from the live keymap and clicks on its drawn buttons, not handler
 //! calls - the path the 11.2-11.3 tests skipped, which is how the missing controls
-//! went unnoticed.
+//! went unnoticed. 11.1's preference is read from and saved to a temp `ui.toml`.
 
 // Named imports rather than `use super::*`: a glob re-import of `gpui_kit::*`
 // next to `#[gpui_kit::test]` items blows the macro-expansion budget.
@@ -33,6 +33,11 @@ fn harness(cx: &mut TestAppContext) -> Harness {
         init(cx, workspace, &keymap);
         ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);
     });
+    open(cx)
+}
+
+/// Another workspace window in the same app, as `harness` builds it.
+fn open(cx: &mut TestAppContext) -> Harness {
     let mut built = None;
     let window = cx.add_window(|window, cx| {
         let main = cx.new(|cx| MainWindow::test_workspace(vec!["kind-dev".into()], window, cx));
@@ -212,11 +217,75 @@ async fn a_clicked_panel_shows_focus_and_its_keys_work(cx: &mut TestAppContext) 
     assert!(collapsed(&mut h), "Left collapses it too");
 }
 
-/// Both are palette commands with a View menu item, and neither default key
+/// 11.1: a new window opens its panel on the stored edge, read from `ui.toml`.
+#[gpui_kit::test]
+async fn a_new_window_opens_the_panel_on_the_preferred_edge(cx: &mut TestAppContext) {
+    let path = temp_workspace_path();
+    let stored = crate::config::ui::UiConfig {
+        resource_side: ResourceSide::Right,
+        ..Default::default()
+    };
+    crate::config::save(&path, &stored).expect("temp file written");
+    cx.update(|cx| {
+        let loaded: crate::config::ui::UiConfig = crate::config::load(&path);
+        crate::ui::resource_panel::init_side_preference(loaded.resource_side, path.clone(), cx);
+    });
+    let mut h = harness(cx);
+    assert_eq!(layout(&mut h), (ResourceSide::Right, false));
+    let window_width = h.vcx.update(|window, _| window.bounds().size.width);
+    let drawn = row(&mut h).expect("the row is drawn");
+    assert!(
+        drawn.left() > window_width / 2.,
+        "drawn on the right: {drawn:?}"
+    );
+}
+
+/// 11.2 against 11.1: moving the panel leaves the preference alone, so the next
+/// window still opens on the preferred edge - until Make Resource Panel's Side the
+/// Default saves the moved window's side, which new windows then follow.
+#[gpui_kit::test]
+async fn moving_keeps_the_preference_and_saving_the_side_changes_it(cx: &mut TestAppContext) {
+    let path = temp_workspace_path();
+    cx.update(|cx| {
+        crate::ui::resource_panel::init_side_preference(ResourceSide::Left, path.clone(), cx)
+    });
+    let mut first = harness(cx);
+    press(
+        &mut first.vcx,
+        crate::ui::resource_panel::MOVE_DEFAULT_BINDING,
+    );
+    assert_eq!(layout(&mut first).0, ResourceSide::Right);
+    let mut second = open(cx);
+    assert_eq!(
+        layout(&mut second).0,
+        ResourceSide::Left,
+        "a move isn't a preference"
+    );
+
+    first
+        .vcx
+        .dispatch_action(crate::ui::resource_panel::SaveResourceSide);
+    first.vcx.run_until_parked();
+    let saved: crate::config::ui::UiConfig = crate::config::load(&path);
+    assert_eq!(
+        saved.resource_side,
+        ResourceSide::Right,
+        "written to ui.toml"
+    );
+    assert_eq!(
+        layout(&mut second).0,
+        ResourceSide::Left,
+        "an open window stays put"
+    );
+    let mut third = open(cx);
+    assert_eq!(layout(&mut third).0, ResourceSide::Right);
+}
+
+/// All three are palette commands with a View menu item, and no default key
 /// collides with another command's.
 #[test]
-fn both_are_view_menu_commands_whose_keys_collide_with_nothing() {
-    use crate::ui::resource_panel::{MOVE_COMMAND_ID, TOGGLE_COMMAND_ID};
+fn all_three_are_view_menu_commands_whose_keys_collide_with_nothing() {
+    use crate::ui::resource_panel::{MOVE_COMMAND_ID, SAVE_SIDE_COMMAND_ID, TOGGLE_COMMAND_ID};
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
     let view: Vec<&str> = registry
@@ -224,6 +293,7 @@ fn both_are_view_menu_commands_whose_keys_collide_with_nothing() {
         .iter()
         .map(|command| command.id)
         .collect();
+    assert!(view.contains(&SAVE_SIDE_COMMAND_ID), "in the View menu");
     for id in [TOGGLE_COMMAND_ID, MOVE_COMMAND_ID] {
         assert!(view.contains(&id), "{id} in the View menu");
         let keys = registry.get(id).unwrap().default_binding;

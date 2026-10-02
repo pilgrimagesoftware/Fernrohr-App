@@ -122,6 +122,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_open_listed_object))
             .on_action(cx.listener(Self::on_action_toggle_resource_panel))
             .on_action(cx.listener(Self::on_action_move_resource_panel))
+            .on_action(cx.listener(Self::on_action_save_resource_side))
             .child(body)
     }
 }
