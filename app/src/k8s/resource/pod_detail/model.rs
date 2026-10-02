@@ -147,6 +147,8 @@ impl PodFieldValue {
 pub struct ManagedFieldEntry {
     pub manager: String,
     pub operation: String,
+    /// When the manager last wrote, if recorded.
+    pub time: Option<jiff::Timestamp>,
     pub fields_json: String,
 }
 

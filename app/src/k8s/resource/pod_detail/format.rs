@@ -27,6 +27,7 @@ pub(super) fn managed_field_entry(
     ManagedFieldEntry {
         manager,
         operation,
+        time: entry.time.as_ref().map(|time| time.0),
         fields_json,
     }
 }

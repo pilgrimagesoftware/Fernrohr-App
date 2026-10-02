@@ -85,6 +85,7 @@ fn a_managed_fields_entry_pretty_prints_what_it_owns() {
         ManagedFieldEntry {
             manager: "kubectl-client-side-apply".into(),
             operation: "Update".into(),
+            time: None,
             fields_json: serde_json::to_string_pretty(&ownership).unwrap(),
         }
     );

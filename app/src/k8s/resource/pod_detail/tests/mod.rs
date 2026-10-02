@@ -18,6 +18,7 @@ mod fetch;
 mod fixtures;
 mod links;
 mod live_events;
+mod managed_fields;
 mod overview_warnings;
 mod panel;
 mod projection;

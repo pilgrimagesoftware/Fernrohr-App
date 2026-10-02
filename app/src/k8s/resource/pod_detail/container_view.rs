@@ -149,12 +149,7 @@ impl PodDetailPanel {
                             .child(container.state.clone())
                     }),
             )
-            .children(
-                container
-                    .state_message
-                    .clone()
-                    .map(muted_line),
-            )
+            .children(container.state_message.clone().map(muted_line))
             .child(div().text_sm().min_w_0().child(container.image.clone()))
             .when(container.restart_count > 0, |this| {
                 this.child(

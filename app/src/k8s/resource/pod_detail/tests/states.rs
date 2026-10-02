@@ -25,7 +25,7 @@ use std::sync::atomic::AtomicUsize;
 
 /// A Pending pod whose init container waits on `PodInitializing` and whose app
 /// container is in `CrashLoopBackOff`.
-fn starting_pod() -> Pod {
+pub(super) fn starting_pod() -> Pod {
     serde_json::from_value(json!({
         "metadata": { "name": "api-7d9f-ftg5t", "namespace": "staging", "uid": "u1" },
         "spec": {
@@ -49,7 +49,7 @@ fn starting_pod() -> Pod {
     .unwrap()
 }
 
-fn harness(cx: &mut TestAppContext, pod: Pod) -> Harness {
+pub(super) fn harness(cx: &mut TestAppContext, pod: Pod) -> Harness {
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);

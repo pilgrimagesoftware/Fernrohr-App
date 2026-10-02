@@ -6,7 +6,6 @@ use super::panel::PodDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::detail;
 use crate::ui::typography::TypeRole as _;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::collapsible::Collapsible;
@@ -15,7 +14,6 @@ use gpui_kit::*;
 
 impl PodDetailPanel {
     pub(super) fn render_field(&self, field: &PodField, cx: &Context<Self>) -> AnyElement {
-        let theme = cx.theme();
         let value =
             match &field.value {
                 PodFieldValue::Text(text) => div().child(text.clone()).into_any_element(),
@@ -97,70 +95,7 @@ impl PodDetailPanel {
                     let heading = (field.label != "Containers").then_some(field.label);
                     return self.render_containers(heading, containers, cx);
                 }
-                PodFieldValue::ManagedFields(entries) => div()
-                    .flex()
-                    .flex_col()
-                    .gap(crate::ui::space::spacing(cx).control_gap)
-                    .children(entries.iter().enumerate().map(|(index, entry)| {
-                        // Keyed by index, not manager name: two entries can
-                        // share a manager (a status subresource update versus
-                        // the main resource), and collapsing them onto one key
-                        // would toggle both at once.
-                        let key: SharedString = format!("mf-{index}").into();
-                        let open = self.open_sections.contains(key.as_ref());
-                        let this = cx.weak_entity();
-                        let key_for_click = key.clone();
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .p(crate::ui::space::spacing(cx).card_padding)
-                            .rounded_md()
-                            .bg(crate::ui::style::surface_card(cx))
-                            .border_1()
-                            .border_color(theme.border)
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .justify_between()
-                                    .child(format!("{}: {}", entry.manager, entry.operation))
-                                    .child(
-                                        Button::new(key)
-                                            .label(if open { "Hide" } else { "Show" })
-                                            .xsmall()
-                                            .frame_font(cx)
-                                            .ghost()
-                                            .tab_stop(false)
-                                            .on_click(move |_event, _window, cx| {
-                                                let _ = this.update(cx, |this: &mut Self, cx| {
-                                                    if !this
-                                                        .open_sections
-                                                        .remove(key_for_click.as_ref())
-                                                    {
-                                                        this.open_sections
-                                                            .insert(key_for_click.to_string());
-                                                    }
-                                                    cx.notify();
-                                                });
-                                            }),
-                                    ),
-                            )
-                            .child(
-                                // Wraps rather than `whitespace_nowrap()` like the
-                                // YAML view: the structured view scrolls vertically
-                                // only, so an unwrapped deep ownership path would
-                                // push the panel wider than it is.
-                                Collapsible::new().open(open).content(
-                                    div()
-                                        .code_font(cx)
-                                        .text_sm()
-                                        .child(entry.fields_json.clone()),
-                                ),
-                            )
-                            .into_any_element()
-                    }))
-                    .into_any_element(),
+                PodFieldValue::ManagedFields(entries) => self.render_managed_fields(entries, cx),
             };
 
         detail::row(field.label, value, cx)
