@@ -13,6 +13,7 @@ mod rows;
 pub mod shortcuts;
 #[cfg(test)]
 mod tests;
+mod text_size;
 
 pub use shortcuts::ShortcutsSection;
 
@@ -136,7 +137,23 @@ impl Render for SettingsWindow {
             .bg(theme.background)
             .text_color(theme.foreground)
             .child(sidebar)
-            .child(div().flex_1().min_w_0().child(self.shortcuts.clone()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    // Inset like the Shortcuts section below it, whose own top
+                    // inset is the gap between the two.
+                    .child({
+                        let space = crate::ui::space::spacing(cx);
+                        div()
+                            .px(space.panel_inset)
+                            .pt(space.panel_inset)
+                            .child(text_size::row(window, cx))
+                    })
+                    .child(div().flex_1().min_h_0().child(self.shortcuts.clone())),
+            )
             .children(Root::render_dialog_layer(window, cx))
     }
 }
