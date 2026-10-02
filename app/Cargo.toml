@@ -21,10 +21,10 @@ futures-util = "=0.3.34"
 keyring = "=4.2.0"
 parking_lot = "=0.12.5"
 percent-encoding = "=2.3.2"
-# Resampling the picker's logo to its device resolution (`ui::picker::logo`).
-# Already in the build through gpui, which decodes images with it; pinned to
-# that same version, with only the decoder the logo needs.
-image = { version = "=0.25.10", default-features = false, features = ["webp"] }
+# Resampling the picker's logo and the About icon to their device resolution
+# (`ui::raster`). Already in the build through gpui, which decodes images with
+# it; pinned to that same version, with only the two decoders those assets need.
+image = { version = "=0.25.10", default-features = false, features = ["png", "webp"] }
 
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.
