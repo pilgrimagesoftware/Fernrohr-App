@@ -33,7 +33,7 @@ impl ClusterRegistry {
     }
 
     /// Starts the Pods watch against `client` for `context_name`, routing a 401 through
-    /// [`Self::handle_pods_unauthorized`] - the one place that knows how to pause and
+    /// [`Self::handle_unauthorized`] - the one place that knows how to pause and
     /// attempt a credential refresh. Shared by the initial subscribe and every restart
     /// (health resume, successful credential refresh) so both go through one path.
     pub(super) fn start_pods_watch(
@@ -46,12 +46,13 @@ impl ClusterRegistry {
         watch_all_namespaces(
             client,
             table,
-            move |cx| Self::handle_pods_unauthorized(cx, &context_name),
+            move |cx| Self::handle_unauthorized(cx, &context_name),
             cx,
         )
     }
 
-    /// Section 7.3: a watch stream reported a 401 for `context_name`. Pauses through the
+    /// Section 7.3: a watch stream (any kind's) reported a 401 for `context_name`. Pauses
+    /// every watch on the context through the
     /// same path a forward flap uses (section 7.2), then attempts one credential refresh
     /// by re-resolving that context's config and probing again - the same sequence the
     /// original connect used, reused via [`crate::k8s::cluster::connection::connect_and_probe`] rather
@@ -59,7 +60,7 @@ impl ClusterRegistry {
     /// refreshed client; a failed one leaves the watch paused - closing every subscribed
     /// panel is still what releases it (`unsubscribe_pods`, already unconditional on
     /// health/auth state).
-    fn handle_pods_unauthorized(cx: &mut App, context_name: &str) {
+    pub(super) fn handle_unauthorized(cx: &mut App, context_name: &str) {
         if !cx.global::<Self>().sessions.contains_key(context_name) {
             return;
         }

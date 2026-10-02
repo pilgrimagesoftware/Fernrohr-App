@@ -23,6 +23,7 @@ pub fn watch_all_namespaces(
             });
         },
         on_unauthorized,
+        crate::k8s::cluster::watch_stream::OnRefused::Retry,
         cx,
     )
 }
