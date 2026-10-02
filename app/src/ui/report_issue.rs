@@ -4,17 +4,17 @@
 //! About window shows, so the two can never drift apart). Reporting opens the
 //! browser on a prefilled GitHub issue; nothing is sent automatically.
 //!
-//! Modeled on `app/src/util/shell/tunnel_dialog.rs`'s `open_dialog`/`Root`
-//! wiring. Scoped to the dialog UI only - see Knot's own (unimplemented)
-//! `add-bug-reporting` proposal for a `gh issue create` shell-out path this
-//! does not add.
+//! Modeled on `app/src/util/shell/tunnel_dialog.rs`'s `WindowExt`
+//! `open_dialog`/`close_dialog` wiring. Scoped to the dialog UI only - see
+//! Knot's own (unimplemented) `add-bug-reporting` proposal for a `gh issue
+//! create` shell-out path this does not add.
 
 use crate::command::{Command, CommandRegistry, MenuSlot};
 use crate::consts::APP_NAME;
 use crate::ui::about_window::{build_identifier, version};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Root};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, WindowExt as _};
 use gpui_kit::*;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 
@@ -44,26 +44,21 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 pub fn register_handler(cx: &mut App) {
     cx.on_action(|_: &ReportIssue, cx: &mut App| {
         // Deferred: action dispatch itself runs inside an update of the
-        // active window (to let a window-scoped handler intercept first), so
-        // updating that same window's `Root` here - to open the dialog -
-        // would be a reentrant update of a window already taken out of its
-        // slot, which `update_window` reports as "window not found" without
-        // ever running our closure. Deferring runs this after that update
-        // completes and the window is back in its slot.
+        // active window (so a window-scoped handler can intercept first), so
+        // updating that same window here - to open the dialog - would be a
+        // reentrant update of a window already taken out of its slot, which
+        // fails silently ("window not found") without ever running our
+        // closure. Deferring runs this after that update completes and the
+        // window is back in its slot.
         cx.defer(open_report_issue_dialog);
     });
 }
 
 fn open_report_issue_dialog(cx: &mut App) {
-    // A typed `WindowHandle<Root>::update` in one call, rather than
-    // `AnyWindowHandle::update` followed by a second `Entity<Root>::update`:
-    // the window's root view *is* `Root` (see `open_window`), so a second
-    // update on it while the first is still in progress panics ("cannot read
-    // ... while it is already being updated").
-    let Some(handle) = cx.active_window().and_then(|handle| handle.downcast::<Root>()) else {
+    let Some(handle) = cx.active_window() else {
         return;
     };
-    let _ = handle.update(cx, |root, window, cx| {
+    let _ = handle.update(cx, |_, window, cx| {
         let subject = cx.new(|cx| InputState::new(window, cx).placeholder("Subject"));
         let description = cx.new(|cx| {
             TextareaState::new(window, cx)
@@ -73,31 +68,26 @@ fn open_report_issue_dialog(cx: &mut App) {
         let build = build_identifier();
         let platform = std::env::consts::OS;
 
-        root.open_dialog(
-            move |dialog, _window, _cx| {
-                let subject = subject.clone();
-                let description = description.clone();
-                let version = version.clone();
-                let build = build.clone();
-                dialog
-                    .title("Report Issue")
-                    .w(px(440.))
-                    .content(move |content, _window, cx| {
-                        content.child(report_issue_form(
-                            subject.clone(),
-                            description.clone(),
-                            version.clone(),
-                            build.clone(),
-                            platform,
-                            cx,
-                        ))
-                    })
-            },
-            window,
-            cx,
-        );
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            let subject = subject.clone();
+            let description = description.clone();
+            let version = version.clone();
+            let build = build.clone();
+            dialog
+                .title("Report Issue")
+                .w(px(440.))
+                .content(move |content, _window, cx| {
+                    content.child(report_issue_form(
+                        subject.clone(),
+                        description.clone(),
+                        version.clone(),
+                        build.clone(),
+                        platform,
+                        cx,
+                    ))
+                })
+        });
     });
-    eprintln!("DEBUG update result = {:?}", result.is_ok());
 }
 
 /// Section rule from Knot's `add-bug-reporting` proposal: Report is reachable
@@ -162,7 +152,7 @@ fn report_issue_form(
                     Button::new("report-issue-cancel")
                         .label("Cancel")
                         .ghost()
-                        .on_click(|_, window, cx| close_report_issue_dialog(window, cx)),
+                        .on_click(|_, window, cx| window.close_dialog(cx)),
                 )
                 .child(
                     Button::new("report-issue-report")
@@ -171,8 +161,7 @@ fn report_issue_form(
                         .disabled(!enabled)
                         .on_click(move |_, window, cx| {
                             let subject_value = click_subject.read(cx).value().to_string();
-                            let description_value =
-                                click_description.read(cx).value().to_string();
+                            let description_value = click_description.read(cx).value().to_string();
                             if !fields_filled(&subject_value, &description_value) {
                                 return;
                             }
@@ -184,17 +173,11 @@ fn report_issue_form(
                                 platform,
                             );
                             cx.open_url(&url);
-                            close_report_issue_dialog(window, cx);
+                            window.close_dialog(cx);
                         }),
                 ),
         )
         .into_any_element()
-}
-
-fn close_report_issue_dialog(window: &mut Window, cx: &mut App) {
-    if let Some(Some(root)) = window.root::<Root>() {
-        root.update(cx, |root, cx| root.close_dialog(window, cx));
-    }
 }
 
 /// The GitHub new-issue URL: the user's subject and description, with this
@@ -232,7 +215,8 @@ mod tests {
         fields_filled, register_commands, register_handler,
     };
     use crate::command::CommandRegistry;
-    use gpui_kit::{AppContext as _, ParentElement as _, Styled as _};
+    use gpui_kit::AppContext as _;
+    use gpui_kit::component::WindowExt as _;
 
     #[test]
     fn the_url_targets_the_app_repos_new_issue_page() {
@@ -255,8 +239,14 @@ mod tests {
             "2026-10-01, abc1234",
             "macos",
         );
-        assert!(url.contains("title=Pods%20panel"), "the subject is missing: {url}");
-        assert!(url.contains("Steps%3A%20open"), "the description is missing: {url}");
+        assert!(
+            url.contains("title=Pods%20panel"),
+            "the subject is missing: {url}"
+        );
+        assert!(
+            url.contains("Steps%3A%20open"),
+            "the description is missing: {url}"
+        );
         assert!(url.contains("1%2E0%2E0"), "the version is missing: {url}");
         assert!(url.contains("2026%2D10%2D01"), "the date is missing: {url}");
         assert!(url.contains("abc1234"), "the commit is missing: {url}");
@@ -287,31 +277,29 @@ mod tests {
         assert!(fields_filled("a subject", "a description"));
     }
 
-    /// A minimal `Root`-wrapped window: just enough chrome
-    /// (`render_dialog_layer`) for `open_report_issue_dialog`'s
-    /// `window.root::<Root>()` lookup and `Root::open_dialog` to have
-    /// somewhere to draw, without pulling in the whole app shell.
+    /// A blank content view: just enough to open a real window through
+    /// `gpui_kit::open_window` for `WindowExt`'s dialog methods to act on.
     struct Blank;
 
     impl gpui_kit::Render for Blank {
         fn render(
             &mut self,
-            window: &mut gpui_kit::Window,
-            cx: &mut gpui_kit::Context<Self>,
+            _window: &mut gpui_kit::Window,
+            _cx: &mut gpui_kit::Context<Self>,
         ) -> impl gpui_kit::IntoElement {
             gpui_kit::div()
-                .size_full()
-                .children(super::Root::render_dialog_layer(window, cx))
         }
     }
 
-    fn open_test_window(
-        cx: &mut gpui_kit::TestAppContext,
-    ) -> gpui_kit::WindowHandle<super::Root> {
-        cx.update(|cx| gpui_kit::init(cx));
-        cx.add_window(|window, cx| {
-            let view = cx.new(|_| Blank);
-            super::Root::new(view, window, cx)
+    fn open_test_window(cx: &mut gpui_kit::TestAppContext) -> gpui_kit::AnyWindowHandle {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            let (handle, _view) =
+                gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |_, cx| {
+                    cx.new(|_| Blank)
+                })
+                .expect("test window opens");
+            handle
         })
     }
 
@@ -320,41 +308,28 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(|cx| register_handler(cx));
         let window = open_test_window(cx);
-        // `AnyWindowHandle::update` only hands the callback a cheap clone of
-        // the root view, not an active lease on it - unlike the typed
-        // `WindowHandle<Root>::update` below, it can read `Root` itself
-        // (through `render_dialog_layer`) without a double-lease panic.
-        let any_window: gpui_kit::AnyWindowHandle = window.into();
-        any_window
+        window
             .update(cx, |_, window, _| window.activate_window())
             .unwrap();
         cx.run_until_parked();
-        let active = cx.update(|cx| cx.active_window());
-        eprintln!("DEBUG active_window = {:?}, our window id = {:?}", active.map(|h| h.window_id()), any_window.window_id());
 
-        let dialog_open_before = any_window
-            .update(cx, |_, window, cx| {
-                super::Root::render_dialog_layer(window, cx).is_some()
-            })
+        let dialog_open_before = window
+            .update(cx, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
         assert!(!dialog_open_before);
 
         cx.update(|cx| cx.dispatch_action(&ReportIssue));
         cx.run_until_parked();
 
-        let dialog_open_after = any_window
-            .update(cx, |_, window, cx| {
-                super::Root::render_dialog_layer(window, cx).is_some()
-            })
+        let dialog_open_after = window
+            .update(cx, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
         assert!(dialog_open_after, "ReportIssue opens a dialog");
 
         window
-            .update(cx, |root, window, cx| {
-                root.close_all_dialogs(window, cx);
-            })
+            .update(cx, |_, window, cx| window.close_all_dialogs(cx))
             .unwrap();
-        any_window
+        window
             .update(cx, |_, window, _cx| window.remove_window())
             .unwrap();
         cx.run_until_parked();
@@ -365,8 +340,7 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(|cx| register_handler(cx));
         let window = open_test_window(cx);
-        let any_window: gpui_kit::AnyWindowHandle = window.into();
-        any_window
+        window
             .update(cx, |_, window, _| window.activate_window())
             .unwrap();
         cx.run_until_parked();
@@ -374,26 +348,22 @@ mod tests {
         cx.update(|cx| cx.dispatch_action(&ReportIssue));
         cx.run_until_parked();
 
-        let dialog_open_before_escape = any_window
-            .update(cx, |_, window, cx| {
-                super::Root::render_dialog_layer(window, cx).is_some()
-            })
+        let dialog_open_before_escape = window
+            .update(cx, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
         assert!(dialog_open_before_escape, "ReportIssue opens a dialog");
 
-        let mut vcx = gpui_kit::VisualTestContext::from_window(any_window, cx);
+        let mut vcx = gpui_kit::VisualTestContext::from_window(window, cx);
         vcx.run_until_parked();
         vcx.simulate_keystrokes("escape");
         vcx.run_until_parked();
 
-        let dialog_open = any_window
-            .update(cx, |_, window, cx| {
-                super::Root::render_dialog_layer(window, cx).is_some()
-            })
+        let dialog_open = window
+            .update(cx, |_, window, cx| window.has_active_dialog(cx))
             .unwrap();
         assert!(!dialog_open, "escape closed the dialog");
 
-        any_window
+        window
             .update(cx, |_, window, _| window.remove_window())
             .unwrap();
     }
