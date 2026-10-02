@@ -9,6 +9,7 @@ mod cluster;
 mod common;
 mod config;
 mod network;
+mod rbac;
 mod service_account;
 mod storage;
 mod workloads;
@@ -58,6 +59,16 @@ pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec
         }
         ("discovery.k8s.io", "EndpointSlice") => {
             typed(object).map(|slice| network::endpoint_slice(&slice, namespace))
+        }
+        ("rbac.authorization.k8s.io", "Role") => typed(object).map(|role| rbac::role(&role)),
+        ("rbac.authorization.k8s.io", "ClusterRole") => {
+            typed(object).map(|role| rbac::cluster_role(&role))
+        }
+        ("rbac.authorization.k8s.io", "RoleBinding") => {
+            typed(object).map(|binding| rbac::role_binding(&binding, namespace))
+        }
+        ("rbac.authorization.k8s.io", "ClusterRoleBinding") => {
+            typed(object).map(|binding| rbac::cluster_role_binding(&binding))
         }
         _ => None,
     }

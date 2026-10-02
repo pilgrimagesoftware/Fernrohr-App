@@ -12,6 +12,7 @@ mod header;
 mod network;
 mod overview;
 mod panel;
+mod rbac;
 mod secrets;
 mod sections;
 mod storage;
