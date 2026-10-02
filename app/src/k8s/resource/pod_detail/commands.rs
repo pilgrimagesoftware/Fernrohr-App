@@ -108,4 +108,5 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
+    super::window_commands::register_commands(registry);
 }

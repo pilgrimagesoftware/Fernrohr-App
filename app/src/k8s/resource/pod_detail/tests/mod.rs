@@ -12,6 +12,8 @@ mod configuration;
 mod container_detail;
 mod container_view;
 mod events;
+mod events_window;
+mod events_window_keys;
 mod fetch;
 mod fixtures;
 mod links;

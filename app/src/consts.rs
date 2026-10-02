@@ -101,3 +101,7 @@ pub(crate) const DEFAULT_MONO_FONT_SIZE: f32 = 13.;
 /// change's new sizes before the old ones age out. Asking for one more size
 /// releases the oldest.
 pub(crate) const ICON_RASTER_SIZES: usize = 12;
+
+/// How often a pod's Events tab re-checks its time window, so events age out of
+/// it while the panel sits open (`pod-events-time-window` D2).
+pub(crate) const POD_EVENTS_WINDOW_TICK: Duration = Duration::from_secs(60);

@@ -18,7 +18,8 @@ fn event(uid: &str, reason: &str) -> Value {
         "metadata": { "uid": uid, "name": format!("web-1.{uid}"), "namespace": "shop" },
         "involvedObject": { "kind": "Pod", "apiVersion": "v1", "namespace": "shop", "name": "web-1", "uid": "pod-uid" },
         "type": "Normal", "reason": reason, "message": format!("{reason} happened"),
-        "count": 1, "lastTimestamp": "2026-10-02T10:00:00Z",
+        // Seen just now, so the Events tab's default one-hour window shows it.
+        "count": 1, "lastTimestamp": jiff::Timestamp::now().to_string(),
     })
 }
 
@@ -83,8 +84,8 @@ fn reasons(vcx: &mut VisualTestContext, panel: &Entity<PodDetailPanel>) -> Vec<S
     vcx.update(|_, cx| {
         let summaries = panel
             .read(cx)
-            .event_summaries(jiff::Timestamp::now(), cx)
-            .and_then(Result::ok)
+            .events_view(jiff::Timestamp::now(), cx)
+            .and_then(|view| view.events.ok())
             .unwrap_or_default();
         let mut reasons: Vec<String> = summaries.into_iter().map(|event| event.reason).collect();
         reasons.sort();

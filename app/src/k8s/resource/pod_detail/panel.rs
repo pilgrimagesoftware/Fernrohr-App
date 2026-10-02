@@ -70,6 +70,8 @@ pub struct PodDetailPanel {
     pub(super) fetching: bool,
     /// The pod's live events, once it has loaded (`live_events`).
     pub(super) events: Option<super::live_events::PodEventsWatch>,
+    /// How far back the Events tab looks (`pod-events-time-window` 2.1).
+    pub(super) events_window: crate::config::ui::PodEventsWindow,
     /// The Configuration tab's cards and revealed Secret values. Revealed
     /// values live only here, and only until hidden, the tab is left, or the
     /// panel closes.
@@ -99,6 +101,7 @@ impl PodDetailPanel {
             open_sections: std::collections::HashSet::new(),
             fetching: false,
             events: None,
+            events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
@@ -131,6 +134,7 @@ impl PodDetailPanel {
             open_sections: std::collections::HashSet::new(),
             fetching: false,
             events: None,
+            events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
