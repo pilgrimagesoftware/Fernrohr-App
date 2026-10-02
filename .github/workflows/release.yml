@@ -2,6 +2,10 @@ name: Release
 
 permissions:
   contents: write
+  # rust-release.yaml declares id-token: write unconditionally (for crates.io
+  # OIDC trusted publishing), even though publish-to-crates-io is false here -
+  # the caller must still grant it, or GitHub refuses to start the run.
+  id-token: write
 
 on:
   push:
