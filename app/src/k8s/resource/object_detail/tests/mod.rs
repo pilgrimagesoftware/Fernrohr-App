@@ -6,6 +6,7 @@
 //! re-exports a `test` macro that would shadow the built-in one.
 
 mod cluster;
+mod copy;
 mod fetch;
 mod fixtures;
 mod header;

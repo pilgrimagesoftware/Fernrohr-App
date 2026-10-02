@@ -118,6 +118,16 @@ impl PodDetailPanel {
         }
     }
 
+    /// Copy Resource Name: the pod's name to the clipboard.
+    fn on_action_copy_name(
+        &mut self,
+        _: &crate::ui::copy::CopyResourceName,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::ui::copy::copy_text(&self.pod.name, cx);
+    }
+
     fn on_action_unfold_all(
         &mut self,
         _: &crate::ui::yaml_view::UnfoldAll,
@@ -285,6 +295,7 @@ impl Render for PodDetailPanel {
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))
+            .on_action(cx.listener(Self::on_action_copy_name))
             .on_action(cx.listener(Self::on_action_unfold_all))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
             .on_action(cx.listener(Self::on_action_select_containers_tab))

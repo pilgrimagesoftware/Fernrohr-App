@@ -18,7 +18,7 @@
 mod commands;
 mod configuration;
 mod container_detail;
-mod container_view;
+pub(super) mod container_view;
 pub(super) mod events_tab;
 mod fetch;
 mod field_view;

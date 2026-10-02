@@ -44,7 +44,9 @@ impl ObjectDetailPanel {
                 detail::badges(badges.iter().map(|(text, tone)| (text.as_str(), *tone)), cx)
             }
             FieldValue::Lines(lines) => detail::lines(lines),
-            FieldValue::KeyValues(pairs) => detail::key_values(pairs, cx),
+            FieldValue::KeyValues(pairs) => {
+                detail::key_values(&format!("{section}/{}", field.label), pairs, cx)
+            }
             FieldValue::SecretKeys { secret, keys } => div()
                 .flex()
                 .flex_col()
@@ -125,6 +127,16 @@ impl ObjectDetailPanel {
             self.yaml_view.fold_all(&yaml);
             cx.notify();
         }
+    }
+
+    /// Copy Resource Name: the object's name to the clipboard.
+    fn on_action_copy_name(
+        &mut self,
+        _: &crate::ui::copy::CopyResourceName,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::ui::copy::copy_text(&self.target.name, cx);
     }
 
     fn on_action_unfold_all(
@@ -256,6 +268,7 @@ impl Render for ObjectDetailPanel {
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))
+            .on_action(cx.listener(Self::on_action_copy_name))
             .on_action(cx.listener(Self::on_action_unfold_all))
             .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_go_to))

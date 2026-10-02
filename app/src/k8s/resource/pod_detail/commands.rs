@@ -43,6 +43,7 @@ const EVENTS_TAB_COMMAND_ID: &str = "pod_detail.tab_events";
 const MANAGED_FIELDS_TAB_COMMAND_ID: &str = "pod_detail.tab_managed_fields";
 const HIDE_SECRET_VALUES_COMMAND_ID: &str = "pod_detail.hide_secret_values";
 const FOLD_ALL_COMMAND_ID: &str = "pod_detail.yaml_fold_all";
+const COPY_NAME_COMMAND_ID: &str = "pod_detail.copy_name";
 const UNFOLD_ALL_COMMAND_ID: &str = "pod_detail.yaml_unfold_all";
 
 /// The panel's shortcuts as registry commands, gated to its key context: each
@@ -50,7 +51,7 @@ const UNFOLD_ALL_COMMAND_ID: &str = "pod_detail.yaml_unfold_all";
 /// override by id. None belongs in the menu bar - they act on one panel, not
 /// the app.
 pub fn register_commands(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 10] = [
+    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 11] = [
         (
             TOGGLE_VIEW_COMMAND_ID,
             "Pod Detail: Toggle Fields/YAML",
@@ -110,6 +111,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             "Pod Detail: Unfold All YAML",
             crate::ui::yaml_view::UNFOLD_ALL_KEY,
             Box::new(crate::ui::yaml_view::UnfoldAll),
+        ),
+        (
+            COPY_NAME_COMMAND_ID,
+            "Pod Detail: Copy Resource Name",
+            crate::ui::copy::COPY_NAME_KEY,
+            Box::new(crate::ui::copy::CopyResourceName),
         ),
     ];
     for (id, title, default_binding, action) in commands {

@@ -195,3 +195,42 @@ fn a_completed_init_container_is_success_with_its_exit_code() {
     assert_eq!(init.1, "Terminated: Completed (exit 0)");
     assert_eq!(init.3, BadgeTone::Good);
 }
+
+/// `resource-detail-ui-improvements` 3, in the pod panel: `c` copies the pod's
+/// name, and the image's copy control copies the full image reference.
+#[gpui_kit::test]
+async fn the_name_and_an_image_copy(cx: &mut TestAppContext) {
+    use crate::k8s::resource::pod_detail::container_view::copy_image_id;
+    use gpui_kit::Modifiers;
+    let h = harness(cx, starting_pod());
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    let clipboard = |vcx: &mut VisualTestContext| {
+        vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+    };
+    super::config_fixture::focus_panel(&mut vcx, &h);
+    vcx.simulate_keystrokes("c");
+    vcx.run_until_parked();
+    assert_eq!(clipboard(&mut vcx).as_deref(), Some("api-7d9f-ftg5t"));
+
+    vcx.update(|_, cx| {
+        h.panel.update(cx, |panel, cx| {
+            panel.set_active_tab(DetailSection::Containers, cx)
+        })
+    });
+    let center = vcx
+        .update_window(h.window.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window
+                .try_find(copy_image_id("app"))
+                .expect("the image's copy control is drawn")
+                .bounds()
+                .center()
+        })
+        .unwrap();
+    vcx.simulate_click(center, Modifiers::none());
+    vcx.run_until_parked();
+    assert_eq!(
+        clipboard(&mut vcx).as_deref(),
+        Some("registry.example/api:1.2.3")
+    );
+}

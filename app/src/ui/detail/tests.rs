@@ -152,3 +152,57 @@ fn chips_and_rows_are_data_text_and_headings_and_buttons_frame_text() {
             .unwrap();
     });
 }
+
+/// `resource-detail-ui-improvements` 3: a Secret value can be copied only
+/// while it is revealed - hidden, its row draws no copy control.
+#[gpui_kit::test]
+fn a_secret_value_copies_only_while_revealed(cx: &mut gpui_kit::TestAppContext) {
+    use crate::k8s::resource::secret_value::{Reveal, SecretValue};
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{AppContext as _, ElementId, Modifiers, VisualTestContext};
+
+    struct SecretRow(Option<Reveal>);
+    impl gpui_kit::Render for SecretRow {
+        fn render(
+            &mut self,
+            _: &mut gpui_kit::Window,
+            cx: &mut gpui_kit::Context<Self>,
+        ) -> impl IntoElement {
+            super::secret_key_row(
+                "token",
+                6,
+                self.0.as_ref(),
+                "show-token".into(),
+                "token-value".into(),
+                |_, _| {},
+                cx,
+            )
+        }
+    }
+    cx.update(gpui_kit::init);
+    let copy = ElementId::Name("copy token-value".into());
+    let drawn = |cx: &mut gpui_kit::TestAppContext, reveal: Option<Reveal>| {
+        let window: gpui_kit::AnyWindowHandle = cx.add_window(|_, _| SecretRow(reveal)).into();
+        let mut vcx = VisualTestContext::from_window(window, cx);
+        let bounds = vcx
+            .update_window(window, |_, window, cx| {
+                window.render_frame(cx);
+                window.try_find(copy.clone()).map(|copy| copy.bounds())
+            })
+            .unwrap();
+        (vcx, bounds)
+    };
+
+    let (_, hidden) = drawn(cx, None);
+    assert!(hidden.is_none(), "a hidden value has no copy control");
+
+    let (mut vcx, shown) = drawn(
+        cx,
+        Some(Reveal::Shown(SecretValue::new(b"s3cret".to_vec()))),
+    );
+    let shown = shown.expect("a revealed value has a copy control");
+    vcx.simulate_click(shown.center(), Modifiers::none());
+    vcx.run_until_parked();
+    let copied = vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()));
+    assert_eq!(copied.as_deref(), Some("s3cret"));
+}

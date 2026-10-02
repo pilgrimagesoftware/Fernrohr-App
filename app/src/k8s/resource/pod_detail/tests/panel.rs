@@ -273,9 +273,9 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let commands: Vec<_> = registry.iter().collect();
     assert_eq!(
         commands.len(),
-        17,
+        18,
         "the view toggle, six tabs, Hide Secret Values, the Events tab's seven window \
-         commands, and Fold/Unfold All YAML"
+         commands, Fold/Unfold All YAML, and Copy Resource Name"
     );
     assert!(
         commands
@@ -284,7 +284,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         "panel shortcuts are panel-scoped and stay out of the menu bar"
     );
     assert!(registry.available(&[]).is_empty());
-    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 17);
+    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 18);
 
     let mut keymap = KeymapConfig::default();
     keymap
