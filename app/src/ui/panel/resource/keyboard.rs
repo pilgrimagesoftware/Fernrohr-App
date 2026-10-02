@@ -179,7 +179,7 @@ pub(super) fn hint_row(window: &mut Window, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_wrap()
-        .gap_3()
+        .gap(crate::ui::space::spacing(cx).control_gap)
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .child(hint(updown.into_any_element(), "Select"))

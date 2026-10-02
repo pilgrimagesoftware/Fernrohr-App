@@ -20,6 +20,7 @@ mod filter;
 mod grouping;
 mod keyboard_panel;
 mod logic;
+mod spacing;
 mod subgroup_keys;
 mod subgroups;
 

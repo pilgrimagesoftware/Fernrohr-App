@@ -6,14 +6,19 @@ impl Render for PodsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use crate::k8s::cluster::connection::ConnectionState;
 
+        let space = crate::ui::space::spacing(cx);
         let content = match &self.connection.read(cx).state {
-            ConnectionState::Connecting => div().size_full().p_3().child("Connecting..."),
-            ConnectionState::WaitingForTunnel => {
-                div().size_full().p_3().child("Waiting for tunnel...")
-            }
+            ConnectionState::Connecting => div()
+                .size_full()
+                .p(space.panel_inset)
+                .child("Connecting..."),
+            ConnectionState::WaitingForTunnel => div()
+                .size_full()
+                .p(space.panel_inset)
+                .child("Waiting for tunnel..."),
             ConnectionState::Failed(reason) => div()
                 .size_full()
-                .p_3()
+                .p(space.panel_inset)
                 .child(format!("Connection failed: {reason}")),
             // `connection-status-bar`: a paused watch used to print its own "Paused
             // (...)" line here. That moved to the window's status bar
@@ -70,7 +75,7 @@ impl Render for PodsPanel {
                         });
                 let shortcuts = div()
                     .flex()
-                    .gap_3()
+                    .gap(space.control_gap)
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .child(
@@ -109,18 +114,16 @@ impl Render for PodsPanel {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .p_3()
+                    .p(space.panel_inset)
                     .child(
-                        div().flex_1().min_h_0().child(
-                            DataTable::new(&table)
-                                .stripe(true)
-                                .bordered(true)
-                                .scrollbar_visible(true, true),
-                        ),
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .child(pods_table::data_table(&table, cx)),
                     )
                     .child(
                         div()
-                            .mt_2()
+                            .mt(space.control_gap)
                             .px_2()
                             .py_1()
                             .rounded_md()
@@ -144,8 +147,9 @@ impl Render for PodsPanel {
         let header = div()
             .flex()
             .items_center()
-            .gap_2()
-            .p_2()
+            .gap(space.control_gap)
+            .px(space.panel_inset)
+            .py(space.control_gap)
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)

@@ -239,16 +239,17 @@ impl ResourcePanel {
         let theme = cx.theme().clone();
         let filter = self.filter_text(cx);
         let sections = self.visible_sections(cx);
+        let space = crate::ui::space::spacing(cx);
 
         let list: AnyElement = if sections.is_empty() {
             div()
-                .p_3()
+                .p(space.panel_inset)
                 .text_sm()
                 .text_color(theme.muted_foreground)
                 .child(format!("No resource kinds match \u{201c}{filter}\u{201d}."))
                 .into_any_element()
         } else {
-            let mut list = div().flex().flex_col().w_full();
+            let mut list = div().flex().flex_col().w_full().px(space.panel_inset);
             for section in &sections {
                 list = list.child(self.render_section(section, window, cx));
             }
@@ -263,14 +264,14 @@ impl ResourcePanel {
             .child(
                 div()
                     .w_full()
-                    .px_2()
-                    .py_2()
+                    .px(space.panel_inset)
+                    .py(space.control_gap)
                     .bg(crate::ui::style::surface_raised(cx))
                     .border_t_1()
                     .border_color(theme.sidebar_border)
                     .flex()
                     .flex_col()
-                    .gap_2()
+                    .gap(space.control_gap)
                     .child(Input::new(&self.filter_input))
                     .child(super::keyboard::hint_row(window, cx)),
             );
@@ -292,7 +293,14 @@ impl ResourcePanel {
             .bg(theme.tokens.sidebar)
             .border_r_1()
             .border_color(theme.sidebar_border)
-            .child(div().w_full().px_3().pt_3().child(self.header(cx)))
+            .child({
+                let space = crate::ui::space::spacing(cx);
+                div()
+                    .w_full()
+                    .px(space.panel_inset)
+                    .pt(space.panel_inset)
+                    .child(self.header(cx))
+            })
             .child(div().flex_1().min_h_0().child(content))
             .into_any_element()
     }
