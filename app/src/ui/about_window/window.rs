@@ -52,9 +52,15 @@ fn open_about_window(handle: &Rc<RefCell<Option<AnyWindowHandle>>>, cx: &mut App
 /// The titlebar carries no text on macOS: the system's own About panel has
 /// none, and the window already names the app in its body. Elsewhere a
 /// titled window is the expectation, so the title is shown there.
+///
+/// `titlebar` must stay `Some` on every platform, even when `title` is
+/// `None`: gpui's macOS backend only adds `NSClosableWindowMask` (the close
+/// button) when a `TitlebarOptions` is present at all - a `None` titlebar
+/// drops the close button along with the title text, leaving the window with
+/// no system chrome to close it from.
 fn about_window_options(cx: &App) -> WindowOptions {
-    let titlebar = (!cfg!(target_os = "macos")).then(|| TitlebarOptions {
-        title: Some("About Fernrohr".into()),
+    let titlebar = Some(TitlebarOptions {
+        title: (!cfg!(target_os = "macos")).then(|| "About Fernrohr".into()),
         ..Default::default()
     });
     let bounds = Bounds::centered(None, size(gpui_kit::px(360.), gpui_kit::px(420.)), cx);
