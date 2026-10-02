@@ -83,6 +83,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::ui::status_bar::register_commands(registry);
+    crate::ui::theme::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
     crate::k8s::resource::object_list::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
@@ -119,6 +120,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
     crate::ui::text_size::register_handlers(cx);
+    crate::ui::theme::register_handlers(cx);
     crate::ui::report_issue::register_handler(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
@@ -167,3 +169,5 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod theme_tests;

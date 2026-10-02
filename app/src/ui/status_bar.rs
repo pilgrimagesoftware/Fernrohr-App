@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 
 mod capsule;
 mod commands;
+mod theme_switch;
 
 pub(crate) use commands::{AddContext, DisconnectActiveContext, register_commands};
 
@@ -323,6 +324,8 @@ impl Render for StatusBarView {
                     .map(|item| capsule::render_capsule(item, this.clone(), &theme)),
             )
             .child(capsule::render_add_button(this))
+            .child(div().flex_1())
+            .child(theme_switch::render_theme_switch(cx))
     }
 }
 
