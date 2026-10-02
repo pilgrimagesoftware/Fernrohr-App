@@ -6,14 +6,24 @@ use crate::consts::BOUNDS_SAVE_DEBOUNCE;
 /// Opens the windows recorded at `workspace_path`, or one default window if
 /// the file is missing, empty, or failed to parse (`config::load` already
 /// guarantees defaults-without-touching-the-file in that last case).
+///
+/// Then brings the app to the front with its first window active: a launch from
+/// Finder, the Dock or a terminal otherwise left the window behind whatever
+/// was frontmost, with keyboard input still going there.
 pub fn open_saved_or_default(cx: &mut App, workspace_path: &Path) {
     let workspace: WorkspaceConfig = config::load(workspace_path);
-    if workspace.windows.is_empty() {
-        open_window(cx, WindowLayout::default());
+    let layouts = if workspace.windows.is_empty() {
+        vec![WindowLayout::default()]
     } else {
-        for layout in workspace.windows {
-            open_window(cx, layout);
-        }
+        workspace.windows
+    };
+    let windows: Vec<AnyWindowHandle> = layouts
+        .into_iter()
+        .map(|layout| open_window(cx, layout))
+        .collect();
+    cx.activate(true);
+    if let Some(first) = windows.first() {
+        let _ = first.update(cx, |_, window, _| window.activate_window());
     }
 }
 

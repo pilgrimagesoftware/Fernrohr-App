@@ -63,7 +63,7 @@ pub(super) enum WindowMode {
 /// Opens one window, in `Picker` mode if `layout` has no restorable contexts, or
 /// directly into a connected workspace (seeded from the restored layout's contexts)
 /// otherwise.
-pub fn open_window(cx: &mut App, layout: WindowLayout) {
+pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
     let bounds = window_bounds(&layout, cx);
     let contexts = restored_contexts(&layout);
     let resource_width = restored_resource_width(&layout);
@@ -121,7 +121,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) {
             view
         },
     )
-    .expect("failed to open window");
+    .expect("failed to open window")
+    .0
 }
 
 /// Subscribes so a successful connect on `picker` swaps this window into
