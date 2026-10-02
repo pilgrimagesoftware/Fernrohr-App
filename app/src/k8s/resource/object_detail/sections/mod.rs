@@ -7,6 +7,7 @@
 
 mod common;
 mod config;
+mod network;
 mod node;
 mod service_account;
 mod storage;
@@ -39,6 +40,19 @@ pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec
         }
         ("apps", "DaemonSet") => typed(object).map(|set| workloads::daemon_set(&set)),
         ("batch", "Job") => typed(object).map(|job| workloads::job(&job)),
+        ("", "Service") => typed(object).map(|service| network::service(&service)),
+        ("", "Endpoints") => {
+            typed(object).map(|endpoints| network::endpoints(&endpoints, namespace))
+        }
+        ("networking.k8s.io", "Ingress") => {
+            typed(object).map(|ingress| network::ingress(&ingress, namespace))
+        }
+        ("networking.k8s.io", "NetworkPolicy") => {
+            typed(object).map(|policy| network::network_policy(&policy))
+        }
+        ("discovery.k8s.io", "EndpointSlice") => {
+            typed(object).map(|slice| network::endpoint_slice(&slice, namespace))
+        }
         _ => None,
     }
     .unwrap_or_default()
