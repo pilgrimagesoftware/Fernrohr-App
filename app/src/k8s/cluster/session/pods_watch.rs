@@ -15,13 +15,13 @@ impl ClusterRegistry {
             .get_mut(context_name)
             .unwrap()
             .watchers
-            .subscribe("pods");
+            .subscribe(WatchKey::Pods);
         if should_start {
             cx.global_mut::<Self>()
                 .sessions
                 .get_mut(context_name)
                 .unwrap()
-                .pods_client = Some(client.clone());
+                .client = Some(client.clone());
             let watch = Self::start_pods_watch(cx, context_name, client);
             cx.global_mut::<Self>()
                 .sessions
@@ -86,7 +86,7 @@ impl ClusterRegistry {
             crate::runtime::drain(rx, move |state| {
                 if let ConnectionState::Connected(client) = state {
                     let context_name = context_name.clone();
-                    cx.update(move |cx| Self::refresh_pods_client(cx, &context_name, client));
+                    cx.update(move |cx| Self::refresh_client(cx, &context_name, client));
                 }
             })
             .await;
@@ -97,7 +97,7 @@ impl ClusterRegistry {
     /// A credential refresh succeeded for `context_name`: record the new client and
     /// resume through the same pause/resume path section 7.2 established, restarting
     /// the watch from it.
-    fn refresh_pods_client(cx: &mut App, context_name: &str, client: Client) {
+    fn refresh_client(cx: &mut App, context_name: &str, client: Client) {
         if !cx.global::<Self>().sessions.contains_key(context_name) {
             return;
         }
@@ -105,7 +105,7 @@ impl ClusterRegistry {
             .sessions
             .get_mut(context_name)
             .unwrap()
-            .pods_client = Some(client);
+            .client = Some(client);
         Self::apply_health_transition(cx, context_name, HealthTransition::Resume);
     }
 
@@ -118,7 +118,7 @@ impl ClusterRegistry {
         let Some(session) = cx.global_mut::<Self>().sessions.get_mut(context_name) else {
             return;
         };
-        if session.watchers.unsubscribe(&"pods") {
+        if session.watchers.unsubscribe(&WatchKey::Pods) {
             session.pods_watch = None;
         }
     }

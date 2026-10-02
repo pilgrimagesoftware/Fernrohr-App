@@ -8,3 +8,4 @@ pub mod namespaces;
 pub mod session;
 pub mod tunnel;
 pub mod watch_registry;
+pub(crate) mod watch_stream;

@@ -1,8 +1,8 @@
 // Named imports only: a `use super::*` here would re-glob gpui_kit test macro internals.
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::health::HealthTransition;
-use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::cluster::session::test_support::test_client;
+use crate::k8s::cluster::session::{ClusterRegistry, WatchKey};
 use crate::k8s::cluster::watch_registry::PauseReason;
 use gpui_kit::TestAppContext;
 
@@ -33,14 +33,14 @@ async fn two_subscribers_share_one_pods_watch_and_table(cx: &mut TestAppContext)
     assert_eq!(
         cx.update(|cx| cx.global::<ClusterRegistry>().sessions["kind-dev"]
             .watchers
-            .refcount(&"pods")),
+            .refcount(&WatchKey::Pods)),
         1
     );
     cx.update(|cx| ClusterRegistry::unsubscribe_pods(cx, "kind-dev"));
     assert_eq!(
         cx.update(|cx| cx.global::<ClusterRegistry>().sessions["kind-dev"]
             .watchers
-            .refcount(&"pods")),
+            .refcount(&WatchKey::Pods)),
         0
     );
 }
@@ -65,13 +65,13 @@ async fn different_contexts_get_independent_sessions(cx: &mut TestAppContext) {
     assert_eq!(
         cx.update(|cx| cx.global::<ClusterRegistry>().sessions["dev"]
             .watchers
-            .refcount(&"pods")),
+            .refcount(&WatchKey::Pods)),
         1
     );
     assert_eq!(
         cx.update(|cx| cx.global::<ClusterRegistry>().sessions["staging"]
             .watchers
-            .refcount(&"pods")),
+            .refcount(&WatchKey::Pods)),
         1
     );
 
@@ -79,13 +79,13 @@ async fn different_contexts_get_independent_sessions(cx: &mut TestAppContext) {
     assert_eq!(
         cx.update(|cx| cx.global::<ClusterRegistry>().sessions["dev"]
             .watchers
-            .refcount(&"pods")),
+            .refcount(&WatchKey::Pods)),
         0
     );
     assert_eq!(
         cx.update(|cx| cx.global::<ClusterRegistry>().sessions["staging"]
             .watchers
-            .refcount(&"pods")),
+            .refcount(&WatchKey::Pods)),
         1,
         "unsubscribing one context must not affect another"
     );
@@ -96,7 +96,7 @@ async fn different_contexts_get_independent_sessions(cx: &mut TestAppContext) {
 /// to refresh a credential, which would read this machine's actual kubeconfig and
 /// attempt a real network probe if driven directly in a test - not something a unit
 /// test should do. `apply_health_transition` (the pause step, section 7.2) and
-/// `refresh_pods_client` (the resume-with-a-new-client step) are exactly what
+/// `refresh_client` (the resume-with-a-new-client step) are exactly what
 /// `handle_pods_unauthorized` composes; each is exercised here on its own, the same
 /// seam section 6.2's `connect_and_probe` tests already drove one layer down.
 #[gpui_kit::test]
@@ -129,7 +129,7 @@ async fn unauthorized_pause_stops_the_watch_and_refresh_resumes_it(cx: &mut Test
     assert!(cx.update(|cx| {
         cx.global::<ClusterRegistry>().sessions["kind-dev"]
             .watchers
-            .is_paused(&"pods")
+            .is_paused(&WatchKey::Pods)
     }));
     assert!(cx.update(|cx| {
         cx.global::<ClusterRegistry>().sessions["kind-dev"]
@@ -138,11 +138,11 @@ async fn unauthorized_pause_stops_the_watch_and_refresh_resumes_it(cx: &mut Test
     }));
 
     let refreshed_client = test_client(cx);
-    cx.update(|cx| ClusterRegistry::refresh_pods_client(cx, "kind-dev", refreshed_client));
+    cx.update(|cx| ClusterRegistry::refresh_client(cx, "kind-dev", refreshed_client));
     assert!(!cx.update(|cx| {
         cx.global::<ClusterRegistry>().sessions["kind-dev"]
             .watchers
-            .is_paused(&"pods")
+            .is_paused(&WatchKey::Pods)
     }));
     assert!(cx.update(|cx| {
         cx.global::<ClusterRegistry>().sessions["kind-dev"]
@@ -151,7 +151,7 @@ async fn unauthorized_pause_stops_the_watch_and_refresh_resumes_it(cx: &mut Test
     }));
 }
 
-/// `refresh_pods_client` arriving after every panel already unsubscribed (the watch
+/// `refresh_client` arriving after every panel already unsubscribed (the watch
 /// entry gone entirely, section 7.1's teardown-drops-the-flag behavior) must not
 /// resurrect a watch nobody is subscribed to.
 #[gpui_kit::test]
@@ -180,7 +180,7 @@ async fn refresh_after_every_panel_unsubscribed_does_not_restart_the_watch(
     cx.update(|cx| ClusterRegistry::unsubscribe_pods(cx, "kind-dev"));
 
     let refreshed_client = test_client(cx);
-    cx.update(|cx| ClusterRegistry::refresh_pods_client(cx, "kind-dev", refreshed_client));
+    cx.update(|cx| ClusterRegistry::refresh_client(cx, "kind-dev", refreshed_client));
 
     assert!(cx.update(|cx| {
         cx.global::<ClusterRegistry>().sessions["kind-dev"]
@@ -190,7 +190,7 @@ async fn refresh_after_every_panel_unsubscribed_does_not_restart_the_watch(
     assert_eq!(
         cx.update(|cx| cx.global::<ClusterRegistry>().sessions["kind-dev"]
             .watchers
-            .refcount(&"pods")),
+            .refcount(&WatchKey::Pods)),
         0
     );
 }

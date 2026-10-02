@@ -32,7 +32,7 @@ impl ClusterRegistry {
                     .get_mut(context_name)
                     .unwrap()
                     .watchers
-                    .pause(&"pods", reason);
+                    .pause(&WatchKey::Pods, reason);
                 if paused {
                     cx.global_mut::<Self>()
                         .sessions
@@ -47,9 +47,9 @@ impl ClusterRegistry {
                     .sessions
                     .get_mut(context_name)
                     .unwrap();
-                let should_restart =
-                    session.watchers.resume(&"pods") && session.watchers.refcount(&"pods") > 0;
-                let client = session.pods_client.clone();
+                let should_restart = session.watchers.resume(&WatchKey::Pods)
+                    && session.watchers.refcount(&WatchKey::Pods) > 0;
+                let client = session.client.clone();
                 if should_restart && let Some(client) = client {
                     let watch = Self::start_pods_watch(cx, context_name, client);
                     cx.global_mut::<Self>()

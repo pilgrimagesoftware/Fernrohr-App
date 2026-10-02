@@ -12,8 +12,8 @@ pub(super) struct ClusterSession {
     pub(super) pods_watch: Option<gpui_kit::Task<()>>,
     /// The client last used to start the Pods watch - kept so section 7.2's
     /// `ConnectionHealth` can restart it on resume without a panel re-subscribing.
-    pub(super) pods_client: Option<Client>,
-    pub(super) watchers: WatchRegistry<&'static str>,
+    pub(super) client: Option<Client>,
+    pub(super) watchers: WatchRegistry<WatchKey>,
     // Kept alive for as long as the session exists; aborts on drop like every other
     // owned background task. `None` for an unbound context, which has no forward to watch.
     _health: Option<gpui_kit::Task<()>>,
@@ -69,7 +69,7 @@ impl ClusterRegistry {
                 connection,
                 pods,
                 pods_watch: None,
-                pods_client: None,
+                client: None,
                 watchers: WatchRegistry::new(),
                 _health: health,
                 holders: HashSet::new(),

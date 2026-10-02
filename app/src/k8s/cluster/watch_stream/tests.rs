@@ -1,7 +1,4 @@
-// Named imports rather than `use super::*`: `gpui_kit::*` (imported by the
-// parent) re-exports its own `test` attribute macro, which would shadow the
-// built-in `#[test]` for these plain synchronous tests.
-use crate::k8s::resource::pods::watch::is_unauthorized;
+use crate::k8s::cluster::watch_stream::is_unauthorized;
 use kube_runtime::watcher;
 
 use kube::core::response::Status;
