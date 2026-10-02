@@ -91,7 +91,13 @@ impl Render for AboutWindow {
             .p(crate::ui::space::spacing(cx).panel_inset * 2.)
             .bg(cx.theme().background)
             .child(img(ICON.clone()).w(px(ICON_SIZE)).h(px(ICON_SIZE)))
-            .child(div().text_2xl().font_semibold().child(APP_NAME))
+            .child(
+                div()
+                    .text_2xl()
+                    .font_semibold()
+                    .text_color(cx.theme().foreground)
+                    .child(APP_NAME),
+            )
             // The version and build are the text a bug report needs, so the
             // text itself copies them - a copy button beside it was one more
             // thing to aim at.
