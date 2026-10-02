@@ -104,11 +104,30 @@ impl NavTarget {
 
     /// What a panel *listing* this target titles itself: the plural form for
     /// a resource kind (`"Pods"`), same as [`Self::label`] for anything that
-    /// isn't a list of many items.
+    /// isn't a list of many items. A custom resource's plural stands alone
+    /// (`"Certificates"`); [`Self::custom_group`] carries its group to the
+    /// tab's tooltip instead.
     pub fn list_label(&self) -> String {
         match self {
+            NavTarget::Kind(kind) if self.custom_group().is_some() => kind.plural_name(),
             NavTarget::Kind(kind) => kind.plural_label(),
             NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => self.label(),
+        }
+    }
+
+    /// The API group of a custom resource kind's list - a kind outside the
+    /// built-in API groups - and `None` for every other target. The core
+    /// group (`""`) never counts: a core kind the taxonomy hasn't caught up
+    /// with has no group to show.
+    pub fn custom_group(&self) -> Option<&str> {
+        match self {
+            NavTarget::Kind(kind)
+                if !kind.gvk.group.is_empty()
+                    && !crate::ui::panel::resource::is_built_in(&kind.gvk.group, &kind.plural) =>
+            {
+                Some(&kind.gvk.group)
+            }
+            NavTarget::Kind(_) | NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => None,
         }
     }
 

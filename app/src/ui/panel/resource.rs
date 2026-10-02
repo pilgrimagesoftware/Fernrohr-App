@@ -30,6 +30,7 @@ mod section;
 mod side_preference;
 
 pub(crate) use actions::FocusResources;
+pub(crate) use category::is_built_in;
 #[cfg(test)]
 pub(crate) use edge::TOGGLE_DEFAULT_BINDING;
 #[cfg(test)]

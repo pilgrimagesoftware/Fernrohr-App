@@ -3,7 +3,7 @@
 
 use super::{
     PanelScope, focus_underline, heading_name_box, is_truncated, item_heading, label_for,
-    namespaces_offered, title,
+    namespaces_offered, title, tooltip_lines,
 };
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::nav::NavTarget;
@@ -108,6 +108,39 @@ fn a_single_connection_leaves_the_cluster_out_of_the_title() {
 fn several_connections_still_leave_the_cluster_out_of_the_title() {
     assert_eq!(title(&scope(kind("Pod", true), 2)), "Pods");
     assert_eq!(title(&scope(kind("Deployment", true), 3)), "Deployments");
+}
+
+fn grouped(group: &str, kind: &str, plural: &str) -> NavTarget {
+    NavTarget::Kind(DiscoveredKind {
+        gvk: GroupVersionKind::gvk(group, "v1", kind),
+        plural: plural.to_string(),
+        namespaced: true,
+    })
+}
+
+/// `standard-resource-panels` 5.3: a custom resource list's tab and title bar
+/// read the plural kind only, and its tooltip names the API group above the
+/// context.
+#[test]
+fn a_custom_resource_list_titles_by_kind_with_its_group_in_the_tooltip() {
+    let certificates = scope(grouped("cert-manager.io", "Certificate", "certificates"), 1);
+    assert_eq!(title(&certificates), "Certificates");
+    assert_eq!(
+        tooltip_lines(&certificates),
+        (Some("cert-manager.io".into()), "Context: kind-dev".into())
+    );
+}
+
+/// A built-in kind outside the core group keeps its group in the title, and its
+/// tooltip names the context alone - 5.3 changes custom resources only.
+#[test]
+fn a_built_in_grouped_list_keeps_its_group_in_the_title() {
+    let deployments = scope(grouped("apps", "Deployment", "deployments"), 1);
+    assert_eq!(title(&deployments), "Deployments · apps");
+    assert_eq!(
+        tooltip_lines(&deployments),
+        (None, "Context: kind-dev".into())
+    );
 }
 
 /// Error text goes through markdown (the only selectable-text primitive), so
