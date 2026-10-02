@@ -18,7 +18,19 @@ use gpui_kit::*;
 // whole point of `y` is "the YAML, now": splitting the intent across an
 // argument would leave the shortcut reaching the panel by the same route as
 // `d`, and landing on the field list.
-actions!(nav, [ShowPods, ShowLogs, ShowPodDetail, ShowPodDetailYaml]);
+actions!(
+    nav,
+    [
+        ShowPods,
+        ShowLogs,
+        ShowEvents,
+        ShowPodDetail,
+        ShowPodDetailYaml
+    ]
+);
+
+/// Opens the events browser for the window's active context (`events-browser`).
+pub const SHOW_EVENTS_COMMAND_ID: &str = "nav.show_events";
 
 pub const SHOW_PODS_COMMAND_ID: &str = "nav.show_pods";
 pub const SHOW_PODS_DEFAULT_BINDING: &str = "cmd-1";
@@ -170,6 +182,15 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ShowLogs),
         menu: None,
     });
+    // Palette and keymap only: Navigate holds focus and tab moves.
+    registry.register(Command {
+        id: SHOW_EVENTS_COMMAND_ID,
+        title: "Show Events",
+        default_binding: "",
+        context: None,
+        action: Box::new(ShowEvents),
+        menu: None,
+    });
 }
 
 /// A panel `add_panel` just built, as the typed entity the window needs.
@@ -187,6 +208,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 pub enum OpenedPanel {
     Pods(Entity<crate::k8s::resource::pods::PodsPanel>),
     ObjectList(Entity<crate::k8s::resource::object_list::ObjectListPanel>),
+    Events(Entity<crate::k8s::resource::events_browser::EventsPanel>),
     Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
     Logs(Entity<crate::util::logs::LogsPanel>),
     PodDetail(Entity<crate::k8s::resource::pod_detail::PodDetailPanel>),
@@ -200,6 +222,7 @@ impl OpenedPanel {
         match self {
             OpenedPanel::Pods(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::ObjectList(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::Events(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Placeholder(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::PodDetail(panel) => PanelId::from(panel.entity_id()),
@@ -214,6 +237,7 @@ impl OpenedPanel {
         match self {
             OpenedPanel::Pods(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::ObjectList(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::Events(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::Placeholder(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::Logs(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::PodDetail(panel) => panel.read(cx).focus_handle(cx),
@@ -240,6 +264,7 @@ pub fn opened_panel_for(
     Some(match view.panel_name(cx) {
         "Pods" => OpenedPanel::Pods(Entity::from(view.as_ref())),
         "ObjectList" => OpenedPanel::ObjectList(Entity::from(view.as_ref())),
+        "Events" => OpenedPanel::Events(Entity::from(view.as_ref())),
         "Logs" => OpenedPanel::Logs(Entity::from(view.as_ref())),
         "Resource" => OpenedPanel::Placeholder(Entity::from(view.as_ref())),
         "PodDetail" => OpenedPanel::PodDetail(Entity::from(view.as_ref())),
@@ -296,6 +321,22 @@ pub fn add_panel(
                 cx,
             );
             (id, OpenedPanel::Pods(panel))
+        }
+        // The core Event kind: the events browser rather than the generic list
+        // (`events-browser` D4).
+        NavTarget::Kind(kind) if kind.is_core_event() => {
+            let panel = cx.new(|cx| {
+                crate::k8s::resource::events_browser::EventsPanel::new(scope.clone(), cx)
+            });
+            let id = PanelId::from(panel.entity_id());
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
+            (id, OpenedPanel::Events(panel))
         }
         // Every other kind, built-in or CRD: the generic live list.
         NavTarget::Kind(kind) => {
@@ -366,7 +407,7 @@ pub fn add_panel(
 
 #[cfg(test)]
 mod tests {
-    use super::{NavTarget, SHOW_LOGS_COMMAND_ID, SHOW_PODS_COMMAND_ID};
+    use super::{NavTarget, SHOW_EVENTS_COMMAND_ID, SHOW_LOGS_COMMAND_ID, SHOW_PODS_COMMAND_ID};
     use crate::command::{CommandRegistry, build_items};
     use crate::k8s::cluster::discovery::DiscoveredKind;
     use gpui_kit::TestAppContext;
@@ -463,10 +504,11 @@ mod tests {
             .map(|id| registry.get(id).expect("registered above").title)
             .collect();
         assert_eq!(titles, vec!["Show Pods", "Show Logs"]);
+        assert!(registry.get(SHOW_EVENTS_COMMAND_ID).is_some());
         assert_eq!(
             build_items(&registry, &[]).len(),
-            2,
-            "both commands reach the palette"
+            3,
+            "Pods, Logs and Events reach the palette"
         );
     }
 

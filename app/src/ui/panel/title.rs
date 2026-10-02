@@ -450,7 +450,7 @@ pub fn error_content(message: String, detail: Option<String>, cx: &App) -> impl 
 
 /// `text` with every markdown-significant character backslash-escaped, so the only
 /// selectable-text primitive gpui-component offers (markdown) shows it verbatim.
-fn escape_markdown(text: &str) -> String {
+pub(crate) fn escape_markdown(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         if "\\`*_{}[]()<>#+-.!|~".contains(ch) {

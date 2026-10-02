@@ -50,6 +50,7 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                 let (name, controls) = match opened {
                     nav::OpenedPanel::Pods(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::ObjectList(panel) => title_bar_of(&panel, window, cx),
+                    nav::OpenedPanel::Events(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
@@ -126,6 +127,18 @@ async fn every_kind_but_pods_opens_a_list_panel(cx: &mut TestAppContext) {
                     "the list is over its own kind"
                 );
             }
+            // `events-browser` D4: the core Event kind opens the events browser.
+            let scope = PanelScope::new(
+                NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind::events()),
+                "kind-dev".into(),
+            );
+            let (_id, opened) = dock_area.update(cx, |area, cx| {
+                nav::add_panel(area, &scope, None, window, cx)
+            });
+            assert!(
+                matches!(opened, nav::OpenedPanel::Events(_)),
+                "Events open the events browser"
+            );
             let scope = PanelScope::new(NavTarget::pods(), "kind-dev".into());
             let (_id, opened) = dock_area.update(cx, |area, cx| {
                 nav::add_panel(area, &scope, None, window, cx)

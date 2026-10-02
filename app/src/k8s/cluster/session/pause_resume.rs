@@ -42,6 +42,11 @@ impl ClusterRegistry {
                         watch.task = None;
                     }
                 }
+                if let Some(events) = &mut session.events
+                    && session.watchers.pause(&WatchKey::Events, reason)
+                {
+                    events.task = None;
+                }
             }
             HealthTransition::Resume => {
                 let session = cx
@@ -51,6 +56,9 @@ impl ClusterRegistry {
                     .unwrap();
                 let should_restart = session.watchers.resume(&WatchKey::Pods)
                     && session.watchers.refcount(&WatchKey::Pods) > 0;
+                let restart_events = session.events.is_some()
+                    && session.watchers.resume(&WatchKey::Events)
+                    && session.watchers.refcount(&WatchKey::Events) > 0;
                 let client = session.client.clone();
                 let kinds: Vec<DiscoveredKind> = session
                     .kinds
@@ -71,6 +79,18 @@ impl ClusterRegistry {
                         .get_mut(context_name)
                         .unwrap()
                         .pods_watch = Some(watch);
+                }
+                if restart_events {
+                    let task = Self::start_events_watch(cx, context_name, client.clone());
+                    if let Some(events) = &mut cx
+                        .global_mut::<Self>()
+                        .sessions
+                        .get_mut(context_name)
+                        .unwrap()
+                        .events
+                    {
+                        events.task = Some(task);
+                    }
                 }
                 for kind in kinds {
                     let task = Self::start_kind_watch(cx, context_name, client.clone(), &kind);
