@@ -17,7 +17,7 @@ use gpui_kit::{AppContext as _, TestAppContext};
 #[gpui_kit::test]
 async fn a_nested_split_round_trips_its_sizes(cx: &mut TestAppContext) {
     use gpui_kit::component::Placement;
-    use gpui_kit::component::dock::{DockAreaState, DockPlacement, PanelState};
+    use gpui_kit::component::dock::{DockAreaState, DockPlacement, InsertTarget, PanelState};
     use gpui_kit::{Entity, Pixels};
     cx.executor().allow_parking();
     let path = temp_workspace_path();
@@ -88,14 +88,21 @@ async fn a_nested_split_round_trips_its_sizes(cx: &mut TestAppContext) {
             dock_area.update(cx, |area, cx| {
                 let [right, bottom] =
                     kinds.map(|scope| crate::ui::nav::add_panel(area, &scope, None, window, cx).0);
+                // Moves, not `split_at`: that inserts without detaching, so on
+                // a panel already docked it leaves the panel in two groups.
+                let split = |node, placement| InsertTarget::Split {
+                    node,
+                    placement,
+                    size: None,
+                };
                 let group = crate::ui::panel::tabs::group_of(area, right).expect("a tab group");
-                area.split_at(group, right, Placement::Right, window, cx);
+                area.move_panel(right, split(group, Placement::Right), window, cx);
                 let left = area
                     .layout(DockPlacement::Center)
                     .and_then(|tree| tree.panels().next())
                     .and_then(|panel| crate::ui::panel::tabs::group_of(area, panel))
                     .expect("the left pane's group");
-                area.split_at(left, bottom, Placement::Bottom, window, cx);
+                area.move_panel(bottom, split(left, Placement::Bottom), window, cx);
             });
         })
         .unwrap();
