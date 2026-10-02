@@ -59,15 +59,24 @@ impl MainWindow {
             .iter()
             .filter(|open| area.panel(open.id).is_none())
             .collect();
-        // A panel the window built still has its handle to ask; a restored one
-        // is gone with its handle, which leaves the window's focus on nothing.
+        // Lost when focus is in this window's view but no longer in a panel that's
+        // still open: on the closed panel's handle, or on the window root. Asked of
+        // the panels that remain, not of the closed one - a restored panel has no
+        // handle here to ask, and its own lingers as focused until the next frame,
+        // with no element left to dispatch keys from. Focus outside the view (a
+        // dialog over it) isn't the dock's to move.
+        let still_held = focus::dock_stops(area, cx)
+            .into_iter()
+            .filter_map(|panel| area.panel(panel))
+            .any(|view| view.focus_handle(cx).contains_focused(window, cx))
+            || (!*resource_collapsed
+                && resource_panel
+                    .read(cx)
+                    .focus_handle()
+                    .contains_focused(window, cx));
         let lost = !closed.is_empty()
-            && (window.focused(cx).is_none()
-                || closed.iter().any(|open| {
-                    open.panel
-                        .as_ref()
-                        .is_some_and(|panel| panel.focus_handle(cx).contains_focused(window, cx))
-                }));
+            && !still_held
+            && (window.focused(cx).is_none() || self.focus_handle.contains_focused(window, cx));
         if lost {
             let target = closed
                 .iter()
@@ -89,6 +98,8 @@ impl MainWindow {
     }
 }
 
+#[cfg(test)]
+mod close_tests;
 #[cfg(test)]
 mod open_tests;
 #[cfg(test)]

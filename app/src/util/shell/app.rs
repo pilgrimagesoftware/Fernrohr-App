@@ -115,6 +115,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         crate::k8s::resource::object_list::LIST_KEY_CONTEXT,
         crate::k8s::resource::pods::PANEL_KEY_CONTEXT,
     ]));
+    super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
     crate::ui::text_size::register_handlers(cx);
     crate::ui::report_issue::register_handler(cx);
