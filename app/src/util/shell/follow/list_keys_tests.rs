@@ -99,6 +99,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
                 id: PanelId::from(list.entity_id()),
                 panel: Some(OpenedPanel::ObjectList(list.clone())),
                 group: None,
+                _focus_watch: None,
             });
             list.read(cx).focus_handle(cx).focus(window, cx);
             list
