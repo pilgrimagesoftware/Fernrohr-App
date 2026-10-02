@@ -197,9 +197,9 @@ impl Panel for PlaceholderPanel {
     fn toolbar_buttons(
         &mut self,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<Vec<Button>> {
-        panel_title::toolbar_buttons()
+        panel_title::toolbar_buttons(cx.entity())
     }
 
     fn zoom_control(&self, _cx: &App) -> Option<PanelControl> {

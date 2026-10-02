@@ -14,6 +14,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dock::Panel;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::*;
@@ -312,23 +313,27 @@ pub fn tab_name(_scope: &PanelScope) -> Option<SharedString> {
     None
 }
 
-/// The close button every resource panel's title bar carries.
+/// The close button every resource panel's title bar carries. It closes
+/// `panel`, the panel whose title bar draws it.
 ///
-/// It dispatches the dock's own `ClosePanel` action rather than reaching for
-/// the panel's id: the dock is what owns the layout, `ClosePanel` removes
-/// whichever panel the group is displaying, and a container may still refuse
-/// (the last group of a dock cannot be closed). A panel that removed itself
-/// would have to reimplement that refusal rule.
-pub fn close_button() -> Button {
-    use gpui_kit::component::dock::ClosePanel;
-
+/// It names its panel rather than dispatching the dock's `ClosePanel`, which
+/// travels the focus path and so reached the *focused* group: with two groups
+/// stacked, the lower group's close closed the upper group's focused panel
+/// (`tab-close-buttons`). Closing by panel also reaches the window's last
+/// panel, which the tab group's own close refuses to empty the dock for, so
+/// the window can return to the picker.
+pub fn close_button<P: Panel>(panel: Entity<P>) -> Button {
+    let selector = format!("panel-close-{}", panel.entity_id());
     Button::new("panel-close")
         .icon(IconName::Close)
         .xsmall()
         .ghost()
         .tab_stop(false)
         .tooltip("Close panel")
-        .on_click(|_event, window, cx| window.dispatch_action(Box::new(ClosePanel), cx))
+        .debug_selector(move || selector.clone())
+        .on_click(move |_event, window, cx| {
+            crate::util::shell::close_panel(panel.clone(), window, cx)
+        })
 }
 
 /// The namespace picker, or nothing for a cluster-scoped kind.
@@ -404,8 +409,8 @@ pub fn namespace_picker(
 /// The dock draws the controls menu (`IconName::Ellipsis`) itself for every
 /// panel that has a title bar, so what a panel owes the bar is the close
 /// control beside it.
-pub fn toolbar_buttons() -> Option<Vec<Button>> {
-    Some(vec![close_button()])
+pub fn toolbar_buttons<P: Panel>(panel: Entity<P>) -> Option<Vec<Button>> {
+    Some(vec![close_button(panel)])
 }
 
 /// A panel's failure content: a human-readable message, then - when there is
