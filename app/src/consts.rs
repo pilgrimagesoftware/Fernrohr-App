@@ -83,3 +83,8 @@ pub(crate) const TEXT_SIZE_STEPS: [u16; 8] = [85, 90, 100, 110, 120, 130, 140, 1
 pub(crate) const DEFAULT_FONT_SIZE: f32 = 16.;
 /// The code role's size at 100% text size: gpui-component's default mono size.
 pub(crate) const DEFAULT_MONO_FONT_SIZE: f32 = 13.;
+
+/// `resource-kind-icons`: how many device sizes the kind-icon raster cache keeps
+/// at once (`ui::icon::element`). Two text roles on 1x and 2x displays, with room
+/// for a text-size change; asking for one more size releases the oldest.
+pub(crate) const ICON_RASTER_SIZES: usize = 6;

@@ -5,8 +5,13 @@
 //!
 //! The set's files live in `assets/icons/kubernetes/` (Apache-2.0, see the
 //! `LICENSE` and `README.md` there); the three fallbacks in
-//! `assets/icons/fallback/` are Fernrohr's own. This module only decides
-//! which icon; drawing it is the views' business.
+//! `assets/icons/fallback/` are Fernrohr's own. This module decides which
+//! icon; [`element`] draws one beside text.
+
+mod element;
+// UNWIRED: see `ui::icon`'s note in `ui/mod.rs`.
+#[allow(unused_imports)]
+pub use element::{IconSize, device_px, kind_icon};
 
 /// One bundled icon. A closed set: every file this app ships is a variant, so
 /// adding an icon is adding a variant here and a file, and the tests walk
