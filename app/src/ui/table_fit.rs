@@ -27,6 +27,24 @@ actions!(table_fit, [FitAllColumns]);
 /// [`FitAllColumns`]' default key in the Pods and list panels.
 pub const FIT_COLUMNS_KEY: &str = "=";
 
+/// The View menu's one table-columns item: [`FitAllColumns`], answered by
+/// whichever table panel has focus and greyed out otherwise. The Pods and
+/// list panels register their own, panel-scoped copies for `=` and the
+/// palette; those stay out of the menu bar (`menu-organization`), so this one
+/// item stands for both.
+pub fn register_commands(registry: &mut crate::command::CommandRegistry) {
+    registry.register(crate::command::Command {
+        id: "table.fit_columns",
+        title: "Fit Columns to Contents",
+        default_binding: "",
+        context: None,
+        action: Box::new(FitAllColumns),
+        menu: Some(crate::command::MenuSlot::View(
+            crate::command::ViewGroup::TableColumns,
+        )),
+    });
+}
+
 /// How far either side of a column boundary a double-click still counts as on
 /// the divider - the half-width of gpui-kit's resize handle band
 /// (`HANDLE_PADDING`, private to `table/state.rs`).
