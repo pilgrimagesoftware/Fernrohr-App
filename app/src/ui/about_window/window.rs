@@ -3,12 +3,12 @@
 //!
 //! What it draws lives in `super::pane`.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, TitlebarOptions, WindowBounds,
-    WindowOptions, size,
+    AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, Pixels, TitlebarOptions,
+    WindowBounds, WindowOptions, size,
 };
 
 use crate::ui::menu::About;
@@ -77,12 +77,17 @@ pub(super) struct AboutWindow {
     /// Focused on first render so the window has a key target for `Escape`.
     /// A window with nothing focused never sees the key event at all.
     pub(super) focus: FocusHandle,
+    /// The height the window was last asked to fit its content to, so it
+    /// asks once per change rather than every frame - see
+    /// `pane::fit_window_to_content`.
+    pub(super) fitted_height: Rc<Cell<Option<Pixels>>>,
 }
 
 impl AboutWindow {
     fn new(cx: &mut Context<Self>) -> Self {
         Self {
             focus: cx.focus_handle(),
+            fitted_height: Rc::default(),
         }
     }
 }
@@ -139,5 +144,97 @@ mod tests {
             );
             assert!(recorded.families_of("Icons").is_some(), "under its heading");
         });
+    }
+
+    /// Opens the About window through its action and lets it settle: the
+    /// icon's background resample lands and the window fits its content.
+    fn open_about(cx: &mut gpui_kit::TestAppContext) -> gpui_kit::VisualTestContext {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            super::register_about_action(cx);
+        });
+        cx.update(|cx| cx.dispatch_action(&About));
+        cx.run_until_parked();
+        let window = cx.update(|cx| *cx.windows().last().expect("About opened a window"));
+        let mut vcx = gpui_kit::VisualTestContext::from_window(window, cx);
+        settle(&mut vcx);
+        vcx
+    }
+
+    /// A few frames: the resample landing, the fit to content, the redraw.
+    fn settle(vcx: &mut gpui_kit::VisualTestContext) {
+        use gpui_kit::test::TestWindowExt as _;
+        for _ in 0..3 {
+            vcx.run_until_parked();
+            vcx.update(|window, cx| window.render_frame(cx));
+        }
+        vcx.run_until_parked();
+    }
+
+    /// The bug: the icon was drawn 128 wide but squeezed to 9px tall, because
+    /// the column overflowed the window. It is drawn at its full 128x128.
+    #[gpui_kit::test]
+    fn the_icon_is_drawn_at_its_full_size(cx: &mut gpui_kit::TestAppContext) {
+        use super::super::pane::ICON_SIZE;
+        use gpui_kit::px;
+
+        let mut vcx = open_about(cx);
+        for selector in ["about-icon", "about-icon-raster"] {
+            let icon = vcx
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("{selector} is drawn"));
+            assert_eq!(icon.size.width, px(ICON_SIZE), "{selector}'s width");
+            assert_eq!(icon.size.height, px(ICON_SIZE), "{selector}'s height");
+        }
+    }
+
+    /// The icon's raster is `round(128 x scale)` device pixels at 1x and 2x,
+    /// so it samples 1:1 rather than leaving the GPU to shrink a 1254px source.
+    #[test]
+    fn the_icon_raster_is_its_device_size_at_1x_and_2x() {
+        use super::super::pane::{ICON, ICON_SIZE};
+        use crate::ui::raster::{device_width, rasterize};
+
+        for scale in [1., 2.] {
+            let width = device_width(ICON_SIZE, scale);
+            assert_eq!(width, (ICON_SIZE * scale).round() as u32);
+            let raster = rasterize(ICON, width).expect("the embedded icon decodes");
+            let size = raster.size(0);
+            assert_eq!(size.width.0 as u32, width, "at {scale}x");
+            assert_eq!(size.height.0 as u32, width, "square at {scale}x");
+        }
+    }
+
+    /// The window fits its content - icon, version, credits (the Icons credit
+    /// included) - with the bottom inset to spare, at the default text size
+    /// and at 150%, so nothing overflows and nothing is squeezed.
+    #[gpui_kit::test]
+    fn the_window_fits_its_content_at_every_text_size(cx: &mut gpui_kit::TestAppContext) {
+        use super::super::pane::ICON_SIZE;
+        use crate::config::ui::TextSize;
+        use gpui_kit::px;
+
+        let mut vcx = open_about(cx);
+        for size in [TextSize::DEFAULT, TextSize::MAX] {
+            vcx.update(|_, cx| crate::ui::text_size::set(size, cx));
+            settle(&mut vcx);
+            // The window's own bounds: the test platform applies a resize to
+            // them, though not to the cached viewport size a real window's
+            // resize callback refreshes.
+            let viewport = vcx.update(|window, _| window.bounds().size);
+            let credits = vcx
+                .debug_bounds("about-credits")
+                .expect("the credits are drawn");
+            let inset = vcx.update(|_, cx| crate::ui::space::spacing(cx).panel_inset * 2.);
+            assert!(
+                credits.bottom() + inset <= viewport.height + px(1.),
+                "at {}% the credits end at {:?}, past the {:?} window",
+                size.percent(),
+                credits.bottom(),
+                viewport.height
+            );
+            let icon = vcx.debug_bounds("about-icon").expect("the icon is drawn");
+            assert_eq!(icon.size.height, px(ICON_SIZE), "at {}%", size.percent());
+        }
     }
 }

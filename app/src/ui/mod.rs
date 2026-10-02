@@ -11,6 +11,7 @@ pub mod picker;
 pub mod picker_keys;
 pub mod picker_tunnel;
 pub mod placeholder;
+pub mod raster;
 pub mod report_issue;
 pub mod settings;
 pub mod space;
