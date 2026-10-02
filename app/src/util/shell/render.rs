@@ -76,6 +76,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
             .on_action(cx.listener(Self::on_action_set_tunnel))
             .on_action(cx.listener(Self::on_action_follow_reference))
+            .on_action(cx.listener(Self::on_action_open_listed_object))
             .child(body)
     }
 }

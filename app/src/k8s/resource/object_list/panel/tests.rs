@@ -267,3 +267,85 @@ async fn a_refused_kind_shows_the_refusal_instead_of_a_table(cx: &mut TestAppCon
     let built = h.vcx.update(|_, cx| h.panel.read(cx).table.is_some());
     assert!(built, "an empty but listable kind still gets its table");
 }
+
+/// Every `OpenListedObject` a panel dispatches, in order - caught at the app, where
+/// the window's handler would be.
+fn record_opens(
+    cx: &mut TestAppContext,
+) -> std::rc::Rc<std::cell::RefCell<Vec<crate::k8s::resource::object_list::OpenListedObject>>> {
+    let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = opened.clone();
+    cx.update(|cx| {
+        cx.on_action(
+            move |action: &crate::k8s::resource::object_list::OpenListedObject, _cx| {
+                sink.borrow_mut().push(action.clone());
+            },
+        );
+    });
+    opened
+}
+
+fn target_name(open: &crate::k8s::resource::object_list::OpenListedObject) -> (Option<&str>, &str) {
+    (open.target.namespace.as_deref(), open.target.name.as_str())
+}
+
+/// Spec: "Opening a Deployment from its list" - Enter on the selected row asks
+/// for that object's detail panel, in the list's own context.
+#[gpui_kit::test]
+async fn enter_opens_the_selected_object(cx: &mut TestAppContext) {
+    let opened = record_opens(cx);
+    let mut h = harness(cx, deployments(), vec![object("web", Some("staging"))]);
+    focus_table(&mut h);
+    press(&mut h.vcx, "down enter");
+
+    let opened = opened.borrow();
+    assert_eq!(opened.len(), 1, "one open request");
+    assert_eq!(opened[0].context_name, "kind-dev");
+    assert_eq!(opened[0].target.kind, deployments());
+    assert_eq!(target_name(&opened[0]), (Some("staging"), "web"));
+}
+
+/// Double-clicking a row is the mouse route to the same request.
+#[gpui_kit::test]
+async fn double_clicking_a_row_opens_its_object(cx: &mut TestAppContext) {
+    use gpui_kit::{Modifiers, MouseButton, MouseDownEvent, MouseUpEvent};
+    let opened = record_opens(cx);
+    let mut h = harness(
+        cx,
+        nodes(),
+        vec![object("node-a", None), object("node-b", None)],
+    );
+    let cell = h
+        .vcx
+        .debug_bounds("object-cell-1-0")
+        .expect("the second row's name cell is drawn")
+        .center();
+    let table = h
+        .vcx
+        .update(|_, cx| h.panel.read(cx).table.clone().unwrap());
+    let name = h
+        .vcx
+        .update(|_, cx| table.read(cx).delegate().rows()[1].object.name.clone());
+    h.vcx.simulate_event(MouseDownEvent {
+        position: cell,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Left,
+        click_count: 2,
+        first_mouse: false,
+    });
+    h.vcx.simulate_event(MouseUpEvent {
+        position: cell,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Left,
+        click_count: 2,
+    });
+    h.vcx.run_until_parked();
+
+    let opened = opened.borrow();
+    assert_eq!(opened.len(), 1, "one open request");
+    assert_eq!(
+        target_name(&opened[0]),
+        (None, name.as_str()),
+        "a cluster-scoped object"
+    );
+}
