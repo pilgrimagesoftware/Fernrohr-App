@@ -8,7 +8,6 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use crate::util::resource_index::ResourceIndex;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::button::Button;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };

@@ -1,7 +1,8 @@
 //! `tab-close-buttons`: each close control closes the panel it belongs to,
 //! clicked on the drawn control in a window hosted the way the app hosts one
-//! (inside `Root`, where the close route finds the window), and the last panel
-//! closes to the picker.
+//! (inside `Root`, where the close route finds the window); the last panel
+//! closes with the window still connected; and the close control sits beside
+//! its title.
 
 // Named imports, for the reason `super`'s note gives.
 use super::CLOSE_KEY;
@@ -17,9 +18,6 @@ use gpui_kit::component::dock::{DockArea, InsertTarget, PanelId};
 use gpui_kit::{
     AppContext as _, Entity, FocusHandle, Modifiers, MouseButton, TestAppContext, VisualTestContext,
 };
-
-/// gpui-kit 0.7's per-tab close control (`dock/tab_panel.rs`).
-const TAB_CLOSE: &str = "dock-tab-close-button";
 
 struct Harness {
     vcx: VisualTestContext,
@@ -134,15 +132,94 @@ impl Harness {
         self.vcx.run_until_parked();
     }
 
-    /// Clicks the title bar close control of `id`'s panel.
-    fn click_title_close(&mut self, id: PanelId) {
-        let selector: &'static str = format!("panel-close-{}", id.as_u64()).leak();
-        self.click(selector);
+    fn close_selector(id: PanelId) -> &'static str {
+        format!("panel-close-{}", id.as_u64()).leak()
     }
 
-    fn is_picker(&mut self) -> bool {
+    /// Clicks the close control drawn beside `id`'s title.
+    fn click_title_close(&mut self, id: PanelId) {
+        self.click(Self::close_selector(id));
+    }
+
+    fn is_workspace(&mut self) -> bool {
         self.vcx
-            .update(|_, cx| matches!(self.main.read(cx).mode, WindowMode::Picker(_)))
+            .update(|_, cx| matches!(self.main.read(cx).mode, WindowMode::Workspace { .. }))
+    }
+
+    fn resource_focused(&mut self) -> bool {
+        let main = self.main.clone();
+        self.vcx.update(|window, cx| {
+            main.read(cx)
+                .test_resource_panel()
+                .expect("a workspace window")
+                .read(cx)
+                .focus_handle()
+                .contains_focused(window, cx)
+        })
+    }
+
+    fn set_resource_collapsed(&mut self, collapsed: bool) {
+        self.main.update(&mut self.vcx, |main, cx| {
+            if let WindowMode::Workspace {
+                resource_collapsed, ..
+            } = &mut main.mode
+            {
+                *resource_collapsed = collapsed;
+            }
+            cx.notify();
+        });
+        self.vcx.run_until_parked();
+    }
+
+    fn resource_collapsed(&mut self) -> bool {
+        self.vcx.update(|_, cx| match &self.main.read(cx).mode {
+            WindowMode::Workspace {
+                resource_collapsed, ..
+            } => *resource_collapsed,
+            WindowMode::Picker(_) => panic!("the window is in workspace mode"),
+        })
+    }
+
+    /// After the last panel closed: still connected, the Resource panel
+    /// focused and drawn, and the empty area naming the key to open a kind.
+    fn assert_stayed_connected(&mut self) {
+        assert!(
+            self.is_workspace(),
+            "the window stays connected, not the picker"
+        );
+        assert!(!self.resource_collapsed(), "the Resource panel is drawn");
+        assert!(self.resource_focused(), "and has focus");
+        assert!(
+            self.vcx.debug_bounds("empty-dock-hint").is_some(),
+            "the empty panel area names the key to open a kind"
+        );
+    }
+
+    /// Asserts `id`'s close control is drawn immediately after its title, not
+    /// at the far edge of its group.
+    fn assert_close_beside_title(&mut self, id: PanelId, title: &str) {
+        let close = self
+            .vcx
+            .debug_bounds(Self::close_selector(id))
+            .expect("the close control is drawn");
+        let title = ["focused", "unfocused"]
+            .into_iter()
+            .find_map(|state| {
+                let selector: &'static str = format!("panel-title-{title}-{state}").leak();
+                self.vcx.debug_bounds(selector)
+            })
+            .expect("the title is drawn");
+        let gap = close.left() - title.right();
+        assert!(
+            gap >= gpui_kit::px(0.) && gap < gpui_kit::px(16.),
+            "the close control sits right after the title: title ends at {:?}, close starts at {:?}",
+            title.right(),
+            close.left()
+        );
+        assert!(
+            close.top() < title.bottom() && title.top() < close.bottom(),
+            "on the title's line"
+        );
     }
 }
 
@@ -158,7 +235,7 @@ async fn a_background_tabs_close_control_closes_that_tab(cx: &mut TestAppContext
         .update(|window, cx| dock.update(cx, |area, cx| area.select_panel(pods, window, cx)));
     h.vcx.run_until_parked();
 
-    h.click(TAB_CLOSE);
+    h.click_title_close(services);
 
     assert!(!h.in_dock(services), "the Services tab closed");
     assert!(h.in_dock(pods), "Pods stays open");
@@ -222,27 +299,98 @@ async fn closing_the_focused_panel_moves_focus_on(cx: &mut TestAppContext) {
     assert!(h.has_focus(pods), "focus moved on to Pods");
 }
 
-/// 2.1: the window's only panel closes from its close control, and the
-/// window returns to the picker.
+/// 4.1: the window's only panel closes from its close control, and the window
+/// stays connected with the Resource panel focused.
 #[gpui_kit::test]
-async fn the_last_panels_close_control_returns_to_the_picker(cx: &mut TestAppContext) {
+async fn the_last_panels_close_control_keeps_the_window_connected(cx: &mut TestAppContext) {
     let mut h = Harness::new(cx);
     let pods = h.pods();
+    h.focus(pods);
 
     h.click_title_close(pods);
 
-    assert!(h.is_picker(), "the window shows the picker");
+    assert!(!h.in_dock(pods), "Pods closed");
+    h.assert_stayed_connected();
 }
 
-/// 2.1: `Cmd-W` on the window's only panel closes it too, to the picker, and
-/// keeps the window.
+/// 4.1: `Cmd-W` on the window's only panel closes it the same way.
 #[gpui_kit::test]
-async fn cmd_w_on_the_last_panel_returns_to_the_picker(cx: &mut TestAppContext) {
+async fn cmd_w_on_the_last_panel_keeps_the_window_connected(cx: &mut TestAppContext) {
     let mut h = Harness::new(cx);
     let pods = h.pods();
     h.focus(pods);
 
     press(&mut h.vcx, CLOSE_KEY);
 
-    assert!(h.is_picker(), "the window shows the picker, still open");
+    assert!(!h.in_dock(pods), "Pods closed");
+    h.assert_stayed_connected();
+}
+
+/// 4.1: with the Resource panel collapsed, closing the last panel expands it
+/// so focus has somewhere to go.
+#[gpui_kit::test]
+async fn closing_the_last_panel_expands_a_collapsed_resource_panel(cx: &mut TestAppContext) {
+    let mut h = Harness::new(cx);
+    let pods = h.pods();
+    h.set_resource_collapsed(true);
+    h.focus(pods);
+
+    h.click_title_close(pods);
+
+    h.assert_stayed_connected();
+}
+
+/// 4.2: a lone panel's close control is beside its title, where a tab's is.
+#[gpui_kit::test]
+async fn a_lone_panels_close_sits_beside_its_title(cx: &mut TestAppContext) {
+    let mut h = Harness::new(cx);
+    let pods = h.pods();
+
+    h.assert_close_beside_title(pods, "Pods");
+}
+
+/// 4.2, the spec's scenario: a group closed down to one tab still draws the
+/// remaining panel's close next to its title, as it did in the tab strip.
+#[gpui_kit::test]
+async fn closing_down_to_one_tab_keeps_the_close_beside_the_title(cx: &mut TestAppContext) {
+    let mut h = Harness::new(cx);
+    let pods = h.pods();
+    let services = h.open_list("services");
+    h.assert_close_beside_title(services, "Services");
+
+    h.click_title_close(services);
+
+    assert!(!h.in_dock(services), "Services closed");
+    h.assert_close_beside_title(pods, "Pods");
+}
+
+/// A press on a tab's close control that then moves is not a tab drag: the
+/// control's mouse-down stops before the tab's drag handler sees it.
+#[gpui_kit::test]
+async fn pressing_a_tabs_close_control_starts_no_drag(cx: &mut TestAppContext) {
+    let mut h = Harness::new(cx);
+    let _pods = h.pods();
+    let services = h.open_list("services");
+    let close = h
+        .vcx
+        .debug_bounds(Harness::close_selector(services))
+        .expect("the close control is drawn");
+    let start = close.center();
+
+    h.vcx
+        .simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+    for step in 1..=3 {
+        let to = gpui_kit::point(
+            start.x + gpui_kit::px(20. * step as f32),
+            start.y + gpui_kit::px(40.),
+        );
+        h.vcx
+            .simulate_mouse_move(to, MouseButton::Left, Modifiers::none());
+    }
+    let dragging = h.vcx.update(|_, cx| cx.has_active_drag());
+    h.vcx
+        .simulate_mouse_up(start, MouseButton::Left, Modifiers::none());
+    h.vcx.run_until_parked();
+
+    assert!(!dragging, "no tab drag started from the close control");
 }

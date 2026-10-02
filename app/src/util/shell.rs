@@ -41,6 +41,7 @@ use std::rc::Rc;
 mod actions;
 mod app;
 mod contexts;
+mod empty_dock;
 mod follow;
 mod layout;
 mod main_window;
@@ -75,6 +76,7 @@ pub(crate) use window::open_window;
 // Everything else, for the submodules' `use super::*` and the tests: each
 // submodule reaches its siblings through this module.
 use app::*;
+use empty_dock::*;
 use layout::*;
 use panels::*;
 use persist::*;

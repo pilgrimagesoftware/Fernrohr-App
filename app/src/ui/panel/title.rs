@@ -219,6 +219,7 @@ pub fn title_element(
     scope: &PanelScope,
     text: String,
     focus_handle: &FocusHandle,
+    close: Button,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -226,7 +227,7 @@ pub fn title_element(
     let focused = focus_handle.contains_focused(window, cx);
     let tooltip_scope = scope.clone();
     let kind_icon = icon::kind_icon(icon::for_target(&scope.target), IconSize::Small, window, cx);
-    div()
+    let title = div()
         .id(SharedString::from(format!(
             "panel-title-{}-{text}",
             scope.context_name
@@ -255,7 +256,22 @@ pub fn title_element(
         .on_mouse_down(MouseButton::Left, {
             let focus_handle = focus_handle.clone();
             move |_, window, cx| window.focus(&focus_handle, cx)
-        })
+        });
+    // The close control sits right after the title, in a tab and in a lone
+    // panel's title bar alike, rather than at the group's far edge
+    // (`tab-close-buttons` 4.2). Its press stops here, so it neither selects
+    // nor focuses the tab nor starts a drag: closing an unfocused group's
+    // panel leaves focus where it was.
+    let close = div()
+        .flex_none()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(close);
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(title)
+        .child(close)
         .into_any_element()
 }
 
@@ -313,8 +329,9 @@ pub fn tab_name(_scope: &PanelScope) -> Option<SharedString> {
     None
 }
 
-/// The close button every resource panel's title bar carries. It closes
-/// `panel`, the panel whose title bar draws it.
+/// The close control every resource panel's title carries, drawn by
+/// [`title_element`] beside the title. It closes `panel`, the panel whose
+/// title draws it.
 ///
 /// It names its panel rather than dispatching the dock's `ClosePanel`, which
 /// travels the focus path and so reached the *focused* group: with two groups
@@ -402,15 +419,6 @@ pub fn namespace_picker(
             menu
         });
     Some(picker.into_any_element())
-}
-
-/// The controls at the trailing end of a resource panel's title bar.
-///
-/// The dock draws the controls menu (`IconName::Ellipsis`) itself for every
-/// panel that has a title bar, so what a panel owes the bar is the close
-/// control beside it.
-pub fn toolbar_buttons<P: Panel>(panel: Entity<P>) -> Option<Vec<Button>> {
-    Some(vec![close_button(panel)])
 }
 
 /// A panel's failure content: a human-readable message, then - when there is

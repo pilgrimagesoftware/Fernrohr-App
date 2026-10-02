@@ -7,12 +7,13 @@ use crate::util::shell::{MainWindow, WindowLayout, WindowMode, open_window, watc
 use gpui_kit::component::dock::DockLayout;
 use gpui_kit::{App, AppContext as _, Entity, TestAppContext};
 
-/// Section 4.4: emptying a workspace's center dock (what closing its last panel
-/// leaves behind) flips the window back to `Picker` mode - `watch_workspace`'s
+/// Section 4.4, amended by `tab-close-buttons` 4.1: emptying a workspace's
+/// center dock (what closing its last panel leaves behind) keeps the window in
+/// `Workspace` mode, still connected - `watch_workspace`'s
 /// `DockEvent::LayoutChanged` subscription, driven directly here via `set_center`
 /// with an empty layout rather than a real interactive panel close.
 #[gpui_kit::test]
-async fn closing_the_last_panel_returns_to_the_picker(cx: &mut TestAppContext) {
+async fn closing_the_last_panel_keeps_the_window_connected(cx: &mut TestAppContext) {
     // See `connected_window`'s doc comment: `enter_workspace` starts a real
     // connect whose completion wakes GPUI from a tokio thread.
     cx.executor().allow_parking();
@@ -54,7 +55,7 @@ async fn closing_the_last_panel_returns_to_the_picker(cx: &mut TestAppContext) {
 
     window
         .update(cx, |main_window, _window, _cx| {
-            assert!(matches!(main_window.mode, WindowMode::Picker(_)));
+            assert!(matches!(main_window.mode, WindowMode::Workspace { .. }));
         })
         .unwrap();
 }
@@ -295,4 +296,81 @@ async fn second_window_connecting_to_a_fresh_context_shows_workspace(cx: &mut Te
             );
         })
         .unwrap();
+}
+
+/// `cluster-picker-and-navigation`'s amended cluster-picker delta: a saved window
+/// with a context but no open panels restores straight into its workspace, not
+/// the picker, showing the empty panel area's hint.
+#[gpui_kit::test]
+async fn a_saved_window_with_contexts_but_no_panels_restores_its_workspace(
+    cx: &mut TestAppContext,
+) {
+    use crate::util::shell::SavedDockLayouts;
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        cx.set_global(SavedDockLayouts(
+            crate::config::dock_layouts::DockLayouts::default(),
+        ));
+    });
+    // Save an emptied dock for `kind-dev` the way closing its last panel does.
+    let first = cx.add_window(|window, cx| {
+        let mut main_window = MainWindow::test_picker_window(window, cx);
+        main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
+        main_window
+    });
+    first
+        .update(cx, |main_window, window, cx| {
+            let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
+                panic!("a connected window is in workspace mode")
+            };
+            dock_area.update(cx, |area, cx| {
+                area.set_center(DockLayout::tabs(), window, cx)
+            });
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    let layout = WindowLayout {
+        contexts: vec!["kind-dev".to_string()],
+        ..Default::default()
+    };
+    cx.update(|cx| open_window(cx, layout));
+    cx.run_until_parked();
+
+    let restored = cx
+        .update(|cx| cx.windows())
+        .into_iter()
+        .find(|handle| handle.window_id() != first.window_id())
+        .expect("the restored window opened");
+    let (workspace, panels) = restored
+        .update(cx, |_, window, cx| {
+            let root = window
+                .root::<gpui_kit::component::Root>()
+                .flatten()
+                .expect("open_window always mounts a Root");
+            let main_window = root
+                .read(cx)
+                .view()
+                .clone()
+                .downcast::<MainWindow>()
+                .expect("the Root wraps a MainWindow");
+            match &main_window.read(cx).mode {
+                WindowMode::Workspace { open_panels, .. } => (true, open_panels.len()),
+                WindowMode::Picker(_) => (false, 0),
+            }
+        })
+        .unwrap();
+    assert!(
+        workspace,
+        "the window restores into its workspace, not the picker"
+    );
+    assert_eq!(panels, 0, "with no panels open");
+    let mut vcx = gpui_kit::VisualTestContext::from_window(restored, cx);
+    vcx.run_until_parked();
+    assert!(
+        vcx.debug_bounds("empty-dock-hint").is_some(),
+        "the empty panel area names the key to open a kind"
+    );
 }

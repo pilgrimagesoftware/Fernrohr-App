@@ -144,9 +144,10 @@ pub(super) fn watch_picker(
     .detach();
 }
 
-/// Subscribes so closing `dock_area`'s last panel swaps this window back into
-/// `Picker` mode, per the `app-shell` spec's "closing the last panel returns
-/// to the picker" scenario.
+/// Subscribes to `dock_area`'s layout changes: saving the arrangement, keeping
+/// focus on a panel, and - once the last panel has closed - focusing the
+/// Resource panel, with the window still connected (`app-shell`'s "closing
+/// the last panel keeps the window connected").
 pub(super) fn watch_workspace(
     dock_area: &Entity<DockArea>,
     window: &mut Window,
@@ -167,10 +168,13 @@ pub(super) fn watch_workspace(
             this.save_dock_layout(cx);
             this.keep_focus_on_a_panel(dock_area, window, cx);
             this.forget_closed_panels(dock_area, cx);
-            if !dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
-                return;
+            // With its last panel closed the window stays connected (`tab-close-
+            // buttons` 4.1): the picker returns only when the last context is
+            // disconnected. The Resource panel takes focus, so the next kind
+            // is a keystroke away.
+            if dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
+                this.focus_resource_panel(window, cx);
             }
-            this.enter_picker(window, cx);
         },
     )
     .detach();

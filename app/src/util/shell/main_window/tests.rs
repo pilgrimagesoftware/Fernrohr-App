@@ -12,7 +12,8 @@ use gpui_kit::{AppContext as _, TestAppContext};
 /// Section 10.1-10.3, checked on every panel type the dock holds rather than
 /// on the title-bar helpers alone: each panel's tab names its kind, a
 /// namespace picker is on the bar exactly when the kind is namespaced, and
-/// the close control the dock needs is on every one of them.
+/// none of them puts its close control in the toolbar, since it sits beside
+/// the title instead.
 ///
 /// A cluster-scoped kind is in the list on purpose - it is the case where
 /// the picker must be *absent*, which a test over namespaced kinds alone
@@ -64,10 +65,13 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                     target.item_label(),
                     "the title names the kind, never the cluster"
                 );
-                assert!(
-                    controls > 0,
-                    "every resource panel needs its close control, found \
-                     none on {}",
+                // The close control is drawn beside the title, not at the
+                // title bar's far end (`tab-close-buttons` 4.2; the drawn
+                // control is checked in `tabs/tests/close.rs`).
+                assert_eq!(
+                    controls,
+                    0,
+                    "no toolbar close on {}: it sits beside the title",
                     target.label()
                 );
                 checked.push(target.label());
