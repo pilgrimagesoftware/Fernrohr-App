@@ -2041,6 +2041,7 @@ dependencies = [
  "dirs 7.0.0",
  "futures-util",
  "gpui-kit",
+ "image",
  "jiff",
  "k8s-openapi",
  "keyring",
