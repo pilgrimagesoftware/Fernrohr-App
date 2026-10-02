@@ -19,6 +19,11 @@ impl PodDetailPanel {
         let value =
             match &field.value {
                 PodFieldValue::Text(text) => div().child(text.clone()).into_any_element(),
+                PodFieldValue::Status { text, tone } => div()
+                    .debug_selector(|| "pod-status-value".into())
+                    .text_color(detail::tone_color(*tone, cx))
+                    .child(text.clone())
+                    .into_any_element(),
                 PodFieldValue::References { targets, qualified } => {
                     self.render_references(field.label, targets, *qualified, cx)
                 }

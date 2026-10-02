@@ -54,12 +54,15 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             ),
         );
     }
+    let status = pod.status.as_ref();
     let containers = summarize_containers(
         pod.spec
             .as_ref()
             .map(|spec| spec.containers.as_slice())
             .unwrap_or_default(),
-        pod.status.as_ref(),
+        status
+            .and_then(|status| status.container_statuses.as_deref())
+            .unwrap_or_default(),
         namespace,
     );
     if !containers.is_empty() {
@@ -74,7 +77,9 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             .as_ref()
             .and_then(|spec| spec.init_containers.as_deref())
             .unwrap_or_default(),
-        pod.status.as_ref(),
+        status
+            .and_then(|status| status.init_container_statuses.as_deref())
+            .unwrap_or_default(),
         namespace,
     );
     if !init_containers.is_empty() {
@@ -147,7 +152,10 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         push(
             "Status",
             DetailSection::Overview,
-            PodFieldValue::Text(phase.to_string()),
+            PodFieldValue::Status {
+                text: phase.to_string(),
+                tone: phase_tone(phase),
+            },
         );
     }
     if let Some(node) = pod
@@ -253,4 +261,16 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
 
 fn references(targets: Vec<ObjectRef>, qualified: bool) -> PodFieldValue {
     PodFieldValue::References { targets, qualified }
+}
+
+/// A pod phase's severity: Running and Succeeded are success, Pending is info,
+/// Failed is danger, and anything else (`Unknown`) neutral.
+fn phase_tone(phase: &str) -> crate::ui::detail::BadgeTone {
+    use crate::ui::detail::BadgeTone;
+    match phase {
+        "Running" | "Succeeded" => BadgeTone::Good,
+        "Pending" => BadgeTone::Info,
+        "Failed" => BadgeTone::Bad,
+        _ => BadgeTone::Unknown,
+    }
 }

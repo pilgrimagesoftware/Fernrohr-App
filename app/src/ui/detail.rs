@@ -28,6 +28,8 @@ pub use collapsible::Collapsible;
 pub enum BadgeTone {
     /// The condition holds, or the thing is healthy.
     Good,
+    /// Under way - waiting or pending - and not a problem yet.
+    Info,
     /// Something to notice - not necessarily a failure.
     Warning,
     /// A failure: the thing won't work as it is.
@@ -40,6 +42,7 @@ impl From<BadgeTone> for Tone {
     fn from(tone: BadgeTone) -> Self {
         match tone {
             BadgeTone::Good => Tone::Good,
+            BadgeTone::Info => Tone::Info,
             BadgeTone::Warning => Tone::Warning,
             BadgeTone::Bad => Tone::Bad,
             BadgeTone::Unknown => Tone::Neutral,
