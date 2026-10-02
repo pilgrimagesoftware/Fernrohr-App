@@ -29,8 +29,9 @@ const NAMESPACE_COMMAND_ID: &str = "pods.warp_namespace";
 const DESCRIBE_COMMAND_ID: &str = "pods.describe";
 const LOGS_COMMAND_ID: &str = "pods.logs";
 const YAML_COMMAND_ID: &str = "pods.yaml";
+const FIT_COMMAND_ID: &str = "pods.fit_columns";
 
-/// Registers the panel's four shortcuts.
+/// Registers the panel's shortcuts.
 ///
 /// Menu slots: describe and YAML open a panel, so they sit in Navigate; the
 /// namespace warp re-scopes this panel, so View. Logs stays out of the menu -
@@ -75,6 +76,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         YAML_KEY,
         Box::new(ShowPodYaml),
         Some(MenuSlot::Navigate),
+    );
+    // The keyboard twin of a double-click on a header divider (`ui::table_fit`).
+    register(
+        FIT_COMMAND_ID,
+        "Pods: Fit Columns to Contents",
+        crate::ui::table_fit::FIT_COLUMNS_KEY,
+        Box::new(crate::ui::table_fit::FitAllColumns),
+        Some(MenuSlot::View),
     );
 }
 

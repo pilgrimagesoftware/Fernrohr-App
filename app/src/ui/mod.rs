@@ -18,6 +18,7 @@ pub mod settings;
 pub mod space;
 pub mod status_bar;
 pub mod style;
+pub mod table_fit;
 pub mod text_size;
 pub mod theme;
 pub mod tunnels;

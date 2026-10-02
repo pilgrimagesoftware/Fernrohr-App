@@ -197,6 +197,10 @@ impl PodsPanel {
                     .col_resizable(true)
             });
             cx.subscribe_in(&table, window, |_this, table, event, window, cx| {
+                if let TableEvent::ColumnWidthsChanged(widths) = event {
+                    table.update(cx, |table, _| table.delegate_mut().set_widths(widths));
+                    return;
+                }
                 let row_ix = match event {
                     TableEvent::SelectRow(row_ix) => *row_ix,
                     // A single click only selects (drives WarpNamespace/

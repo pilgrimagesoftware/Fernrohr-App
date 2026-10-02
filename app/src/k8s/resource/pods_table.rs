@@ -71,7 +71,9 @@ impl PodColumn {
 
     fn default_width(self) -> f32 {
         match self {
-            PodColumn::Name => 220.,
+            // Sized for a typical Deployment pod name - deployment, ReplicaSet
+            // hash and pod suffix, like `checkout-service-7d9f8b6c5d-x2k9p`.
+            PodColumn::Name => 320.,
             PodColumn::Namespace => 150.,
             PodColumn::Ready => 80.,
             PodColumn::Status => 130.,
@@ -134,17 +136,25 @@ pub(super) struct PodTableRow {
 }
 
 /// The Pods panel's table over `state`: striped, bordered, scrollable both
-/// ways, its rows `ui::space`'s row height.
+/// ways, its rows `ui::space`'s row height, with a double-click on a header
+/// divider fitting the column on its left.
 pub(super) fn data_table(
     state: &Entity<TableState<PodTableDelegate>>,
     cx: &App,
-) -> DataTable<PodTableDelegate> {
-    use gpui_kit::component::{Sizable as _, Size};
-    DataTable::new(state)
-        .stripe(true)
-        .bordered(true)
-        .scrollbar_visible(true, true)
-        .with_size(Size::Size(crate::ui::space::spacing(cx).row_height))
+) -> impl IntoElement + use<> {
+    use gpui_kit::component::Sizable as _;
+    let size = crate::ui::table_fit::table_size(cx);
+    div()
+        .size_full()
+        .relative()
+        .child(
+            DataTable::new(state)
+                .stripe(true)
+                .bordered(true)
+                .scrollbar_visible(true, true)
+                .with_size(size),
+        )
+        .child(crate::ui::table_fit::divider_double_click(state, size))
 }
 
 /// The [`TableDelegate`] backing a Pods panel's table: owns the column order,
@@ -166,6 +176,13 @@ pub(super) struct PodTableDelegate {
     /// global is shared by every Pods panel, so each table remembers its own
     /// pick to re-point its highlight after a sort or row update.
     selected: Option<PodSelection>,
+    /// Widths the user set, by dragging a divider or double-clicking one, per
+    /// column; a column without one is [`PodColumn::default_width`] wide. Kept
+    /// by column rather than by position, so a reordered column keeps its own.
+    widths: Vec<(PodColumn, Pixels)>,
+    /// The header cells' drawn bounds, for a divider double-click to fit a
+    /// column (`ui::table_fit`).
+    header: crate::ui::table_fit::HeaderBounds,
 }
 
 impl Default for PodTableDelegate {
@@ -176,6 +193,8 @@ impl Default for PodTableDelegate {
             columns: PodColumn::DEFAULT_ORDER.to_vec(),
             sort: None,
             selected: None,
+            widths: Vec::new(),
+            header: Default::default(),
         }
     }
 }
@@ -186,6 +205,30 @@ impl PodTableDelegate {
     pub(super) fn set_rows(&mut self, rows: Vec<PodTableRow>) {
         self.natural = rows;
         self.apply_sort();
+    }
+
+    /// `column`'s width: the one the user set, or its default.
+    fn width_of(&self, column: PodColumn) -> Pixels {
+        self.widths
+            .iter()
+            .find(|(col, _)| *col == column)
+            .map_or(px(column.default_width()), |(_, width)| *width)
+    }
+
+    fn set_width(&mut self, column: PodColumn, width: Pixels) {
+        match self.widths.iter_mut().find(|(col, _)| *col == column) {
+            Some((_, current)) => *current = width,
+            None => self.widths.push((column, width)),
+        }
+    }
+
+    /// Records new widths for every column, left to right - the table's
+    /// `ColumnWidthsChanged`, so a later `refresh` (a divider double-click's)
+    /// keeps what the user dragged.
+    pub(super) fn set_widths(&mut self, widths: &[Pixels]) {
+        for (column, width) in self.columns.clone().into_iter().zip(widths) {
+            self.set_width(column, *width);
+        }
     }
 
     /// The rows in their currently displayed order.
@@ -263,7 +306,7 @@ impl TableDelegate for PodTableDelegate {
     fn column(&self, col_ix: usize, _: &App) -> Column {
         let col = self.columns[col_ix];
         let column = Column::new(col.id(), col.title())
-            .width(px(col.default_width()))
+            .width(self.width_of(col))
             .sortable();
         match self.sort {
             Some((active, sort)) if active == col => column.sort(sort),
@@ -345,6 +388,22 @@ impl TableDelegate for PodTableDelegate {
         self.reorder_columns(col_ix, to_ix);
     }
 
+    /// The column's title, as the default draws it, with its bounds recorded
+    /// for the divider double-click.
+    fn render_th(
+        &mut self,
+        col_ix: usize,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let title = self.columns[col_ix].title();
+        self.header.track(col_ix, div().size_full().child(title))
+    }
+
+    fn cell_text(&self, row_ix: usize, col_ix: usize, _cx: &App) -> String {
+        cell_text(&self.rows[row_ix].row, self.columns[col_ix])
+    }
+
     fn perform_sort(
         &mut self,
         col_ix: usize,
@@ -387,3 +446,15 @@ pub(super) fn reselect(
 
 #[cfg(test)]
 mod tests;
+
+impl crate::ui::table_fit::FitColumns for PodTableDelegate {
+    fn header_bounds(&self) -> &crate::ui::table_fit::HeaderBounds {
+        &self.header
+    }
+
+    fn set_column_width(&mut self, col_ix: usize, width: Pixels) {
+        if let Some(column) = self.columns.get(col_ix).copied() {
+            self.set_width(column, width);
+        }
+    }
+}
