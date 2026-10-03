@@ -79,8 +79,9 @@ pub enum PodFieldValue {
         targets: Vec<ObjectRef>,
         qualified: bool,
     },
-    /// Key=value pairs, one chip each.
-    Chips(Vec<String>),
+    /// Labels or annotations, one chip each, a large value shortened to its
+    /// preview with the full value in a tooltip (`ui::detail::metadata_chips`).
+    Metadata(Vec<(String, String)>),
     /// Conditions, one badge each.
     Badges(Vec<ConditionBadge>),
     /// Rows behind a disclosure, collapsed by default so a long list does not
@@ -113,7 +114,11 @@ impl PodFieldValue {
                 .map(|target| reference_text(target, *qualified))
                 .collect::<Vec<_>>()
                 .join(", "),
-            PodFieldValue::Chips(chips) => chips.join(", "),
+            PodFieldValue::Metadata(pairs) => pairs
+                .iter()
+                .map(|(key, value)| chip(key, value))
+                .collect::<Vec<_>>()
+                .join(", "),
             PodFieldValue::Badges(badges) => badges
                 .iter()
                 .map(|badge| format!("{}={}", badge.condition, badge.status))

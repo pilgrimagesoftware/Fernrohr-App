@@ -6,7 +6,7 @@ use super::format::{
     summarize_containers,
 };
 use super::model::{
-    ConditionBadge, DetailSection, ManagedFieldEntry, PodField, PodFieldValue, chip, condition_tone,
+    ConditionBadge, DetailSection, ManagedFieldEntry, PodField, PodFieldValue, condition_tone,
 };
 use super::references::{image_pull_secrets, owners, volume_row};
 use crate::k8s::object_ref::ObjectRef;
@@ -104,22 +104,13 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
         );
     }
     if let Some(labels) = non_empty_map(&pod.metadata.labels) {
-        push(
-            "Labels",
-            DetailSection::Overview,
-            PodFieldValue::Chips(labels.iter().map(|(key, value)| chip(key, value)).collect()),
-        );
+        push("Labels", DetailSection::Overview, metadata(labels));
     }
     if let Some(annotations) = non_empty_map(&pod.metadata.annotations) {
         push(
             "Annotations",
             DetailSection::Overview,
-            PodFieldValue::Chips(
-                annotations
-                    .iter()
-                    .map(|(key, value)| chip(key, value))
-                    .collect(),
-            ),
+            metadata(annotations),
         );
     }
     let owners = owners(pod);
@@ -273,4 +264,13 @@ fn phase_tone(phase: &str) -> crate::ui::detail::BadgeTone {
         "Failed" => BadgeTone::Bad,
         _ => BadgeTone::Unknown,
     }
+}
+
+/// Labels or annotations as metadata chips, a large value shortened.
+fn metadata(map: &std::collections::BTreeMap<String, String>) -> PodFieldValue {
+    PodFieldValue::Metadata(
+        map.iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+    )
 }

@@ -48,10 +48,10 @@ pub(super) fn overview(
         "Kind",
         format!("{} ({api_version})", gvk.kind),
     ));
-    if let Some(labels) = chips(&meta.labels) {
+    if let Some(labels) = metadata(&meta.labels) {
         fields.push(ObjectField::new("Labels", labels));
     }
-    if let Some(annotations) = chips(&meta.annotations) {
+    if let Some(annotations) = metadata(&meta.annotations) {
         fields.push(ObjectField::new("Annotations", annotations));
     }
     let owners: Vec<ObjectRef> = meta
@@ -67,11 +67,11 @@ pub(super) fn overview(
     ObjectSection::new("Overview", fields)
 }
 
-fn chips(map: &Option<BTreeMap<String, String>>) -> Option<FieldValue> {
+fn metadata(map: &Option<BTreeMap<String, String>>) -> Option<FieldValue> {
     let map = map.as_ref().filter(|map| !map.is_empty())?;
-    Some(FieldValue::Chips(
+    Some(FieldValue::Metadata(
         map.iter()
-            .map(|(key, value)| format!("{key}={value}"))
+            .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
     ))
 }
