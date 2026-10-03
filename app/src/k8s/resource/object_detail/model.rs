@@ -56,6 +56,9 @@ pub enum FieldValue {
     },
     /// One chip each - labels, annotations, capacities.
     Chips(Vec<String>),
+    /// Labels or annotations, one chip each, a large value shortened to its
+    /// preview with the full value in a tooltip (`ui::detail::metadata_chips`).
+    Metadata(Vec<(String, String)>),
     /// One colored badge each - conditions.
     Badges(Vec<(String, BadgeTone)>),
     /// One line each.
@@ -94,7 +97,7 @@ impl FieldValue {
                 .map(|(text, _)| text.clone())
                 .collect::<Vec<_>>()
                 .join(", "),
-            FieldValue::KeyValues(pairs) => pairs
+            FieldValue::KeyValues(pairs) | FieldValue::Metadata(pairs) => pairs
                 .iter()
                 .map(|(key, value)| format!("{key}={value}"))
                 .collect::<Vec<_>>()
@@ -121,6 +124,7 @@ pub fn go_to_entries(sections: &[ObjectSection]) -> Vec<GoToEntry> {
                 .collect(),
             FieldValue::Text(_)
             | FieldValue::Chips(_)
+            | FieldValue::Metadata(_)
             | FieldValue::Badges(_)
             | FieldValue::Lines(_)
             | FieldValue::KeyValues(_)

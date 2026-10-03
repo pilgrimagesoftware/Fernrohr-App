@@ -105,7 +105,7 @@ async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestApp
             assert!(
                 matches!(
                     field(&fields, "Labels").unwrap().value,
-                    PodFieldValue::Chips(_)
+                    PodFieldValue::Metadata(_)
                 ),
                 "labels are chips, not one run-on line"
             );

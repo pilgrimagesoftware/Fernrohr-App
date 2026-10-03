@@ -45,7 +45,7 @@ fn overview_rows_are_projected_in_order() {
     );
     assert_eq!(
         field(&section.fields, "Labels").value,
-        FieldValue::Chips(vec!["app=web".into()])
+        FieldValue::Metadata(vec![("app".into(), "web".into())])
     );
 }
 

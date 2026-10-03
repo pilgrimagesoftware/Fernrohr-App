@@ -10,6 +10,7 @@ mod copy;
 mod fetch;
 mod fixtures;
 mod header;
+mod metadata;
 mod network;
 mod overview;
 mod panel;
