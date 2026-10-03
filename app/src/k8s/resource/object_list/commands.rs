@@ -125,4 +125,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         Box::new(RefreshList),
         None,
     );
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "object_list.pick_namespaces",
+        "List: Pick Namespaces",
+        PANEL_KEY_CONTEXT,
+    ));
 }

@@ -114,6 +114,17 @@ impl Render for PodsPanel {
                         .unwrap_or_else(|| {
                             Kbd::new(Keystroke::parse(YAML_KEY).expect("valid keybinding"))
                         });
+                let pick_key = Kbd::binding_for_action(
+                    &crate::ui::namespace_picker::PickNamespaces,
+                    Some(PANEL_KEY_CONTEXT),
+                    window,
+                )
+                .unwrap_or_else(|| {
+                    Kbd::new(
+                        Keystroke::parse(crate::ui::namespace_picker::PICK_NAMESPACES_KEY)
+                            .expect("valid keybinding"),
+                    )
+                });
                 let shortcuts = div()
                     .flex()
                     .gap(space.control_gap)
@@ -134,6 +145,14 @@ impl Render for PodsPanel {
                             .items_center()
                             .child(warp_all_key)
                             .child("All panels"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(pick_key)
+                            .child("Pick namespaces"),
                     )
                     .child(
                         div()
@@ -183,14 +202,19 @@ impl Render for PodsPanel {
         };
 
         let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        let namespace_bar =
-            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
+        let namespaces = self.namespaces.read(cx).names().to_vec();
+        let namespace_bar = self.namespace_picker.element(
+            &self.scope,
+            &namespaces,
+            move |namespaces, cx| {
                 let _ = this.update(cx, |this: &mut Self, cx| {
                     this.scope = this.scope.scoped_to(namespaces.clone());
                     cx.emit(ScopeEvent::NamespacesChanged(namespaces));
                 });
-            });
+            },
+            window,
+            cx,
+        );
         // "Context: <name>" on the left, the namespace picker (when there is one)
         // on the right, in one header row.
         let header = div()
@@ -216,6 +240,11 @@ impl Render for PodsPanel {
             .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(Self::on_action_warp_namespace))
             .on_action(cx.listener(Self::on_action_warp_all_to_namespace))
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.namespace_picker.open(window, cx)
+                },
+            ))
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))

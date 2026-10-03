@@ -32,6 +32,8 @@ pub struct EventsPanel {
     pub(super) namespaces: Entity<NamespaceList>,
     pub(super) subscribed: bool,
     pub(super) focus_handle: FocusHandle,
+    /// The title bar's namespace picker, made on first render.
+    pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
     /// Built on first render, which is the first time there's a `Window`.
     pub(super) table: Option<Entity<TableState<EventsTableDelegate>>>,
     /// The sort to start the table with, once it's built - the saved one, or
@@ -87,6 +89,7 @@ impl EventsPanel {
     ) -> Self {
         Self {
             scope,
+            namespace_picker: Default::default(),
             connection,
             events: cx.new(|_| EventsTable::default()),
             namespaces,

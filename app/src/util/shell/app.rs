@@ -91,6 +91,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::object_detail::register_commands(registry);
     crate::k8s::resource::object_list::register_commands(registry);
     crate::k8s::resource::events_browser::register_commands(registry);
+    crate::ui::placeholder::register_commands(registry);
     crate::ui::table_fit::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);

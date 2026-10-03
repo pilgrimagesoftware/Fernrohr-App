@@ -193,6 +193,12 @@ impl EventsPanel {
                 window,
             ))
             .child(Self::hint(&FocusSearch, SEARCH_KEY, "Search", window))
+            .child(Self::hint(
+                &crate::ui::namespace_picker::PickNamespaces,
+                crate::ui::namespace_picker::PICK_NAMESPACES_KEY,
+                "Namespaces",
+                window,
+            ))
             .child(Self::hint(&FilterByType, TYPE_KEY, "Type", window))
             .child(Self::hint(&FilterByKind, KIND_KEY, "Kind", window))
             .child(Self::hint(&FilterByReason, REASON_KEY, "Reason", window))
@@ -247,15 +253,20 @@ impl Render for EventsPanel {
         let space = crate::ui::space::spacing(cx);
         let content = self.content(window, cx);
         let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        let namespace_bar =
-            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
+        let namespaces = self.namespaces.read(cx).names().to_vec();
+        let namespace_bar = self.namespace_picker.element(
+            &self.scope,
+            &namespaces,
+            move |namespaces, cx| {
                 let _ = this.update(cx, |this: &mut Self, cx| {
                     this.scope = this.scope.scoped_to(namespaces.clone());
                     cx.emit(ScopeEvent::NamespacesChanged(namespaces));
                     cx.notify();
                 });
-            });
+            },
+            window,
+            cx,
+        );
         let header = div()
             .flex()
             .items_center()
@@ -275,6 +286,11 @@ impl Render for EventsPanel {
             .key_context(PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_open_involved))
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.namespace_picker.open(window, cx)
+                },
+            ))
             .on_action(cx.listener(Self::on_action_focus_search))
             .on_action(cx.listener(Self::on_action_filter_type))
             .on_action(cx.listener(Self::on_action_filter_kind))

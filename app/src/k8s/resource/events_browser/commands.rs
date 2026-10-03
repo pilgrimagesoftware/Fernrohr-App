@@ -80,4 +80,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         CLEAR_KEY,
         Box::new(ClearFilters),
     );
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "events.pick_namespaces",
+        "Events: Pick Namespaces",
+        PANEL_KEY_CONTEXT,
+    ));
 }

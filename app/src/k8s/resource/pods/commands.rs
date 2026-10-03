@@ -104,6 +104,11 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         Box::new(crate::ui::table_fit::FitAllColumns),
         None,
     );
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "pods.pick_namespaces",
+        "Pods: Pick Namespaces",
+        PANEL_KEY_CONTEXT,
+    ));
 }
 
 #[cfg(test)]

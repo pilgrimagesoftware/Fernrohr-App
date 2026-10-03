@@ -15,6 +15,7 @@ use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::kbd::Kbd;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 impl ObjectListPanel {
@@ -72,6 +73,15 @@ impl ObjectListPanel {
             .text_color(cx.theme().muted_foreground)
             .child(Self::hint(&FocusFilter, FILTER_KEY, "Filter", window))
             .child(Self::hint(&OpenSelected, OPEN_KEY, "Open", window))
+            // Only a namespaced kind has a picker to open.
+            .when(self.scope.is_namespaced(), |hints| {
+                hints.child(Self::hint(
+                    &crate::ui::namespace_picker::PickNamespaces,
+                    crate::ui::namespace_picker::PICK_NAMESPACES_KEY,
+                    "Namespaces",
+                    window,
+                ))
+            })
             .child(Self::hint(
                 &DescribeSelected,
                 DESCRIBE_KEY,
@@ -174,15 +184,20 @@ impl Render for ObjectListPanel {
         let space = crate::ui::space::spacing(cx);
         let content = self.content(window, cx);
         let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
+        let namespaces = self.namespaces.read(cx).names().to_vec();
         // `None` for a cluster-scoped kind: no namespace to pick.
-        let namespace_bar =
-            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
+        let namespace_bar = self.namespace_picker.element(
+            &self.scope,
+            &namespaces,
+            move |namespaces, cx| {
                 let _ = this.update(cx, |this: &mut Self, cx| {
                     this.scope = this.scope.scoped_to(namespaces.clone());
                     cx.emit(ScopeEvent::NamespacesChanged(namespaces));
                 });
-            });
+            },
+            window,
+            cx,
+        );
         let header = div()
             .flex()
             .items_center()
@@ -208,6 +223,11 @@ impl Render for ObjectListPanel {
             .on_action(cx.listener(Self::on_action_describe_selected))
             .on_action(cx.listener(Self::on_action_show_selected_yaml))
             .on_action(cx.listener(Self::on_action_warp_namespace))
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.namespace_picker.open(window, cx)
+                },
+            ))
             .on_action(cx.listener(Self::on_action_fit_columns))
             .on_action(cx.listener(Self::on_action_refresh))
             .child(
