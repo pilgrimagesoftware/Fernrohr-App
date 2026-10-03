@@ -52,6 +52,8 @@ mod open;
 mod panel_focus;
 mod panels;
 mod persist;
+#[cfg(test)]
+mod quick_look_window_tests;
 mod render;
 mod resource_edge;
 mod tab_focus;
