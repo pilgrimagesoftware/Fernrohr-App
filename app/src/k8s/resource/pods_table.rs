@@ -4,7 +4,7 @@
 //! rows compare on it) and *how the table renders/sorts/reorders* from that;
 //! `pods.rs` owns the panel around it (the watch, actions, layout).
 
-use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::*;
 
@@ -70,6 +70,11 @@ pub(super) struct PodTableDelegate {
     /// The header cells' drawn bounds, for a divider double-click to fit a
     /// column (`ui::table_fit`).
     header: crate::ui::table_fit::HeaderBounds,
+    /// The open quick look, drawn beside the selected row (`pod-quick-look`).
+    quick_look: Option<Entity<super::pods::quick_look::QuickLookPopover>>,
+    /// The table's own focus handle, which the row context menu dispatches
+    /// its commands from so they reach the Pods panel as their keys do.
+    action_context: Option<FocusHandle>,
 }
 
 impl Default for PodTableDelegate {
@@ -82,6 +87,8 @@ impl Default for PodTableDelegate {
             selected: None,
             widths: Vec::new(),
             header: Default::default(),
+            quick_look: None,
+            action_context: None,
         }
     }
 }
@@ -119,6 +126,17 @@ impl PodTableDelegate {
     }
 
     /// The rows in their currently displayed order.
+    pub(super) fn set_quick_look(
+        &mut self,
+        popover: Option<Entity<super::pods::quick_look::QuickLookPopover>>,
+    ) {
+        self.quick_look = popover;
+    }
+
+    pub(super) fn set_action_context(&mut self, focus: FocusHandle) {
+        self.action_context = Some(focus);
+    }
+
     pub(super) fn rows(&self) -> &[PodTableRow] {
         &self.rows
     }
@@ -201,27 +219,32 @@ impl TableDelegate for PodTableDelegate {
         }
     }
 
-    /// Section 5.2: a row's "Open" is the mouse-reachable twin of the `d`
-    /// keybinding - both select the pod and emit `ShowPodDetail`, so they land
-    /// on the same `open_target` call. Selecting here (not only dispatching)
-    /// is what lets the menu act on the row under the pointer rather than
-    /// whatever was selected last.
+    /// The row's context menu (`pod-quick-look` 2.1): right-clicking selects
+    /// the row - deferred, since the table is mid-update here - and offers the
+    /// panel's registered pod commands, dispatched from the table so each runs
+    /// exactly as its key does, with that key shown beside it.
     fn context_menu(
         &mut self,
         row_ix: usize,
         menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        let Some(selection) = self.rows.get(row_ix).map(|row| row.selection.clone()) else {
+        use super::pods::{DescribePod, QuickLook, ShowPodLogs, ShowPodYaml};
+        if row_ix >= self.rows.len() {
             return menu;
+        }
+        cx.defer_in(window, move |table, _window, cx| {
+            table.set_selected_row(row_ix, cx);
+        });
+        let menu = match &self.action_context {
+            Some(focus) => menu.action_context(focus.clone()),
+            None => menu,
         };
-        menu.item(
-            PopupMenuItem::new("Open").on_click(move |_event, window, cx| {
-                cx.set_global(super::pods::SelectedPod(Some(selection.clone())));
-                window.dispatch_action(Box::new(crate::ui::nav::ShowPodDetail), cx);
-            }),
-        )
+        menu.menu("Quick Look", Box::new(QuickLook))
+            .menu("Open Details", Box::new(DescribePod))
+            .menu("Logs", Box::new(ShowPodLogs))
+            .menu("YAML", Box::new(ShowPodYaml))
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,
@@ -243,7 +266,7 @@ impl TableDelegate for PodTableDelegate {
             .debug_selector(|| format!("pod-cell-{row_ix}-{col_ix}"))
             .data_font()
             .whitespace_nowrap();
-        match column {
+        let cell = match column {
             PodColumn::Status => cell
                 .text_color(style::status(row.status_tone, cx))
                 .child(text),
@@ -262,6 +285,25 @@ impl TableDelegate for PodTableDelegate {
                 .text_color(style::status(Tone::Warning, cx))
                 .child(text),
             _ => cell.child(text),
+        };
+        // An open quick look hangs below the selected row's first cell, in an
+        // overlay so the row keeps its height and the popover isn't clipped.
+        let popover = self.quick_look.clone().filter(|_| {
+            col_ix == 0 && self.selected.as_ref() == Some(&self.rows[row_ix].selection)
+        });
+        match popover {
+            Some(popover) => div()
+                .child(cell)
+                .child(
+                    deferred(
+                        anchored()
+                            .snap_to_window_with_margin(px(8.))
+                            .child(div().pt_1().child(popover)),
+                    )
+                    .with_priority(1),
+                )
+                .into_any_element(),
+            None => cell.into_any_element(),
         }
     }
 

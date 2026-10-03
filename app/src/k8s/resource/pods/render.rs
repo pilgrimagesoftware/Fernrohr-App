@@ -89,6 +89,12 @@ impl Render for PodsPanel {
                     })
                     .collect();
                 let table = self.sync_table(items, window, cx);
+                // A quick look whose pod has no row - deleted while open - can't
+                // hang below it, so it sits at the top of the table instead.
+                let unanchored = self.quick_look.clone().filter(|popover| {
+                    let target = &popover.read(cx).target;
+                    table.read(cx).delegate().index_of(target).is_none()
+                });
                 let namespace_key =
                     Kbd::binding_for_action(&WarpNamespace, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
@@ -98,6 +104,11 @@ impl Render for PodsPanel {
                     Kbd::binding_for_action(&WarpAllToNamespace, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
                             Kbd::new(Keystroke::parse(WARP_ALL_KEY).expect("valid keybinding"))
+                        });
+                let quick_look_key =
+                    Kbd::binding_for_action(&QuickLook, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse(QUICK_LOOK_KEY).expect("valid keybinding"))
                         });
                 let describe_key =
                     Kbd::binding_for_action(&DescribePod, Some(PANEL_KEY_CONTEXT), window)
@@ -130,6 +141,14 @@ impl Render for PodsPanel {
                     .gap(space.control_gap)
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(quick_look_key)
+                            .child("Quick look"),
+                    )
                     .child(
                         div()
                             .flex()
@@ -187,6 +206,12 @@ impl Render for PodsPanel {
                         div()
                             .flex_1()
                             .min_h_0()
+                            .children(unanchored.map(|popover| {
+                                deferred(
+                                    anchored().snap_to_window_with_margin(px(8.)).child(popover),
+                                )
+                                .with_priority(1)
+                            }))
                             .child(pods_table::data_table(&table, cx)),
                     )
                     .child(
@@ -232,10 +257,17 @@ impl Render for PodsPanel {
             ))
             .children(namespace_bar);
 
+        // While a quick look is open its own keys (Escape, Enter) apply too.
+        let mut key_context = KeyContext::default();
+        key_context.add(PANEL_KEY_CONTEXT);
+        if self.quick_look.is_some() {
+            key_context.add(QUICK_LOOK_KEY_CONTEXT);
+        }
         div()
             .size_full()
-            .key_context(PANEL_KEY_CONTEXT)
+            .key_context(key_context)
             .track_focus(&self.focus_handle)
+            .capture_action(cx.listener(Self::capture_cancel))
             .capture_action(cx.listener(Self::capture_select_down))
             .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(Self::on_action_warp_namespace))
@@ -249,6 +281,9 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
             .on_action(cx.listener(Self::on_action_fit_columns))
+            .on_action(cx.listener(Self::on_action_quick_look))
+            .on_action(cx.listener(Self::on_action_close_quick_look))
+            .on_action(cx.listener(Self::on_action_open_quick_look_details))
             .child(
                 div()
                     .size_full()

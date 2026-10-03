@@ -17,7 +17,10 @@ actions!(
         WarpAllToNamespace,
         DescribePod,
         ShowPodLogs,
-        ShowPodYaml
+        ShowPodYaml,
+        QuickLook,
+        CloseQuickLook,
+        OpenQuickLookDetails
     ]
 );
 
@@ -26,6 +29,11 @@ actions!(
 /// nothing anywhere else. A context binding matches at any depth of that path,
 /// so these still fire once a table row has taken focus from the panel.
 pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
+
+/// Added beside [`PANEL_KEY_CONTEXT`] while a quick look is open
+/// (`pod-quick-look` D3), so its Escape and Enter mean "close" and "open
+/// details" only then, while focus stays on the table.
+pub const QUICK_LOOK_KEY_CONTEXT: &str = "PodQuickLook";
 
 /// The default keys, also the hint bar's fallback when the keymap has no
 /// binding to show. Named once so the hint bar and the command can't drift.
@@ -36,6 +44,9 @@ pub(super) const WARP_ALL_KEY: &str = "shift-w";
 pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const LOGS_KEY: &str = "l";
 pub(super) const YAML_KEY: &str = "y";
+pub(super) const QUICK_LOOK_KEY: &str = "space";
+pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
+pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
 const NAMESPACE_COMMAND_ID: &str = "pods.warp_namespace";
 const WARP_ALL_COMMAND_ID: &str = "pods.warp_all_namespace";
@@ -43,6 +54,9 @@ const DESCRIBE_COMMAND_ID: &str = "pods.describe";
 const LOGS_COMMAND_ID: &str = "pods.logs";
 const YAML_COMMAND_ID: &str = "pods.yaml";
 const FIT_COMMAND_ID: &str = "pods.fit_columns";
+const QUICK_LOOK_COMMAND_ID: &str = "pods.quick_look";
+const CLOSE_QUICK_LOOK_COMMAND_ID: &str = "pods.close_quick_look";
+const OPEN_QUICK_LOOK_DETAILS_COMMAND_ID: &str = "pods.quick_look_open_details";
 
 /// Registers the panel's shortcuts.
 ///
@@ -51,6 +65,22 @@ const FIT_COMMAND_ID: &str = "pods.fit_columns";
 /// (`menu-organization`). The palette offers them while a Pods panel is on the
 /// focus path, and the hint row shows their keys.
 pub fn register_commands(registry: &mut CommandRegistry) {
+    registry.register(Command {
+        id: CLOSE_QUICK_LOOK_COMMAND_ID,
+        title: "Pods: Close Quick Look",
+        default_binding: CLOSE_QUICK_LOOK_KEY,
+        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        action: Box::new(CloseQuickLook),
+        menu: None,
+    });
+    registry.register(Command {
+        id: OPEN_QUICK_LOOK_DETAILS_COMMAND_ID,
+        title: "Pods: Open Quick Look's Pod Details",
+        default_binding: OPEN_QUICK_LOOK_DETAILS_KEY,
+        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        action: Box::new(OpenQuickLookDetails),
+        menu: None,
+    });
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {
         registry.register(Command {
             id,
@@ -61,6 +91,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu,
         });
     };
+    register(
+        QUICK_LOOK_COMMAND_ID,
+        "Pods: Quick Look",
+        QUICK_LOOK_KEY,
+        Box::new(QuickLook),
+        None,
+    );
     register(
         NAMESPACE_COMMAND_ID,
         "Pods: Filter to Selected Pod's Namespace",
