@@ -5,10 +5,12 @@
 //! value in a hover tooltip.
 //!
 //! The rule is the Configuration tab's ([`super::collapsible::preview`]), so a
-//! large value reads the same everywhere. A chip never expands in place, and
-//! is not a tab stop: the panel's YAML view is the keyboard route to a value
-//! in full. The tooltip is built from the value the chip was given, so a value
-//! a caller redacted stays redacted in both.
+//! large value reads the same everywhere. A chip never expands in place. The
+//! keyboard's route to a shortened value is the copy control beside it
+//! (`ui::copy`), a tab stop that puts the full value on the clipboard - and
+//! the panel's YAML view, which shows every value in full. The tooltip and the
+//! copy control are built from the value the chip was given, so a value a
+//! caller redacted stays redacted in all three.
 
 use super::collapsible::preview;
 use crate::ui::typography::TypeRole as _;
@@ -44,6 +46,11 @@ impl MetadataChip {
 /// the shown text from.
 pub fn metadata_chip_id(id_prefix: &str, index: usize) -> ElementId {
     ElementId::Name(format!("metadata-chip {id_prefix} {index}").into())
+}
+
+/// The copy control beside shortened chip `index` among `id_prefix`'s chips.
+pub fn metadata_copy_id(id_prefix: &str, index: usize) -> ElementId {
+    ElementId::Name(format!("copy metadata {id_prefix} {index}").into())
 }
 
 /// The debug selector of chip `index` among `id_prefix`'s chips.
@@ -83,7 +90,14 @@ pub fn metadata_chips(id_prefix: &str, pairs: &[(String, String)], cx: &App) -> 
                 // row's height.
                 Some(full) => {
                     let tooltip_selector = metadata_tooltip_selector(id_prefix, index);
-                    base.whitespace_nowrap()
+                    let group = format!("metadata {id_prefix} {index}");
+                    let copy = crate::ui::copy::copy_button(
+                        metadata_copy_id(id_prefix, index),
+                        full.clone(),
+                        group.clone(),
+                    );
+                    let chip = base
+                        .whitespace_nowrap()
                         .tooltip(move |window, cx| {
                             let (full, selector) = (full.clone(), tooltip_selector.clone());
                             Tooltip::element(move |_, cx| {
@@ -104,7 +118,13 @@ pub fn metadata_chips(id_prefix: &str, pairs: &[(String, String)], cx: &App) -> 
                             .build(window, cx)
                         })
                         .child(chip.text)
-                        .test_support()
+                        .test_support();
+                    div()
+                        .group(group)
+                        .flex()
+                        .items_center()
+                        .child(chip)
+                        .child(copy)
                         .into_any_element()
                 }
                 None => base.child(chip.text).test_support().into_any_element(),

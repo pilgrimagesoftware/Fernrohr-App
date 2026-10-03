@@ -5,7 +5,9 @@
 
 use super::fixtures::{kind, object, stub_panel, target};
 use crate::k8s::resource::object_detail::redact::LAST_APPLIED_ANNOTATION;
-use crate::ui::detail::{metadata_chip_id, metadata_chip_selector, metadata_tooltip_selector};
+use crate::ui::detail::{
+    metadata_chip_id, metadata_chip_selector, metadata_copy_id, metadata_tooltip_selector,
+};
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Modifiers, TestAppContext, VisualTestContext, WindowHandle};
@@ -81,6 +83,24 @@ async fn a_deployments_multi_line_annotation_is_shortened(cx: &mut TestAppContex
         Some("ad.example.com/checks={…")
     );
     assert!(hover(&mut vcx, 0), "hovering shows the full value");
+
+    let copy = vcx
+        .update_window(window.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window
+                .try_find(metadata_copy_id(ANNOTATIONS, 0))
+                .expect("a shortened chip has a copy control")
+                .bounds()
+                .center()
+        })
+        .unwrap();
+    vcx.simulate_click(copy, Modifiers::none());
+    vcx.run_until_parked();
+    assert_eq!(
+        vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+            .as_deref(),
+        Some("{\n  \"nginx\": {}\n}")
+    );
 }
 
 /// Spec: "A redacted annotation stays redacted" - redaction leaves only a
@@ -114,4 +134,11 @@ async fn a_secrets_redacted_annotation_stays_redacted(cx: &mut TestAppContext) {
     );
     assert!(!shown.contains("c3VwZXI"), "no Secret value: {shown}");
     assert!(!hover(&mut vcx, 0), "no tooltip to reveal more");
+    let has_copy = vcx
+        .update_window(window.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.try_find(metadata_copy_id(ANNOTATIONS, 0)).is_some()
+        })
+        .unwrap();
+    assert!(!has_copy, "no copy control to reveal more");
 }

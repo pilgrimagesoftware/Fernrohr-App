@@ -23,7 +23,9 @@ mod metadata;
 pub use collapsible::Collapsible;
 pub use metadata::metadata_chips;
 #[cfg(test)]
-pub use metadata::{metadata_chip_id, metadata_chip_selector, metadata_tooltip_selector};
+pub use metadata::{
+    metadata_chip_id, metadata_chip_selector, metadata_copy_id, metadata_tooltip_selector,
+};
 
 /// A status's color, decided by the status rather than looked up at render
 /// time - so "is this good" is testable without a theme, and the renderer only

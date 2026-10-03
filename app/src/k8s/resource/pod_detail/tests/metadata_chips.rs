@@ -1,10 +1,13 @@
 //! `collapse-large-metadata-values` 1.3, in the pod panel: a multi-line or
 //! long annotation's chip shows only its preview, hovering it shows the full
-//! value, and a short label is drawn whole with no tooltip.
+//! value, Tab and Space on its copy control put the full value on the
+//! clipboard, and a short label is drawn whole with neither.
 
-use super::config_fixture::Harness;
+use super::config_fixture::{Harness, focus_panel, press_by_keyboard};
 use super::states::harness;
-use crate::ui::detail::{metadata_chip_id, metadata_chip_selector, metadata_tooltip_selector};
+use crate::ui::detail::{
+    metadata_chip_id, metadata_chip_selector, metadata_copy_id, metadata_tooltip_selector,
+};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Modifiers, TestAppContext, VisualTestContext};
 use k8s_openapi::api::core::v1::Pod;
@@ -80,4 +83,28 @@ async fn large_annotations_show_a_preview_and_the_full_value_on_hover(cx: &mut T
         hover(&mut vcx, "Annotations", 1),
         "a shortened chip has one"
     );
+}
+
+/// The keyboard route to a shortened value: its copy control is a tab stop,
+/// and Space copies the full value. A short chip has no copy control.
+#[gpui_kit::test]
+async fn a_shortened_value_copies_in_full_by_keyboard(cx: &mut TestAppContext) {
+    let h = harness(cx, annotated_pod());
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    vcx.run_until_parked();
+    focus_panel(&mut vcx, &h);
+
+    press_by_keyboard(&mut vcx, &h, metadata_copy_id("Annotations", 0));
+    assert_eq!(
+        vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+            .as_deref(),
+        Some(CHECKS)
+    );
+    let short_has_copy = vcx
+        .update_window(h.window.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.try_find(metadata_copy_id("Labels", 0)).is_some()
+        })
+        .unwrap();
+    assert!(!short_has_copy, "a short chip has no copy control");
 }
