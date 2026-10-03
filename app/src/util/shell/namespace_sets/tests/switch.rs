@@ -131,7 +131,7 @@ async fn a_rebound_key_opens_the_picker(cx: &mut TestAppContext) {
 #[test]
 fn a_generated_keymap_lists_every_set_command() {
     use crate::ui::namespace_sets::*;
-    let path = fresh_path("generated-keymap");
+    let path = temp_workspace_path();
     let mut registry = crate::command::CommandRegistry::new();
     register_commands(&mut registry);
     let keymap = crate::keymap::load(&path, &registry);

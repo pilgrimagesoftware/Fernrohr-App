@@ -2,7 +2,6 @@
 //! parse.
 
 use super::{NamespaceSetConfig, NamespaceSetsConfig, SetError};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 fn names(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| name.to_string()).collect()
@@ -108,19 +107,9 @@ fn a_scope_matches_a_set_only_exactly() {
     assert_eq!(sets.matching(&[]), None, "all namespaces");
 }
 
-static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-fn temp_path() -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "fernrohr-namespace-sets-{}-{n}.toml",
-        std::process::id()
-    ))
-}
-
 #[test]
 fn first_run_writes_an_empty_file_and_sets_round_trip() {
-    let path = temp_path();
+    let path = crate::util::test_paths::temp_path("namespace-sets-config");
     let loaded: NamespaceSetsConfig = crate::config::load(&path);
     assert!(loaded.sets.is_empty());
     assert!(path.exists(), "first run writes the file");
@@ -134,7 +123,7 @@ fn first_run_writes_an_empty_file_and_sets_round_trip() {
 
 #[test]
 fn a_file_that_fails_to_parse_is_left_alone_and_yields_no_sets() {
-    let path = temp_path();
+    let path = crate::util::test_paths::temp_path("namespace-sets-config");
     std::fs::write(&path, "sets = \"not a list\"").unwrap();
     let loaded: NamespaceSetsConfig = crate::config::load(&path);
     assert!(loaded.sets.is_empty());
