@@ -45,6 +45,7 @@ mod follow;
 mod layout;
 mod main_window;
 mod namespace_defaults;
+mod namespace_sets;
 mod warp;
 pub(crate) use warp::WarpContextToNamespace;
 mod open;

@@ -16,6 +16,7 @@
 
 use crate::command::Command;
 use crate::ui::namespace_filter::{NamespaceFilter, OnPick, OnQuery};
+use crate::ui::namespace_sets::store::NamespaceSets;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
@@ -59,6 +60,17 @@ pub fn label_for(namespaces: &[String]) -> String {
     }
 }
 
+/// What the button reads: the saved namespace set holding exactly
+/// `namespaces`, by name (`namespace-sets`), or else [`label_for`]. A panel
+/// keeps the namespaces it was switched to, not the set, so a set edited or
+/// deleted since reads as the count again.
+pub fn scope_label(namespaces: &[String], cx: &App) -> String {
+    NamespaceSets::get(cx)
+        .matching(namespaces)
+        .map(|set| set.name.clone())
+        .unwrap_or_else(|| label_for(namespaces))
+}
+
 /// The picker: its popover's open state and filter, and what the panel last
 /// handed it.
 pub struct NamespacePicker {
@@ -71,6 +83,9 @@ pub struct NamespacePicker {
 
 impl NamespacePicker {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // The button names a matching set, so a set's edit is redrawn here.
+        cx.observe_global::<NamespaceSets>(|_, cx| cx.notify())
+            .detach();
         Self {
             filter: NamespaceFilter::new(window, cx),
             open: false,
@@ -111,7 +126,7 @@ impl Render for NamespacePicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.weak_entity();
         let button = Button::new("panel-namespace")
-            .label(label_for(&self.current))
+            .label(scope_label(&self.current, cx))
             .icon(IconName::ChevronDown)
             .xsmall()
             .ghost()

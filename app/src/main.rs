@@ -37,6 +37,10 @@ fn main() {
                 cx,
             );
             ui::text_size::init(ui_config.text_size, ui_path, cx);
+            ui::namespace_sets::store::NamespaceSets::init(
+                util::paths::preference_dir().join("namespace-sets.toml"),
+                cx,
+            );
             let workspace_path = util::shell::default_workspace_path();
             let keymap_path = util::paths::preference_dir().join("keymap.toml");
             util::shell::init(cx, workspace_path.clone(), &keymap_path);

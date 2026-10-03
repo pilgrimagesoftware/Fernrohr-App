@@ -78,6 +78,14 @@ pub fn checked_selector(entry: Option<&str>) -> String {
     format!("namespace-checked {}", entry.unwrap_or(ALL_NAMESPACES))
 }
 
+/// The debug selector of the "not in this cluster" mark on `namespace`'s row.
+pub fn absent_selector(namespace: &str) -> String {
+    format!("namespace-absent {namespace}")
+}
+
+/// The mark beside a listed namespace the connected cluster doesn't have.
+pub const ABSENT: &str = "not in this cluster";
+
 /// The debug selector of the no-match message.
 pub const NO_MATCH_SELECTOR: &str = "namespace-filter-empty";
 
@@ -91,6 +99,9 @@ pub const NO_MATCH_SELECTOR: &str = "namespace-filter-empty";
 pub struct NamespaceFilter {
     command: Entity<CommandState>,
     selected: Rc<Cell<Option<usize>>>,
+    /// Whether "All namespaces" is listed first - the picker's way to clear a
+    /// scope. A set editor has no "all", so it leaves it out.
+    pin_all: bool,
 }
 
 impl NamespaceFilter {
@@ -98,6 +109,15 @@ impl NamespaceFilter {
         Self {
             command: cx.new(|cx| CommandState::new(window, cx)),
             selected: Rc::new(Cell::new(Some(0))),
+            pin_all: true,
+        }
+    }
+
+    /// The list without the pinned "All namespaces" entry: only namespaces.
+    pub fn without_all(window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            pin_all: false,
+            ..Self::new(window, cx)
         }
     }
 
@@ -130,9 +150,28 @@ impl NamespaceFilter {
         on_query: OnQuery,
         cx: &App,
     ) -> AnyElement {
+        self.element_marked(namespaces, selected, &[], on_pick, on_query, cx)
+    }
+
+    /// [`Self::element`], with each of `absent` - listed namespaces the
+    /// connected cluster doesn't have - marked as such.
+    pub fn element_marked(
+        &self,
+        namespaces: &[String],
+        selected: &[String],
+        absent: &[String],
+        on_pick: OnPick,
+        on_query: OnQuery,
+        cx: &App,
+    ) -> AnyElement {
         let query = self.query(cx);
-        let listed = entries(namespaces, &query);
-        let no_match = listed.len() == 1 && !query.trim().is_empty();
+        let mut listed = entries(namespaces, &query);
+        if !self.pin_all {
+            listed.retain(Option::is_some);
+        }
+        let pinned = usize::from(self.pin_all);
+        let no_match = listed.len() == pinned && !query.trim().is_empty();
+        let muted = cx.theme().muted_foreground;
         let items = listed.iter().map(|entry| {
             let checked = match entry {
                 None => selected.is_empty(),
@@ -141,19 +180,36 @@ impl NamespaceFilter {
             let label = entry.clone().unwrap_or_else(|| ALL_NAMESPACES.to_string());
             let selector = option_selector(entry.as_deref());
             let checked_selector = checked.then(|| checked_selector(entry.as_deref()));
+            let absent = entry
+                .as_ref()
+                .filter(|namespace| absent.contains(namespace))
+                .map(|namespace| absent_selector(namespace));
             let text = label.clone();
             CommandItem::new()
                 .label(label)
                 .checked(checked)
                 .child(move |_window, _cx| {
                     let selector = selector.clone();
-                    div().flex_1().debug_selector(move || selector).child(
-                        div()
-                            .when_some(checked_selector.clone(), |this, selector| {
-                                this.debug_selector(move || selector)
-                            })
-                            .child(text.clone()),
-                    )
+                    div()
+                        .flex_1()
+                        .flex()
+                        .gap_2()
+                        .debug_selector(move || selector)
+                        .child(
+                            div()
+                                .when_some(checked_selector.clone(), |this, selector| {
+                                    this.debug_selector(move || selector)
+                                })
+                                .child(text.clone()),
+                        )
+                        .when_some(absent.clone(), |this, selector| {
+                            this.child(
+                                div()
+                                    .debug_selector(move || selector)
+                                    .text_color(muted)
+                                    .child(ABSENT),
+                            )
+                        })
                 })
         });
         let selected = selected.to_vec();
@@ -187,7 +243,6 @@ impl NamespaceFilter {
                     on_pick(toggled(&selected, entry.as_deref()), window, cx);
                 }
             });
-        let muted = cx.theme().muted_foreground;
         div()
             .flex()
             .flex_col()
