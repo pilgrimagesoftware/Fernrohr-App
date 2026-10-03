@@ -133,6 +133,15 @@ impl ClusterRegistry {
         Self::insert_session(cx, context_name, connection);
     }
 
+    /// How many panels subscribe to `key`'s shared watch on `context_name`, for
+    /// tests outside this module checking a panel released its subscription.
+    #[cfg(test)]
+    pub(crate) fn subscribers(cx: &App, context_name: &str, key: &WatchKey) -> usize {
+        cx.try_global::<Self>()
+            .and_then(|registry| registry.sessions.get(context_name))
+            .map_or(0, |session| session.watchers.refcount(key))
+    }
+
     /// Returns `context_name`'s cluster connection, connecting lazily on first use.
     pub fn connection(cx: &mut App, context_name: &str) -> Entity<ClusterConnection> {
         Self::ensure_init(cx, context_name);

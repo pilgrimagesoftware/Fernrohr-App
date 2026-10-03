@@ -70,6 +70,14 @@ pub struct PodDetailPanel {
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
     pub(super) fetching: bool,
+    /// The shared Pods watch the panel follows its pod in, once subscribed.
+    pub(super) live: super::live::LiveSource,
+    /// That the pod was deleted (its last state kept, stale) or replaced by a
+    /// new one of the same name. Terminating is read off the pod itself.
+    pub(super) notice: Option<crate::ui::detail::lifecycle::Lifecycle>,
+    /// Re-renders every second while the pod is Terminating, so the grace
+    /// period counts down.
+    pub(super) countdown: Option<Task<()>>,
     /// The pod's live events, once it has loaded (`live_events`).
     pub(super) events: Option<super::live_events::PodEventsWatch>,
     /// How far back the Events tab looks (`pod-events-time-window` 2.1).
@@ -103,6 +111,9 @@ impl PodDetailPanel {
             open_sections: std::collections::HashSet::new(),
             yaml_view: Default::default(),
             fetching: false,
+            live: super::live::LiveSource::Pending,
+            notice: None,
+            countdown: None,
             events: None,
             events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -137,6 +148,9 @@ impl PodDetailPanel {
             open_sections: std::collections::HashSet::new(),
             yaml_view: Default::default(),
             fetching: false,
+            live: super::live::LiveSource::Off,
+            notice: None,
+            countdown: None,
             events: None,
             events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -145,17 +159,20 @@ impl PodDetailPanel {
         this
     }
 
-    /// Fetches the pod once its cluster has a client. A no-op while a fetch is
+    /// Once its cluster has a client, subscribes to the shared Pods watch the
+    /// panel follows its pod in (`live`), and fetches the pod for the first
+    /// paint unless that watch has already listed it. A no-op while a fetch is
     /// in flight or the connection is not up yet - the observer on the
     /// connection calls this again once it is.
     pub(super) fn sync(&mut self, cx: &mut Context<Self>) {
-        if self.fetching {
-            return;
-        }
         let ConnectionState::Connected(client) = &self.connection.read(cx).state else {
             return;
         };
         let client = client.clone();
+        self.follow_pods(client.clone(), cx);
+        if self.fetching || self.live_synced(cx) {
+            return;
+        }
         let namespace = self.pod.namespace.clone();
         let name = self.pod.name.clone();
         self.fetching = true;
@@ -167,6 +184,11 @@ impl PodDetailPanel {
             crate::runtime::drain(rx, |result| {
                 let _ = this.update(cx, |this, cx| {
                     this.fetching = false;
+                    // The watch listed the pod while this was in flight: its
+                    // copy is at least as new, and already shown.
+                    if this.live_synced(cx) {
+                        return;
+                    }
                     this.state = match result {
                         Ok(PodFetch::Found(pod)) => {
                             this.watch_events(&pod, watch_client.clone(), cx);

@@ -13,6 +13,7 @@
 
 mod commands;
 mod fetch;
+mod live;
 mod metadata;
 mod model;
 mod panel;

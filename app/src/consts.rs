@@ -105,3 +105,11 @@ pub(crate) const ICON_RASTER_SIZES: usize = 12;
 /// How often a pod's Events tab re-checks its time window, so events age out of
 /// it while the panel sits open (`pod-events-time-window` D2).
 pub(crate) const POD_EVENTS_WINDOW_TICK: Duration = Duration::from_secs(60);
+
+/// How often a Terminating pod's detail panel re-renders, so its grace period
+/// counts down by the second (`live-detail-panels`).
+pub(crate) const TERMINATING_COUNTDOWN_TICK: Duration = Duration::from_secs(1);
+
+/// How opaque a detail panel draws a deleted object's last known state, kept
+/// on screen below its "deleted at" banner (`live-detail-panels`).
+pub(crate) const STALE_OPACITY: f32 = 0.6;

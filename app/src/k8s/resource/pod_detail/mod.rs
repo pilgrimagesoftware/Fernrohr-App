@@ -24,6 +24,7 @@ mod fetch;
 mod field_view;
 mod fields;
 mod format;
+mod live;
 pub(super) mod live_events;
 pub(super) mod managed_fields_view;
 mod model;

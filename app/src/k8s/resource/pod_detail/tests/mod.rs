@@ -17,6 +17,7 @@ mod events_window_keys;
 mod fetch;
 mod fixtures;
 mod links;
+mod live;
 mod live_events;
 mod managed_fields;
 mod metadata_chips;

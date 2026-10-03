@@ -66,6 +66,10 @@ impl PodDetailPanel {
         if self.events.as_ref().is_some_and(|watch| watch.uid == uid) {
             return;
         }
+        // A pod recreated under the same name (`live-detail-panels`): watch by
+        // name alone, so the new pod's events join the deleted one's, which
+        // stay listed until they age out of the window - often why it died.
+        let replacing = self.events.is_some();
         let table = cx.new(|_| EventsTable::default());
         cx.observe(&table, |_, _, cx| cx.notify()).detach();
         let context_name = self.scope.context_name.clone();
@@ -73,7 +77,11 @@ impl PodDetailPanel {
             kind: "Pod",
             namespace: Some(&self.pod.namespace),
             name: &self.pod.name,
-            uid: non_empty(&pod.metadata.uid),
+            uid: if replacing {
+                None
+            } else {
+                non_empty(&pod.metadata.uid)
+            },
         };
         let task = events::watch(
             client,

@@ -278,7 +278,12 @@ impl Render for ObjectDetailPanel {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(content))
+            .child(crate::ui::detail::lifecycle::body(
+                content,
+                self.lifecycle.as_ref(),
+                &self.kind_noun(),
+                cx,
+            ))
             // Tab stays in the panel: see `ui::panel::focus`.
             .focus_trap("object-detail-panel-tab-trap", &self.focus_handle)
     }
