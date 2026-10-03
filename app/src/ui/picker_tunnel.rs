@@ -122,17 +122,9 @@ mod tests {
     use crate::config::tunnels::TunnelConfig;
     use crate::tunnel::store::TunnelStore;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     fn temp_path() -> PathBuf {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "fernrohr-picker-tunnel-test-{}-{n}.toml",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&path);
-        path
+        crate::util::test_paths::temp_path("picker-tunnel")
     }
 
     fn sample_tunnel(name: &str) -> TunnelConfig {

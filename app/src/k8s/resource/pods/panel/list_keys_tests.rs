@@ -12,17 +12,11 @@ use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
 use gpui_kit::{AppContext as _, Focusable as _, Keystroke, TestAppContext, VisualTestContext};
 use kube_runtime::watcher;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 const CONTEXT: &str = "list-keys-pods";
 
 fn temp_path() -> std::path::PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "fernrohr-pods-list-keys-{}-{n}.toml",
-        std::process::id()
-    ))
+    crate::util::test_paths::temp_path("pods-list-keys")
 }
 
 /// A connected Pods panel listing `web-1`, `web-2` and `web-3`, focused as a

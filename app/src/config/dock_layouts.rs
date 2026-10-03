@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn layouts_round_trip_by_context() {
-        let path = std::env::temp_dir().join("fernrohr-dock-layouts-test.json");
+        let path = crate::util::test_paths::temp_path("dock-layouts").with_extension("json");
         let mut layouts = DockLayouts::default();
         layouts.insert(
             "dev".into(),

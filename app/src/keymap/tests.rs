@@ -3,11 +3,8 @@
 use super::{KeymapConfig, bindings, load, resolve};
 use crate::command::{Command, CommandRegistry};
 use gpui_kit::actions;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 actions!(keymap_test, [TestAction]);
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// `keys` as GPUI spells it back on this platform - `cmd` reads `super` off
 /// macOS - for comparing with a keystroke's `unparse`.
@@ -18,8 +15,7 @@ fn spelled(keys: &str) -> String {
 }
 
 fn temp_path() -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("fernrohr-keymap-test-{n}.toml"))
+    crate::util::test_paths::temp_path("keymap")
 }
 
 fn registry() -> CommandRegistry {

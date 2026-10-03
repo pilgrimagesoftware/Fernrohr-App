@@ -222,13 +222,7 @@ mod tests {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_tunnels_path() -> std::path::PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "fernrohr-cluster-tunnel-test-{}-{n}.toml",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&path);
-        path
+        crate::util::test_paths::temp_path("cluster-tunnel")
     }
 
     /// Writes a throwaway kubeconfig whose contexts map 1:1 to `(context, server)`

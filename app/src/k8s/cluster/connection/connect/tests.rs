@@ -11,8 +11,6 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 
 fn two_context_kubeconfig() -> Kubeconfig {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let yaml = r#"
 apiVersion: v1
 kind: Config
@@ -39,8 +37,7 @@ users:
   - name: staging
     user: {}
 "#;
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!("fernrohr-connection-fixture-{n}.yaml"));
+    let path = crate::util::test_paths::temp_path("connection-fixture").with_extension("yaml");
     std::fs::write(&path, yaml).unwrap();
     Kubeconfig::read_from(&path).unwrap()
 }

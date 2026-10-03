@@ -33,9 +33,6 @@ use gpui_kit::{AppContext as _, TestAppContext, WeakEntity};
 use kube::{Client, Config};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn init(cx: &mut TestAppContext) {
     // Some of the transitions below observe a real (never-connecting) `kube::Client`,
@@ -57,13 +54,7 @@ fn test_client(cx: &mut TestAppContext) -> Client {
 /// A scratch `tunnels.toml` path, distinct per call and per test process - never
 /// this machine's real one.
 fn temp_tunnels_path(label: &str) -> PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "fernrohr-status-capsule-{label}-{}-{n}.toml",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&path);
-    path
+    crate::util::test_paths::temp_path(&format!("status-capsule-{label}"))
 }
 
 /// A `WeakEntity<MainWindow>` to satisfy [`StatusBarView::for_window`].

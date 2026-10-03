@@ -39,7 +39,8 @@ mod tests {
 
     impl ScratchDir {
         fn new(name: &str) -> Self {
-            let dir = env::temp_dir().join(format!("fernrohr-ssh-path-test-{name}"));
+            let dir =
+                crate::util::test_paths::temp_path(&format!("ssh-path-{name}")).with_extension("");
             fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }
