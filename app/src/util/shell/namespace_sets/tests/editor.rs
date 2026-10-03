@@ -78,7 +78,9 @@ async fn a_taken_name_and_an_empty_set_are_refused(cx: &mut TestAppContext) {
     type_text(&mut h, "pay");
     press(&mut h.vcx, "enter");
     press(&mut h.vcx, "shift-tab");
-    press(&mut h.vcx, "cmd-a");
+    // Select All is cmd-a on macOS and ctrl-a elsewhere: `secondary` is
+    // whichever this platform uses.
+    press(&mut h.vcx, "secondary-a");
     type_text(&mut h, "payments");
     press(&mut h.vcx, "enter");
     assert!(dialog_open(&mut h), "a taken name isn't saved");
