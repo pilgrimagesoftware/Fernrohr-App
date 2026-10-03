@@ -45,18 +45,22 @@ fn target_row(rows: usize, selected: Option<usize>, step: Step) -> Option<usize>
     })
 }
 
-/// Moves `table`'s selection one `step` and focuses the table, unless the table
-/// already has focus and a selection - its own handler steps then. Returns
-/// whether it moved, so the caller stops the action going further.
+/// Moves `table`'s selection one `step` and focuses the table, when focus is on
+/// `panel` itself or on the table with nothing selected. A table with focus and
+/// a selection steps itself; anything else focused inside the panel - a row's
+/// context menu, a picker - keeps Up/Down for its own list. Returns whether it
+/// moved, so the caller stops the action going further.
 pub fn step<D: TableDelegate>(
     table: &Entity<TableState<D>>,
+    panel: &FocusHandle,
     step: Step,
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
     let state = table.read(cx);
     let selected = state.selected_row();
-    if selected.is_some() && state.focus_handle(cx).is_focused(window) {
+    let table_focused = state.focus_handle(cx).is_focused(window);
+    if (table_focused && selected.is_some()) || (!table_focused && !panel.is_focused(window)) {
         return false;
     }
     let Some(row) = target_row(state.delegate().rows_count(cx), selected, step) else {

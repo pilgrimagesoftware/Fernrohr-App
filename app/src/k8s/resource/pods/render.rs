@@ -31,7 +31,7 @@ impl PodsPanel {
 
     fn step(&mut self, step: Step, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(table) = self.pod_table.clone()
-            && list_keys::step(&table, step, window, cx)
+            && list_keys::step(&table, &self.focus_handle, step, window, cx)
         {
             cx.stop_propagation();
         }
