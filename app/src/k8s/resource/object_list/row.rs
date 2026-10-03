@@ -11,6 +11,10 @@ use kube::api::DynamicObject;
 #[derive(Clone, Debug, PartialEq)]
 pub struct ObjectRow {
     pub uid: String,
+    /// The object's `resourceVersion`, which changes on every write - how a
+    /// detail panel tells that its object changed without the row holding
+    /// the whole object (`live-detail-panels`).
+    pub resource_version: String,
     pub name: String,
     /// `None` for a cluster-scoped object.
     pub namespace: Option<String>,
@@ -27,6 +31,7 @@ impl ObjectRow {
         let meta = &object.metadata;
         Self {
             uid: meta.uid.clone().unwrap_or_default(),
+            resource_version: meta.resource_version.clone().unwrap_or_default(),
             name: meta.name.clone().unwrap_or_default(),
             namespace: meta.namespace.clone(),
             created: meta.creation_timestamp.as_ref().map(|time| time.0),

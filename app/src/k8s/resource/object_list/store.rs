@@ -27,6 +27,9 @@ pub struct ObjectsTable {
     columns: Option<&'static KindColumns>,
     /// How the rows are kept current: a watch, polling, or not at all.
     mode: ListMode,
+    /// Whether a list has completed at least once, so an absent object means
+    /// gone rather than not listed yet (`live-detail-panels` D2).
+    synced: bool,
 }
 
 /// How a kind's rows are kept current (`unwatchable-kinds`).
@@ -54,6 +57,35 @@ impl ObjectsTable {
 
     pub fn rows(&self) -> &[ObjectRow] {
         self.index.items()
+    }
+
+    /// Whether the table has finished its first list.
+    pub fn synced(&self) -> bool {
+        self.synced
+    }
+
+    /// The row named `name` in `namespace` (`None` for a cluster-scoped kind),
+    /// preferring the one with `uid` when a delete and a recreate under the
+    /// same name briefly overlap.
+    pub fn find(
+        &self,
+        namespace: Option<&str>,
+        name: &str,
+        uid: Option<&str>,
+    ) -> Option<&ObjectRow> {
+        let mut named = self
+            .rows()
+            .iter()
+            .filter(|row| row.namespace.as_deref() == namespace && row.name == name);
+        let first = named.next()?;
+        if uid.is_none_or(|uid| first.uid == uid) {
+            return Some(first);
+        }
+        Some(
+            named
+                .find(|row| Some(row.uid.as_str()) == uid)
+                .unwrap_or(first),
+        )
     }
 
     /// Why the kind can't be listed, if the server refused it. A panel shows this
@@ -132,6 +164,7 @@ impl ObjectsTable {
                 for uid in stale {
                     self.index.apply_deleted(&uid);
                 }
+                self.synced = true;
             }
         }
     }

@@ -26,6 +26,7 @@ fn row(name: &str, namespace: Option<&str>, age_secs: i64, now: Timestamp) -> Li
     ListRow::new(
         ObjectRow {
             uid: format!("uid-{name}"),
+            resource_version: String::new(),
             name: name.into(),
             namespace: namespace.map(Into::into),
             created: Some(now - SignedDuration::from_secs(age_secs)),
@@ -195,6 +196,7 @@ fn deployment_row(name: &str, available: i64, now: Timestamp) -> ListRow {
     ListRow::new(
         ObjectRow {
             uid: format!("uid-{name}"),
+            resource_version: String::new(),
             name: name.into(),
             namespace: Some("staging".into()),
             created: Some(now),

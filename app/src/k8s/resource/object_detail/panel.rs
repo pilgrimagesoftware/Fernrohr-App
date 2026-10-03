@@ -3,6 +3,7 @@
 
 use super::commands::ToggleObjectView;
 use super::fetch::{ObjectDetailState, ObjectFetch, fetch_object};
+use super::live::LiveSource;
 use super::model::{ObjectSection, go_to_entries};
 use super::{metadata, restore, sections};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
@@ -34,6 +35,13 @@ pub struct ObjectDetailPanel {
     /// Whether a fetch is in flight, so a flapping connection can't race two
     /// results into `state`.
     fetching: bool,
+    /// The table changed while a fetch was in flight, so fetch again once it
+    /// lands - the in-flight one may predate the change.
+    refetch: bool,
+    /// The kind's shared watch the panel follows its object in (`live`).
+    pub(super) live: super::live::LiveSource,
+    /// The write of the object the panel last acted on from the table.
+    pub(super) followed: Option<super::live::Version>,
     /// Revealed Secret values, by key - only while shown, and never saved.
     pub(super) revealed:
         std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
@@ -48,7 +56,14 @@ impl ObjectDetailPanel {
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         let discovery = DiscoveryRegistry::kinds(cx, &scope.context_name);
-        Self::build(target, scope, connection, discovery, cx)
+        Self::build(
+            target,
+            scope,
+            connection,
+            discovery,
+            LiveSource::Pending,
+            cx,
+        )
     }
 
     /// Construction from an explicit connection and discovery result, so tests
@@ -62,7 +77,7 @@ impl ObjectDetailPanel {
         cx: &mut Context<Self>,
     ) -> Self {
         let discovery = cx.new(|_| DiscoveredKinds::loaded(kinds));
-        Self::build(target, scope, connection, discovery, cx)
+        Self::build(target, scope, connection, discovery, LiveSource::Off, cx)
     }
 
     fn build(
@@ -70,6 +85,7 @@ impl ObjectDetailPanel {
         scope: PanelScope,
         connection: Entity<ClusterConnection>,
         discovery: Entity<DiscoveredKinds>,
+        live: LiveSource,
         cx: &mut Context<Self>,
     ) -> Self {
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
@@ -83,6 +99,9 @@ impl ObjectDetailPanel {
             state: ObjectDetailState::Loading,
             viewing: DetailView::Structured,
             fetching: false,
+            refetch: false,
+            live,
+            followed: None,
             revealed: Default::default(),
             yaml_view: Default::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -91,11 +110,26 @@ impl ObjectDetailPanel {
         this
     }
 
-    /// Fetches the object once its cluster has a client. A no-op while a fetch
-    /// is in flight or the connection isn't up - the connection observer calls
-    /// this again once it is.
+    /// Once its cluster has a client, subscribes to the kind's shared watch the
+    /// panel follows its object in (`live`), and fetches the object. A no-op
+    /// while the connection isn't up - the connection observer calls this
+    /// again once it is.
     fn sync(&mut self, cx: &mut Context<Self>) {
+        let ConnectionState::Connected(client) = &self.connection.read(cx).state else {
+            return;
+        };
+        let client = client.clone();
+        self.follow_kind(client, cx);
+        if !self.fetching {
+            self.fetch(cx);
+        }
+    }
+
+    /// Fetches the object. One in flight already is followed by another once it
+    /// lands, so the result reflects the latest change asked for.
+    pub(super) fn fetch(&mut self, cx: &mut Context<Self>) {
         if self.fetching {
+            self.refetch = true;
             return;
         }
         let ConnectionState::Connected(client) = &self.connection.read(cx).state else {
@@ -118,6 +152,9 @@ impl ObjectDetailPanel {
                         Ok(ObjectFetch::NotFound) => ObjectDetailState::NotFound,
                         Err((message, detail)) => ObjectDetailState::Failed { message, detail },
                     };
+                    if std::mem::take(&mut this.refetch) {
+                        this.fetch(cx);
+                    }
                     cx.notify();
                 });
             })
