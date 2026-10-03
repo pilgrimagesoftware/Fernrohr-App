@@ -20,9 +20,10 @@ use kube_runtime::watcher;
 
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
 mod commands;
-use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, YAML_KEY};
+use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, WARP_ALL_KEY, YAML_KEY};
 pub use commands::{
-    DescribePod, PANEL_KEY_CONTEXT, ShowPodLogs, ShowPodYaml, WarpNamespace, register_commands,
+    DescribePod, PANEL_KEY_CONTEXT, ShowPodLogs, ShowPodYaml, WarpAllToNamespace, WarpNamespace,
+    register_commands,
 };
 
 mod panel;

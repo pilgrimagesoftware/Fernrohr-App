@@ -216,6 +216,28 @@ pub enum OpenedPanel {
 }
 
 impl OpenedPanel {
+    /// Scopes the panel to `namespaces`, if it's a namespace-scoped list - a Pods,
+    /// object, events or placeholder list. A detail or logs panel names its own
+    /// object and keeps it. Whether it did.
+    pub fn set_namespaces(&self, namespaces: Vec<String>, cx: &mut App) -> bool {
+        match self {
+            OpenedPanel::Pods(panel) => panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx)),
+            OpenedPanel::ObjectList(panel) => {
+                panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
+            }
+            OpenedPanel::Events(panel) => {
+                panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
+            }
+            OpenedPanel::Placeholder(panel) => {
+                panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
+            }
+            OpenedPanel::Logs(_) | OpenedPanel::PodDetail(_) | OpenedPanel::ObjectDetail(_) => {
+                return false;
+            }
+        }
+        true
+    }
+
     /// The dock id of the panel just built, without naming its type - what the
     /// window files it under and what `rescope` needs to find it again.
     pub fn panel_id(&self) -> PanelId {

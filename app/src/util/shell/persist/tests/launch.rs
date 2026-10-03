@@ -19,6 +19,7 @@ async fn launch_activates_the_first_saved_window(cx: &mut TestAppContext) {
     config::save(
         &path,
         &WorkspaceConfig {
+            namespace_defaults: Default::default(),
             windows: vec![layout(900.), layout(1000.)],
         },
     )

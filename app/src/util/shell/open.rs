@@ -92,6 +92,15 @@ impl MainWindow {
         // Set only when a panel was actually built, so the subscription below
         // is not made for a panel the dock already had.
         let mut watch_scope = None;
+        // A list asked for with no scope of its own starts on its context's
+        // default namespace, once Warp All to Namespace has set one.
+        let namespaces = match (&target, namespaces.is_empty()) {
+            (NavTarget::Kind(kind), true) if kind.namespaced => {
+                super::namespace_defaults::NamespaceDefaults::get(cx, &context_name)
+                    .unwrap_or_default()
+            }
+            _ => namespaces,
+        };
         let scope = PanelScope {
             connection_count,
             ..PanelScope::new(target.clone(), context_name)

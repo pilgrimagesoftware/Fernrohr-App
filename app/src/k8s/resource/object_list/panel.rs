@@ -347,8 +347,17 @@ impl ObjectListPanel {
         else {
             return;
         };
-        self.scope = self.scope.scoped_to(vec![namespace.clone()]);
-        cx.emit(ScopeEvent::NamespacesChanged(vec![namespace]));
+        self.set_namespaces(vec![namespace], cx);
+    }
+
+    /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
+    /// what Warp All to Namespace applies to every namespaced panel in a context.
+    pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
+        self.scope = self.scope.scoped_to(namespaces.clone());
+        cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
+            namespaces,
+        ));
+        cx.notify();
     }
 }
 

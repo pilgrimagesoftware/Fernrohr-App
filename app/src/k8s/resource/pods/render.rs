@@ -94,6 +94,11 @@ impl Render for PodsPanel {
                         .unwrap_or_else(|| {
                             Kbd::new(Keystroke::parse(NAMESPACE_KEY).expect("valid keybinding"))
                         });
+                let warp_all_key =
+                    Kbd::binding_for_action(&WarpAllToNamespace, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse(WARP_ALL_KEY).expect("valid keybinding"))
+                        });
                 let describe_key =
                     Kbd::binding_for_action(&DescribePod, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
@@ -121,6 +126,14 @@ impl Render for PodsPanel {
                             .items_center()
                             .child(namespace_key)
                             .child("Namespace"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(warp_all_key)
+                            .child("All panels"),
                     )
                     .child(
                         div()
@@ -202,6 +215,7 @@ impl Render for PodsPanel {
             .capture_action(cx.listener(Self::capture_select_down))
             .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(Self::on_action_warp_namespace))
+            .on_action(cx.listener(Self::on_action_warp_all_to_namespace))
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
