@@ -343,3 +343,25 @@ fn each_panel_with_a_picker_registers_pick_namespaces() {
         );
     }
 }
+
+/// Hover never moves the selection: with the pointer resting on one row,
+/// Enter still toggles the row the keyboard chose.
+#[gpui_kit::test]
+async fn enter_toggles_the_keyboard_row_not_the_hovered_one(cx: &mut TestAppContext) {
+    let (h, mut vcx) = harness(cx);
+    press(&mut vcx, "n");
+    type_text(&mut vcx, "pay");
+    press(&mut vcx, "down");
+    let _ = vcx.update_window(h.window.into(), |_, window, cx| window.render_frame(cx));
+    let resting = vcx
+        .debug_bounds(option_selector(None).leak())
+        .expect("All namespaces is drawn");
+    vcx.simulate_mouse_move(resting.center(), None, Modifiers::none());
+    vcx.run_until_parked();
+    press(&mut vcx, "enter");
+    assert_eq!(
+        scope(&mut vcx, &h),
+        ["payments"],
+        "the keyboard's row, not the hovered All namespaces"
+    );
+}

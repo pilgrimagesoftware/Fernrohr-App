@@ -20,6 +20,7 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// The pinned entry's label: picking it clears the selection.
@@ -80,17 +81,23 @@ pub fn checked_selector(entry: Option<&str>) -> String {
 /// The debug selector of the no-match message.
 pub const NO_MATCH_SELECTOR: &str = "namespace-filter-empty";
 
-/// The list's own state: its filter text and highlight. Cheap to clone - a
-/// handle on one shared state.
+/// The list's own state: its filter text and highlight, and the row the
+/// keyboard chose. Cheap to clone - a handle on one shared state.
+///
+/// `Command` moves its highlight under the pointer too, and confirms the
+/// highlight on Enter; hover must never move the selection, so Enter acts on
+/// the row the keyboard last chose (`selected`) rather than on the highlight.
 #[derive(Clone)]
 pub struct NamespaceFilter {
     command: Entity<CommandState>,
+    selected: Rc<Cell<Option<usize>>>,
 }
 
 impl NamespaceFilter {
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
         Self {
             command: cx.new(|cx| CommandState::new(window, cx)),
+            selected: Rc::new(Cell::new(Some(0))),
         }
     }
 
@@ -99,10 +106,12 @@ impl NamespaceFilter {
         self.command.read(cx).query(cx)
     }
 
-    /// Empties the filter, listing every namespace again.
+    /// Empties the filter, listing every namespace again, with the first
+    /// entry chosen.
     pub fn reset(&self, window: &mut Window, cx: &mut App) {
         self.command
             .update(cx, |command, cx| command.set_query("", window, cx));
+        self.selected.set(Some(0));
     }
 
     /// The filter input's focus handle: what a host focuses to type into it.
@@ -148,16 +157,33 @@ impl NamespaceFilter {
                 })
         });
         let selected = selected.to_vec();
+        let keyboard_row = self.selected.clone();
+        let confirmed_row = self.selected.clone();
         let command = Command::new(&self.command)
             .items(items)
             .filterable(false)
             .bordered(false)
             .placeholder("Filter namespaces…")
             .on_query(move |_query, window, cx| on_query(window, cx))
+            // Arrows, and typing (which moves the highlight back to the top),
+            // choose a row; hover moves only `Command`'s own highlight.
+            .on_select(move |index_path, window, _cx| {
+                if window.last_input_was_keyboard() {
+                    keyboard_row.set(Some(index_path.row));
+                }
+            })
             // Rows are positions in `listed`: with filtering off, `Command`
-            // reports the index among the items it was given.
+            // reports the index among the items it was given. Enter toggles
+            // the keyboard's row; a click toggles the row clicked.
             .on_confirm(move |index_path, window, cx| {
-                if let Some(entry) = listed.get(index_path.row) {
+                let row = if window.last_input_was_keyboard() {
+                    confirmed_row.get().unwrap_or(index_path.row)
+                } else {
+                    index_path.row
+                };
+                // A click chooses its row, as the arrows do.
+                confirmed_row.set(Some(row));
+                if let Some(entry) = listed.get(row) {
                     on_pick(toggled(&selected, entry.as_deref()), window, cx);
                 }
             });
