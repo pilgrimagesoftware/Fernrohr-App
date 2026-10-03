@@ -10,7 +10,7 @@ use crate::k8s::cluster::session::ClusterRegistry;
 use crate::ui::namespace_sets::store::NamespaceSets;
 use crate::ui::nav::OpenedPanel;
 use crate::util::shell::namespace_defaults::NamespaceDefaults;
-use crate::util::shell::test_support::press;
+use crate::util::shell::test_support::{press, temp_workspace_path};
 use crate::util::shell::{MainWindow, NavTarget, WindowMode, init};
 use gpui_kit::Focusable as _;
 use gpui_kit::component::Root;
@@ -37,21 +37,6 @@ pub(super) fn nodes() -> DiscoveredKind {
     kind("Node", "nodes", false)
 }
 
-/// A fresh temp file path for this process: `test_support`'s paths are
-/// reused across runs, so a `keymap.toml` an earlier run wrote - one with a
-/// rebound key - would be read back here.
-pub(super) fn fresh_path(name: &str) -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "fernrohr-namespace-sets-{name}-{}-{n}.toml",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&path);
-    path
-}
-
 pub(super) const CLUSTER: [&str; 4] = ["payments", "team-a", "team-b", "team-c"];
 
 pub(super) struct Harness {
@@ -76,7 +61,7 @@ pub(super) fn harness_with(
     keymap: &str,
 ) -> Harness {
     cx.executor().allow_parking();
-    let (workspace, keymap_path) = (fresh_path("workspace"), fresh_path("keymap"));
+    let (workspace, keymap_path) = (temp_workspace_path(), temp_workspace_path());
     if !keymap.is_empty() {
         std::fs::write(&keymap_path, keymap).unwrap();
     }

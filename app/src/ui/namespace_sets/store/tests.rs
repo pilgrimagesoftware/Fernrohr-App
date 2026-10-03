@@ -4,21 +4,9 @@
 use super::NamespaceSets;
 use gpui_kit::TestAppContext;
 
-fn fresh_path() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "fernrohr-namespace-sets-store-{}-{n}.toml",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&path);
-    path
-}
-
 #[gpui_kit::test]
 fn edits_survive_a_relaunch(cx: &mut TestAppContext) {
-    let path = fresh_path();
+    let path = crate::util::test_paths::temp_path("namespace-sets-store");
     cx.update(|cx| {
         NamespaceSets::init(path.clone(), cx);
         assert!(NamespaceSets::get(cx).sets.is_empty(), "first run");
