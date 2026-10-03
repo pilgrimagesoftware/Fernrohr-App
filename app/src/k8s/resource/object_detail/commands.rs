@@ -35,4 +35,28 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(HideSecretValues),
         menu: None,
     });
+    registry.register(Command {
+        id: "object_detail.copy_name",
+        title: "Object Detail: Copy Resource Name",
+        default_binding: crate::ui::copy::COPY_NAME_KEY,
+        context: Some(PANEL_KEY_CONTEXT),
+        action: Box::new(crate::ui::copy::CopyResourceName),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "object_detail.yaml_fold_all",
+        title: "Object Detail: Fold All YAML",
+        default_binding: crate::ui::yaml_view::FOLD_ALL_KEY,
+        context: Some(PANEL_KEY_CONTEXT),
+        action: Box::new(crate::ui::yaml_view::FoldAll),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "object_detail.yaml_unfold_all",
+        title: "Object Detail: Unfold All YAML",
+        default_binding: crate::ui::yaml_view::UNFOLD_ALL_KEY,
+        context: Some(PANEL_KEY_CONTEXT),
+        action: Box::new(crate::ui::yaml_view::UnfoldAll),
+        menu: None,
+    });
 }

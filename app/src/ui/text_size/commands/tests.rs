@@ -2,24 +2,17 @@
 //! `shell::init` keymap.
 
 use super::{DECREASE_COMMAND_ID, INCREASE_COMMAND_ID, RESET_COMMAND_ID};
-use crate::command::{CommandRegistry, MenuSlot, build_items};
+use crate::command::{CommandRegistry, build_items};
 use crate::config::ui::{TextSize, Theme as ThemePreference};
 use crate::keymap::{KeymapConfig, conflicts};
 use crate::ui::text_size::current;
 use crate::util::shell::MainWindow;
 use gpui_kit::{Keystroke, TestAppContext, VisualTestContext, WindowHandle};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const IDS: [&str; 3] = [INCREASE_COMMAND_ID, DECREASE_COMMAND_ID, RESET_COMMAND_ID];
 
 fn temp_path(name: &str) -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "fernrohr-text-size-cmd-{name}-{}-{n}.toml",
-        std::process::id()
-    ))
+    crate::util::test_paths::temp_path(&format!("text-size-cmd-{name}"))
 }
 
 /// The app as `main` starts it, with a picker window focused.
@@ -97,7 +90,7 @@ fn registry() -> CommandRegistry {
 fn all_three_are_in_the_view_menu_and_the_palette() {
     let registry = registry();
     let view: Vec<&str> = registry
-        .for_menu(MenuSlot::View)
+        .for_menu(crate::command::TopMenu::View)
         .iter()
         .map(|command| command.id)
         .collect();

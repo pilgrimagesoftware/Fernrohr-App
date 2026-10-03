@@ -10,16 +10,9 @@ use gpui_kit::component::Root;
 use gpui_kit::{
     Action, App, Entity, KeyContext, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn temp_path(name: &str) -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "fernrohr-settings-{name}-{}-{n}.toml",
-        std::process::id()
-    ))
+    crate::util::test_paths::temp_path(&format!("settings-{name}"))
 }
 
 /// The app as `main` starts it, with a picker window focused.
@@ -111,7 +104,7 @@ async fn cmd_comma_opens_one_settings_window(cx: &mut TestAppContext) {
     );
     let in_app_menu = cx.update(|cx| {
         cx.global::<CommandRegistry>()
-            .for_menu(crate::command::MenuSlot::App)
+            .for_menu(crate::command::TopMenu::App)
             .iter()
             .any(|command| command.id == "settings.open")
     });

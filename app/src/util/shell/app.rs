@@ -66,7 +66,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: TOGGLE_PALETTE_DEFAULT_BINDING,
         context: None,
         action: Box::new(ToggleCommandPalette),
-        menu: Some(crate::command::MenuSlot::View),
+        menu: Some(crate::command::MenuSlot::View(
+            crate::command::ViewGroup::Palette,
+        )),
     });
     registry.register(Command {
         id: SET_CONTEXT_TUNNEL_COMMAND_ID,
@@ -74,7 +76,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SET_CONTEXT_TUNNEL_DEFAULT_BINDING,
         context: None,
         action: Box::new(SetContextTunnel),
-        menu: Some(crate::command::MenuSlot::Context),
+        menu: Some(crate::command::MenuSlot::Context(
+            crate::command::ContextGroup::Tunnels,
+        )),
     });
     crate::ui::menu::register_commands(registry);
     nav::register_commands(registry);
@@ -82,8 +86,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pods::register_commands(registry);
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
+    crate::ui::status_bar::register_commands(registry);
+    crate::ui::theme::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
     crate::k8s::resource::object_list::register_commands(registry);
+    crate::k8s::resource::events_browser::register_commands(registry);
+    crate::ui::placeholder::register_commands(registry);
+    crate::ui::namespace_sets::register_commands(registry);
+    crate::ui::table_fit::register_commands(registry);
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
@@ -118,6 +128,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
     crate::ui::text_size::register_handlers(cx);
+    crate::ui::theme::register_handlers(cx);
     crate::ui::report_issue::register_handler(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
@@ -140,6 +151,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::object_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
     crate::k8s::resource::object_list::register_restore(cx);
+    crate::k8s::resource::events_browser::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
     cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(
@@ -166,3 +178,5 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod theme_tests;

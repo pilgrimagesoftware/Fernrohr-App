@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct WorkspaceConfig {
     pub windows: Vec<WindowLayout>,
+    /// Each context's default namespace scope (`warp-all-to-namespace`), set by
+    /// Warp All to Namespace: newly opened namespaced lists in that context start
+    /// scoped to it. A list, so a set of namespaces can be a default too. Absent
+    /// from older files, and for any context never warped.
+    pub namespace_defaults: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -80,8 +85,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_file_without_namespace_defaults_loads_with_none() {
+        let parsed: WorkspaceConfig = toml::from_str("windows = []\n").unwrap();
+        assert!(parsed.namespace_defaults.is_empty());
+    }
+
+    #[test]
+    fn namespace_defaults_round_trip() {
+        let config = WorkspaceConfig {
+            namespace_defaults: [("cluster-a".to_string(), vec!["team-a".to_string()])].into(),
+            ..WorkspaceConfig::default()
+        };
+        let text = toml::to_string(&config).unwrap();
+        let parsed: WorkspaceConfig = toml::from_str(&text).unwrap();
+        assert_eq!(parsed, config);
+    }
+
+    #[test]
     fn round_trips_through_toml() {
         let config = WorkspaceConfig {
+            namespace_defaults: Default::default(),
             windows: vec![WindowLayout {
                 width: 1200.0,
                 height: 900.0,
@@ -109,6 +132,7 @@ mod tests {
     #[test]
     fn round_trips_a_two_context_window() {
         let config = WorkspaceConfig {
+            namespace_defaults: Default::default(),
             windows: vec![WindowLayout {
                 contexts: vec!["kind-dev".into(), "staging".into()],
                 panels: vec![
@@ -150,6 +174,7 @@ mod tests {
     #[test]
     fn round_trips_a_window_whose_second_context_has_no_panels() {
         let config = WorkspaceConfig {
+            namespace_defaults: Default::default(),
             windows: vec![WindowLayout {
                 contexts: vec!["kind-dev".into(), "staging".into()],
                 panels: vec![PanelDescriptor::Pods {

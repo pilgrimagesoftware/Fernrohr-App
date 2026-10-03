@@ -4,6 +4,8 @@ pub mod discovery;
 pub mod discovery_registry;
 pub mod health;
 pub mod kubeconfig;
+#[cfg(test)]
+pub(crate) mod mock_api;
 pub mod namespaces;
 pub mod session;
 pub mod tunnel;

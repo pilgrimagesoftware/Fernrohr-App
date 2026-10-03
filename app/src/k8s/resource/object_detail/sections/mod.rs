@@ -8,6 +8,7 @@
 mod cluster;
 mod common;
 mod config;
+mod event;
 mod network;
 mod rbac;
 mod service_account;
@@ -70,6 +71,7 @@ pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec
         ("rbac.authorization.k8s.io", "ClusterRoleBinding") => {
             typed(object).map(|binding| rbac::cluster_role_binding(&binding))
         }
+        ("", "Event") => typed(object).map(|event| event::event(&event)),
         _ => None,
     }
     .unwrap_or_default()

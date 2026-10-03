@@ -9,14 +9,62 @@
 //! as `mono_font_family`. Both are reasserted on every appearance change
 //! alongside the theme mode, so a light/dark flip can't revert either field to
 //! gpui-component's own defaults.
+//!
+//! [`set`] changes the preference live (`toolbar-layout-with-gpui-kit` 2.1): every
+//! window redraws in it and it's saved to `ui.toml`. The status bar's switcher and
+//! the [`commands`] are its two routes.
 
 use crate::config::ui::Theme as ThemePreference;
 use crate::ui::typography::{BUNDLED_FONTS, FRAME_FAMILY};
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
 use std::borrow::Cow;
+use std::path::PathBuf;
+
+mod commands;
+
+pub(crate) use commands::{
+    FollowSystemTheme, UseDarkTheme, UseLightTheme, register_commands, register_handlers,
+};
 
 impl Global for ThemePreference {}
+
+/// The preference file a changed theme is saved to. Absent in tests that never
+/// call [`save_to`], so nothing is written.
+struct ThemeFile(PathBuf);
+
+impl Global for ThemeFile {}
+
+/// Remembers the preference file (`ui.toml`) so [`set`] saves there.
+pub fn save_to(path: PathBuf, cx: &mut App) {
+    cx.set_global(ThemeFile(path));
+}
+
+/// The current preference: the one last set, else `System`.
+pub fn current(cx: &App) -> ThemePreference {
+    cx.try_global::<ThemePreference>()
+        .copied()
+        .unwrap_or_default()
+}
+
+/// Makes `preference` the theme: applied to every open window at once - `System`
+/// to the OS's current appearance - and saved to the preference file, keeping the
+/// rest of it. A no-op when it's already current.
+pub fn set(preference: ThemePreference, cx: &mut App) {
+    if preference == current(cx) && cx.has_global::<ThemePreference>() {
+        return;
+    }
+    cx.set_global(preference);
+    apply(preference, None, cx);
+    cx.refresh_windows();
+    if let Some(path) = cx.try_global::<ThemeFile>().map(|file| file.0.clone()) {
+        let mut ui: crate::config::ui::UiConfig = crate::config::load(&path);
+        ui.theme = preference;
+        if let Err(error) = crate::config::save(&path, &ui) {
+            log::warn!("failed to save the theme to {}: {error}", path.display());
+        }
+    }
+}
 
 /// Monospace families tried, in order, when Monaco isn't installed - not
 /// bundled (Monaco is a macOS system font, and shipping a full monospace
@@ -49,28 +97,26 @@ pub fn init(preference: ThemePreference, cx: &mut App) {
     apply(preference, None, cx);
 }
 
-/// Re-applies the stored preference against `window` and, for `System`, wires
-/// a live observer so a mid-session OS appearance change is picked up without
-/// a restart. A no-op subscription for a fixed `Light`/`Dark` preference.
+/// Re-applies the stored preference against `window` and wires a live observer
+/// so a mid-session OS appearance change is picked up without a restart while
+/// the preference is `System` - checked when the appearance changes, not when
+/// the window opens, since [`set`] can switch to `System` later.
 ///
 /// Falls back to `System` when no preference global is set - a test that
 /// opens a window directly, skipping [`init`], gets the same default
 /// [`ThemePreference`] rather than a panic.
 pub fn watch_window(window: &mut Window, cx: &mut App) {
-    let preference = cx
-        .try_global::<ThemePreference>()
-        .copied()
-        .unwrap_or_default();
-    apply(preference, Some(window), cx);
-    if preference == ThemePreference::System {
-        window
-            .observe_window_appearance(|window, cx| {
-                Theme::sync_system_appearance(Some(window), cx);
-                apply_fonts(cx);
-                crate::ui::accent::refresh(cx);
-            })
-            .detach();
-    }
+    apply(current(cx), Some(window), cx);
+    window
+        .observe_window_appearance(|window, cx| {
+            if current(cx) != ThemePreference::System {
+                return;
+            }
+            Theme::sync_system_appearance(Some(window), cx);
+            apply_fonts(cx);
+            crate::ui::accent::refresh(cx);
+        })
+        .detach();
 }
 
 fn apply(preference: ThemePreference, window: Option<&mut Window>, cx: &mut App) {

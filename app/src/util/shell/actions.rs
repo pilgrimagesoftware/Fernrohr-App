@@ -3,6 +3,18 @@
 use super::*;
 
 impl MainWindow {
+    /// `resource.refresh`: re-runs discovery for the Resource panel's context.
+    pub(super) fn on_action_refresh_resources(
+        &mut self,
+        _: &crate::ui::resource_panel::RefreshResources,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let WindowMode::Workspace { resource_panel, .. } = &self.mode {
+            resource_panel.update(cx, |panel, cx| panel.refresh(cx));
+        }
+    }
+
     /// `resource.focus`: puts keyboard focus on this window's Resource panel.
     pub(super) fn on_action_focus_resources(
         &mut self,
@@ -27,6 +39,16 @@ impl MainWindow {
             resource_panel.update(cx, |panel, cx| panel.focus_list(window, cx));
             cx.notify();
         }
+    }
+
+    pub(super) fn on_action_show_events(
+        &mut self,
+        _: &crate::ui::nav::ShowEvents,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let kind = crate::k8s::cluster::discovery::DiscoveredKind::events();
+        self.open_target(NavTarget::Kind(kind), window, cx);
     }
 
     pub(super) fn on_action_show_pods(
@@ -126,3 +148,6 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod discovery_tests;

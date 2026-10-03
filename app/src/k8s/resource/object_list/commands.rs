@@ -3,7 +3,7 @@
 //! panel is on the focus path, a `keymap.toml` override, and its key through
 //! `keymap::bindings`. What each action does lives with the panel's handlers.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry};
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::nav::ObjectTarget;
 use gpui_kit::{Action, actions};
@@ -15,7 +15,8 @@ actions!(
         OpenSelected,
         DescribeSelected,
         ShowSelectedYaml,
-        WarpNamespace
+        WarpNamespace,
+        RefreshList
     ]
 );
 
@@ -47,6 +48,8 @@ pub(super) const NAMESPACE_KEY: &str = "w";
 /// every list answers them alike (`standard-resource-panels` 5.1).
 pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const YAML_KEY: &str = "y";
+/// Re-lists a polled kind now (`unwatchable-kinds`).
+pub(super) const REFRESH_KEY: &str = "r";
 
 const FILTER_COMMAND_ID: &str = "object_list.focus_filter";
 const OPEN_COMMAND_ID: &str = "object_list.open";
@@ -54,10 +57,11 @@ const NAMESPACE_COMMAND_ID: &str = "object_list.warp_namespace";
 const DESCRIBE_COMMAND_ID: &str = "object_list.describe";
 const YAML_COMMAND_ID: &str = "object_list.yaml";
 const FIT_COMMAND_ID: &str = "object_list.fit_columns";
+const REFRESH_COMMAND_ID: &str = "object_list.refresh";
 
-/// Registers the panel's shortcuts. Open, describe and YAML sit in Navigate, the
-/// namespace warp and fitting the columns in View (all like their Pods twins);
-/// focusing the filter is palette-only.
+/// Registers the panel's shortcuts. None is in the menu bar, like their Pods
+/// twins: the bar holds global commands only (`menu-organization`), and the
+/// palette offers these while a list panel is on the focus path.
 pub fn register_commands(registry: &mut CommandRegistry) {
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {
         registry.register(Command {
@@ -81,28 +85,28 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Open Selected Object",
         OPEN_KEY,
         Box::new(OpenSelected),
-        Some(MenuSlot::Navigate),
+        None,
     );
     register(
         DESCRIBE_COMMAND_ID,
         "List: Describe Selected Object",
         DESCRIBE_KEY,
         Box::new(DescribeSelected),
-        Some(MenuSlot::Navigate),
+        None,
     );
     register(
         YAML_COMMAND_ID,
         "List: Show Selected Object's YAML",
         YAML_KEY,
         Box::new(ShowSelectedYaml),
-        Some(MenuSlot::Navigate),
+        None,
     );
     register(
         NAMESPACE_COMMAND_ID,
         "List: Filter to Selected Object's Namespace",
         NAMESPACE_KEY,
         Box::new(WarpNamespace),
-        Some(MenuSlot::View),
+        None,
     );
     // The keyboard twin of a double-click on a header divider (`ui::table_fit`).
     register(
@@ -110,6 +114,20 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Fit Columns to Contents",
         crate::ui::table_fit::FIT_COLUMNS_KEY,
         Box::new(crate::ui::table_fit::FitAllColumns),
-        Some(MenuSlot::View),
+        None,
     );
+    // Re-lists a polled kind now; a watched kind is already current, so it
+    // does nothing there.
+    register(
+        REFRESH_COMMAND_ID,
+        "List: Refresh",
+        REFRESH_KEY,
+        Box::new(RefreshList),
+        None,
+    );
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "object_list.pick_namespaces",
+        "List: Pick Namespaces",
+        PANEL_KEY_CONTEXT,
+    ));
 }

@@ -29,6 +29,7 @@ fn kind(group: &str, kind: &str) -> DiscoveredKind {
         gvk: GroupVersionKind::gvk(group, "v1", kind),
         plural: format!("{}s", kind.to_lowercase()),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -301,7 +302,10 @@ async fn a_failed_discovery_is_reported_and_lists_nothing(cx: &mut TestAppContex
 
     window
         .update(cx, |panel, _window, cx| {
-            panel.state = ResourceState::Failed("connection refused".to_string());
+            panel.state = ResourceState::Failed {
+                message: "connection refused".to_string(),
+                detail: "connection refused".to_string(),
+            };
             cx.notify();
         })
         .unwrap();

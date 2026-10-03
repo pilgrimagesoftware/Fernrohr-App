@@ -5,7 +5,7 @@
 //! owns the command's handler, since only it knows which side its panel is on.
 
 use super::ResourceSide;
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, MenuSlot, ViewGroup};
 use crate::config::{self, ui::UiConfig};
 use gpui_kit::*;
 use std::path::{Path, PathBuf};
@@ -75,6 +75,6 @@ pub(super) fn register_commands(registry: &mut CommandRegistry) {
         default_binding: "",
         context: None,
         action: Box::new(SaveResourceSide),
-        menu: Some(MenuSlot::View),
+        menu: Some(MenuSlot::View(ViewGroup::ResourcePanel)),
     });
 }

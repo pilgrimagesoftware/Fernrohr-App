@@ -11,7 +11,7 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use crate::ui::placeholder::PlaceholderPanel;
 use gpui_kit::base::dock::PanelView;
-use gpui_kit::component::dock::{PanelInfo, panel_handle, register_panel};
+use gpui_kit::component::dock::{panel_handle, register_panel};
 use gpui_kit::*;
 use kube::core::GroupVersionKind;
 use serde_json::{Value, json};
@@ -20,10 +20,7 @@ use std::sync::Arc;
 /// Registers the dock's restore for saved list panels.
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "ObjectList", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("ObjectList layout state must be a panel");
-        };
-        restore(state, cx)
+        crate::ui::unrestored::restore_with(&context, cx, restore)
     });
 }
 
@@ -69,6 +66,7 @@ pub(crate) fn from_state(state: &Value) -> Option<SavedList> {
             ),
             plural: state["plural"].as_str()?.to_string(),
             namespaced: state["namespaced"].as_bool()?,
+            verbs: Default::default(),
         },
         context_name: state["context_name"].as_str()?.to_string(),
         namespaces: serde_json::from_value(state["namespaces"].clone()).unwrap_or_default(),
@@ -89,9 +87,9 @@ pub(crate) fn restores_as_placeholder(
 
 /// Rebuilds the panel `state` describes: a list panel with its saved namespaces and
 /// column layout, or - for a kind its cluster no longer serves - the placeholder.
-pub(crate) fn restore(state: &Value, cx: &mut App) -> Arc<dyn PanelView> {
-    let saved =
-        from_state(state).expect("a list panel's layout state must name its kind and cluster");
+/// `Err` for state that doesn't name its kind and cluster.
+pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>, String> {
+    let saved = from_state(state).ok_or("its state doesn't name its kind and cluster")?;
     let scope = PanelScope::new(
         NavTarget::Kind(saved.kind.clone()),
         saved.context_name.clone(),
@@ -99,13 +97,15 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Arc<dyn PanelView> {
     .scoped_to(saved.namespaces.clone());
     let discovery = DiscoveryRegistry::kinds(cx, &saved.context_name);
     if restores_as_placeholder(&saved.kind, discovery.read(cx).kinds()) {
-        return panel_handle(cx.new(|cx| PlaceholderPanel::new(saved.kind, scope, cx)));
+        return Ok(panel_handle(
+            cx.new(|cx| PlaceholderPanel::new(saved.kind, scope, cx)),
+        ));
     }
-    panel_handle(cx.new(|cx| {
+    Ok(panel_handle(cx.new(|cx| {
         let mut panel = ObjectListPanel::new(saved.kind, scope, cx);
         panel.initial_layout = saved.columns;
         panel
-    }))
+    })))
 }
 
 #[cfg(test)]

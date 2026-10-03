@@ -80,6 +80,7 @@ async fn a_nested_split_round_trips_its_sizes(cx: &mut TestAppContext) {
                             gvk: kube::core::GroupVersionKind::gvk("", "v1", plural),
                             plural: plural.into(),
                             namespaced: true,
+                            verbs: Default::default(),
                         },
                     ),
                     "kind-dev".into(),

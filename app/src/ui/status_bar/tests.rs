@@ -155,6 +155,7 @@ async fn elapsed_time_advances_and_escalates_with_the_injected_clock(cx: &mut Te
         cx.new(|cx| {
             StatusBarView::new_with_clock(
                 vec!["kind-dev".to_string()],
+                gpui_kit::WeakEntity::new_invalid(),
                 Clock::Fake(clock.clone()),
                 cx,
             )

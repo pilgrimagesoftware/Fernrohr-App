@@ -34,6 +34,8 @@ pub struct ObjectListPanel {
     pub(super) namespaces: Entity<NamespaceList>,
     pub(super) subscribed: bool,
     pub(super) focus_handle: FocusHandle,
+    /// The title bar's namespace picker, made on first render.
+    pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
     /// Built on first render, which is the first time there's a `Window`.
     pub(super) table: Option<Entity<TableState<ObjectTableDelegate>>>,
     pub(super) filter: Option<Entity<InputState>>,
@@ -73,6 +75,7 @@ impl ObjectListPanel {
         let mut this = Self {
             kind,
             scope,
+            namespace_picker: Default::default(),
             connection: connection.clone(),
             objects: cx.new(|_| ObjectsTable::default()),
             namespaces,
@@ -103,6 +106,7 @@ impl ObjectListPanel {
         Self {
             kind,
             scope,
+            namespace_picker: Default::default(),
             connection,
             objects,
             namespaces: cx.new(|_| NamespaceList::empty()),
@@ -347,8 +351,17 @@ impl ObjectListPanel {
         else {
             return;
         };
-        self.scope = self.scope.scoped_to(vec![namespace.clone()]);
-        cx.emit(ScopeEvent::NamespacesChanged(vec![namespace]));
+        self.set_namespaces(vec![namespace], cx);
+    }
+
+    /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
+    /// what Warp All to Namespace applies to every namespaced panel in a context.
+    pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
+        self.scope = self.scope.scoped_to(namespaces.clone());
+        cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
+            namespaces,
+        ));
+        cx.notify();
     }
 }
 

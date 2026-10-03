@@ -28,6 +28,8 @@ const HOVER_ALPHA: f32 = 0.10;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
     Good,
+    /// In progress, not a problem yet - a Pending pod, a waiting container.
+    Info,
     Warning,
     Bad,
     Neutral,
@@ -69,6 +71,7 @@ pub fn status(tone: Tone, cx: &App) -> Hsla {
     let theme = cx.theme();
     let colour = match tone {
         Tone::Good => theme.success,
+        Tone::Info => theme.info,
         Tone::Warning => theme.warning,
         Tone::Bad => theme.danger,
         Tone::Neutral => return theme.muted_foreground,

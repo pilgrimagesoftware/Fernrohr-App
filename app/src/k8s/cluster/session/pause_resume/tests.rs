@@ -149,6 +149,7 @@ async fn health_reads_paused_on_a_kind_other_than_pods(cx: &mut TestAppContext) 
             gvk: kube::core::GroupVersionKind::gvk("", "v1", "Event"),
             plural: "events".into(),
             namespaced: true,
+            verbs: Default::default(),
         });
         session.watchers.subscribe(events.clone());
         session

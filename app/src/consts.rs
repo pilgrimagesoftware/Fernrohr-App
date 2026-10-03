@@ -39,6 +39,17 @@ pub(crate) const STATUS_ESCALATE_AFTER: Duration = Duration::from_secs(30);
 /// with a problem to show.
 pub(crate) const STATUS_TICK_INTERVAL: Duration = Duration::from_secs(1);
 
+/// `unwatchable-kinds`: how often a list panel re-lists a kind it can't watch -
+/// one whose discovery has no `watch` verb, or whose list carries no
+/// `resourceVersion` to start a watch from (`componentstatuses`).
+pub(crate) const LIST_POLL_INTERVAL: Duration = Duration::from_secs(30);
+
+/// How long API discovery waits for one API group before reporting it unavailable
+/// (`discovery-resilience`). kube retries a 503 with a backoff that can run for
+/// minutes, and the other groups' kinds wait for the slowest group, so a dead
+/// aggregated API must not hold the Resource panel's list back longer than this.
+pub(crate) const DISCOVERY_GROUP_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// How long a window must stop moving or resizing before its layout is saved
 /// (Fernrohr#51). A drag fires a bounds change per frame; this coalesces them
 /// into one write, while keeping a kill or crash from losing the layout.
@@ -90,3 +101,28 @@ pub(crate) const DEFAULT_MONO_FONT_SIZE: f32 = 13.;
 /// change's new sizes before the old ones age out. Asking for one more size
 /// releases the oldest.
 pub(crate) const ICON_RASTER_SIZES: usize = 12;
+
+/// How often a pod's Events tab re-checks its time window, so events age out of
+/// it while the panel sits open (`pod-events-time-window` D2).
+pub(crate) const POD_EVENTS_WINDOW_TICK: Duration = Duration::from_secs(60);
+
+/// How long a quick look's selection must rest on a pod before the popover
+/// restarts its event watch there, so scanning with Up/Down doesn't churn a
+/// watch per row (`pod-quick-look` D2). The pod's fields follow at once.
+pub(crate) const QUICK_LOOK_EVENTS_DEBOUNCE: Duration = Duration::from_millis(250);
+
+/// The quick look's width bounds (`0-quick-look-layout`): as wide as its
+/// fields need, at least `QUICK_LOOK_MIN_WIDTH`, and at most this share of the
+/// window, itself capped at `QUICK_LOOK_MAX_WIDTH` - a long value past that
+/// ellipsizes rather than widening the popover off the window.
+pub(crate) const QUICK_LOOK_MIN_WIDTH: f32 = 320.;
+pub(crate) const QUICK_LOOK_MAX_WIDTH: f32 = 720.;
+pub(crate) const QUICK_LOOK_MAX_WIDTH_FRACTION: f32 = 0.6;
+
+/// How often a Terminating pod's detail panel re-renders, so its grace period
+/// counts down by the second (`live-detail-panels`).
+pub(crate) const TERMINATING_COUNTDOWN_TICK: Duration = Duration::from_secs(1);
+
+/// How opaque a detail panel draws a deleted object's last known state, kept
+/// on screen below its "deleted at" banner (`live-detail-panels`).
+pub(crate) const STALE_OPACITY: f32 = 0.6;

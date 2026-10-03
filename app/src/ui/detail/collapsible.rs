@@ -59,14 +59,24 @@ impl Collapsible {
         let has_toggle = preview.is_some();
         let shown = match preview {
             Some(preview) if !self.expanded => preview,
-            _ => text,
+            _ => text.clone(),
         };
+        // The key and the whole value are copyable (`ui::copy`) - the value in
+        // full even while its preview shows.
+        let copy_key_id = format!("copy {}", self.key_id);
+        let copy_value_id = format!("copy {}", self.value_id);
         let label = div()
             .id(self.key_id)
             .text_sm()
             .text_color(theme.muted_foreground)
             .child(key.to_string())
             .test_support();
+        // After the Expand control, which keeps its place right beside the key.
+        let copy_key = crate::ui::copy::copy_button(
+            ElementId::Name(copy_key_id.clone().into()),
+            key.to_string(),
+            copy_key_id.clone(),
+        );
         let toggle = has_toggle.then(|| {
             let on_toggle = self.on_toggle;
             Button::new(self.toggle_id)
@@ -81,25 +91,34 @@ impl Collapsible {
                 .ghost()
                 .on_click(move |_event, window, cx| on_toggle(window, cx))
         });
-        let value = div()
-            .id(self.value_id)
-            .code_font(cx)
-            .text_sm()
-            .role(accesskit::Role::Label)
-            .aria_value(shown.clone())
-            .child(shown)
-            .test_support();
+        let value = crate::ui::copy::copyable(
+            div()
+                .id(self.value_id)
+                .flex_1()
+                .min_w_0()
+                .code_font(cx)
+                .text_sm()
+                .role(accesskit::Role::Label)
+                .aria_value(shown.clone())
+                .child(shown)
+                .test_support(),
+            ElementId::Name(copy_value_id.clone().into()),
+            text,
+            copy_value_id,
+        );
         div()
             .data_font()
             .flex()
             .flex_col()
             .child(
                 div()
+                    .group(copy_key_id)
                     .flex()
                     .items_center()
                     .gap(crate::ui::space::spacing(cx).control_gap)
                     .child(label)
-                    .children(toggle),
+                    .children(toggle)
+                    .child(copy_key),
             )
             .child(value)
             .into_any_element()

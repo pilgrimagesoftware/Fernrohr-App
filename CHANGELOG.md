@@ -1,4 +1,64 @@
 
+## 0.3.0 - 2026-10-03
+
+### <!-- 0 -->🚀 Features
+- Merge the context bar into the status bar as capsules
+- Theme switcher in the status bar
+- A gpui-kit toolbar with the app icon and name as the top bar
+- Group the Context and View menus; keep Navigate global-only
+- Poll kinds that can't be watched; say when a kind can't be listed
+- Give an Event its own section
+- Browse a context's events, live, filtered and searchable
+- Live Events tab from a per-pod event watch
+- A time window on the Events tab
+- Surface recent warnings on the Overview tab
+- Managed fields as keyboard-reachable disclosure rows
+- A YAML view that scrolls and folds, in both detail panels
+- Copy the resource name and copyable values
+- Shorten large label and annotation values to a preview
+- Copy a shortened metadata value from the keyboard
+- A per-context default namespace for new lists
+- Warp every list in a context to the selected pod's namespace
+- Filterable, keyboard-operable namespace picker
+- Follow the pod live through the shared Pods watch
+- Follow the object live through its kind's shared watch
+- Follow deletion live - Terminating, deleted, replaced
+- Named namespace sets in namespace-sets.toml
+- Named namespace sets: switch, apply to context, create, edit, remove
+- Quick look popover and row context menu
+- Quick look reports deletion in the detail panels' words
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Let the status bar's capsules scroll when they overflow
+- Ship the full icon catalog so the theme switcher draws
+- Discover API groups one by one, and let the user refresh
+- Refresh link-following's discovery with the Resource panel's
+- Restore unreadable saved panels as placeholders, not panics
+- Show init containers' own state; colour states by severity
+- Enter in the namespace list toggles the keyboard's row, not the hovered one
+- Leave Up/Down to whatever has focus inside a list panel
+- Keep the quick look's values inside it and pair its footer keys
+
+
+### <!-- 2 -->🚜 Refactor
+- Move the Pods table's column model into its own module
+
+
+### <!-- 6 -->🧪 Testing
+- Confirm Disconnect from the keyboard in the capsule tests
+- Select the set name with the platform's Select All
+- Give shell tests scratch paths no earlier run can have left a file at
+- Move every test's private temp-path helper onto util::test_paths
+- Space opens the pod quick look in the real window
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Install GUI dev packages on the release runner
+- Merge master into develop after v0.2.0
+
+
+
 ## 0.2.0 - 2026-10-02
 
 ### <!-- 0 -->🚀 Features

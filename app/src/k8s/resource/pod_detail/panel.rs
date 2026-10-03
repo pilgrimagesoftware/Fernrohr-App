@@ -6,7 +6,7 @@ use super::commands::{
     SelectContainersTab, SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab,
     SelectVolumesTab, ToggleDetailView,
 };
-use super::fetch::{PodDetailState, PodEvents, PodFetch, fetch_pod};
+use super::fetch::{PodDetailState, PodFetch, fetch_pod};
 use super::fields::pod_fields;
 use super::model::{DetailSection, DetailView, PodField};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
@@ -24,28 +24,22 @@ use k8s_openapi::api::core::v1::Pod;
 
 pub fn register_restore(cx: &mut gpui_kit::App) {
     register_panel(cx, "PodDetail", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("PodDetail layout state must be a panel");
-        };
-        let context_name = state["context_name"]
-            .as_str()
-            .expect("PodDetail layout state must name its cluster")
-            .to_string();
-        let namespace = state["pod_namespace"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
-        let name = state["pod_name"].as_str().unwrap_or_default().to_string();
-        let target = NavTarget::pod(namespace.clone(), name.clone());
-        let scope = PanelScope::new(target, context_name);
-        panel_handle(cx.new(|cx| {
-            PodDetailPanel::new(
-                PodRef { namespace, name },
-                scope,
-                DetailView::Structured,
-                cx,
-            )
-        }))
+        use crate::ui::unrestored::{required_str, restore_with};
+        restore_with(&context, cx, |state, cx| {
+            let context_name = required_str(state, "context_name")?.to_string();
+            let namespace = required_str(state, "pod_namespace")?.to_string();
+            let name = required_str(state, "pod_name")?.to_string();
+            let target = NavTarget::pod(namespace.clone(), name.clone());
+            let scope = PanelScope::new(target, context_name);
+            Ok(panel_handle(cx.new(|cx| {
+                PodDetailPanel::new(
+                    PodRef { namespace, name },
+                    scope,
+                    DetailView::Structured,
+                    cx,
+                )
+            })))
+        })
     });
 }
 
@@ -71,9 +65,23 @@ pub struct PodDetailPanel {
     /// Absent means collapsed - the default for a long list the user came for
     /// something else in.
     pub(super) open_sections: std::collections::HashSet<String>,
+    /// The YAML view's folds and scroll position.
+    pub(super) yaml_view: crate::ui::yaml_view::YamlViewState,
     /// Whether a fetch is in flight, so a connection that flaps does not race
     /// two results into `state`.
     pub(super) fetching: bool,
+    /// The shared Pods watch the panel follows its pod in, once subscribed.
+    pub(super) live: super::live::LiveSource,
+    /// That the pod was deleted (its last state kept, stale) or replaced by a
+    /// new one of the same name. Terminating is read off the pod itself.
+    pub(super) notice: Option<crate::ui::detail::lifecycle::Lifecycle>,
+    /// Re-renders every second while the pod is Terminating, so the grace
+    /// period counts down.
+    pub(super) countdown: Option<Task<()>>,
+    /// The pod's live events, once it has loaded (`live_events`).
+    pub(super) events: Option<super::live_events::PodEventsWatch>,
+    /// How far back the Events tab looks (`pod-events-time-window` 2.1).
+    pub(super) events_window: crate::config::ui::PodEventsWindow,
     /// The Configuration tab's cards and revealed Secret values. Revealed
     /// values live only here, and only until hidden, the tab is left, or the
     /// panel closes.
@@ -101,7 +109,13 @@ impl PodDetailPanel {
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
+            yaml_view: Default::default(),
             fetching: false,
+            live: super::live::LiveSource::Pending,
+            notice: None,
+            countdown: None,
+            events: None,
+            events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
@@ -132,27 +146,37 @@ impl PodDetailPanel {
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
+            yaml_view: Default::default(),
             fetching: false,
+            live: super::live::LiveSource::Off,
+            notice: None,
+            countdown: None,
+            events: None,
+            events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
         this
     }
 
-    /// Fetches the pod once its cluster has a client. A no-op while a fetch is
+    /// Once its cluster has a client, subscribes to the shared Pods watch the
+    /// panel follows its pod in (`live`), and fetches the pod for the first
+    /// paint unless that watch has already listed it. A no-op while a fetch is
     /// in flight or the connection is not up yet - the observer on the
     /// connection calls this again once it is.
     pub(super) fn sync(&mut self, cx: &mut Context<Self>) {
-        if self.fetching {
-            return;
-        }
         let ConnectionState::Connected(client) = &self.connection.read(cx).state else {
             return;
         };
         let client = client.clone();
+        self.follow_pods(client.clone(), cx);
+        if self.fetching || self.live_synced(cx) {
+            return;
+        }
         let namespace = self.pod.namespace.clone();
         let name = self.pod.name.clone();
         self.fetching = true;
+        let watch_client = client.clone();
         let rx = crate::runtime::spawn_stream(cx, 1, move |tx| async move {
             let _ = tx.send(fetch_pod(client, namespace, name).await).await;
         });
@@ -160,8 +184,16 @@ impl PodDetailPanel {
             crate::runtime::drain(rx, |result| {
                 let _ = this.update(cx, |this, cx| {
                     this.fetching = false;
+                    // The watch listed the pod while this was in flight: its
+                    // copy is at least as new, and already shown.
+                    if this.live_synced(cx) {
+                        return;
+                    }
                     this.state = match result {
-                        Ok(PodFetch::Found(pod, events)) => PodDetailState::Loaded(pod, events),
+                        Ok(PodFetch::Found(pod)) => {
+                            this.watch_events(&pod, watch_client.clone(), cx);
+                            PodDetailState::Loaded(pod)
+                        }
                         Ok(PodFetch::NotFound) => PodDetailState::NotFound,
                         Err((message, detail)) => PodDetailState::Failed { message, detail },
                     };
@@ -198,7 +230,7 @@ impl PodDetailPanel {
     /// that need a loaded panel without a cluster (the window's link tests).
     #[cfg(test)]
     pub(crate) fn test_set_loaded(&mut self, pod: Pod, cx: &mut Context<Self>) {
-        self.state = PodDetailState::Loaded(Box::new(pod), Ok(Vec::new()));
+        self.state = PodDetailState::Loaded(Box::new(pod));
         cx.notify();
     }
 
@@ -242,16 +274,7 @@ impl PodDetailPanel {
     /// The loaded pod, if the fetch has landed. Read by tests and by render.
     pub(super) fn pod(&self) -> Option<&Pod> {
         match &self.state {
-            PodDetailState::Loaded(pod, _) => Some(pod),
-            _ => None,
-        }
-    }
-
-    /// The events naming this pod, once the fetch has landed - or why they
-    /// could not be listed. `None` until then.
-    pub(super) fn events(&self) -> Option<&PodEvents> {
-        match &self.state {
-            PodDetailState::Loaded(_, events) => Some(events),
+            PodDetailState::Loaded(pod) => Some(pod),
             _ => None,
         }
     }

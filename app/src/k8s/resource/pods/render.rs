@@ -31,7 +31,7 @@ impl PodsPanel {
 
     fn step(&mut self, step: Step, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(table) = self.pod_table.clone()
-            && list_keys::step(&table, step, window, cx)
+            && list_keys::step(&table, &self.focus_handle, step, window, cx)
         {
             cx.stop_propagation();
         }
@@ -89,10 +89,26 @@ impl Render for PodsPanel {
                     })
                     .collect();
                 let table = self.sync_table(items, window, cx);
+                // A quick look whose pod has no row - deleted while open - can't
+                // hang below it, so it sits at the top of the table instead.
+                let unanchored = self.quick_look.clone().filter(|popover| {
+                    let target = &popover.read(cx).target;
+                    table.read(cx).delegate().index_of(target).is_none()
+                });
                 let namespace_key =
                     Kbd::binding_for_action(&WarpNamespace, Some(PANEL_KEY_CONTEXT), window)
                         .unwrap_or_else(|| {
                             Kbd::new(Keystroke::parse(NAMESPACE_KEY).expect("valid keybinding"))
+                        });
+                let warp_all_key =
+                    Kbd::binding_for_action(&WarpAllToNamespace, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse(WARP_ALL_KEY).expect("valid keybinding"))
+                        });
+                let quick_look_key =
+                    Kbd::binding_for_action(&QuickLook, Some(PANEL_KEY_CONTEXT), window)
+                        .unwrap_or_else(|| {
+                            Kbd::new(Keystroke::parse(QUICK_LOOK_KEY).expect("valid keybinding"))
                         });
                 let describe_key =
                     Kbd::binding_for_action(&DescribePod, Some(PANEL_KEY_CONTEXT), window)
@@ -109,6 +125,17 @@ impl Render for PodsPanel {
                         .unwrap_or_else(|| {
                             Kbd::new(Keystroke::parse(YAML_KEY).expect("valid keybinding"))
                         });
+                let pick_key = Kbd::binding_for_action(
+                    &crate::ui::namespace_picker::PickNamespaces,
+                    Some(PANEL_KEY_CONTEXT),
+                    window,
+                )
+                .unwrap_or_else(|| {
+                    Kbd::new(
+                        Keystroke::parse(crate::ui::namespace_picker::PICK_NAMESPACES_KEY)
+                            .expect("valid keybinding"),
+                    )
+                });
                 let shortcuts = div()
                     .flex()
                     .gap(space.control_gap)
@@ -119,8 +146,32 @@ impl Render for PodsPanel {
                             .flex()
                             .gap_1()
                             .items_center()
+                            .child(quick_look_key)
+                            .child("Quick look"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
                             .child(namespace_key)
                             .child("Namespace"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(warp_all_key)
+                            .child("All panels"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_1()
+                            .items_center()
+                            .child(pick_key)
+                            .child("Pick namespaces"),
                     )
                     .child(
                         div()
@@ -155,6 +206,12 @@ impl Render for PodsPanel {
                         div()
                             .flex_1()
                             .min_h_0()
+                            .children(unanchored.map(|popover| {
+                                deferred(
+                                    anchored().snap_to_window_with_margin(px(8.)).child(popover),
+                                )
+                                .with_priority(1)
+                            }))
                             .child(pods_table::data_table(&table, cx)),
                     )
                     .child(
@@ -170,14 +227,19 @@ impl Render for PodsPanel {
         };
 
         let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        let namespace_bar =
-            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
+        let namespaces = self.namespaces.read(cx).names().to_vec();
+        let namespace_bar = self.namespace_picker.element(
+            &self.scope,
+            &namespaces,
+            move |namespaces, cx| {
                 let _ = this.update(cx, |this: &mut Self, cx| {
                     this.scope = this.scope.scoped_to(namespaces.clone());
                     cx.emit(ScopeEvent::NamespacesChanged(namespaces));
                 });
-            });
+            },
+            window,
+            cx,
+        );
         // "Context: <name>" on the left, the namespace picker (when there is one)
         // on the right, in one header row.
         let header = div()
@@ -195,17 +257,33 @@ impl Render for PodsPanel {
             ))
             .children(namespace_bar);
 
+        // While a quick look is open its own keys (Escape, Enter) apply too.
+        let mut key_context = KeyContext::default();
+        key_context.add(PANEL_KEY_CONTEXT);
+        if self.quick_look.is_some() {
+            key_context.add(QUICK_LOOK_KEY_CONTEXT);
+        }
         div()
             .size_full()
-            .key_context(PANEL_KEY_CONTEXT)
+            .key_context(key_context)
             .track_focus(&self.focus_handle)
+            .capture_action(cx.listener(Self::capture_cancel))
             .capture_action(cx.listener(Self::capture_select_down))
             .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(Self::on_action_warp_namespace))
+            .on_action(cx.listener(Self::on_action_warp_all_to_namespace))
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.namespace_picker.open(window, cx)
+                },
+            ))
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
             .on_action(cx.listener(Self::on_action_fit_columns))
+            .on_action(cx.listener(Self::on_action_quick_look))
+            .on_action(cx.listener(Self::on_action_close_quick_look))
+            .on_action(cx.listener(Self::on_action_open_quick_look_details))
             .child(
                 div()
                     .size_full()

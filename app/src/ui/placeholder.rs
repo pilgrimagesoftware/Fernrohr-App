@@ -18,11 +18,23 @@ use gpui_kit::*;
 /// (`standard-resource-panels` D4).
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Resource", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("Resource layout state must be a panel");
-        };
-        crate::k8s::resource::object_list::restore::restore(state, cx)
+        crate::ui::unrestored::restore_with(&context, cx, |state, cx| {
+            crate::k8s::resource::object_list::restore::restore(state, cx)
+        })
     });
+}
+
+/// The placeholder's key context: its one command, Pick Namespaces, acts
+/// only while it is on the focus path.
+pub const PANEL_KEY_CONTEXT: &str = "PlaceholderPanel";
+
+/// Registers the placeholder's command: Pick Namespaces.
+pub fn register_commands(registry: &mut crate::command::CommandRegistry) {
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "placeholder.pick_namespaces",
+        "Placeholder: Pick Namespaces",
+        PANEL_KEY_CONTEXT,
+    ));
 }
 
 /// A dock panel standing in for a kind its cluster no longer serves: a saved list
@@ -32,9 +44,20 @@ pub struct PlaceholderPanel {
     scope: PanelScope,
     namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
     focus_handle: FocusHandle,
+    /// The title bar's namespace picker, made on first render.
+    namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
 }
 
 impl PlaceholderPanel {
+    /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
+    /// what Warp All to Namespace applies to every namespaced panel in a context.
+    pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
+        self.scope = self.scope.scoped_to(namespaces.clone());
+        cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
+            namespaces,
+        ));
+        cx.notify();
+    }
     pub fn new(kind: DiscoveredKind, scope: PanelScope, cx: &mut Context<Self>) -> Self {
         let namespaces =
             crate::k8s::cluster::namespaces::NamespaceRegistry::list(cx, &scope.context_name);
@@ -61,6 +84,7 @@ impl PlaceholderPanel {
         Self {
             kind,
             scope,
+            namespace_picker: Default::default(),
             namespaces,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         }
@@ -84,19 +108,26 @@ impl EventEmitter<PanelEvent> for PlaceholderPanel {}
 impl EventEmitter<ScopeEvent> for PlaceholderPanel {}
 
 impl Render for PlaceholderPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let raised = crate::ui::style::surface_raised(cx);
         let space = crate::ui::space::spacing(cx);
         let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names();
-        let namespace_bar =
-            panel_title::namespace_picker(&self.scope, namespaces, move |namespaces, cx| {
-                let _ = this.update(cx, |this: &mut Self, cx| {
-                    this.scope = this.scope.scoped_to(namespaces.clone());
-                    cx.emit(ScopeEvent::NamespacesChanged(namespaces));
-                });
-            })
+        let namespaces = self.namespaces.read(cx).names().to_vec();
+        let namespace_bar = self
+            .namespace_picker
+            .element(
+                &self.scope,
+                &namespaces,
+                move |namespaces, cx| {
+                    let _ = this.update(cx, |this: &mut Self, cx| {
+                        this.scope = this.scope.scoped_to(namespaces.clone());
+                        cx.emit(ScopeEvent::NamespacesChanged(namespaces));
+                    });
+                },
+                window,
+                cx,
+            )
             .map(|picker| {
                 div()
                     .flex()
@@ -114,6 +145,12 @@ impl Render for PlaceholderPanel {
             // Tracked so a click focuses the panel, which is what lights
             // its tab's focus underline.
             .track_focus(&self.focus_handle)
+            .key_context(PANEL_KEY_CONTEXT)
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.namespace_picker.open(window, cx)
+                },
+            ))
             .flex()
             .flex_col()
             .children(namespace_bar)
@@ -223,6 +260,7 @@ mod tests {
             gvk: GroupVersionKind::gvk(group, "v1", kind),
             plural: format!("{kind}s"),
             namespaced: true,
+            verbs: Default::default(),
         }
     }
 

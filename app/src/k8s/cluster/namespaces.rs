@@ -25,6 +25,16 @@ impl NamespaceRegistry {
     }
 }
 
+impl NamespaceRegistry {
+    /// Makes `list` `context_name`'s namespace list - a test's cluster.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(cx: &mut App, context_name: &str, list: Entity<NamespaceList>) {
+        cx.default_global::<Self>()
+            .0
+            .insert(context_name.to_string(), list);
+    }
+}
+
 pub struct NamespaceList {
     names: Vec<String>,
     loading: bool,
@@ -40,6 +50,16 @@ impl NamespaceList {
             names: Vec::new(),
             loading: false,
             loaded: false,
+        }
+    }
+
+    /// A list holding `names`, never syncing - a test's cluster.
+    #[cfg(test)]
+    pub(crate) fn with_names(names: &[&str]) -> Self {
+        Self {
+            names: names.iter().map(|name| name.to_string()).collect(),
+            loading: false,
+            loaded: true,
         }
     }
 

@@ -55,6 +55,15 @@ pub(crate) enum OnRefused {
     Report(ReportRefusal),
 }
 
+/// What to do when the initial list carries no `resourceVersion`, so no watch
+/// can start from it (`watcher::Error::NoResourceVersion` - `componentstatuses`
+/// does this): keep retrying it, or stop and say so once, so the caller can
+/// fall back to polling (`unwatchable-kinds`).
+pub(crate) enum OnNoResourceVersion {
+    Retry,
+    Report(Box<dyn FnOnce(&mut App)>),
+}
+
 /// One outcome off the watch stream: a normal event to apply, a 401 - which ends this
 /// watch (the caller decides whether/how to restart it with a refreshed credential) - or
 /// a reported 403, which also ends it.
@@ -62,6 +71,7 @@ enum Outcome<K> {
     Event(Box<watcher::Event<K>>),
     Unauthorized,
     Refused(String),
+    NoResourceVersion,
 }
 
 /// Starts a `kube_runtime::watcher` over `api` and hands each event to `on_event`
@@ -70,23 +80,50 @@ enum Outcome<K> {
 /// retries immediately otherwise, which a persistent error turns into a tight loop
 /// against the API server. Two errors end the watch instead: a 401, which it can't
 /// recover from itself (the same expired credential would just come back), so it calls
-/// `on_unauthorized` once; and, when `on_refused` asks to report it, a 403.
+/// `on_unauthorized` once; and, when `on_refused` or `on_no_resource_version` asks
+/// to report it, a 403 or a list with no `resourceVersion`.
 ///
 /// Dropping the returned task ends the watch.
 pub(crate) fn run<K>(
     api: Api<K>,
+    on_event: impl FnMut(watcher::Event<K>, &mut App) + 'static,
+    on_unauthorized: impl FnOnce(&mut App) + 'static,
+    on_refused: OnRefused,
+    on_no_resource_version: OnNoResourceVersion,
+    cx: &mut App,
+) -> Task<()>
+where
+    K: kube::Resource + Clone + DeserializeOwned + Debug + Send + 'static,
+{
+    run_with(
+        api,
+        watcher::Config::default(),
+        on_event,
+        on_unauthorized,
+        on_refused,
+        on_no_resource_version,
+        cx,
+    )
+}
+
+/// [`run`], watching only what `config` selects - a field selector pinning one
+/// object's events, say.
+pub(crate) fn run_with<K>(
+    api: Api<K>,
+    config: watcher::Config,
     mut on_event: impl FnMut(watcher::Event<K>, &mut App) + 'static,
     on_unauthorized: impl FnOnce(&mut App) + 'static,
     on_refused: OnRefused,
+    on_no_resource_version: OnNoResourceVersion,
     cx: &mut App,
 ) -> Task<()>
 where
     K: kube::Resource + Clone + DeserializeOwned + Debug + Send + 'static,
 {
     let report_refusal = matches!(on_refused, OnRefused::Report(_));
+    let report_no_version = matches!(on_no_resource_version, OnNoResourceVersion::Report(_));
     let rx = crate::runtime::spawn_stream(cx, 64, move |tx| async move {
-        let mut stream =
-            Box::pin(watcher::watcher(api, watcher::Config::default()).default_backoff());
+        let mut stream = Box::pin(watcher::watcher(api, config).default_backoff());
         while let Some(event) = stream.next().await {
             match event {
                 Ok(event) => {
@@ -96,6 +133,10 @@ where
                 }
                 Err(error) if is_unauthorized(&error) => {
                     let _ = tx.send(Outcome::Unauthorized).await;
+                    return;
+                }
+                Err(watcher::Error::NoResourceVersion) if report_no_version => {
+                    let _ = tx.send(Outcome::NoResourceVersion).await;
                     return;
                 }
                 Err(error) => {
@@ -113,6 +154,10 @@ where
             OnRefused::Report(report) => Some(report),
             OnRefused::Retry => None,
         };
+        let mut on_no_resource_version = match on_no_resource_version {
+            OnNoResourceVersion::Report(report) => Some(report),
+            OnNoResourceVersion::Retry => None,
+        };
         crate::runtime::drain(rx, move |outcome| match outcome {
             Outcome::Event(event) => cx.update(|cx| on_event(*event, cx)),
             Outcome::Unauthorized => {
@@ -123,6 +168,11 @@ where
             Outcome::Refused(message) => {
                 if let Some(report) = on_refused.take() {
                     cx.update(|cx| report(message, cx));
+                }
+            }
+            Outcome::NoResourceVersion => {
+                if let Some(report) = on_no_resource_version.take() {
+                    cx.update(|cx| report(cx));
                 }
             }
         })

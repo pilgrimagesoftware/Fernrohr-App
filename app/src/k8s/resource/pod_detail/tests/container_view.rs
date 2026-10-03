@@ -56,7 +56,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
         let panel = cx.new(|cx| {
             let mut panel =
                 PodDetailPanel::with_connection(pod, scope, DetailView::Structured, connection, cx);
-            panel.state = PodDetailState::Loaded(Box::new(two_container_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(two_container_pod()));
             panel
         });
         built = Some(panel.clone());

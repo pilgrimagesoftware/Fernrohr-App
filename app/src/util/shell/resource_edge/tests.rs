@@ -5,7 +5,7 @@
 
 // Named imports rather than `use super::*`: a glob re-import of `gpui_kit::*`
 // next to `#[gpui_kit::test]` items blows the macro-expansion budget.
-use crate::command::{CommandRegistry, MenuSlot};
+use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::session::ClusterRegistry;
@@ -322,7 +322,7 @@ fn all_three_are_view_menu_commands_whose_keys_collide_with_nothing() {
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
     let view: Vec<&str> = registry
-        .for_menu(MenuSlot::View)
+        .for_menu(crate::command::TopMenu::View)
         .iter()
         .map(|command| command.id)
         .collect();

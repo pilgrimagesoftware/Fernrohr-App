@@ -50,12 +50,18 @@ fn every_structured_field_is_projected_in_order() {
     assert_eq!(field(&fields, "Namespace").unwrap().value.text(), "staging");
     assert_eq!(
         field(&fields, "Labels").unwrap().value,
-        PodFieldValue::Chips(vec!["app=api".into(), "tier=backend".into()]),
+        PodFieldValue::Metadata(vec![
+            ("app".into(), "api".into()),
+            ("tier".into(), "backend".into())
+        ]),
         "one chip per label"
     );
     assert_eq!(
         field(&fields, "Annotations").unwrap().value,
-        PodFieldValue::Chips(vec!["checked=yes".into(), "team=platform".into()])
+        PodFieldValue::Metadata(vec![
+            ("checked".into(), "yes".into()),
+            ("team".into(), "platform".into())
+        ])
     );
     assert_eq!(
         field(&fields, "Controlled By").unwrap().value,

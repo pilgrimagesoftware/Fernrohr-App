@@ -1,11 +1,14 @@
 pub mod about_window;
 pub mod accent;
-pub mod context_bar;
+pub mod copy;
 pub mod detail;
 pub mod icon;
 pub mod link;
 pub mod list_keys;
 pub mod menu;
+pub mod namespace_filter;
+pub mod namespace_picker;
+pub mod namespace_sets;
 pub mod nav;
 pub mod panel;
 pub mod picker;
@@ -21,9 +24,12 @@ pub mod style;
 pub mod table_fit;
 pub mod text_size;
 pub mod theme;
+pub mod toolbar;
 pub mod tunnels;
 pub mod typography;
+pub mod unrestored;
 pub mod viewer;
+pub mod yaml_view;
 
 pub use panel::resource as resource_panel;
 pub use panel::title as panel_title;

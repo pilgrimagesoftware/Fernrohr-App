@@ -10,9 +10,7 @@ use super::commands::{
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
-use crate::k8s::resource::events;
 use crate::ui::panel_title;
-use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -24,7 +22,7 @@ use gpui_kit::*;
 use jiff::Timestamp;
 
 impl PodDetailPanel {
-    fn render_structured(&self, cx: &Context<Self>) -> AnyElement {
+    fn render_structured(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
         let fields = self.fields(Timestamp::now());
         let active_tab = self.active_tab;
         let this = cx.weak_entity();
@@ -49,15 +47,28 @@ impl PodDetailPanel {
         let content = if active_tab == DetailSection::Configuration {
             self.render_configuration(cx)
         } else if active_tab == DetailSection::Events {
-            self.render_events(cx)
+            self.render_events(window, cx)
         } else {
-            crate::ui::detail::striped(
+            let rows = crate::ui::detail::striped(
                 fields
                     .iter()
                     .filter(|field| field.section == active_tab)
                     .map(|field| self.render_field(field, cx)),
                 cx,
-            )
+            );
+            match (active_tab == DetailSection::Overview)
+                .then(|| self.render_overview_warnings(cx))
+                .flatten()
+            {
+                Some(warnings) => div()
+                    .flex()
+                    .flex_col()
+                    .gap(crate::ui::space::spacing(cx).section_gap)
+                    .child(warnings)
+                    .child(rows)
+                    .into_any_element(),
+                None => rows,
+            }
         };
         div()
             .flex()
@@ -76,25 +87,55 @@ impl PodDetailPanel {
     /// The Events tab: every event naming this pod, newest first. Its own
     /// render path rather than a `PodField` - events come from a separate
     /// fetch, not from `pod_fields`'s projection of the pod object itself.
-    fn render_events(&self, cx: &Context<Self>) -> AnyElement {
-        let events = match self.events() {
-            Some(Ok(events)) => Ok(events::summarize(events, Timestamp::now())),
-            Some(Err(reason)) => Err(reason.clone()),
-            None => Ok(Vec::new()),
-        };
-        crate::ui::detail::events(&events, cx)
+    fn render_events(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
+        self.render_events_view(window, cx)
     }
 
-    fn render_yaml(&self, cx: &App) -> AnyElement {
+    /// The manifest, folding and scrolling both ways (`ui::yaml_view`).
+    fn render_yaml(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(yaml) = self.yaml() else {
             return div().into_any_element();
         };
-        div()
-            .size_full()
-            .code_font(cx)
-            .whitespace_nowrap()
-            .child(yaml)
-            .into_any_element()
+        let this = cx.weak_entity();
+        let on_toggle: crate::ui::yaml_view::OnToggle = std::rc::Rc::new(move |line, _, cx| {
+            let _ = this.update(cx, |this: &mut Self, cx| {
+                this.yaml_view.toggle(line);
+                cx.notify();
+            });
+        });
+        self.yaml_view.element(&yaml, on_toggle, cx)
+    }
+
+    fn on_action_fold_all(
+        &mut self,
+        _: &crate::ui::yaml_view::FoldAll,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(yaml) = self.yaml() {
+            self.yaml_view.fold_all(&yaml);
+            cx.notify();
+        }
+    }
+
+    /// Copy Resource Name: the pod's name to the clipboard.
+    fn on_action_copy_name(
+        &mut self,
+        _: &crate::ui::copy::CopyResourceName,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::ui::copy::copy_text(&self.pod.name, cx);
+    }
+
+    fn on_action_unfold_all(
+        &mut self,
+        _: &crate::ui::yaml_view::UnfoldAll,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.yaml_view.unfold_all();
+        cx.notify();
     }
 }
 
@@ -118,7 +159,7 @@ impl Render for PodDetailPanel {
                 cx,
             )
             .into_any_element(),
-            PodDetailState::Loaded(_, _) => match self.viewing {
+            PodDetailState::Loaded(_) => match self.viewing {
                 // Field values wrap to the panel's width rather than
                 // overflowing it - vertical-only scroll, so nothing pushes
                 // the layout wider than the panel actually is.
@@ -126,14 +167,15 @@ impl Render for PodDetailPanel {
                     .size_full()
                     .p(space.panel_inset)
                     .overflow_y_scrollbar()
-                    .child(self.render_structured(cx))
+                    .child(self.render_structured(window, cx))
                     .into_any_element(),
                 // YAML is monospace and line-oriented like the Logs panel -
-                // it keeps both-axis scroll rather than wrapping lines.
+                // it keeps both-axis scroll rather than wrapping lines. The view
+                // scrolls itself: a scroll container around a full-height
+                // child had nothing to scroll.
                 DetailView::Yaml => div()
                     .size_full()
                     .p(space.panel_inset)
-                    .overflow_scrollbar()
                     .child(self.render_yaml(cx))
                     .into_any_element(),
             },
@@ -246,12 +288,15 @@ impl Render for PodDetailPanel {
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
-        div()
+        Self::with_window_actions(div(), cx)
             .size_full()
             .key_context(key_context())
             .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
+            .on_action(cx.listener(Self::on_action_fold_all))
+            .on_action(cx.listener(Self::on_action_copy_name))
+            .on_action(cx.listener(Self::on_action_unfold_all))
             .on_action(cx.listener(Self::on_action_select_overview_tab))
             .on_action(cx.listener(Self::on_action_select_containers_tab))
             .on_action(cx.listener(Self::on_action_select_configuration_tab))
@@ -262,7 +307,12 @@ impl Render for PodDetailPanel {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(content))
+            .child(crate::ui::detail::lifecycle::body(
+                content,
+                self.lifecycle().as_ref(),
+                "pod",
+                cx,
+            ))
             // Tab stays in the panel: see `ui::panel::focus`.
             .focus_trap("pod-detail-panel-tab-trap", &self.focus_handle)
     }

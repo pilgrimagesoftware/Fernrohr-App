@@ -13,6 +13,7 @@ fn kind(kind: &str, namespaced: bool) -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", kind),
         plural: format!("{}s", kind.to_lowercase()),
         namespaced,
+        verbs: Default::default(),
     }
 }
 
@@ -25,6 +26,7 @@ fn row(name: &str, namespace: Option<&str>, age_secs: i64, now: Timestamp) -> Li
     ListRow::new(
         ObjectRow {
             uid: format!("uid-{name}"),
+            resource_version: String::new(),
             name: name.into(),
             namespace: namespace.map(Into::into),
             created: Some(now - SignedDuration::from_secs(age_secs)),
@@ -184,6 +186,7 @@ fn deployments() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
         plural: "deployments".into(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -193,6 +196,7 @@ fn deployment_row(name: &str, available: i64, now: Timestamp) -> ListRow {
     ListRow::new(
         ObjectRow {
             uid: format!("uid-{name}"),
+            resource_version: String::new(),
             name: name.into(),
             namespace: Some("staging".into()),
             created: Some(now),

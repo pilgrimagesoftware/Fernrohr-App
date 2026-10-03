@@ -8,7 +8,7 @@
 //! "the current tab" means one thing for switching and closing.
 
 use super::focus;
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, MenuSlot, NavigateGroup};
 use gpui_kit::component::dock::{DockArea, DockPlacement, NodeId, PaneRef, PaneTree, PanelId};
 use gpui_kit::{Action, App, Window, actions};
 
@@ -45,7 +45,8 @@ pub struct TabGroup {
     pub active_ix: usize,
 }
 
-/// Registers Next/Previous Tab and Select Tab 1-9. Global, like the
+/// Registers Next/Previous Tab, Select Tab 1-9 and Maximize/Restore Panel.
+/// Global, like the
 /// `panel.*` commands: the dock has no key context of its own to scope them
 /// to, and they have to work with focus in any panel.
 pub(crate) fn register_commands(registry: &mut CommandRegistry) {
@@ -64,16 +65,17 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         "Next Tab",
         "cmd-shift-]",
         Box::new(NextTab),
-        Some(MenuSlot::Navigate),
+        Some(MenuSlot::Navigate(NavigateGroup::Tabs)),
     );
     register(
         "tab.previous",
         "Previous Tab",
         "cmd-shift-[",
         Box::new(PreviousTab),
-        Some(MenuSlot::Navigate),
+        Some(MenuSlot::Navigate(NavigateGroup::Tabs)),
     );
-    // In the palette, not the menu: nine near-identical items would bury it.
+    // In the menu as one "Select Tab" submenu: nine near-identical items
+    // inline would bury the rest of Navigate.
     let selects: [(&str, &str, &str, Box<dyn Action>); 9] = [
         (
             "tab.select_1",
@@ -131,8 +133,25 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         ),
     ];
     for (id, title, default_binding, action) in selects {
-        register(id, title, default_binding, action, None);
+        register(
+            id,
+            title,
+            default_binding,
+            action,
+            Some(MenuSlot::Navigate(NavigateGroup::TabPositions)),
+        );
     }
+    // The dock's own zoom, which the focused tab group answers - the View
+    // menu's panel layout group (`menu-organization`). No default key; the
+    // palette and `keymap.toml` reach it.
+    registry.register(Command {
+        id: "panel.toggle_zoom",
+        title: "Maximize/Restore Panel",
+        default_binding: "",
+        context: None,
+        action: Box::new(gpui_kit::component::dock::ToggleZoom),
+        menu: Some(MenuSlot::View(crate::command::ViewGroup::PanelLayout)),
+    });
 }
 
 /// The index `target` picks in a group of `len` tabs showing `active`. Next

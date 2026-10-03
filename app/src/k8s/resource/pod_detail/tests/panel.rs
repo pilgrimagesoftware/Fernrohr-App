@@ -90,7 +90,7 @@ async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestApp
 
     window
         .update(cx, |panel, _window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             cx.notify();
         })
         .unwrap();
@@ -105,7 +105,7 @@ async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestApp
             assert!(
                 matches!(
                     field(&fields, "Labels").unwrap().value,
-                    PodFieldValue::Chips(_)
+                    PodFieldValue::Metadata(_)
                 ),
                 "labels are chips, not one run-on line"
             );
@@ -142,7 +142,7 @@ async fn the_toolbar_toggles_between_fields_and_yaml(cx: &mut TestAppContext) {
 
     window
         .update(cx, |panel, _window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             panel.set_view(DetailView::Yaml, cx);
         })
         .unwrap();
@@ -169,7 +169,7 @@ async fn switching_tabs_shows_only_that_tabs_fields(cx: &mut TestAppContext) {
 
     window
         .update(cx, |panel, _window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             cx.notify();
         })
         .unwrap();
@@ -215,7 +215,7 @@ async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
 
     window
         .update(&mut vcx, |panel, window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             panel.focus_handle.clone().focus(window, cx);
             cx.notify();
         })
@@ -273,8 +273,9 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let commands: Vec<_> = registry.iter().collect();
     assert_eq!(
         commands.len(),
-        8,
-        "the view toggle, six tabs, and Hide Secret Values"
+        18,
+        "the view toggle, six tabs, Hide Secret Values, the Events tab's seven window \
+         commands, Fold/Unfold All YAML, and Copy Resource Name"
     );
     assert!(
         commands
@@ -283,7 +284,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         "panel shortcuts are panel-scoped and stay out of the menu bar"
     );
     assert!(registry.available(&[]).is_empty());
-    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 8);
+    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 18);
 
     let mut keymap = KeymapConfig::default();
     keymap
@@ -298,7 +299,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
     window
         .update(&mut vcx, |panel, window, cx| {
-            panel.state = PodDetailState::Loaded(Box::new(rich_pod()), Ok(Vec::new()));
+            panel.state = PodDetailState::Loaded(Box::new(rich_pod()));
             panel.focus_handle.clone().focus(window, cx);
             cx.notify();
         })

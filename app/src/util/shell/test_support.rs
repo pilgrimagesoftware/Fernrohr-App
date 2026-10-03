@@ -15,20 +15,17 @@ use gpui_kit::{
 };
 use kube::core::GroupVersionKind;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-pub(super) static COUNTER: AtomicU64 = AtomicU64::new(0);
-
+/// A scratch path for a workspace or keymap file: unique to this process and
+/// call, with nothing at it (`util::test_paths`). The old counter-only name
+/// was reused by every run, so a stale `keymap.toml` was read back.
 pub(super) fn temp_workspace_path() -> PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("fernrohr-shell-test-{n}.toml"))
+    crate::util::test_paths::temp_path("shell")
 }
 
+/// A scratch path for a tunnels file, as [`temp_workspace_path`].
 pub(super) fn temp_tunnels_path() -> PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!("fernrohr-shell-set-tunnel-test-{n}.toml"));
-    let _ = std::fs::remove_file(&path);
-    path
+    crate::util::test_paths::temp_path("shell-tunnels")
 }
 
 /// A connected window on `context_name`, for the panel-opening tests.
@@ -70,6 +67,7 @@ pub(super) fn crd_kind() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("ferns.example.com", "v1", "Fern"),
         plural: "ferns".to_string(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -79,6 +77,7 @@ pub(super) fn cluster_scoped_kind() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("widgets.example.com", "v1", "Widget"),
         plural: "widgets".to_string(),
         namespaced: false,
+        verbs: Default::default(),
     }
 }
 
@@ -195,3 +194,6 @@ pub(super) fn window_title<V: 'static>(
 ) -> Option<String> {
     VisualTestContext::from_window((*window).into(), cx).window_title()
 }
+
+#[cfg(test)]
+mod tests;

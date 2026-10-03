@@ -8,7 +8,6 @@ use super::panel::ObjectDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::events;
 use crate::k8s::resource::pod_detail::DetailView;
-use crate::ui::typography::TypeRole as _;
 use crate::ui::{detail, link, panel_title};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
@@ -41,11 +40,16 @@ impl ObjectDetailPanel {
                 )
             }
             FieldValue::Chips(chips) => detail::chips(chips, cx),
+            FieldValue::Metadata(pairs) => {
+                detail::metadata_chips(&format!("{section}/{}", field.label), pairs, cx)
+            }
             FieldValue::Badges(badges) => {
                 detail::badges(badges.iter().map(|(text, tone)| (text.as_str(), *tone)), cx)
             }
             FieldValue::Lines(lines) => detail::lines(lines),
-            FieldValue::KeyValues(pairs) => detail::key_values(pairs, cx),
+            FieldValue::KeyValues(pairs) => {
+                detail::key_values(&format!("{section}/{}", field.label), pairs, cx)
+            }
             FieldValue::SecretKeys { secret, keys } => div()
                 .flex()
                 .flex_col()
@@ -101,16 +105,51 @@ impl ObjectDetailPanel {
             .into_any_element()
     }
 
-    fn render_yaml(&self, cx: &App) -> AnyElement {
+    /// The manifest, folding and scrolling both ways (`ui::yaml_view`).
+    fn render_yaml(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(yaml) = self.yaml() else {
             return div().into_any_element();
         };
-        div()
-            .size_full()
-            .code_font(cx)
-            .whitespace_nowrap()
-            .child(yaml)
-            .into_any_element()
+        let this = cx.weak_entity();
+        let on_toggle: crate::ui::yaml_view::OnToggle = std::rc::Rc::new(move |line, _, cx| {
+            let _ = this.update(cx, |this: &mut Self, cx| {
+                this.yaml_view.toggle(line);
+                cx.notify();
+            });
+        });
+        self.yaml_view.element(&yaml, on_toggle, cx)
+    }
+
+    fn on_action_fold_all(
+        &mut self,
+        _: &crate::ui::yaml_view::FoldAll,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(yaml) = self.yaml() {
+            self.yaml_view.fold_all(&yaml);
+            cx.notify();
+        }
+    }
+
+    /// Copy Resource Name: the object's name to the clipboard.
+    fn on_action_copy_name(
+        &mut self,
+        _: &crate::ui::copy::CopyResourceName,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::ui::copy::copy_text(&self.target.name, cx);
+    }
+
+    fn on_action_unfold_all(
+        &mut self,
+        _: &crate::ui::yaml_view::UnfoldAll,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.yaml_view.unfold_all();
+        cx.notify();
     }
 
     /// The kind as a reader says it, lower case: "this configmap".
@@ -148,10 +187,10 @@ impl Render for ObjectDetailPanel {
                     .overflow_y_scrollbar()
                     .child(self.render_structured(cx))
                     .into_any_element(),
+                // The view scrolls itself, both ways.
                 DetailView::Yaml => div()
                     .size_full()
                     .p(space.panel_inset)
-                    .overflow_scrollbar()
                     .child(self.render_yaml(cx))
                     .into_any_element(),
             },
@@ -231,12 +270,20 @@ impl Render for ObjectDetailPanel {
             .key_context(key_context())
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
+            .on_action(cx.listener(Self::on_action_fold_all))
+            .on_action(cx.listener(Self::on_action_copy_name))
+            .on_action(cx.listener(Self::on_action_unfold_all))
             .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_go_to))
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(content))
+            .child(crate::ui::detail::lifecycle::body(
+                content,
+                self.lifecycle.as_ref(),
+                &self.kind_noun(),
+                cx,
+            ))
             // Tab stays in the panel: see `ui::panel::focus`.
             .focus_trap("object-detail-panel-tab-trap", &self.focus_handle)
     }

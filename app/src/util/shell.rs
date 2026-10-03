@@ -18,7 +18,6 @@ use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
 use crate::tunnel::store::TunnelStore;
-use crate::ui::context_bar::ContextBarView;
 use crate::ui::nav::{
     self, NavTarget, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
 };
@@ -45,10 +44,16 @@ mod empty_dock;
 mod follow;
 mod layout;
 mod main_window;
+mod namespace_defaults;
+mod namespace_sets;
+mod warp;
+pub(crate) use warp::WarpContextToNamespace;
 mod open;
 mod panel_focus;
 mod panels;
 mod persist;
+#[cfg(test)]
+mod quick_look_window_tests;
 mod render;
 mod resource_edge;
 mod tab_focus;

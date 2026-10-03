@@ -7,16 +7,12 @@ use gpui_kit::{
     App, AppContext as _, Context, InteractiveElement as _, IntoElement, ParentElement as _,
     Pixels, Render, Styled as _, TestAppContext, VisualTestContext, Window, div, px,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn temp_path() -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "fernrohr-text-size-{}-{n}/ui.toml",
-        std::process::id()
-    ))
+    // A `ui.toml` in a directory of its own, as the preference file sits.
+    crate::util::test_paths::temp_path("text-size")
+        .with_extension("")
+        .join("ui.toml")
 }
 
 fn setup(cx: &mut TestAppContext) {
@@ -75,6 +71,7 @@ async fn a_change_is_saved_without_touching_the_rest_of_the_file(cx: &mut TestAp
         theme: ThemePreference::Dark,
         text_size: TextSize::DEFAULT,
         resource_side: crate::config::ui::ResourceSide::Right,
+        ..UiConfig::default()
     };
     config::save(&path, &stored).expect("temp file written");
     cx.update(|cx| {

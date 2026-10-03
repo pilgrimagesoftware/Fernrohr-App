@@ -74,6 +74,7 @@ impl Harness {
             gvk: kube::core::GroupVersionKind::gvk("", "v1", plural),
             plural: plural.into(),
             namespaced: true,
+            verbs: Default::default(),
         });
         let main = self.main.clone();
         let id = self.vcx.update(|window, cx| {

@@ -5,7 +5,7 @@
 //! buttons that dispatch them; `MainWindow` owns the state and acts on them, since
 //! it lays out the panel beside the dock.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, MenuSlot, ViewGroup};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -57,7 +57,7 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         default_binding: TOGGLE_DEFAULT_BINDING,
         context: None,
         action: Box::new(ToggleResourcePanel),
-        menu: Some(MenuSlot::View),
+        menu: Some(MenuSlot::View(ViewGroup::ResourcePanel)),
     });
     registry.register(Command {
         id: MOVE_COMMAND_ID,
@@ -65,7 +65,7 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         default_binding: MOVE_DEFAULT_BINDING,
         context: None,
         action: Box::new(MoveResourcePanel),
-        menu: Some(MenuSlot::View),
+        menu: Some(MenuSlot::View(ViewGroup::ResourcePanel)),
     });
 }
 

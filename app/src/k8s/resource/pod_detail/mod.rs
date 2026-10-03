@@ -18,17 +18,24 @@
 mod commands;
 mod configuration;
 mod container_detail;
-mod container_view;
+pub(super) mod container_view;
+pub(super) mod events_tab;
 mod fetch;
 mod field_view;
 mod fields;
 mod format;
+pub(crate) mod glance;
+mod live;
+pub(super) mod live_events;
+pub(super) mod managed_fields_view;
 mod model;
 mod panel;
 mod references;
 mod render;
 #[cfg(test)]
 mod tests;
+mod window_commands;
+pub(crate) mod window_preference;
 
 pub use commands::register_commands;
 pub use model::DetailView;

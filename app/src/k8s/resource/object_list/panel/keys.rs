@@ -4,7 +4,9 @@
 //! fitting the columns (`ui::table_fit`).
 
 use super::ObjectListPanel;
-use crate::k8s::resource::object_list::commands::{DescribeSelected, ShowSelectedYaml};
+use crate::k8s::resource::object_list::commands::{
+    DescribeSelected, RefreshList, ShowSelectedYaml,
+};
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::list_keys::{self, Step};
 use gpui_kit::base::actions::{SelectDown, SelectUp};
@@ -46,6 +48,16 @@ impl ObjectListPanel {
         }
     }
 
+    /// Re-lists a polled kind now (`unwatchable-kinds`).
+    pub(in crate::k8s::resource::object_list) fn on_action_refresh(
+        &mut self,
+        _: &RefreshList,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.objects.read(cx).request_refresh();
+    }
+
     /// The table's selected row. Test-only.
     #[cfg(test)]
     pub(crate) fn test_selected_row(&self, cx: &gpui_kit::App) -> Option<usize> {
@@ -59,7 +71,7 @@ impl ObjectListPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(table) = self.table.clone()
-            && list_keys::step(&table, Step::Down, window, cx)
+            && list_keys::step(&table, &self.focus_handle, Step::Down, window, cx)
         {
             cx.stop_propagation();
         }
@@ -72,7 +84,7 @@ impl ObjectListPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(table) = self.table.clone()
-            && list_keys::step(&table, Step::Up, window, cx)
+            && list_keys::step(&table, &self.focus_handle, Step::Up, window, cx)
         {
             cx.stop_propagation();
         }

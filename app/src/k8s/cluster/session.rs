@@ -3,12 +3,14 @@ use super::context_health::ContextHealth;
 use super::health::{self, HealthTransition};
 use super::watch_registry::{PauseReason, WatchRegistry};
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::k8s::resource::events_browser::{EventsTable, watch_events};
 use crate::k8s::resource::object_list::{ObjectsTable, watch_kind};
 use crate::k8s::resource::pods::{PodsTable, watch_all_namespaces};
 use gpui_kit::{App, AppContext as _, Entity, Global, WindowId};
 use kube::Client;
 use std::collections::{HashMap, HashSet};
 
+mod events_watch;
 mod holds;
 mod kind_watch;
 mod pause_resume;
@@ -30,4 +32,7 @@ pub(crate) enum WatchKey {
     /// One discovered kind's generic `DynamicObject` watch. The kind's group,
     /// version, kind and plural pin its `ApiResource`.
     Kind(DiscoveredKind),
+    /// The typed all-namespaces Event watch behind the events browser
+    /// (`events-browser` D1), shared by every Event consumer on the context.
+    Events,
 }

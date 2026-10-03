@@ -8,6 +8,9 @@ pub struct UiConfig {
     /// The window edge a new window's Resource panel opens on. Moving the panel
     /// in a window doesn't change it; Make Resource Panel's Side the Default does.
     pub resource_side: ResourceSide,
+    /// How far back a new pod detail panel's Events tab looks
+    /// (`pod-events-time-window` 2.2). Each panel can change its own.
+    pub pod_events_window: PodEventsWindow,
 }
 
 impl Default for UiConfig {
@@ -16,6 +19,7 @@ impl Default for UiConfig {
             theme: Theme::System,
             text_size: TextSize::DEFAULT,
             resource_side: ResourceSide::default(),
+            pod_events_window: PodEventsWindow::default(),
         }
     }
 }
@@ -109,6 +113,75 @@ pub enum ResourceSide {
     Right,
 }
 
+/// How far back a pod's Events tab looks: events last seen within it are shown,
+/// the rest counted as hidden. Stored as `pod_events_window = "1h"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PodEventsWindow {
+    #[serde(rename = "15m")]
+    Minutes15,
+    #[default]
+    #[serde(rename = "1h")]
+    Hour1,
+    #[serde(rename = "6h")]
+    Hours6,
+    #[serde(rename = "24h")]
+    Hours24,
+    #[serde(rename = "all")]
+    All,
+}
+
+impl PodEventsWindow {
+    /// Every window, shortest first.
+    pub const ALL: [Self; 5] = [
+        Self::Minutes15,
+        Self::Hour1,
+        Self::Hours6,
+        Self::Hours24,
+        Self::All,
+    ];
+
+    /// How far back it reaches; `None` for All.
+    pub fn span(self) -> Option<std::time::Duration> {
+        let minutes = match self {
+            Self::Minutes15 => 15,
+            Self::Hour1 => 60,
+            Self::Hours6 => 6 * 60,
+            Self::Hours24 => 24 * 60,
+            Self::All => return None,
+        };
+        Some(std::time::Duration::from_secs(minutes * 60))
+    }
+
+    /// The next shorter window, or this one when it's already the shortest.
+    pub fn shorter(self) -> Self {
+        let at = Self::ALL
+            .iter()
+            .position(|window| *window == self)
+            .unwrap_or(0);
+        Self::ALL[at.saturating_sub(1)]
+    }
+
+    /// The next longer window, or this one when it's already All.
+    pub fn longer(self) -> Self {
+        let at = Self::ALL
+            .iter()
+            .position(|window| *window == self)
+            .unwrap_or(0);
+        Self::ALL[(at + 1).min(Self::ALL.len() - 1)]
+    }
+
+    /// What the selector and the empty-state wording call it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Minutes15 => "15 minutes",
+            Self::Hour1 => "1 hour",
+            Self::Hours6 => "6 hours",
+            Self::Hours24 => "24 hours",
+            Self::All => "All",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +192,7 @@ mod tests {
             theme: Theme::Dark,
             text_size: TextSize::from(120),
             resource_side: ResourceSide::Right,
+            pod_events_window: PodEventsWindow::Hours6,
         };
         let text = toml::to_string(&config).unwrap();
         let parsed: UiConfig = toml::from_str(&text).unwrap();
@@ -143,6 +217,20 @@ mod tests {
         assert_eq!(parsed.resource_side, ResourceSide::Right);
         let parsed: UiConfig = toml::from_str("theme = \"dark\"\n").unwrap();
         assert_eq!(parsed.resource_side, ResourceSide::Left);
+    }
+
+    #[test]
+    fn the_pod_events_window_is_stored_by_name_and_defaults_to_an_hour() {
+        let parsed: UiConfig = toml::from_str("pod_events_window = \"6h\"\n").unwrap();
+        assert_eq!(parsed.pod_events_window, PodEventsWindow::Hours6);
+        let parsed: UiConfig = toml::from_str("theme = \"dark\"\n").unwrap();
+        assert_eq!(parsed.pod_events_window, PodEventsWindow::Hour1);
+        let text = toml::to_string(&UiConfig {
+            pod_events_window: PodEventsWindow::All,
+            ..UiConfig::default()
+        })
+        .unwrap();
+        assert!(text.contains("pod_events_window = \"all\""), "{text}");
     }
 
     #[test]

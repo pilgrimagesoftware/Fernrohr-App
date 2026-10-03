@@ -19,7 +19,14 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 mod collapsible;
+pub(crate) mod lifecycle;
+mod metadata;
 pub use collapsible::Collapsible;
+pub use metadata::metadata_chips;
+#[cfg(test)]
+pub use metadata::{
+    metadata_chip_id, metadata_chip_selector, metadata_copy_id, metadata_tooltip_selector,
+};
 
 /// A status's color, decided by the status rather than looked up at render
 /// time - so "is this good" is testable without a theme, and the renderer only
@@ -28,6 +35,8 @@ pub use collapsible::Collapsible;
 pub enum BadgeTone {
     /// The condition holds, or the thing is healthy.
     Good,
+    /// Under way - waiting or pending - and not a problem yet.
+    Info,
     /// Something to notice - not necessarily a failure.
     Warning,
     /// A failure: the thing won't work as it is.
@@ -40,6 +49,7 @@ impl From<BadgeTone> for Tone {
     fn from(tone: BadgeTone) -> Self {
         match tone {
             BadgeTone::Good => Tone::Good,
+            BadgeTone::Info => Tone::Info,
             BadgeTone::Warning => Tone::Warning,
             BadgeTone::Bad => Tone::Bad,
             BadgeTone::Unknown => Tone::Neutral,
@@ -175,24 +185,38 @@ pub fn lines(rows: &[String]) -> AnyElement {
 
 /// Key/value pairs, the key muted above its value - a ConfigMap's data, where
 /// a value can run to many lines and would not fit beside its key.
-pub fn key_values(pairs: &[(String, String)], cx: &App) -> AnyElement {
+///
+/// Each key and each value has a copy control (`ui::copy`), ids
+/// `copy {id_prefix} key {index}` and `copy {id_prefix} value {index}`.
+pub fn key_values(id_prefix: &str, pairs: &[(String, String)], cx: &App) -> AnyElement {
+    use crate::ui::copy::copyable;
     let theme = cx.theme();
     div()
         .data_font()
         .flex()
         .flex_col()
         .gap_2()
-        .children(pairs.iter().map(|(key, value)| {
+        .children(pairs.iter().enumerate().map(|(index, (key, value))| {
+            let key_id = format!("copy {id_prefix} key {index}");
+            let value_id = format!("copy {id_prefix} value {index}");
             div()
                 .flex()
                 .flex_col()
-                .child(
+                .child(copyable(
                     div()
                         .text_sm()
                         .text_color(theme.muted_foreground)
                         .child(key.clone()),
-                )
-                .child(div().code_font(cx).text_sm().child(value.clone()))
+                    ElementId::Name(key_id.clone().into()),
+                    key.clone(),
+                    key_id,
+                ))
+                .child(copyable(
+                    div().code_font(cx).text_sm().child(value.clone()),
+                    ElementId::Name(value_id.clone().into()),
+                    value.clone(),
+                    value_id,
+                ))
         }))
         .into_any_element()
 }
@@ -297,13 +321,28 @@ pub fn secret_key_row(
         button.danger().outline()
     }
     .on_click(move |_event, window, cx| on_toggle(window, cx));
+    // A revealed value can be copied - and only a revealed one: nothing on the
+    // clipboard that isn't on screen.
+    let copy_id = format!("copy {value_id}");
     let value = reveal.map(|reveal| {
-        div()
+        let text = div()
             .id(value_id)
             .code_font(cx)
             .text_sm()
             .child(revealed_text(reveal))
-            .test_support()
+            .test_support();
+        match reveal {
+            Reveal::Shown(secret) => match secret.expose() {
+                Some(plain) => crate::ui::copy::copyable(
+                    text,
+                    ElementId::Name(copy_id.clone().into()),
+                    plain.to_string(),
+                    copy_id,
+                ),
+                None => text.into_any_element(),
+            },
+            Reveal::Pending | Reveal::Failed(_) => text.into_any_element(),
+        }
     });
     div()
         .flex()

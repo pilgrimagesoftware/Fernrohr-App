@@ -20,6 +20,7 @@ fn leases() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("coordination.k8s.io", "v1", "Lease"),
         plural: "leases".into(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -106,6 +107,7 @@ fn only_a_kind_discovery_no_longer_reports_restores_as_a_placeholder() {
         gvk: GroupVersionKind::gvk("", "v1", "ConfigMap"),
         plural: "configmaps".into(),
         namespaced: true,
+        verbs: Default::default(),
     };
     assert!(
         !restores_as_placeholder(&leases(), None),

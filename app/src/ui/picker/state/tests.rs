@@ -5,9 +5,6 @@
 use super::{Attempt, ClusterPicker};
 use crate::k8s::cluster::kubeconfig;
 use std::fs;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const FIXTURE: &str = r#"
 apiVersion: v1
@@ -28,8 +25,7 @@ users:
 "#;
 
 fn fixture_path() -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!("fernrohr-picker-fixture-{n}.yaml"));
+    let path = crate::util::test_paths::temp_path("picker-fixture").with_extension("yaml");
     fs::write(&path, FIXTURE).unwrap();
     path
 }
@@ -268,7 +264,7 @@ async fn a_tunnel_created_elsewhere_appears_in_an_open_picker(cx: &mut gpui_kit:
 }
 
 /// `window-context-bar` section 3.2: the "+" popover's own filtering -
-/// `ContextBarView::open_add_dialog` (`ui/context_bar.rs`) calls this with the
+/// `StatusBarView::open_add_dialog` (`ui/status_bar/capsule.rs`) calls this with the
 /// window's current `contexts` so the popover never re-offers a context already
 /// in use. Setting `contexts` directly (rather than through `ClusterPicker::new`,
 /// which reads this machine's real kubeconfig) keeps the candidate list under

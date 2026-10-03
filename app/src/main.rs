@@ -1,5 +1,6 @@
 use gpui_kit::*;
 
+mod assets;
 mod command;
 mod config;
 mod consts;
@@ -20,7 +21,7 @@ fn main() {
     util::pidfile::sweep_stale();
 
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(assets::AppAssets)
         .with_quit_mode(QuitMode::LastWindowClosed)
         .run(|cx: &mut App| {
             gpui_kit::init(cx);
@@ -28,8 +29,18 @@ fn main() {
             let ui_path = util::paths::preference_dir().join("ui.toml");
             let ui_config: config::ui::UiConfig = config::load(&ui_path);
             ui::theme::init(ui_config.theme, cx);
+            ui::theme::save_to(ui_path.clone(), cx);
             ui::resource_panel::init_side_preference(ui_config.resource_side, ui_path.clone(), cx);
+            k8s::resource::pod_detail::window_preference::init(
+                ui_config.pod_events_window,
+                ui_path.clone(),
+                cx,
+            );
             ui::text_size::init(ui_config.text_size, ui_path, cx);
+            ui::namespace_sets::store::NamespaceSets::init(
+                util::paths::preference_dir().join("namespace-sets.toml"),
+                cx,
+            );
             let workspace_path = util::shell::default_workspace_path();
             let keymap_path = util::paths::preference_dir().join("keymap.toml");
             util::shell::init(cx, workspace_path.clone(), &keymap_path);

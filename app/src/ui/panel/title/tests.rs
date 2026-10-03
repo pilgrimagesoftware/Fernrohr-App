@@ -2,10 +2,11 @@
 //! rules, and the heading's ellipsis/tooltip layout.
 
 use super::{
-    PanelScope, focus_underline, heading_name_box, is_truncated, item_heading, label_for,
-    namespaces_offered, title, tooltip_lines,
+    PanelScope, focus_underline, heading_name_box, is_truncated, item_heading, namespaces_offered,
+    title, tooltip_lines,
 };
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::ui::namespace_picker::label_for;
 use crate::ui::nav::NavTarget;
 use gpui_kit::{
     AvailableSpace, Context, IntoElement, Pixels, Render, StyledText, TestAppContext, TextLayout,
@@ -85,6 +86,7 @@ fn kind(kind: &str, namespaced: bool) -> NavTarget {
         gvk: GroupVersionKind::gvk("", "v1", kind),
         plural: format!("{}s", kind.to_lowercase()),
         namespaced,
+        verbs: Default::default(),
     })
 }
 
@@ -115,6 +117,7 @@ fn grouped(group: &str, kind: &str, plural: &str) -> NavTarget {
         gvk: GroupVersionKind::gvk(group, "v1", kind),
         plural: plural.to_string(),
         namespaced: true,
+        verbs: Default::default(),
     })
 }
 

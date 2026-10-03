@@ -64,6 +64,9 @@ pub struct PodField {
 pub enum PodFieldValue {
     /// One short value on the row.
     Text(String),
+    /// A state, in its severity's colour and still reading as text without it
+    /// - the pod's phase.
+    Status { text: String, tone: BadgeTone },
     /// Values naming other objects - the pod's namespace, node, service
     /// account, owners, image pull secrets. One entry per object, never one
     /// joined string; whether each is followable is decided at render time by
@@ -76,8 +79,9 @@ pub enum PodFieldValue {
         targets: Vec<ObjectRef>,
         qualified: bool,
     },
-    /// Key=value pairs, one chip each.
-    Chips(Vec<String>),
+    /// Labels or annotations, one chip each, a large value shortened to its
+    /// preview with the full value in a tooltip (`ui::detail::metadata_chips`).
+    Metadata(Vec<(String, String)>),
     /// Conditions, one badge each.
     Badges(Vec<ConditionBadge>),
     /// Rows behind a disclosure, collapsed by default so a long list does not
@@ -104,13 +108,17 @@ impl PodFieldValue {
     #[cfg(test)]
     pub fn text(&self) -> String {
         match self {
-            PodFieldValue::Text(text) => text.clone(),
+            PodFieldValue::Text(text) | PodFieldValue::Status { text, .. } => text.clone(),
             PodFieldValue::References { targets, qualified } => targets
                 .iter()
                 .map(|target| reference_text(target, *qualified))
                 .collect::<Vec<_>>()
                 .join(", "),
-            PodFieldValue::Chips(chips) => chips.join(", "),
+            PodFieldValue::Metadata(pairs) => pairs
+                .iter()
+                .map(|(key, value)| chip(key, value))
+                .collect::<Vec<_>>()
+                .join(", "),
             PodFieldValue::Badges(badges) => badges
                 .iter()
                 .map(|badge| format!("{}={}", badge.condition, badge.status))
@@ -144,6 +152,8 @@ impl PodFieldValue {
 pub struct ManagedFieldEntry {
     pub manager: String,
     pub operation: String,
+    /// When the manager last wrote, if recorded.
+    pub time: Option<jiff::Timestamp>,
     pub fields_json: String,
 }
 
@@ -165,6 +175,8 @@ pub struct ContainerSummary {
     /// `state`'s health: running is good, stuck (a waiting reason the Pods
     /// table also counts as bad) or failed is bad, any other wait a warning.
     pub state_tone: BadgeTone,
+    /// Why it waits, or what it said on exit, when the cluster gave a message.
+    pub state_message: Option<String>,
     pub ports: Vec<String>,
     pub requests: Vec<String>,
     pub limits: Vec<String>,

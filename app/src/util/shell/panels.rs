@@ -53,50 +53,76 @@ pub(super) struct OpenPanel {
     pub(super) _focus_watch: Option<gpui_kit::Subscription>,
 }
 
-pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<PanelKey> {
-    let mut keys = state
-        .children
+/// One key per panel a saved layout restores, in the order the dock builds
+/// them - `None` for a panel the window can't key (an unrecognised kind, or
+/// state it can't read, which restores as `ui::unrestored`'s placeholder).
+///
+/// One entry per built panel, keyed or not, is what lets the window pair these
+/// with the dock's panel ids by position: skipping a panel would shift every
+/// key after it onto the wrong panel. The walk mirrors gpui-base's
+/// `PaneTree::from_state` - stacks recurse, tab groups flatten nested tabs and
+/// skip empty `TabPanel` leaves, and every other node is one panel.
+pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<Option<PanelKey>> {
+    match &state.info {
+        PanelInfo::Stack { .. } => state
+            .children
+            .iter()
+            .flat_map(restored_panel_keys)
+            .collect(),
+        PanelInfo::Tabs { .. } => tab_panel_keys(&state.children),
+        PanelInfo::Panel(_) if state.panel_name == TAB_PANEL_NAME => Vec::new(),
+        PanelInfo::Panel(_) => vec![panel_key(state)],
+    }
+}
+
+/// The name a tab group saves under; a leaf carrying it is an empty group.
+const TAB_PANEL_NAME: &str = "TabPanel";
+
+fn tab_panel_keys(children: &[PanelState]) -> Vec<Option<PanelKey>> {
+    children
         .iter()
-        .flat_map(restored_panel_keys)
-        .collect::<Vec<_>>();
+        .flat_map(|child| match &child.info {
+            PanelInfo::Tabs { .. } => tab_panel_keys(&child.children),
+            PanelInfo::Panel(_) if child.panel_name == TAB_PANEL_NAME => Vec::new(),
+            _ => vec![panel_key(child)],
+        })
+        .collect()
+}
+
+/// The key one saved panel restores under, or `None` when it isn't a panel
+/// the window knows or its state doesn't say what it shows.
+fn panel_key(state: &PanelState) -> Option<PanelKey> {
     let PanelInfo::Panel(data) = &state.info else {
-        return keys;
+        return None;
     };
-    let context_name = data["context_name"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string();
+    let context_name = data["context_name"].as_str()?.to_string();
     let namespaces = serde_json::from_value(data["namespaces"].clone()).unwrap_or_default();
     let target = match state.panel_name.as_str() {
         "Pods" => NavTarget::pods(),
         "Logs" => NavTarget::Logs,
         "PodDetail" => NavTarget::pod(
-            data["pod_namespace"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            data["pod_name"].as_str().unwrap_or_default().to_string(),
+            data["pod_namespace"].as_str()?.to_string(),
+            data["pod_name"].as_str()?.to_string(),
         ),
-        "ObjectDetail" => match crate::k8s::resource::object_detail::target_from_state(data) {
-            Some(object) => NavTarget::Object(object),
-            None => return keys,
-        },
+        "ObjectDetail" => NavTarget::Object(
+            crate::k8s::resource::object_detail::target_from_state(data)?,
+        ),
         // A list panel, and the placeholder that stands in for one: both save the
         // kind the same way, and both are a `Kind` target.
         "ObjectList" | "Resource" => {
-            match crate::k8s::resource::object_list::restore::from_state(data) {
-                Some(saved) => NavTarget::Kind(saved.kind),
-                None => return keys,
-            }
+            NavTarget::Kind(crate::k8s::resource::object_list::restore::from_state(data)?.kind)
         }
-        _ => return keys,
+        "Events" => {
+            crate::k8s::resource::events_browser::restore::from_state(data)?;
+            NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind::events())
+        }
+        _ => return None,
     };
-    keys.push(PanelKey {
+    Some(PanelKey {
         target,
         context_name,
         namespaces,
-    });
-    keys
+    })
 }
 
 /// The cluster context a Logs or Pod-detail panel should scope itself to: the

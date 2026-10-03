@@ -15,6 +15,7 @@ fn deployments() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
         plural: "deployments".into(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -23,6 +24,7 @@ fn secrets() -> DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", "Secret"),
         plural: "secrets".into(),
         namespaced: true,
+        verbs: Default::default(),
     }
 }
 
@@ -242,3 +244,5 @@ async fn a_pause_stops_and_a_resume_restarts_a_kinds_watch(cx: &mut TestAppConte
     assert!(cx.update(|cx| ClusterRegistry::kind_watch_running(cx, "kind-dev", &kind)));
     cx.update(|cx| ClusterRegistry::unsubscribe_kind(cx, "kind-dev", &kind));
 }
+
+mod poll;

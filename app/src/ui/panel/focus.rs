@@ -18,7 +18,7 @@
 //! tables never use - so focus that tabbed into one stayed there; [`tab_bindings`]
 //! hands Tab in a table back to `Root`.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry, MenuSlot, NavigateGroup};
 use gpui_kit::component::dock::{DockArea, DockPlacement, NodeId, PaneRef, PanelId};
 use gpui_kit::{App, Entity, FocusHandle, Window, actions};
 
@@ -108,7 +108,7 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
             default_binding,
             context: None,
             action,
-            menu: Some(MenuSlot::Navigate),
+            menu: Some(MenuSlot::Navigate(NavigateGroup::Panels)),
         });
     }
 }

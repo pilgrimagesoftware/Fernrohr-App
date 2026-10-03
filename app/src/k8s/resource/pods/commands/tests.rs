@@ -38,8 +38,8 @@ fn resolve(keymap: &Keymap, key: &str, contexts: &[&str]) -> Vec<Box<dyn Action>
         .collect()
 }
 
-/// While a Pods panel is on the focus path the palette lists all four
-/// shortcuts, and from any other panel it lists none of them.
+/// While a Pods panel is on the focus path the palette lists every Pods
+/// shortcut, and from any other panel it lists none of them.
 #[test]
 fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
     let registry = registry();
@@ -52,16 +52,19 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
     assert_eq!(
         in_pods,
         [
+            "pods.quick_look",
             "pods.warp_namespace",
+            "pods.warp_all_namespace",
             "pods.describe",
             "pods.logs",
             "pods.yaml",
-            "pods.fit_columns"
+            "pods.fit_columns",
+            "pods.pick_namespaces"
         ]
     );
     assert_eq!(
         crate::command::build_items(&registry, &[PANEL_KEY_CONTEXT]).len(),
-        5,
+        8,
         "each is a palette item"
     );
 
@@ -79,11 +82,12 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
 fn each_default_key_resolves_to_its_action_beneath_a_focused_row() {
     let registry = registry();
     let keymap = app_keymap(&registry, &KeymapConfig::default());
-    let expected: [(&str, &dyn Action); 4] = [
+    let expected: [(&str, &dyn Action); 5] = [
         ("w", &WarpNamespace),
         ("d", &DescribePod),
         ("l", &ShowPodLogs),
         ("y", &ShowPodYaml),
+        ("n", &crate::ui::namespace_picker::PickNamespaces),
     ];
 
     for (key, action) in expected {

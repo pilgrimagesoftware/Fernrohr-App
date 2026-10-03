@@ -7,10 +7,22 @@
 //! Owns only the command surface; what each action does lives with the panel's
 //! handlers in `pods.rs`.
 
-use crate::command::{Command, CommandRegistry, MenuSlot};
+use crate::command::{Command, CommandRegistry};
 use gpui_kit::{Action, actions};
 
-actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
+actions!(
+    pods,
+    [
+        WarpNamespace,
+        WarpAllToNamespace,
+        DescribePod,
+        ShowPodLogs,
+        ShowPodYaml,
+        QuickLook,
+        CloseQuickLook,
+        OpenQuickLookDetails
+    ]
+);
 
 /// The panel's key context. Every command here is gated to it: `d` means
 /// "describe the selected pod" while a Pods panel is on the focus path, and
@@ -18,27 +30,57 @@ actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
 /// so these still fire once a table row has taken focus from the panel.
 pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
 
+/// Added beside [`PANEL_KEY_CONTEXT`] while a quick look is open
+/// (`pod-quick-look` D3), so its Escape and Enter mean "close" and "open
+/// details" only then, while focus stays on the table.
+pub const QUICK_LOOK_KEY_CONTEXT: &str = "PodQuickLook";
+
 /// The default keys, also the hint bar's fallback when the keymap has no
 /// binding to show. Named once so the hint bar and the command can't drift.
 pub(super) const NAMESPACE_KEY: &str = "w";
+/// Warp All to Namespace (`warp-all-to-namespace`): `w` for this panel alone,
+/// shifted for every list in the context.
+pub(super) const WARP_ALL_KEY: &str = "shift-w";
 pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const LOGS_KEY: &str = "l";
 pub(super) const YAML_KEY: &str = "y";
+pub(super) const QUICK_LOOK_KEY: &str = "space";
+pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
+pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
 const NAMESPACE_COMMAND_ID: &str = "pods.warp_namespace";
+const WARP_ALL_COMMAND_ID: &str = "pods.warp_all_namespace";
 const DESCRIBE_COMMAND_ID: &str = "pods.describe";
 const LOGS_COMMAND_ID: &str = "pods.logs";
 const YAML_COMMAND_ID: &str = "pods.yaml";
 const FIT_COMMAND_ID: &str = "pods.fit_columns";
+const QUICK_LOOK_COMMAND_ID: &str = "pods.quick_look";
+const CLOSE_QUICK_LOOK_COMMAND_ID: &str = "pods.close_quick_look";
+const OPEN_QUICK_LOOK_DETAILS_COMMAND_ID: &str = "pods.quick_look_open_details";
 
 /// Registers the panel's shortcuts.
 ///
-/// Menu slots: describe and YAML open a panel, so they sit in Navigate; the
-/// namespace warp re-scopes this panel, so View. Logs stays out of the menu -
-/// Navigate already has the global "Show Logs", which opens the same selected
-/// pod's logs, and two items for one thing is clutter. The native menu greys
-/// these out unless a Pods panel is on the focus path.
+/// None is in the menu bar: they act only in a Pods panel, and the menu bar
+/// holds global commands only, so it never depends on focus
+/// (`menu-organization`). The palette offers them while a Pods panel is on the
+/// focus path, and the hint row shows their keys.
 pub fn register_commands(registry: &mut CommandRegistry) {
+    registry.register(Command {
+        id: CLOSE_QUICK_LOOK_COMMAND_ID,
+        title: "Pods: Close Quick Look",
+        default_binding: CLOSE_QUICK_LOOK_KEY,
+        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        action: Box::new(CloseQuickLook),
+        menu: None,
+    });
+    registry.register(Command {
+        id: OPEN_QUICK_LOOK_DETAILS_COMMAND_ID,
+        title: "Pods: Open Quick Look's Pod Details",
+        default_binding: OPEN_QUICK_LOOK_DETAILS_KEY,
+        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        action: Box::new(OpenQuickLookDetails),
+        menu: None,
+    });
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {
         registry.register(Command {
             id,
@@ -50,18 +92,32 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         });
     };
     register(
+        QUICK_LOOK_COMMAND_ID,
+        "Pods: Quick Look",
+        QUICK_LOOK_KEY,
+        Box::new(QuickLook),
+        None,
+    );
+    register(
         NAMESPACE_COMMAND_ID,
         "Pods: Filter to Selected Pod's Namespace",
         NAMESPACE_KEY,
         Box::new(WarpNamespace),
-        Some(MenuSlot::View),
+        None,
+    );
+    register(
+        WARP_ALL_COMMAND_ID,
+        "Pods: Warp All to Selected Pod's Namespace",
+        WARP_ALL_KEY,
+        Box::new(WarpAllToNamespace),
+        None,
     );
     register(
         DESCRIBE_COMMAND_ID,
         "Pods: Describe Selected Pod",
         DESCRIBE_KEY,
         Box::new(DescribePod),
-        Some(MenuSlot::Navigate),
+        None,
     );
     register(
         LOGS_COMMAND_ID,
@@ -75,7 +131,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Show Selected Pod's YAML",
         YAML_KEY,
         Box::new(ShowPodYaml),
-        Some(MenuSlot::Navigate),
+        None,
     );
     // The keyboard twin of a double-click on a header divider (`ui::table_fit`).
     register(
@@ -83,8 +139,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Fit Columns to Contents",
         crate::ui::table_fit::FIT_COLUMNS_KEY,
         Box::new(crate::ui::table_fit::FitAllColumns),
-        Some(MenuSlot::View),
+        None,
     );
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "pods.pick_namespaces",
+        "Pods: Pick Namespaces",
+        PANEL_KEY_CONTEXT,
+    ));
 }
 
 #[cfg(test)]

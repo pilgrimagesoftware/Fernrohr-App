@@ -5,14 +5,9 @@ use crate::tunnel::store::{TunnelFieldError, TunnelStore};
 use crate::ui::tunnels::editor::TunnelEditor;
 use gpui_kit::TestAppContext;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 fn temp_tunnels_path() -> PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!("fernrohr-tunnel-editor-test-{n}.toml"));
-    let _ = std::fs::remove_file(&path);
-    path
+    crate::util::test_paths::temp_path("tunnel-editor")
 }
 
 fn config_at(path: &std::path::Path) -> TunnelsConfig {

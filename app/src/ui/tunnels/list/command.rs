@@ -19,7 +19,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(TunnelsManage),
         // The Context menu: tunnels are how a context is reached, and the menu bar
         // makes the Tunnels window reachable with no cluster window open.
-        menu: Some(crate::command::MenuSlot::Context),
+        menu: Some(crate::command::MenuSlot::Context(
+            crate::command::ContextGroup::Tunnels,
+        )),
     });
 }
 

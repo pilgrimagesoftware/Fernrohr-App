@@ -4,16 +4,14 @@ use super::*;
 
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Pods", |context, _window, cx| {
-        let PanelInfo::Panel(state) = context.info() else {
-            panic!("Pods layout state must be a panel");
-        };
-        let context_name = state["context_name"]
-            .as_str()
-            .expect("Pods layout state must name its cluster")
-            .to_string();
-        let namespaces = serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
-        let scope = PanelScope::new(NavTarget::pods(), context_name).scoped_to(namespaces);
-        panel_handle(cx.new(|cx| PodsPanel::new(scope, cx)))
+        crate::ui::unrestored::restore_with(&context, cx, |state, cx| {
+            let context_name =
+                crate::ui::unrestored::required_str(state, "context_name")?.to_string();
+            let namespaces =
+                serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
+            let scope = PanelScope::new(NavTarget::pods(), context_name).scoped_to(namespaces);
+            Ok(panel_handle(cx.new(|cx| PodsPanel::new(scope, cx))))
+        })
     });
 }
 
@@ -26,7 +24,11 @@ pub struct PodsPanel {
     pub(super) namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
     pub(super) subscribed: bool,
     pub(super) focus_handle: FocusHandle,
+    /// The title bar's namespace picker, made on first render.
+    pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
     pub(super) pod_table: Option<Entity<TableState<PodTableDelegate>>>,
+    /// The open quick look over the selected pod, if any (`pod-quick-look`).
+    pub(super) quick_look: Option<Entity<super::quick_look::QuickLookPopover>>,
 }
 
 impl PodsPanel {
@@ -73,12 +75,14 @@ impl PodsPanel {
 
         let mut this = Self {
             scope,
+            namespace_picker: Default::default(),
             connection: connection.clone(),
             table: cx.new(|_| PodsTable::default()),
             namespaces,
             subscribed: false,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
+            quick_look: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
@@ -138,8 +142,38 @@ impl PodsPanel {
         let Some(namespace) = Self::selected(cx).map(|selection| selection.namespace) else {
             return;
         };
-        self.scope = self.scope.scoped_to(vec![namespace.clone()]);
-        cx.emit(ScopeEvent::NamespacesChanged(vec![namespace]));
+        self.set_namespaces(vec![namespace], cx);
+    }
+
+    /// `WarpAllToNamespace` (`shift-w`): asks the window to move every namespaced
+    /// list in this panel's context to the selected pod's namespace, and to make it
+    /// the context's default. `w` stays this panel alone.
+    pub(super) fn on_action_warp_all_to_namespace(
+        &mut self,
+        _: &WarpAllToNamespace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(namespace) = Self::selected(cx).map(|selection| selection.namespace) else {
+            return;
+        };
+        window.dispatch_action(
+            Box::new(crate::util::shell::WarpContextToNamespace {
+                context_name: self.scope.context_name.clone(),
+                namespace,
+            }),
+            cx,
+        );
+    }
+
+    /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
+    /// what Warp All to Namespace applies to every namespaced panel in a context.
+    pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
+        self.scope = self.scope.scoped_to(namespaces.clone());
+        cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
+            namespaces,
+        ));
+        cx.notify();
     }
 
     /// `DescribePod` (`d`) and the row context menu's "Open" both ask for the
@@ -196,7 +230,13 @@ impl PodsPanel {
                     .col_movable(true)
                     .col_resizable(true)
             });
-            cx.subscribe_in(&table, window, |_this, table, event, window, cx| {
+            // The row context menu dispatches its commands from the table, so
+            // they reach this panel's handlers as their keys do.
+            table.update(cx, |table, cx| {
+                let focus = table.focus_handle(cx);
+                table.delegate_mut().set_action_context(focus);
+            });
+            cx.subscribe_in(&table, window, |this, table, event, window, cx| {
                 if let TableEvent::ColumnWidthsChanged(widths) = event {
                     table.update(cx, |table, _| table.delegate_mut().set_widths(widths));
                     return;
@@ -234,6 +274,7 @@ impl PodsPanel {
                     return;
                 };
                 remember_selection(table, &selection, cx);
+                this.retarget_quick_look(&selection, cx);
                 cx.set_global(SelectedPod(Some(selection)));
                 cx.notify();
             })

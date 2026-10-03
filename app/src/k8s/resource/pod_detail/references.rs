@@ -169,7 +169,8 @@ pub(super) fn go_to_entries(fields: &[PodField]) -> Vec<GoToEntry> {
                 }
             }
             PodFieldValue::Text(_)
-            | PodFieldValue::Chips(_)
+            | PodFieldValue::Status { .. }
+            | PodFieldValue::Metadata(_)
             | PodFieldValue::Badges(_)
             | PodFieldValue::Collapsed(_)
             | PodFieldValue::ManagedFields(_) => {}

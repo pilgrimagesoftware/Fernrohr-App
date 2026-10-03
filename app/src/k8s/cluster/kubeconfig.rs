@@ -121,9 +121,6 @@ pub fn current_context_name(path: Option<&Path>) -> Result<Option<String>, Kubec
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
 
     const FIXTURE: &str = r#"
 apiVersion: v1
@@ -153,8 +150,7 @@ users:
 "#;
 
     fn fixture_path() -> std::path::PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("fernrohr-kubeconfig-fixture-{n}.yaml"));
+        let path = crate::util::test_paths::temp_path("kubeconfig-fixture").with_extension("yaml");
         fs::write(&path, FIXTURE).unwrap();
         path
     }
@@ -197,9 +193,8 @@ users:
 "#;
 
     fn server_fixture_path() -> std::path::PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         let path =
-            std::env::temp_dir().join(format!("fernrohr-kubeconfig-server-fixture-{n}.yaml"));
+            crate::util::test_paths::temp_path("kubeconfig-server-fixture").with_extension("yaml");
         fs::write(&path, SERVER_FIXTURE).unwrap();
         path
     }

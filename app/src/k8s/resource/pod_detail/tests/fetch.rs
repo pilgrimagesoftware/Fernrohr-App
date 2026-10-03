@@ -1,4 +1,5 @@
-//! The fetch against a fixture API server: found, events forbidden, and 404.
+//! The fetch against a fixture API server: found and 404. The pod's events come
+//! from its live watch, tested in `events::watch_tests`.
 
 use crate::k8s::resource::pod_detail::fetch::{PodFetch, fetch_pod};
 
@@ -21,24 +22,8 @@ fn fetch_distinguishes_a_missing_pod_from_other_failures() {
             .await
             .expect("a 200 is not a failure");
         match found {
-            PodFetch::Found(pod, events) => {
+            PodFetch::Found(pod) => {
                 assert_eq!(pod.metadata.name.as_deref(), Some("present"));
-                let events = events.expect("the server lists this pod's events");
-                assert_eq!(events.len(), 1);
-                assert_eq!(events[0].reason.as_deref(), Some("Scheduled"));
-            }
-            PodFetch::NotFound => panic!("the server serves this pod"),
-        }
-
-        // A pod readable by a user who may not list events still loads;
-        // the events failure is carried alongside it, not swallowed.
-        let forbidden = fetch_pod(client.clone(), "staging".into(), "events-forbidden".into())
-            .await
-            .expect("an events failure does not fail the pod");
-        match forbidden {
-            PodFetch::Found(pod, events) => {
-                assert_eq!(pod.metadata.name.as_deref(), Some("events-forbidden"));
-                assert!(events.is_err(), "the 403 is reported, not an empty list");
             }
             PodFetch::NotFound => panic!("the server serves this pod"),
         }

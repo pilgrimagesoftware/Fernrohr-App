@@ -31,6 +31,7 @@ fn add_right_panel(window: WindowHandle<MainWindow>, cx: &mut VisualTestContext)
                 gvk: GroupVersionKind::gvk("", "v1", "Fern"),
                 plural: "Ferns".into(),
                 namespaced: true,
+                verbs: Default::default(),
             };
             let panel: Entity<PlaceholderPanel> = cx.new(|cx| {
                 PlaceholderPanel::with_namespaces(
@@ -65,7 +66,10 @@ fn the_focus_commands_are_global_navigate_items_with_their_own_keys() {
             registry.available(&[]).iter().any(|c| c.id == id),
             "{id} is offered with no panel focused"
         );
-        assert_eq!(command.menu, Some(MenuSlot::Navigate));
+        assert_eq!(
+            command.menu,
+            Some(MenuSlot::Navigate(crate::command::NavigateGroup::Panels))
+        );
         let shared: Vec<&str> = registry
             .iter()
             .filter(|other| {
@@ -135,6 +139,7 @@ async fn a_focused_filter_field_passes_cmd_bracket_to_the_panel_command(cx: &mut
                 gvk: GroupVersionKind::gvk("", "v1", "Pod"),
                 plural: "pods".into(),
                 namespaced: true,
+                verbs: Default::default(),
             };
             main_window
                 .test_resource_panel()

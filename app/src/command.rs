@@ -1,9 +1,10 @@
 use gpui_kit::Action;
 
-/// The application menu's seven top-level menus. A command names at most
-/// one - the menu is a curated subset of commands, not every command sorted
-/// into a bucket, so most commands (panel-scoped shortcuts especially) carry
-/// `None` and stay palette/keymap-only.
+/// Where a command sits in the application menu: which of the seven top-level
+/// menus and, in the menus that group their items, which group. A command
+/// names at most one - the menu is a curated subset of commands, not every
+/// command sorted into a bucket, so most commands (panel-scoped shortcuts
+/// especially) carry `None` and stay palette/keymap-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuSlot {
     /// Between About and Services: Settings… (`settings.open`). About, Hide
@@ -14,12 +15,103 @@ pub enum MenuSlot {
     /// and switch - see `app-menu-and-fonts/design.md` on why this is named
     /// `Context` rather than forcing a `File` label onto content that isn't
     /// files.
+    Context(ContextGroup),
+    // No `Edit` slot: no command sits in the Edit menu yet, which the menu bar
+    // still draws (`TopMenu::Edit`) for the platform's text-editing items.
+    View(ViewGroup),
+    /// Global navigation only (`menu-organization`): commands that act
+    /// whichever panel has focus. A panel-scoped command stays out of the menu
+    /// bar, so the bar never depends on what has focus.
+    Navigate(NavigateGroup),
+    Window,
+    Help,
+}
+
+/// The Context menu's groups, in menu order: context actions, then every
+/// tunnel action together at the bottom.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ContextGroup {
+    Contexts,
+    Tunnels,
+}
+
+/// The View menu's groups, in menu order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ViewGroup {
+    /// The command palette, the way into every other command.
+    Palette,
+    /// Theme and text size.
+    Appearance,
+    /// Focusing, moving and collapsing the Resource panel, and its side
+    /// preference.
+    ResourcePanel,
+    /// Maximizing the focused panel.
+    PanelLayout,
+    /// Table columns.
+    TableColumns,
+}
+
+/// The Navigate menu's groups, in menu order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NavigateGroup {
+    /// Moving focus between panels and to the Resource panel.
+    Panels,
+    /// Cycling tabs.
+    Tabs,
+    /// Selecting a tab by position: drawn as one "Select Tab" submenu, so nine
+    /// near-identical items don't bury the rest.
+    TabPositions,
+}
+
+/// The seven top-level menus, without the groups within them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopMenu {
+    App,
     Context,
     Edit,
     View,
     Navigate,
     Window,
     Help,
+}
+
+impl MenuSlot {
+    /// The top-level menu this slot is in.
+    pub fn menu(self) -> TopMenu {
+        match self {
+            MenuSlot::App => TopMenu::App,
+            MenuSlot::Context(_) => TopMenu::Context,
+            MenuSlot::View(_) => TopMenu::View,
+            MenuSlot::Navigate(_) => TopMenu::Navigate,
+            MenuSlot::Window => TopMenu::Window,
+            MenuSlot::Help => TopMenu::Help,
+        }
+    }
+
+    /// The slot's group within its menu, by position; one group for the menus
+    /// that don't group their items. Items sort by it, and a separator goes
+    /// wherever it changes.
+    pub fn group(self) -> u8 {
+        match self {
+            MenuSlot::Context(group) => group as u8,
+            MenuSlot::View(group) => group as u8,
+            MenuSlot::Navigate(group) => group as u8,
+            MenuSlot::App | MenuSlot::Window | MenuSlot::Help => 0,
+        }
+    }
+
+    /// The submenu this slot's items are drawn in, rather than inline.
+    pub fn submenu(self) -> Option<&'static str> {
+        match self {
+            MenuSlot::Navigate(NavigateGroup::TabPositions) => Some("Select Tab"),
+            MenuSlot::Navigate(NavigateGroup::Panels | NavigateGroup::Tabs)
+            | MenuSlot::App
+            | MenuSlot::Context(_)
+            | MenuSlot::View(_)
+            | MenuSlot::Window
+            | MenuSlot::Help => None,
+        }
+    }
 }
 
 /// A registered command: metadata (for the palette and keymap) plus the
@@ -82,13 +174,18 @@ impl CommandRegistry {
             .collect()
     }
 
-    /// Commands assigned to `slot`, in registration order - the same order
-    /// the palette lists them, so the menu and the palette agree.
-    pub fn for_menu(&self, slot: MenuSlot) -> Vec<&Command> {
-        self.commands
+    /// Commands in `menu`, grouped: by their slot's group in menu order, and in
+    /// registration order within a group - the order the palette lists them,
+    /// so the menu and the palette agree.
+    pub fn for_menu(&self, menu: TopMenu) -> Vec<&Command> {
+        let mut commands: Vec<&Command> = self
+            .commands
             .iter()
-            .filter(|command| command.menu == Some(slot))
-            .collect()
+            .filter(|command| command.menu.is_some_and(|slot| slot.menu() == menu))
+            .collect();
+        // Stable, so registration order holds within a group.
+        commands.sort_by_key(|command| command.menu.map(MenuSlot::group));
+        commands
     }
 
     /// Dispatches the command's action if it's registered and available in

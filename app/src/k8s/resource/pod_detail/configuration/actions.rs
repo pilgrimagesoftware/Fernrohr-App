@@ -19,7 +19,7 @@ impl PodDetailPanel {
         self.pod().map(entries).unwrap_or_default()
     }
 
-    fn client(&self, cx: &App) -> Option<kube::Client> {
+    pub(in crate::k8s::resource::pod_detail) fn client(&self, cx: &App) -> Option<kube::Client> {
         match &self.connection.read(cx).state {
             ConnectionState::Connected(client) => Some(client.clone()),
             _ => None,
