@@ -10,7 +10,16 @@
 use crate::command::{Command, CommandRegistry};
 use gpui_kit::{Action, actions};
 
-actions!(pods, [WarpNamespace, DescribePod, ShowPodLogs, ShowPodYaml]);
+actions!(
+    pods,
+    [
+        WarpNamespace,
+        WarpAllToNamespace,
+        DescribePod,
+        ShowPodLogs,
+        ShowPodYaml
+    ]
+);
 
 /// The panel's key context. Every command here is gated to it: `d` means
 /// "describe the selected pod" while a Pods panel is on the focus path, and
@@ -21,11 +30,15 @@ pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
 /// The default keys, also the hint bar's fallback when the keymap has no
 /// binding to show. Named once so the hint bar and the command can't drift.
 pub(super) const NAMESPACE_KEY: &str = "w";
+/// Warp All to Namespace (`warp-all-to-namespace`): `w` for this panel alone,
+/// shifted for every list in the context.
+pub(super) const WARP_ALL_KEY: &str = "shift-w";
 pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const LOGS_KEY: &str = "l";
 pub(super) const YAML_KEY: &str = "y";
 
 const NAMESPACE_COMMAND_ID: &str = "pods.warp_namespace";
+const WARP_ALL_COMMAND_ID: &str = "pods.warp_all_namespace";
 const DESCRIBE_COMMAND_ID: &str = "pods.describe";
 const LOGS_COMMAND_ID: &str = "pods.logs";
 const YAML_COMMAND_ID: &str = "pods.yaml";
@@ -53,6 +66,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Filter to Selected Pod's Namespace",
         NAMESPACE_KEY,
         Box::new(WarpNamespace),
+        None,
+    );
+    register(
+        WARP_ALL_COMMAND_ID,
+        "Pods: Warp All to Selected Pod's Namespace",
+        WARP_ALL_KEY,
+        Box::new(WarpAllToNamespace),
         None,
     );
     register(

@@ -46,6 +46,15 @@ pub struct EventsPanel {
 }
 
 impl EventsPanel {
+    /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
+    /// what Warp All to Namespace applies to every namespaced panel in a context.
+    pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
+        self.scope = self.scope.scoped_to(namespaces.clone());
+        cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
+            namespaces,
+        ));
+        cx.notify();
+    }
     pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         let namespaces =

@@ -136,8 +136,38 @@ impl PodsPanel {
         let Some(namespace) = Self::selected(cx).map(|selection| selection.namespace) else {
             return;
         };
-        self.scope = self.scope.scoped_to(vec![namespace.clone()]);
-        cx.emit(ScopeEvent::NamespacesChanged(vec![namespace]));
+        self.set_namespaces(vec![namespace], cx);
+    }
+
+    /// `WarpAllToNamespace` (`shift-w`): asks the window to move every namespaced
+    /// list in this panel's context to the selected pod's namespace, and to make it
+    /// the context's default. `w` stays this panel alone.
+    pub(super) fn on_action_warp_all_to_namespace(
+        &mut self,
+        _: &WarpAllToNamespace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(namespace) = Self::selected(cx).map(|selection| selection.namespace) else {
+            return;
+        };
+        window.dispatch_action(
+            Box::new(crate::util::shell::WarpContextToNamespace {
+                context_name: self.scope.context_name.clone(),
+                namespace,
+            }),
+            cx,
+        );
+    }
+
+    /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
+    /// what Warp All to Namespace applies to every namespaced panel in a context.
+    pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
+        self.scope = self.scope.scoped_to(namespaces.clone());
+        cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
+            namespaces,
+        ));
+        cx.notify();
     }
 
     /// `DescribePod` (`d`) and the row context menu's "Open" both ask for the
