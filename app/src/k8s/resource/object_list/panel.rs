@@ -34,6 +34,8 @@ pub struct ObjectListPanel {
     pub(super) namespaces: Entity<NamespaceList>,
     pub(super) subscribed: bool,
     pub(super) focus_handle: FocusHandle,
+    /// The title bar's namespace picker, made on first render.
+    pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
     /// Built on first render, which is the first time there's a `Window`.
     pub(super) table: Option<Entity<TableState<ObjectTableDelegate>>>,
     pub(super) filter: Option<Entity<InputState>>,
@@ -73,6 +75,7 @@ impl ObjectListPanel {
         let mut this = Self {
             kind,
             scope,
+            namespace_picker: Default::default(),
             connection: connection.clone(),
             objects: cx.new(|_| ObjectsTable::default()),
             namespaces,
@@ -103,6 +106,7 @@ impl ObjectListPanel {
         Self {
             kind,
             scope,
+            namespace_picker: Default::default(),
             connection,
             objects,
             namespaces: cx.new(|_| NamespaceList::empty()),

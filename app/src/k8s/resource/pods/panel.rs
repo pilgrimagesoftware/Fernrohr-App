@@ -24,6 +24,8 @@ pub struct PodsPanel {
     pub(super) namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
     pub(super) subscribed: bool,
     pub(super) focus_handle: FocusHandle,
+    /// The title bar's namespace picker, made on first render.
+    pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
     pub(super) pod_table: Option<Entity<TableState<PodTableDelegate>>>,
 }
 
@@ -71,6 +73,7 @@ impl PodsPanel {
 
         let mut this = Self {
             scope,
+            namespace_picker: Default::default(),
             connection: connection.clone(),
             table: cx.new(|_| PodsTable::default()),
             namespaces,

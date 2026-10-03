@@ -15,10 +15,8 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::Panel;
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::*;
-use std::rc::Rc;
 
 /// Everything a panel needs to draw its title bar, and everything the window
 /// keys an open panel on.
@@ -303,17 +301,6 @@ pub fn context_label(scope: &PanelScope, muted: Hsla) -> impl IntoElement {
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
 }
 
-/// The label a namespace scope reads on the picker's button.
-fn label_for(namespaces: &[String]) -> String {
-    match namespaces {
-        [] => "All namespaces".to_string(),
-        [namespace] => namespace.clone(),
-        namespaces => format!("{} namespaces", namespaces.len()),
-    }
-}
-
-type OnPick = Rc<dyn Fn(Vec<String>, &mut App)>;
-
 /// The namespace scopes a picker offers: all namespaces, then the cluster's
 /// sorted namespace names.
 pub fn namespaces_offered(namespaces: &[String]) -> Vec<Option<String>> {
@@ -351,74 +338,6 @@ pub fn close_button<P: Panel>(panel: Entity<P>) -> Button {
         .on_click(move |_event, window, cx| {
             crate::util::shell::close_panel(panel.clone(), window, cx)
         })
-}
-
-/// The namespace picker, or nothing for a cluster-scoped kind.
-///
-/// Pinned to the trailing end of the title bar by `Panel::title_suffix`. The
-/// returned `None` is what omits the picker for cluster-scoped kinds, so the
-/// presence rule and the rendering are one decision rather than two that can
-/// disagree.
-pub fn namespace_picker(
-    scope: &PanelScope,
-    namespaces: &[String],
-    on_pick: impl Fn(Vec<String>, &mut App) + 'static,
-) -> Option<AnyElement> {
-    if !scope.is_namespaced() {
-        return None;
-    }
-    // The menu closure is `'static`, so everything it reads is captured by
-    // value: the menu outlives this render, and the panel it belongs to may be
-    // dropped before the menu is.
-    let current = scope.namespaces.clone();
-    let offered = namespaces_offered(namespaces);
-    let on_pick: OnPick = Rc::new(on_pick);
-    let picker = Button::new("panel-namespace")
-        .label(label_for(&current))
-        .icon(IconName::ChevronDown)
-        .xsmall()
-        .ghost()
-        .tab_stop(false)
-        .tooltip("Namespace")
-        .dropdown_menu(move |menu, _window, _cx| {
-            // Built per open rather than hoisted: `PopupMenuItem` is not
-            // `Clone`, and this closure is `Fn` so it can run more than once.
-            let mut menu = menu;
-            for offered in &offered {
-                let on_pick = on_pick.clone();
-                let offered = offered.clone();
-                let checked = match &offered {
-                    None => current.is_empty(),
-                    Some(namespace) => current.contains(namespace),
-                };
-                let label = match &offered {
-                    None => "All namespaces".to_string(),
-                    Some(namespace) => namespace.clone(),
-                };
-                let next = match &offered {
-                    None => Vec::new(),
-                    Some(namespace) if current.contains(namespace) => current
-                        .iter()
-                        .filter(|selected| *selected != namespace)
-                        .cloned()
-                        .collect(),
-                    Some(namespace) => {
-                        let mut selected = current.clone();
-                        selected.push(namespace.clone());
-                        selected.sort_unstable();
-                        selected.dedup();
-                        selected
-                    }
-                };
-                menu = menu.item(
-                    PopupMenuItem::new(label)
-                        .checked(checked)
-                        .on_click(move |_event, _window, cx| on_pick(next.clone(), cx)),
-                );
-            }
-            menu
-        });
-    Some(picker.into_any_element())
 }
 
 /// A panel's failure content: a human-readable message, then - when there is

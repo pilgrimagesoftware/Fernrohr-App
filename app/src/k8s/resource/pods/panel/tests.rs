@@ -303,3 +303,46 @@ async fn a_paused_context_still_shows_rows_and_the_bar_reports_the_pause(
     drop(bar);
     cx.run_until_parked();
 }
+
+/// `namespace-picker-filter`: `n` - Pick Namespaces, through the bindings the
+/// registry builds - opens the focused Pods panel's namespace picker.
+#[gpui_kit::test]
+async fn n_opens_the_namespace_picker(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+        let mut registry = crate::command::CommandRegistry::new();
+        super::register_commands(&mut registry);
+        cx.bind_keys(crate::keymap::bindings(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            &gpui_kit::DummyKeyboardMapper,
+        ));
+    });
+    let mut built = None;
+    let window = cx.add_window(|window, cx| {
+        let panel = cx
+            .new(|cx| PodsPanel::with_stubs(PanelScope::new(NavTarget::pods(), "dev".into()), cx));
+        built = Some(panel.clone());
+        gpui_kit::component::Root::new(panel, window, cx)
+    });
+    let panel = built.expect("the window built its panel");
+    let cx = &mut gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        let handle = panel.read(cx).focus_handle.clone();
+        handle.focus(window, cx);
+    });
+    let open = |cx: &mut gpui_kit::VisualTestContext| {
+        panel.read_with(cx, |panel, cx| {
+            panel
+                .namespace_picker
+                .picker()
+                .is_some_and(|picker| picker.read(cx).is_open())
+        })
+    };
+    assert!(!open(cx));
+    cx.simulate_keystrokes("n");
+    cx.run_until_parked();
+    assert!(open(cx), "`n` opens the picker");
+}
