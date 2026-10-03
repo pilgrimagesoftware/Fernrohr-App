@@ -100,6 +100,12 @@ impl PodDetailPanel {
         });
     }
 
+    /// Whether the panel watches the events of a pod other than `uid` - one the
+    /// name used to belong to before it was recreated.
+    pub(super) fn watches_other_pod(&self, uid: &str) -> bool {
+        self.events.as_ref().is_some_and(|watch| watch.uid != uid)
+    }
+
     /// Gives the panel `events` as if its watch had delivered them. Test-only.
     #[cfg(test)]
     pub(crate) fn test_set_events(

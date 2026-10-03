@@ -14,6 +14,10 @@ pub struct PodsTable {
     /// simply absent from the relist - so `InitDone` sweeps anything not
     /// seen during the cycle.
     pub(super) relisting: Option<std::collections::HashSet<String>>,
+    /// Whether a list has completed at least once, so an absent pod means gone
+    /// rather than not listed yet - what a detail panel reading its pod from
+    /// here needs to tell apart (`live-detail-panels` D2).
+    synced: bool,
 }
 
 impl PodsTable {
@@ -26,6 +30,29 @@ impl PodsTable {
 
     pub fn pods(&self) -> &[Pod] {
         self.index.items()
+    }
+
+    /// Whether the table has finished its first list.
+    pub fn synced(&self) -> bool {
+        self.synced
+    }
+
+    /// The pod named `name` in `namespace`, preferring the one with `uid` when
+    /// a delete and a recreate under the same name briefly overlap.
+    pub fn find(&self, namespace: &str, name: &str, uid: Option<&str>) -> Option<&Pod> {
+        let mut named = self.pods().iter().filter(|pod| {
+            pod.metadata.namespace.as_deref() == Some(namespace)
+                && pod.metadata.name.as_deref() == Some(name)
+        });
+        let first = named.next()?;
+        if uid.is_none() || first.metadata.uid.as_deref() == uid {
+            return Some(first);
+        }
+        Some(
+            named
+                .find(|pod| pod.metadata.uid.as_deref() == uid)
+                .unwrap_or(first),
+        )
     }
 
     /// Applies one watch event. `Apply`/`InitApply` upsert by uid, `Delete`
@@ -64,6 +91,7 @@ impl PodsTable {
                 for id in stale {
                     self.index.apply_deleted(&id);
                 }
+                self.synced = true;
             }
         }
     }
