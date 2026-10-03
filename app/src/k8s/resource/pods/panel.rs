@@ -27,6 +27,8 @@ pub struct PodsPanel {
     /// The title bar's namespace picker, made on first render.
     pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
     pub(super) pod_table: Option<Entity<TableState<PodTableDelegate>>>,
+    /// The open quick look over the selected pod, if any (`pod-quick-look`).
+    pub(super) quick_look: Option<Entity<super::quick_look::QuickLookPopover>>,
 }
 
 impl PodsPanel {
@@ -80,6 +82,7 @@ impl PodsPanel {
             subscribed: false,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
+            quick_look: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
@@ -227,7 +230,13 @@ impl PodsPanel {
                     .col_movable(true)
                     .col_resizable(true)
             });
-            cx.subscribe_in(&table, window, |_this, table, event, window, cx| {
+            // The row context menu dispatches its commands from the table, so
+            // they reach this panel's handlers as their keys do.
+            table.update(cx, |table, cx| {
+                let focus = table.focus_handle(cx);
+                table.delegate_mut().set_action_context(focus);
+            });
+            cx.subscribe_in(&table, window, |this, table, event, window, cx| {
                 if let TableEvent::ColumnWidthsChanged(widths) = event {
                     table.update(cx, |table, _| table.delegate_mut().set_widths(widths));
                     return;
@@ -265,6 +274,7 @@ impl PodsPanel {
                     return;
                 };
                 remember_selection(table, &selection, cx);
+                this.retarget_quick_look(&selection, cx);
                 cx.set_global(SelectedPod(Some(selection)));
                 cx.notify();
             })

@@ -71,7 +71,7 @@ impl ObjectListPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(table) = self.table.clone()
-            && list_keys::step(&table, Step::Down, window, cx)
+            && list_keys::step(&table, &self.focus_handle, Step::Down, window, cx)
         {
             cx.stop_propagation();
         }
@@ -84,7 +84,7 @@ impl ObjectListPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(table) = self.table.clone()
-            && list_keys::step(&table, Step::Up, window, cx)
+            && list_keys::step(&table, &self.focus_handle, Step::Up, window, cx)
         {
             cx.stop_propagation();
         }

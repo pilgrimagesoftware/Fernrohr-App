@@ -106,6 +106,11 @@ pub(crate) const ICON_RASTER_SIZES: usize = 12;
 /// it while the panel sits open (`pod-events-time-window` D2).
 pub(crate) const POD_EVENTS_WINDOW_TICK: Duration = Duration::from_secs(60);
 
+/// How long a quick look's selection must rest on a pod before the popover
+/// restarts its event watch there, so scanning with Up/Down doesn't churn a
+/// watch per row (`pod-quick-look` D2). The pod's fields follow at once.
+pub(crate) const QUICK_LOOK_EVENTS_DEBOUNCE: Duration = Duration::from_millis(250);
+
 /// How often a Terminating pod's detail panel re-renders, so its grace period
 /// counts down by the second (`live-detail-panels`).
 pub(crate) const TERMINATING_COUNTDOWN_TICK: Duration = Duration::from_secs(1);
