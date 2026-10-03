@@ -3,7 +3,9 @@
 //! selected pod opens the quick look, Space and Escape close it, Enter and its
 //! button open the detail panel, Down moves it, and it follows the pod live.
 
-use super::view::{OPEN_DETAILS_ID, POPOVER_ID, warning_text};
+use super::view::{
+    CLOSE_HINT, OPEN_DETAILS_ID, OPEN_HINT, POPOVER_ID, value_selector, warning_text,
+};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
@@ -449,4 +451,148 @@ async fn logs_from_a_rows_context_menu_opens_that_pods_logs(cx: &mut TestAppCont
     harness.press("enter");
     assert_eq!(logs_opened.get(), 1, "Logs ran");
     assert_eq!(harness.selected().as_deref(), Some("web-2"), "for that pod");
+}
+
+/// `web-1` with values longer than any popover: a cloud-style node name and a
+/// fully qualified image. Placeholder names, nobody's real cluster.
+fn long_valued_pod() -> Value {
+    let mut long = pod("u1", "web-1", true);
+    long["spec"]["nodeName"] =
+        json!("gke-example-cluster-default-node-pool-0123abcd-long-node-name-x9z8");
+    long["spec"]["containers"][0]["image"] = json!(
+        "registry.example.com/example-org/example-team/very-long-image-name:2026.10.03-build.1234"
+    );
+    long
+}
+
+/// A built selector as `debug_bounds` takes it. Leaked: a test's handful of
+/// selectors live for the run anyway.
+fn leak(selector: String) -> &'static str {
+    Box::leak(selector.into_boxed_str())
+}
+
+/// Whether `inner` lies within `outer`, to the pixel.
+fn within(
+    inner: gpui_kit::Bounds<gpui_kit::Pixels>,
+    outer: gpui_kit::Bounds<gpui_kit::Pixels>,
+) -> bool {
+    let slack = gpui_kit::px(0.5);
+    inner.left() >= outer.left() - slack
+        && inner.top() >= outer.top() - slack
+        && inner.right() <= outer.right() + slack
+        && inner.bottom() <= outer.bottom() + slack
+}
+
+/// `0-quick-look-layout` (1): a 60+ character node name and a long image stay
+/// inside the popover - ellipsized, not overflowing its edge - at a normal and a
+/// narrow window width, and the popover stays within its width bounds.
+#[gpui_kit::test]
+async fn long_values_stay_inside_the_popover(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    harness.cluster.apply(PODS.0, PODS.1, long_valued_pod());
+    harness.wait_for("listed the long node name", |panel, cx| {
+        panel.table.read(cx).pods().iter().any(|pod| {
+            pod.spec
+                .as_ref()
+                .and_then(|spec| spec.node_name.as_ref())
+                .is_some_and(|node| node.len() > 60)
+        })
+    });
+    harness.press("space");
+
+    for width in [1280., 560.] {
+        harness
+            .vcx
+            .simulate_resize(gpui_kit::size(gpui_kit::px(width), gpui_kit::px(900.)));
+        harness.vcx.run_until_parked();
+        let popover = harness.vcx.update(|window, cx| {
+            window.render_frame(cx);
+            window.try_find(POPOVER_ID).expect("drawn").bounds()
+        });
+        assert!(
+            popover.size.width
+                <= gpui_kit::px(width * crate::consts::QUICK_LOOK_MAX_WIDTH_FRACTION)
+                    + gpui_kit::px(0.5)
+                || popover.size.width
+                    <= gpui_kit::px(crate::consts::QUICK_LOOK_MIN_WIDTH) + gpui_kit::px(0.5),
+            "{width}px window: the popover is {popover:?}"
+        );
+        for key in [
+            "name",
+            "node",
+            "ip",
+            "owner",
+            "image app",
+            "state app",
+            "image sidecar",
+            "state sidecar",
+        ] {
+            let value = harness
+                .vcx
+                .debug_bounds(leak(value_selector(key)))
+                .unwrap_or_else(|| panic!("{key} is drawn"));
+            assert!(
+                within(value, popover),
+                "{width}px window: {key} at {value:?} leaves the popover at {popover:?}"
+            );
+        }
+        // One line each, so the long ones are cut short with an ellipsis, not
+        // wrapped down the popover. Element boxes are what a test can read -
+        // not painted glyphs - so this pins the truncating layout, and the
+        // boxes above pin where it sits.
+        let name = harness
+            .vcx
+            .debug_bounds(leak(value_selector("name")))
+            .unwrap();
+        for key in ["node", "image app"] {
+            let value = harness.vcx.debug_bounds(leak(value_selector(key))).unwrap();
+            assert!(
+                value.size.height <= name.size.height + gpui_kit::px(1.),
+                "{width}px window: {key} stays on one line, {value:?}"
+            );
+        }
+    }
+}
+
+/// `0-quick-look-layout` (2): the footer reads "↵ Open Details" then "Esc Close" -
+/// each key just before its own label, the two pairs apart.
+#[gpui_kit::test]
+async fn the_footer_pairs_each_key_with_its_action(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    harness.press("space");
+    harness.vcx.update(|window, cx| window.render_frame(cx));
+    let bounds = |harness: &mut Harness, selector: String| {
+        let selector = leak(selector);
+        harness
+            .vcx
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("{selector} is drawn"))
+    };
+    let open_key = bounds(&mut harness, format!("{OPEN_HINT} key"));
+    let open_label = bounds(&mut harness, format!("{OPEN_HINT} label"));
+    let close_key = bounds(&mut harness, format!("{CLOSE_HINT} key"));
+    let close_label = bounds(&mut harness, format!("{CLOSE_HINT} label"));
+    let open = bounds(&mut harness, OPEN_HINT.to_string());
+    let close = bounds(&mut harness, CLOSE_HINT.to_string());
+
+    assert!(
+        open_key.right() <= open_label.left(),
+        "↵ comes before Open Details"
+    );
+    assert!(
+        close_key.right() <= close_label.left(),
+        "Esc comes before Close"
+    );
+    assert!(
+        open.right() + gpui_kit::px(8.) <= close.left(),
+        "the pairs are set apart: {open:?} then {close:?}"
+    );
+    assert!(
+        within(open_key, open) && within(open_label, open),
+        "one group"
+    );
+    assert!(
+        within(close_key, close) && within(close_label, close),
+        "one group"
+    );
 }

@@ -111,6 +111,14 @@ pub(crate) const POD_EVENTS_WINDOW_TICK: Duration = Duration::from_secs(60);
 /// watch per row (`pod-quick-look` D2). The pod's fields follow at once.
 pub(crate) const QUICK_LOOK_EVENTS_DEBOUNCE: Duration = Duration::from_millis(250);
 
+/// The quick look's width bounds (`0-quick-look-layout`): as wide as its
+/// fields need, at least `QUICK_LOOK_MIN_WIDTH`, and at most this share of the
+/// window, itself capped at `QUICK_LOOK_MAX_WIDTH` - a long value past that
+/// ellipsizes rather than widening the popover off the window.
+pub(crate) const QUICK_LOOK_MIN_WIDTH: f32 = 320.;
+pub(crate) const QUICK_LOOK_MAX_WIDTH: f32 = 720.;
+pub(crate) const QUICK_LOOK_MAX_WIDTH_FRACTION: f32 = 0.6;
+
 /// How often a Terminating pod's detail panel re-renders, so its grace period
 /// counts down by the second (`live-detail-panels`).
 pub(crate) const TERMINATING_COUNTDOWN_TICK: Duration = Duration::from_secs(1);
