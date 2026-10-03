@@ -72,6 +72,12 @@ pub struct PodDetailPanel {
     pub(super) fetching: bool,
     /// The shared Pods watch the panel follows its pod in, once subscribed.
     pub(super) live: super::live::LiveSource,
+    /// That the pod was deleted (its last state kept, stale) or replaced by a
+    /// new one of the same name. Terminating is read off the pod itself.
+    pub(super) notice: Option<crate::ui::detail::lifecycle::Lifecycle>,
+    /// Re-renders every second while the pod is Terminating, so the grace
+    /// period counts down.
+    pub(super) countdown: Option<Task<()>>,
     /// The pod's live events, once it has loaded (`live_events`).
     pub(super) events: Option<super::live_events::PodEventsWatch>,
     /// How far back the Events tab looks (`pod-events-time-window` 2.1).
@@ -106,6 +112,8 @@ impl PodDetailPanel {
             yaml_view: Default::default(),
             fetching: false,
             live: super::live::LiveSource::Pending,
+            notice: None,
+            countdown: None,
             events: None,
             events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -141,6 +149,8 @@ impl PodDetailPanel {
             yaml_view: Default::default(),
             fetching: false,
             live: super::live::LiveSource::Off,
+            notice: None,
+            countdown: None,
             events: None,
             events_window: super::window_preference::preferred(cx),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),

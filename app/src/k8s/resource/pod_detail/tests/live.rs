@@ -5,14 +5,15 @@
 use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::{ClusterRegistry, WatchKey};
-use crate::k8s::resource::pod_detail::fetch::PodDetailState;
 use crate::k8s::resource::pod_detail::model::{DetailSection, DetailView};
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
 use crate::k8s::resource::pod_detail::register_commands;
 use crate::k8s::test_cluster::FakeCluster;
 use crate::keymap::KeymapConfig;
+use crate::ui::detail::lifecycle::{BANNER_ID, Lifecycle};
 use crate::ui::nav::{NavTarget, PodRef};
 use crate::ui::panel_title::PanelScope;
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 use serde_json::{Value, json};
 
@@ -178,24 +179,141 @@ async fn a_restart_keeps_the_open_tab_and_an_expanded_card(cx: &mut TestAppConte
     });
 }
 
-/// Design D2: a pod deleted while its panel is open reads as gone, and one
-/// recreated under the same name (a new uid) is shown in its place.
+/// `shop/web-1` (uid `uid`, restarted `restarts` times) being deleted: a
+/// deletion timestamp `grace_secs` out.
+fn terminating(uid: &str, restarts: i32, grace_secs: i64) -> Value {
+    let mut pod = pod(uid, "Running", restarts);
+    let deadline = jiff::Timestamp::now() + jiff::SignedDuration::from_secs(grace_secs);
+    pod["metadata"]["deletionTimestamp"] = json!(deadline.to_string());
+    pod["metadata"]["deletionGracePeriodSeconds"] = json!(grace_secs);
+    pod
+}
+
+/// An event about `shop/web-1` (uid `uid`), seen just now.
+fn event(name: &str, uid: &str, reason: &str) -> Value {
+    json!({
+        "apiVersion": "v1", "kind": "Event",
+        "metadata": { "name": name, "namespace": "shop", "uid": format!("event-{name}") },
+        "involvedObject": { "kind": "Pod", "apiVersion": "v1", "namespace": "shop", "name": "web-1", "uid": uid },
+        "type": "Warning", "reason": reason, "message": format!("{reason} happened"),
+        "count": 1, "lastTimestamp": jiff::Timestamp::now().to_string(),
+    })
+}
+
+/// The reasons of the events the Events tab lists.
+fn event_reasons(panel: &PodDetailPanel, cx: &gpui_kit::App) -> Vec<String> {
+    let mut reasons: Vec<String> = panel
+        .events_view(jiff::Timestamp::now(), cx)
+        .and_then(|view| view.events.ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|event| event.reason)
+        .collect();
+    reasons.sort();
+    reasons
+}
+
+fn banner_shown(harness: &mut Harness) -> bool {
+    harness.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window.try_find(BANNER_ID).is_some()
+    })
+}
+
+/// Spec "Deleted while open": the panel shows Terminating with the grace period
+/// left, then that the pod was deleted - keeping its last fields, marked stale,
+/// and its events - and stays open.
 #[gpui_kit::test]
-async fn a_deleted_then_recreated_pod_shows_gone_then_the_new_one(cx: &mut TestAppContext) {
+async fn a_deleted_pod_shows_terminating_then_its_last_state_as_deleted(cx: &mut TestAppContext) {
+    let mut harness = open(cx, pod("u1", "Running", 4));
+    harness
+        .cluster
+        .apply("/api/v1", "events", event("web-1.oom", "u1", "OOMKilling"));
+    harness.wait_for("listed the pod's event", |panel, cx| {
+        panel.live_synced(cx) && event_reasons(panel, cx) == ["OOMKilling"]
+    });
+    assert!(!banner_shown(&mut harness), "a live pod has no banner");
+
+    harness
+        .cluster
+        .apply("/api/v1", "pods", terminating("u1", 4, 30));
+    harness.wait_for("showed the pod Terminating", |panel, _| {
+        matches!(panel.lifecycle(), Some(Lifecycle::Terminating { .. }))
+    });
+    let message = harness.vcx.update(|_, cx| {
+        let lifecycle = harness.panel.read(cx).lifecycle().expect("terminating");
+        lifecycle.message("pod", jiff::Timestamp::now())
+    });
+    assert!(
+        message.starts_with("Terminating: this pod's grace period ends in"),
+        "{message}"
+    );
+    assert!(banner_shown(&mut harness), "the banner says so");
+
+    harness.cluster.delete("/api/v1", "pods", "shop", "web-1");
+    harness.wait_for("showed the pod deleted", |panel, _| {
+        matches!(panel.lifecycle(), Some(Lifecycle::Deleted { .. }))
+    });
+    harness.vcx.update(|_, cx| {
+        let panel = harness.panel.read(cx);
+        assert_eq!(
+            shown(panel),
+            Some(("Running".into(), 4)),
+            "its last known state stays"
+        );
+        assert!(
+            panel
+                .lifecycle()
+                .is_some_and(|lifecycle| lifecycle.is_stale())
+        );
+        assert_eq!(event_reasons(panel, cx), ["OOMKilling"], "and its events");
+        let message = panel
+            .lifecycle()
+            .unwrap()
+            .message("pod", jiff::Timestamp::now());
+        assert!(message.starts_with("This pod was deleted at "), "{message}");
+    });
+    assert!(
+        banner_shown(&mut harness),
+        "the panel stays open, saying so"
+    );
+}
+
+/// Spec "Recreated under the same name": the panel switches to the new pod,
+/// says it replaced the deleted one, follows it live, and lists the new pod's
+/// events beside the old one's.
+#[gpui_kit::test]
+async fn a_recreated_pod_replaces_the_deleted_one_with_a_notice(cx: &mut TestAppContext) {
     let mut harness = open(cx, pod("u1", "Running", 3));
+    harness
+        .cluster
+        .apply("/api/v1", "events", event("web-1.old", "u1", "Killing"));
     harness.wait_for("showed the pod", |panel, cx| {
         panel.live_synced(cx) && shown_uid(panel).as_deref() == Some("u1")
     });
 
     harness.cluster.delete("/api/v1", "pods", "shop", "web-1");
-    harness.wait_for("showed the pod gone", |panel, _| {
-        matches!(panel.state, PodDetailState::NotFound)
+    harness.wait_for("showed the pod deleted", |panel, _| {
+        matches!(panel.lifecycle(), Some(Lifecycle::Deleted { .. }))
     });
 
     harness
         .cluster
         .apply("/api/v1", "pods", pod("u2", "Pending", 0));
-    harness.wait_for("showed the new pod", |panel, _| {
-        shown_uid(panel).as_deref() == Some("u2") && shown(panel) == Some(("Pending".into(), 0))
+    harness
+        .cluster
+        .apply("/api/v1", "events", event("web-1.new", "u2", "Scheduled"));
+    harness.wait_for("showed the new pod with both pods' events", |panel, cx| {
+        shown_uid(panel).as_deref() == Some("u2")
+            && panel.lifecycle() == Some(Lifecycle::Replaced)
+            && event_reasons(panel, cx) == ["Killing", "Scheduled"]
+    });
+    assert!(banner_shown(&mut harness), "the notice shows");
+
+    harness
+        .cluster
+        .apply("/api/v1", "pods", pod("u2", "Running", 0));
+    harness.wait_for("followed the new pod", |panel, _| {
+        shown(panel) == Some(("Running".into(), 0))
     });
 }

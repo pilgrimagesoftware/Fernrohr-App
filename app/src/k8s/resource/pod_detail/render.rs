@@ -307,7 +307,12 @@ impl Render for PodDetailPanel {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(content))
+            .child(crate::ui::detail::lifecycle::body(
+                content,
+                self.lifecycle().as_ref(),
+                "pod",
+                cx,
+            ))
             // Tab stays in the panel: see `ui::panel::focus`.
             .focus_trap("pod-detail-panel-tab-trap", &self.focus_handle)
     }

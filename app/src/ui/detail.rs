@@ -19,6 +19,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 mod collapsible;
+pub(crate) mod lifecycle;
 mod metadata;
 pub use collapsible::Collapsible;
 pub use metadata::metadata_chips;

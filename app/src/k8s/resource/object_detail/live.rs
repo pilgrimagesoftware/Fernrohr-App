@@ -12,14 +12,19 @@
 //! object's absence, as for pods.
 //!
 //! The view state - which view, revealed values, YAML folds and scroll - is the
-//! panel's, beside `state`, so a refetch re-renders without resetting it. Only a
-//! recreated object (same name, new uid) hides values revealed from the old one.
+//! panel's, beside `state`, so a refetch re-renders without resetting it.
+//!
+//! A deleted object keeps its last state on screen under a "deleted at" notice,
+//! and the panel stays open. A new object under the same name then takes over
+//! with a "replaced" notice, hiding values revealed from the old one.
 
 use super::ObjectDetailPanel;
-use super::fetch::ObjectDetailState;
+use super::fetch::{ObjectDetailState, ObjectEvents};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::object_list::ObjectsTable;
+use crate::ui::detail::lifecycle::Lifecycle;
 use gpui_kit::*;
+use kube::api::DynamicObject;
 
 /// Where the panel learns that its object changed.
 pub(super) enum LiveSource {
@@ -85,8 +90,7 @@ impl ObjectDetailPanel {
         };
         let Some(row) = row else {
             self.followed = None;
-            if !matches!(self.state, ObjectDetailState::NotFound) {
-                self.state = ObjectDetailState::NotFound;
+            if self.show_absent() {
                 cx.notify();
             }
             return;
@@ -94,23 +98,49 @@ impl ObjectDetailPanel {
         if self.followed.as_ref() == Some(&row) {
             return;
         }
-        let shown = self.object().map(|object| Version {
-            uid: object.metadata.uid.clone().unwrap_or_default(),
-            resource_version: object.metadata.resource_version.clone().unwrap_or_default(),
+        let current = self.object().is_some_and(|object| {
+            object.metadata.uid.as_deref() == Some(row.uid.as_str())
+                && object.metadata.resource_version.as_deref()
+                    == Some(row.resource_version.as_str())
         });
-        let recreated = self
-            .followed
-            .as_ref()
-            .or(shown.as_ref())
-            .is_some_and(|before| before.uid != row.uid);
-        if recreated {
-            self.revealed.clear();
-        }
-        let current = shown.as_ref() == Some(&row);
         self.followed = Some(row);
         if !current {
             self.fetch(cx);
         }
+    }
+
+    /// The object is gone: keep its last state under a "deleted" notice, or say
+    /// it doesn't exist if the panel never had it. Whether anything changed.
+    pub(super) fn show_absent(&mut self) -> bool {
+        if self.object().is_some() {
+            if matches!(self.lifecycle, Some(Lifecycle::Deleted { .. })) {
+                return false;
+            }
+            self.lifecycle = Some(Lifecycle::Deleted {
+                at: jiff::Timestamp::now(),
+            });
+            return true;
+        }
+        if matches!(self.state, ObjectDetailState::NotFound) {
+            return false;
+        }
+        self.state = ObjectDetailState::NotFound;
+        true
+    }
+
+    /// Shows a fetched `object`, noting when it replaced a deleted one of the
+    /// same name - whose revealed values go with it.
+    pub(super) fn show_fetched(&mut self, object: Box<DynamicObject>, events: ObjectEvents) {
+        let replaced = self
+            .object()
+            .is_some_and(|shown| shown.metadata.uid != object.metadata.uid);
+        if replaced {
+            self.revealed.clear();
+            self.lifecycle = Some(Lifecycle::Replaced);
+        } else if matches!(self.lifecycle, Some(Lifecycle::Deleted { .. })) {
+            self.lifecycle = None;
+        }
+        self.state = ObjectDetailState::Loaded(object, events);
     }
 }
 

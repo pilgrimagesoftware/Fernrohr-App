@@ -42,6 +42,9 @@ pub struct ObjectDetailPanel {
     pub(super) live: super::live::LiveSource,
     /// The write of the object the panel last acted on from the table.
     pub(super) followed: Option<super::live::Version>,
+    /// That the object was deleted (its last state kept, stale) or replaced
+    /// by a new one of the same name.
+    pub(super) lifecycle: Option<crate::ui::detail::lifecycle::Lifecycle>,
     /// Revealed Secret values, by key - only while shown, and never saved.
     pub(super) revealed:
         std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
@@ -102,6 +105,7 @@ impl ObjectDetailPanel {
             refetch: false,
             live,
             followed: None,
+            lifecycle: None,
             revealed: Default::default(),
             yaml_view: Default::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -145,13 +149,15 @@ impl ObjectDetailPanel {
             crate::runtime::drain(rx, |result| {
                 let _ = this.update(cx, |this, cx| {
                     this.fetching = false;
-                    this.state = match result {
-                        Ok(ObjectFetch::Found(object, events)) => {
-                            ObjectDetailState::Loaded(object, events)
+                    match result {
+                        Ok(ObjectFetch::Found(object, events)) => this.show_fetched(object, events),
+                        Ok(ObjectFetch::NotFound) => {
+                            this.show_absent();
                         }
-                        Ok(ObjectFetch::NotFound) => ObjectDetailState::NotFound,
-                        Err((message, detail)) => ObjectDetailState::Failed { message, detail },
-                    };
+                        Err((message, detail)) => {
+                            this.state = ObjectDetailState::Failed { message, detail };
+                        }
+                    }
                     if std::mem::take(&mut this.refetch) {
                         this.fetch(cx);
                     }

@@ -9,11 +9,12 @@ use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::{DiscoveredKind, KindVerbs};
 use crate::k8s::cluster::session::{ClusterRegistry, WatchKey};
 use crate::k8s::resource::object_detail::ObjectDetailPanel;
-use crate::k8s::resource::object_detail::fetch::ObjectDetailState;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::test_cluster::FakeCluster;
+use crate::ui::detail::lifecycle::{BANNER_ID, Lifecycle};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 use serde_json::{Value, json};
 
@@ -161,10 +162,11 @@ async fn a_polled_kinds_object_updates_on_the_next_list(cx: &mut TestAppContext)
     });
 }
 
-/// Design D2: an object deleted while its panel is open reads as gone, and one
-/// recreated under the same name (a new uid) is shown in its place.
+/// Spec "Deleted while open": the panel says the object was deleted and when,
+/// keeps its last state visible as stale, and stays open; one recreated under
+/// the same name (a new uid) is then shown in its place, saying so.
 #[gpui_kit::test]
-async fn a_deleted_then_recreated_object_shows_gone_then_the_new_one(cx: &mut TestAppContext) {
+async fn a_deleted_object_keeps_its_last_state_until_replaced(cx: &mut TestAppContext) {
     let mut harness = open(cx, deployments(), deployment("d1", 2, 2));
     harness.wait_for("showed the object", |panel| {
         shown_uid(panel).as_deref() == Some("d1")
@@ -173,14 +175,33 @@ async fn a_deleted_then_recreated_object_shows_gone_then_the_new_one(cx: &mut Te
     harness
         .cluster
         .delete(APPS, "deployments", "staging", "web");
-    harness.wait_for("showed the object gone", |panel| {
-        matches!(panel.state, ObjectDetailState::NotFound)
+    harness.wait_for("showed the object deleted", |panel| {
+        matches!(panel.lifecycle, Some(Lifecycle::Deleted { .. }))
+    });
+    harness.vcx.update(|window, cx| {
+        let panel = harness.panel.read(cx);
+        assert_eq!(
+            replicas(panel).as_deref(),
+            Some("desired 2 · updated 2 · ready 2 · available 2"),
+            "its last known state stays"
+        );
+        let message = panel
+            .lifecycle
+            .as_ref()
+            .unwrap()
+            .message("deployment", jiff::Timestamp::now());
+        assert!(
+            message.starts_with("This deployment was deleted at "),
+            "{message}"
+        );
+        window.render_frame(cx);
+        assert!(window.try_find(BANNER_ID).is_some(), "the panel says so");
     });
 
     harness
         .cluster
         .apply(APPS, "deployments", deployment("d2", 1, 0));
     harness.wait_for("showed the new object", |panel| {
-        shown_uid(panel).as_deref() == Some("d2")
+        shown_uid(panel).as_deref() == Some("d2") && panel.lifecycle == Some(Lifecycle::Replaced)
     });
 }
