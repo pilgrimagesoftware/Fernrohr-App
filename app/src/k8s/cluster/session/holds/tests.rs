@@ -6,18 +6,9 @@ use crate::k8s::cluster::session::test_support::test_client;
 use crate::k8s::cluster::tunnel::{self, ForwardKey};
 use crate::tunnel::store::TunnelStore;
 use gpui_kit::{AppContext as _, TestAppContext, WindowId};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn temp_path(label: &str) -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "fernrohr-session-hold-release-{label}-{}-{n}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&path);
-    path
+    crate::util::test_paths::temp_path(&format!("session-hold-release-{label}"))
 }
 
 /// A one-context kubeconfig fixture, mirroring `k8s::cluster::tunnel`'s own

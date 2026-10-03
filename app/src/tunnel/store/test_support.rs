@@ -9,9 +9,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub(super) fn temp_config_path() -> PathBuf {
-    let path = std::env::temp_dir().join(format!("fernrohr-tunnel-store-test-{}.toml", next_id()));
-    let _ = std::fs::remove_file(&path);
-    path
+    crate::util::test_paths::temp_path("tunnel-store")
 }
 
 /// A counter-derived id, unique per test run within this process. Tests

@@ -34,13 +34,9 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use serde::Deserialize;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_path(name: &str) -> std::path::PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("fernrohr-config-test-{name}-{n}.toml"))
+        crate::util::test_paths::temp_path(&format!("config-{name}"))
     }
 
     #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]

@@ -10,16 +10,9 @@ use gpui_kit::component::Root;
 use gpui_kit::{
     KeyDownEvent, KeyUpEvent, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn temp_path(name: &str) -> std::path::PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "fernrohr-settings-text-size-{name}-{}-{n}.toml",
-        std::process::id()
-    ))
+    crate::util::test_paths::temp_path(&format!("settings-text-size-{name}"))
 }
 
 fn press(cx: &mut VisualTestContext, keys: &str) {

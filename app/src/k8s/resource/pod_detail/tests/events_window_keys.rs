@@ -13,15 +13,9 @@ use gpui_kit::{
     AppContext as _, Entity, Focusable as _, Keystroke, Modifiers, TestAppContext,
     VisualTestContext,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
 
 fn temp_path() -> std::path::PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "fernrohr-pod-events-window-{}-{n}.toml",
-        std::process::id()
-    ))
+    crate::util::test_paths::temp_path("pod-events-window")
 }
 
 fn panel_window(
