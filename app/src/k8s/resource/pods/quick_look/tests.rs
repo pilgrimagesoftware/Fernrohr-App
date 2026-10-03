@@ -10,6 +10,7 @@ use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::glance::glance;
 use crate::k8s::resource::pods::{PodsPanel, SelectedPod};
 use crate::k8s::test_cluster::FakeCluster;
+use crate::ui::detail::lifecycle::{BANNER_ID, Lifecycle};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
@@ -215,7 +216,7 @@ async fn space_on_a_crashing_pod_shows_it_at_a_glance(cx: &mut TestAppContext) {
 
     harness.vcx.update(|_, cx| {
         let popover = harness.panel.read(cx).quick_look().unwrap().read(cx);
-        let glance = glance(popover.pod(cx).expect("listed"), jiff::Timestamp::now());
+        let glance = glance(popover.pod().expect("listed"), jiff::Timestamp::now());
         assert_eq!(glance.status, "Running");
         assert_eq!(glance.ready, "1/2");
         assert_eq!(glance.restarts, 5);
@@ -234,6 +235,15 @@ async fn space_on_a_crashing_pod_shows_it_at_a_glance(cx: &mut TestAppContext) {
     harness.vcx.update(|window, cx| window.render_frame(cx));
     assert!(harness.vcx.debug_bounds("quick-look-status").is_some());
     assert!(harness.vcx.debug_bounds("quick-look-warning").is_some());
+    let popover = harness.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window.try_find(POPOVER_ID).expect("drawn").bounds()
+    });
+    let status = harness.vcx.debug_bounds("quick-look-status").unwrap();
+    assert!(
+        popover.contains(&status.center()),
+        "the fields are laid out inside the popover, not collapsed out of it"
+    );
 }
 
 /// Space and Escape close the quick look and keep the selection; Enter and the
@@ -286,7 +296,8 @@ async fn the_quick_look_closes_and_opens_details_from_the_keyboard_and_mouse(
 
 /// Specs "Scanning several pods", "Live while open" and "The pod goes away":
 /// Down moves the quick look with the selection, a ready-count change shows in
-/// place, and a deleted pod reads as gone with the popover still open.
+/// place, and a pod being deleted reads as Terminating, then as deleted with its
+/// last state kept - the detail panels' words - with the popover still open.
 #[gpui_kit::test]
 async fn the_quick_look_follows_the_selection_and_the_pod_live(cx: &mut TestAppContext) {
     let mut harness = open(cx);
@@ -306,16 +317,41 @@ async fn the_quick_look_follows_the_selection_and_the_pod_live(cx: &mut TestAppC
     harness.wait_for("showed web-2's ready count drop", |panel, cx| {
         let popover = panel.quick_look().unwrap().read(cx);
         popover
-            .pod(cx)
+            .pod()
             .is_some_and(|pod| glance(pod, jiff::Timestamp::now()).ready == "1/2")
     });
 
+    let mut terminating = pod("u2", "web-2", true);
+    let deadline = jiff::Timestamp::now() + jiff::SignedDuration::from_secs(30);
+    terminating["metadata"]["deletionTimestamp"] = json!(deadline.to_string());
+    harness.cluster.apply(PODS.0, PODS.1, terminating);
+    harness.wait_for("showed web-2 Terminating", |panel, cx| {
+        let popover = panel.quick_look().unwrap().read(cx);
+        matches!(popover.lifecycle(), Some(Lifecycle::Terminating { .. }))
+    });
+    assert!(harness.drawn(BANNER_ID), "the banner says so");
+
     harness.cluster.delete(PODS.0, PODS.1, "shop", "web-2");
-    harness.wait_for("showed web-2 gone", |panel, cx| {
-        panel.quick_look().unwrap().read(cx).pod(cx).is_none()
+    harness.wait_for("showed web-2 deleted", |panel, cx| {
+        let popover = panel.quick_look().unwrap().read(cx);
+        matches!(popover.lifecycle(), Some(Lifecycle::Deleted { .. }))
     });
     assert_eq!(harness.looking_at().as_deref(), Some("web-2"), "still open");
+    harness.vcx.update(|_, cx| {
+        let popover = harness.panel.read(cx).quick_look().unwrap().read(cx);
+        let last = glance(
+            popover.pod().expect("its last state"),
+            jiff::Timestamp::now(),
+        );
+        assert_eq!(last.ready, "1/2", "its last state stays");
+        let message = popover
+            .lifecycle()
+            .unwrap()
+            .message("pod", jiff::Timestamp::now());
+        assert!(message.starts_with("This pod was deleted at "), "{message}");
+    });
     assert!(harness.drawn(POPOVER_ID), "and still drawn");
+    assert!(harness.drawn(BANNER_ID), "under the deleted banner");
 }
 
 /// Design D2: the warning watch starts with the popover, moves - after the

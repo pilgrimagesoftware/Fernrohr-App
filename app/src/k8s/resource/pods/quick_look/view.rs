@@ -25,12 +25,16 @@ impl Render for QuickLookPopover {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
         let now = Timestamp::now();
-        let body = match self.pod(cx).map(|pod| glance(pod, now)) {
+        let content = match self.pod().map(|pod| glance(pod, now)) {
             Some(glance) => self.render_glance(&glance, now, cx),
             None => div()
-                .child(format!("Pod {} no longer exists.", self.target.name))
+                .child(format!("Pod {} isn't listed.", self.target.name))
                 .into_any_element(),
         };
+        // Terminating, or deleted with its last state kept and dimmed - the
+        // detail panels' own banner and words.
+        let body =
+            crate::ui::detail::lifecycle::body(content, self.lifecycle().as_ref(), "pod", cx);
         let key = |action: &dyn Action, literal: &str| {
             Kbd::binding_for_action(action, Some(QUICK_LOOK_KEY_CONTEXT), window)
                 .unwrap_or_else(|| Kbd::new(Keystroke::parse(literal).expect("valid keybinding")))

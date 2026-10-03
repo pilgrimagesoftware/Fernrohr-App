@@ -1,9 +1,10 @@
 //! The quick look (`pod-quick-look`): a popover over the Pods table showing the
 //! selected pod at a glance, opened with Space and closed with Space or Escape.
 //!
-//! The popover reads its pod from the panel's shared Pods table on every render
-//! (D1), so it is live and costs no API call; a pod gone from the table reads as
-//! gone rather than closing the popover. Its latest Warning comes from a per-pod
+//! The popover follows its pod in the panel's shared Pods table (D1), so it is
+//! live and costs no API call. A pod being deleted reads as Terminating, and
+//! once gone the popover keeps its last state under the detail panels' "deleted
+//! at" banner (`ui::detail::lifecycle`) rather than closing. Its latest Warning comes from a per-pod
 //! event watch it starts when opened and restarts, debounced, as Up/Down move it
 //! to another pod (D2); dropping the popover drops the watch.
 //!
@@ -16,6 +17,7 @@ use crate::k8s::cluster::discovery_registry::{DiscoveredKinds, DiscoveryRegistry
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::events::{self, InvolvedObject};
 use crate::k8s::resource::events_browser::EventsTable;
+use crate::ui::detail::lifecycle::Lifecycle;
 
 mod view;
 
@@ -27,6 +29,13 @@ pub(in crate::k8s::resource) struct QuickLookPopover {
     /// The context's discovered kinds, which decide whether the owner is a link.
     discovery: Entity<DiscoveredKinds>,
     client: Option<kube::Client>,
+    /// The pod as last listed - kept once it is gone, shown as stale.
+    last: Option<Box<Pod>>,
+    /// When the pod was seen gone from the table.
+    deleted_at: Option<Timestamp>,
+    /// Re-renders every second while the pod is Terminating, so its grace
+    /// period counts down.
+    countdown: Option<Task<()>>,
     events: Option<QuickLookEvents>,
     /// The pending restart of the event watch after a move to another pod.
     retarget: Option<Task<()>>,
@@ -53,7 +62,7 @@ impl QuickLookPopover {
         client: Option<kube::Client>,
         cx: &mut Context<Self>,
     ) -> Self {
-        cx.observe(&pods, |_, _, cx| cx.notify()).detach();
+        cx.observe(&pods, |this, _, cx| this.follow(cx)).detach();
         let discovery = DiscoveryRegistry::kinds(cx, &target.context_name);
         cx.observe(&discovery, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
@@ -61,9 +70,13 @@ impl QuickLookPopover {
             target,
             discovery,
             client,
+            last: None,
+            deleted_at: None,
+            countdown: None,
             events: None,
             retarget: None,
         };
+        this.follow(cx);
         this.watch_events(cx);
         this
     }
@@ -76,7 +89,10 @@ impl QuickLookPopover {
             return;
         }
         self.target = target;
+        self.last = None;
+        self.deleted_at = None;
         self.events = None;
+        self.follow(cx);
         self.retarget = Some(cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(crate::consts::QUICK_LOOK_EVENTS_DEBOUNCE)
@@ -95,7 +111,7 @@ impl QuickLookPopover {
             return;
         };
         let uid = self
-            .pod(cx)
+            .pod()
             .and_then(|pod| pod.metadata.uid.clone())
             .filter(|uid| !uid.is_empty());
         let table = cx.new(|_| EventsTable::default());
@@ -116,11 +132,70 @@ impl QuickLookPopover {
         self.events = Some(QuickLookEvents { table, _task: task });
     }
 
-    /// The pod, as the shared table has it now - `None` once it is gone.
-    pub(super) fn pod<'a>(&self, cx: &'a App) -> Option<&'a Pod> {
-        self.pods
+    /// Catches up with the shared table: the pod's latest write, or the moment
+    /// it went.
+    fn follow(&mut self, cx: &mut Context<Self>) {
+        let listed = self
+            .pods
             .read(cx)
-            .find(&self.target.namespace, &self.target.name, None)
+            .find(&self.target.namespace, &self.target.name, None);
+        match listed {
+            Some(pod) => {
+                let current = self.last.as_ref().is_some_and(|last| {
+                    last.metadata.uid == pod.metadata.uid
+                        && last.metadata.resource_version == pod.metadata.resource_version
+                });
+                if !current {
+                    self.last = Some(Box::new(pod.clone()));
+                    self.deleted_at = None;
+                }
+            }
+            None if self.last.is_some() && self.deleted_at.is_none() => {
+                self.deleted_at = Some(Timestamp::now());
+            }
+            None => {}
+        }
+        self.count_down_while_terminating(cx);
+        cx.notify();
+    }
+
+    fn count_down_while_terminating(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.lifecycle(), Some(Lifecycle::Terminating { .. })) {
+            self.countdown = None;
+            return;
+        }
+        if self.countdown.is_none() {
+            self.countdown = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(crate::consts::TERMINATING_COUNTDOWN_TICK)
+                        .await;
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        return;
+                    }
+                }
+            }));
+        }
+    }
+
+    /// The pod as last listed - still there once it is gone, then stale.
+    pub(super) fn pod(&self) -> Option<&Pod> {
+        self.last.as_deref()
+    }
+
+    /// The banner above the pod, in the detail panels' words: deleted, or
+    /// Terminating while it has a deletion timestamp.
+    pub(super) fn lifecycle(&self) -> Option<Lifecycle> {
+        if let Some(at) = self.deleted_at {
+            return Some(Lifecycle::Deleted { at });
+        }
+        self.pod()?
+            .metadata
+            .deletion_timestamp
+            .as_ref()
+            .map(|deadline| Lifecycle::Terminating {
+                deadline: deadline.0,
+            })
     }
 
     /// The most recently seen Warning event about the pod, once its events are in.
