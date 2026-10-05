@@ -167,6 +167,29 @@ async fn every_new_k9s_command_has_an_editor_row(cx: &mut TestAppContext) {
     });
 }
 
+/// `panel-move-keybindings` 6.1, automated half: each arrange command has a row
+/// in the keybindings editor - the registry's rows, no editor code of its own.
+#[gpui_kit::test]
+async fn every_arrange_command_has_an_editor_row(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (_handle, section) = open(main, cx);
+    cx.update(|cx| {
+        let ids: Vec<&str> = section
+            .read(cx)
+            .visible_rows(cx)
+            .iter()
+            .map(|row| row.id)
+            .collect();
+        for direction in ["left", "right", "up", "down"] {
+            for verb in ["split", "move", "merge"] {
+                let id = format!("panel.{verb}_{direction}");
+                assert!(ids.contains(&id.as_str()), "{id} has a row");
+            }
+        }
+        assert!(ids.contains(&"panel.close_group"));
+    });
+}
+
 /// Recording Close Window's key records it (and asks, since Close Window has
 /// it) instead of closing the window; Escape cancels.
 #[gpui_kit::test]
