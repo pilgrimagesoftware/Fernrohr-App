@@ -39,6 +39,7 @@ use std::rc::Rc;
 
 mod actions;
 mod app;
+mod arrange;
 mod contexts;
 mod empty_dock;
 mod exec;

@@ -9,19 +9,47 @@
 //! two are equally near and equally overlapping - one beside two stacked panes
 //! - the choice is ambiguous and there is none, rather than a guess.
 
-use gpui_kit::Axis;
+use crate::command::{Command, CommandRegistry};
+use gpui_kit::component::Placement;
 use gpui_kit::component::dock::{NodeId, PaneNode, PaneRef};
+use gpui_kit::{Action, Axis, actions};
+
+actions!(
+    panel_arrange,
+    [
+        SplitGroupLeft,
+        SplitGroupRight,
+        SplitGroupUp,
+        SplitGroupDown
+    ]
+);
+
+/// The key context the dock area sits in: these commands apply while focus is
+/// in one of its panels - not in a dialog, nor the Resource panel.
+pub const DOCK_KEY_CONTEXT: &str = "Dock";
+/// Where the commands are bound: the dock minus its text fields, so no key of
+/// theirs fires while typing in a filter or an editor.
+pub const DOCK_COMMANDS_CONTEXT: &str = "Dock && !Input";
 
 /// A direction on screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// UNWIRED(#122): the arrange commands' geometry, ahead of the commands;
-// nothing outside tests calls it yet.
-#[allow(dead_code)]
 pub enum Direction {
     Left,
     Right,
     Up,
     Down,
+}
+
+impl Direction {
+    /// Where a new group goes, splitting in this direction.
+    pub fn placement(self) -> Placement {
+        match self {
+            Direction::Left => Placement::Left,
+            Direction::Right => Placement::Right,
+            Direction::Up => Placement::Top,
+            Direction::Down => Placement::Bottom,
+        }
+    }
 }
 
 /// A group's rectangle in the unit square the dock region is scaled to.
@@ -161,6 +189,57 @@ pub fn adjacent(rects: &[(NodeId, Rect)], from: NodeId, direction: Direction) ->
         .filter(|(_, _, shared)| (shared - widest).abs() < EPSILON);
     let (id, _, _) = best.next()?;
     best.next().is_none().then_some(*id)
+}
+
+/// Every arrange command: id, title, default key, and its action.
+type CommandRow = (
+    &'static str,
+    &'static str,
+    &'static str,
+    fn() -> Box<dyn Action>,
+);
+
+const COMMANDS: [CommandRow; 4] = [
+    (
+        "panel.split_left",
+        "Panels: Split Group Left",
+        "cmd-k left",
+        || Box::new(SplitGroupLeft),
+    ),
+    (
+        "panel.split_right",
+        "Panels: Split Group Right",
+        "cmd-k right",
+        || Box::new(SplitGroupRight),
+    ),
+    (
+        "panel.split_up",
+        "Panels: Split Group Up",
+        "cmd-k up",
+        || Box::new(SplitGroupUp),
+    ),
+    (
+        "panel.split_down",
+        "Panels: Split Group Down",
+        "cmd-k down",
+        || Box::new(SplitGroupDown),
+    ),
+];
+
+/// Registers the split, move, merge and close-group commands, in the dock's
+/// context: offered, and bound, while a panel group has focus. Not in the menu
+/// bar - its items are global (`menu-organization`).
+pub(crate) fn register_commands(registry: &mut CommandRegistry) {
+    for (id, title, keys, action) in COMMANDS {
+        registry.register(Command {
+            id,
+            title,
+            default_binding: keys,
+            context: Some(DOCK_COMMANDS_CONTEXT),
+            action: action(),
+            menu: None,
+        });
+    }
 }
 
 #[cfg(test)]
