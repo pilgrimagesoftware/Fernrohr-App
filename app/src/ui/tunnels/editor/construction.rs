@@ -55,10 +55,37 @@ impl TunnelEditor {
                 .placeholder("Private key")
         });
 
+        let command_line = cx.new(|cx| {
+            TextareaState::new(window, cx).placeholder(
+                "gcloud compute ssh <host> --tunnel-through-iap -- -N -L{port}:127.0.0.1:8888",
+            )
+        });
+        let local_port =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Allocated when empty"));
+        let startup_timeout = cx.new(|cx| InputState::new(window, cx).placeholder("30"));
+
         let auth = existing
             .as_ref()
             .map(|tunnel| tunnel.auth)
             .unwrap_or_default();
+        let kind = existing
+            .as_ref()
+            .map(|tunnel| tunnel.kind)
+            .unwrap_or_default();
+        let command = existing
+            .as_ref()
+            .map(|tunnel| tunnel.command.clone())
+            .unwrap_or_default();
+        command_line.update(cx, |state, cx| {
+            state.set_value(command.command_line.clone(), window, cx)
+        });
+        local_port.update(cx, |state, cx| {
+            let port = command.local_port.map(|port| port.to_string());
+            state.set_value(port.unwrap_or_default(), window, cx)
+        });
+        startup_timeout.update(cx, |state, cx| {
+            state.set_value(command.startup_timeout_secs.to_string(), window, cx)
+        });
 
         if let Some(tunnel) = &existing {
             name.update(cx, |state, cx| {
@@ -84,12 +111,17 @@ impl TunnelEditor {
             tunnels_path,
             editing_id,
             name,
+            kind,
             host,
             user,
             port,
             jump_hosts,
             auth,
             key_material,
+            command_line,
+            mode: command.mode,
+            local_port,
+            startup_timeout,
             field_errors: Vec::new(),
             general_error: None,
             bound_contexts,

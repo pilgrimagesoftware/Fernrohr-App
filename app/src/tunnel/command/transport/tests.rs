@@ -248,3 +248,75 @@ async fn listening_pid(port: u16) -> u32 {
         .and_then(|line| line.split_whitespace().next()?.parse().ok())
         .expect("the stand-in is running")
 }
+
+/// The stand-in as a stored command line, `{port}` left for the tunnel to fill.
+fn helper_command_line(mode: &str) -> String {
+    helper_argv(mode)
+        .iter()
+        .map(|arg| shlex::try_quote(arg).expect("quotable").into_owned())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Whether any stand-in - this test binary, re-run - with `needle` in its arguments
+/// is still running. Only processes running this binary count, so a shell whose
+/// command line merely mentions the needle doesn't.
+async fn helper_running(needle: &str) -> bool {
+    let exe = std::env::current_exe().unwrap().display().to_string();
+    let output = tokio::process::Command::new("ps")
+        .args([
+            "-ww",
+            "-o",
+            "args=",
+            "-u",
+            &std::env::var("USER").unwrap_or_default(),
+        ])
+        .output()
+        .await
+        .expect("ps runs");
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .any(|line| line.trim_start().starts_with(&exe) && line.contains(needle))
+}
+
+/// 4.2: the Tunnels window's Test runs the command until it is ready, reports
+/// success, and leaves nothing running.
+#[tokio::test]
+async fn test_command_succeeds_and_leaves_nothing_running() {
+    let _serial = PORT_TESTS.lock().await;
+    let port = free_port();
+    let config = crate::config::tunnels::CommandTunnelConfig {
+        command_line: helper_command_line("spawn-listen:{port}"),
+        local_port: Some(port),
+        startup_timeout_secs: 20,
+        ..Default::default()
+    };
+    crate::tunnel::command::test_command(&config)
+        .await
+        .expect("reachable");
+    let needle = format!("fernrohr-helper=spawn-listen:{port}");
+    assert!(eventually(|| port_is_free(port)).await);
+    for _ in 0..40 {
+        if !helper_running(&needle).await {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("a stand-in from the test is still running");
+}
+
+/// 4.2: a failing Test reports the command's output and leaves nothing running.
+#[tokio::test]
+async fn a_failing_test_command_reports_the_output() {
+    let _serial = PORT_TESTS.lock().await;
+    let config = crate::config::tunnels::CommandTunnelConfig {
+        command_line: format!("{} {{port}}", helper_command_line("exit")),
+        startup_timeout_secs: 20,
+        ..Default::default()
+    };
+    let reason = crate::tunnel::command::test_command(&config)
+        .await
+        .expect_err("the command exits");
+    assert!(reason.contains("active account"), "{reason}");
+    assert!(!helper_running("fernrohr-helper=exit").await);
+}

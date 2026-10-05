@@ -18,6 +18,7 @@ Fernrohr App is the desktop UI component of the Fernrohr meta-repository, provid
 - macOS 11+ (currently macOS-only)
 - `ssh` on `PATH` - required to connect any kube context bound to an SSH tunnel; Fernrohr
   shells out to the system OpenSSH client rather than bundling its own
+- For a command tunnel, the tool it runs (for example `gcloud`) on your login shell's `PATH`
 
 ### Build Commands
 
@@ -71,6 +72,38 @@ If the keys so far are a shortcut on their own as well as the start of a longer 
 for the next key before it runs the shorter shortcut. Set how long in Settings → Shortcut Timeout,
 from 1 to 10 seconds (3 by default), or as `shortcut_timeout_secs` in `ui.toml`. A first key that
 isn't a shortcut on its own, like `⌘K`, waits for its next key however long you take.
+
+## Tunnels
+
+A kube context can be bound to a tunnel, so Fernrohr reaches its cluster through it. Manage
+tunnels in the Tunnels window (Context → Manage Tunnels…). Bind a context to one with Set Tunnel
+for Context, or with the tunnel selector on the context's row in the cluster picker. A tunnel is
+one of two kinds.
+
+- **SSH tunnel**: Fernrohr runs `ssh -N -L` through a bastion to the context's API server.
+- **Command tunnel**: Fernrohr runs a command you give it, such as a vendor CLI that opens an SSH
+  session through an identity-aware proxy, and keeps it running while a bound context is
+  connected. For example:
+
+  ```
+  gcloud compute ssh <bastion-host> --tunnel-through-iap --project <project> \
+      -- -N -L{port}:127.0.0.1:8888
+  ```
+
+  `{port}` becomes the local port Fernrohr picks. If the command must use a fixed port instead,
+  write that port into the command and set it as the tunnel's local port. The command runs
+  without a shell, so pipes and `$VARIABLES` don't apply. Fernrohr looks it up on your login
+  shell's `PATH`, even when it was opened from the Dock.
+
+  Choose what the local port offers:
+  - **Proxy** (the default): an HTTP proxy, as in the example, where port 8888 on the bastion
+    is a proxy. Bound contexts keep their API server address and send their traffic through it.
+  - **Forward**: the API server itself. Bound contexts connect to the local port instead.
+
+  All contexts bound to a command tunnel share one running command. Test runs the command until
+  it is ready, then stops it, and shows the command's output if it fails. The command must run
+  unattended, so run it once in a terminal first to answer any host-key or login prompts. It is
+  stored in plain text in `tunnels.toml`: leave credentials to the tool's own login, not flags.
 
 ## Development
 

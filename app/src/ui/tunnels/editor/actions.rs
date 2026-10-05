@@ -1,5 +1,7 @@
 //! Owns the pane's mutations: the auth choice, cancel, the delete confirmation
 //! flow, save (section 1.2/4.2's validation), and section 4.3's connectivity test.
+//! The kind and mode switches, and the command form's values and test, are
+//! `command_form`'s.
 
 use super::*;
 
@@ -54,21 +56,15 @@ impl TunnelEditor {
         let key_text = self.key_material.read(cx).value().to_string();
         let secret = (!key_text.is_empty()).then_some(key_text);
 
-        // Fields this pane doesn't edit (another kind's settings) keep their stored
-        // values.
-        let existing = self
-            .editing_id
-            .as_deref()
-            .and_then(|id| store.get(id))
-            .unwrap_or_default();
         let tunnel = TunnelConfig {
             name,
+            kind: self.kind,
             bastion_user: user,
             bastion_host: host,
             bastion_port: port,
             jump_hosts,
             auth: self.auth,
-            ..existing
+            command: self.command_config(cx),
         };
 
         let result = match self.editing_id.clone() {
@@ -108,6 +104,10 @@ impl TunnelEditor {
     /// unsaved) field values, on the tokio runtime, without ever touching
     /// `ForwardRegistry` - see `tunnel::ssh::test_connection`.
     pub(super) fn run_test(&mut self, cx: &mut Context<Self>) {
+        if self.kind == TunnelKind::Command {
+            self.run_command_test(cx);
+            return;
+        }
         let host = self.host.read(cx).value().to_string();
         let user = self.user.read(cx).value().to_string();
         let port: u16 = self.port.read(cx).value().trim().parse().unwrap_or(0);
