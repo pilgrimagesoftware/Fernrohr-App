@@ -27,6 +27,9 @@ const TOGGLE_VIEW_COMMAND_ID: &str = "object_detail.toggle_view";
 const HIDE_SECRET_VALUES_COMMAND_ID: &str = "object_detail.hide_secret_values";
 const HIDE_SECRET_VALUES_KEY: &str = "h";
 
+/// Added beside [`PANEL_KEY_CONTEXT`] while the object's kind can be patched,
+/// so Edit is offered only then.
+pub const EDITABLE_KEY_CONTEXT: &str = "EditableObject";
 /// Added beside [`PANEL_KEY_CONTEXT`] while the object is being edited, so Save
 /// and Cancel's keys mean that only then (`k9s-remaining-keybindings` 2).
 pub const EDIT_KEY_CONTEXT: &str = "ObjectYamlEdit";
@@ -54,7 +57,8 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "object_detail.edit",
         title: "Object Detail: Edit YAML",
         default_binding: EDIT_KEY,
-        context: Some(PANEL_KEYS_CONTEXT),
+        // Only for a kind the server lets a client patch.
+        context: Some("EditableObject && !Input"),
         action: Box::new(EditObject),
         menu: None,
     });

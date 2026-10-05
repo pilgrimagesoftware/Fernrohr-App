@@ -11,6 +11,7 @@
 use super::commands::DeleteObject;
 use super::fetch::ObjectDetailState;
 use super::panel::ObjectDetailPanel;
+use crate::k8s::cluster::discovery::KindVerbs;
 use crate::k8s::resource::delete_flow::refusal::{self, Refusal};
 use crate::k8s::resource::delete_flow::{self, DeleteTarget};
 use crate::ui::detail::lifecycle::Lifecycle;
@@ -23,19 +24,24 @@ pub(super) const REFUSAL_ID: &str = "object-detail-refusal";
 pub(super) const DISMISS_REFUSAL_ID: &str = "object-detail-refusal-dismiss";
 
 impl ObjectDetailPanel {
-    /// Whether Delete is offered: the object is loaded and not known gone, and
-    /// its kind can be deleted - by discovery's word when it has one, else the
-    /// kind the panel was opened with (a restored panel's assumes it can).
-    pub(super) fn deletable(&self, cx: &App) -> bool {
-        let loaded = matches!(self.state, ObjectDetailState::Loaded(..));
-        let gone = matches!(self.lifecycle, Some(Lifecycle::Deleted { .. }));
-        let verbs = self
-            .discovery
+    /// What the server lets a client do with the object's kind - by
+    /// discovery's word when it has one, else the kind the panel was opened
+    /// with (a restored panel's assumes everything). Gates Delete here and
+    /// Edit (`edit`).
+    pub(super) fn verbs(&self, cx: &App) -> KindVerbs {
+        self.discovery
             .read(cx)
             .kinds()
             .and_then(|kinds| kinds.iter().find(|kind| **kind == self.target.kind))
-            .map_or(self.target.kind.verbs, |kind| kind.verbs);
-        loaded && !gone && verbs.delete
+            .map_or(self.target.kind.verbs, |kind| kind.verbs)
+    }
+
+    /// Whether Delete is offered: the object is loaded and not known gone, and
+    /// its kind can be deleted.
+    pub(super) fn deletable(&self, cx: &App) -> bool {
+        let loaded = matches!(self.state, ObjectDetailState::Loaded(..));
+        let gone = matches!(self.lifecycle, Some(Lifecycle::Deleted { .. }));
+        loaded && !gone && self.verbs(cx).delete
     }
 
     /// `DeleteObject`: asks before deleting the shown object.

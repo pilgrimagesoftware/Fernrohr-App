@@ -95,13 +95,18 @@ impl ObjectListPanel {
                 "Describe",
                 window,
             ))
-            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
-            .child(Self::hint(
+            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window));
+        if self.kind.verbs.patch {
+            let key = Kbd::binding_for_action(
                 &super::commands::EditSelected,
-                super::commands::EDIT_KEY,
-                "Edit",
+                Some(super::commands::EDITABLE_KEY_CONTEXT),
                 window,
-            ));
+            )
+            .unwrap_or_else(|| {
+                Kbd::new(Keystroke::parse(super::commands::EDIT_KEY).expect("a valid default key"))
+            });
+            hints = hints.child(div().flex().gap_1().items_center().child(key).child("Edit"));
+        }
         if polled {
             hints = hints.child(Self::hint(&RefreshList, REFRESH_KEY, "Refresh", window));
         }
@@ -145,23 +150,15 @@ impl ObjectListPanel {
             )
             .children(self.render_forward_message(cx))
             .children(self.render_refusal(cx))
-            .child(
+            .child({
+                let context = self.table_key_context();
                 div()
                     .flex_1()
                     .min_h_0()
-                    .when(self.deletable(), |this| {
-                        this.key_context(super::delete::DELETABLE_KEY_CONTEXT)
-                    })
+                    .when(!context.is_empty(), |this| this.key_context(context))
                     .on_action(cx.listener(Self::on_action_delete_selected))
-                    .child(
-                        div()
-                            .size_full()
-                            .when(self.lists_services(), |this| {
-                                this.key_context(super::port_forward::SERVICES_KEY_CONTEXT)
-                            })
-                            .child(data_table(&table, cx)),
-                    ),
-            )
+                    .child(data_table(&table, cx))
+            })
             .child(
                 div()
                     .px_2()
@@ -175,6 +172,23 @@ impl ObjectListPanel {
 }
 
 impl ObjectListPanel {
+    /// The contexts around the table that offer a command only when it
+    /// applies: Edit for a kind that can be patched, Delete for one that can
+    /// be deleted, port-forward in a Services list.
+    fn table_key_context(&self) -> KeyContext {
+        let mut context = KeyContext::default();
+        if self.kind.verbs.patch {
+            context.add(super::commands::EDITABLE_KEY_CONTEXT);
+        }
+        if self.deletable() {
+            context.add(super::delete::DELETABLE_KEY_CONTEXT);
+        }
+        if self.lists_services() {
+            context.add(super::port_forward::SERVICES_KEY_CONTEXT);
+        }
+        context
+    }
+
     /// The notes above a list's table: that a polled kind's rows are a periodic
     /// list, with a control to re-list now, and ComponentStatus's deprecation.
     fn notes(

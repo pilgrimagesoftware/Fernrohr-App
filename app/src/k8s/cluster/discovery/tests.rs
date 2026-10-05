@@ -82,7 +82,7 @@ async fn pod_is_present_after_discovery() {
         (
             "/api/v1",
             r#"{"kind":"APIResourceList","groupVersion":"v1","resources":[
-                {"name":"pods","singularName":"pod","namespaced":true,"kind":"Pod","verbs":["delete","get","list","watch"]}
+                {"name":"pods","singularName":"pod","namespaced":true,"kind":"Pod","verbs":["delete","get","list","patch","watch"]}
             ]}"#,
         ),
     ]);
@@ -216,7 +216,8 @@ async fn a_kind_without_list_verb_is_still_listed() {
             r#"{"kind":"APIResourceList","groupVersion":"v1","resources":[
                 {"name":"componentstatuses","singularName":"","namespaced":false,"kind":"ComponentStatus","verbs":["get","list"]},
                 {"name":"bindings","singularName":"","namespaced":true,"kind":"Binding","verbs":["create"]},
-                {"name":"secrets","singularName":"secret","namespaced":true,"kind":"Secret","verbs":["delete","get","list","watch"]}
+                {"name":"secrets","singularName":"secret","namespaced":true,"kind":"Secret","verbs":["delete","get","list","patch","watch"]},
+                {"name":"nodemetrics","singularName":"","namespaced":false,"kind":"NodeMetrics","verbs":["get","list"]}
             ]}"#,
         ),
     ]);
@@ -235,7 +236,8 @@ async fn a_kind_without_list_verb_is_still_listed() {
         KindVerbs {
             list: true,
             watch: false,
-            delete: false
+            delete: false,
+            patch: false
         }
     );
     let binding = kinds
@@ -249,6 +251,15 @@ async fn a_kind_without_list_verb_is_still_listed() {
         .find(|kind| kind.gvk.kind == "Secret")
         .expect("discovered");
     assert!(secret.verbs.delete, "a kind discovery lists `delete` for");
+    assert!(secret.verbs.patch, "and `patch`");
+    let metrics = kinds
+        .iter()
+        .find(|kind| kind.gvk.kind == "NodeMetrics")
+        .expect("discovered");
+    assert!(
+        !metrics.verbs.patch && !metrics.verbs.delete,
+        "a get/list-only kind can be neither edited nor deleted"
+    );
 }
 
 #[test]

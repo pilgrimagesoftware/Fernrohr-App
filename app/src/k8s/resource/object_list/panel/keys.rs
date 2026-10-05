@@ -42,6 +42,9 @@ impl ObjectListPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.kind.verbs.patch {
+            return;
+        }
         let Some(target) = self
             .selected_row(cx)
             .and_then(|row_ix| self.row_target(row_ix, cx))

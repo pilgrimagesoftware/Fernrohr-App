@@ -304,6 +304,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     );
 
     let mut keymap = KeymapConfig::default();
+    // `v`, not `e`: `e` is now Edit YAML's key in this panel (#140).
     keymap
         .bindings
         .insert("pod_detail.tab_events".into(), "v".into());

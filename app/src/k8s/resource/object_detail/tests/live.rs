@@ -143,6 +143,7 @@ async fn a_polled_kinds_object_updates_on_the_next_list(cx: &mut TestAppContext)
             list: true,
             watch: false,
             delete: true,
+            patch: true,
         },
         ..kind("apps", "v1", "Deployment", true)
     };

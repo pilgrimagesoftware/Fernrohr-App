@@ -37,15 +37,18 @@ pub struct DiscoveredKind {
 /// The verbs the panels care about. A kind that can be listed but not
 /// watched (`componentstatuses`) is polled instead; one that can't be listed
 /// at all says so rather than showing an empty table. Only a kind that can be
-/// deleted offers Delete (`k9s-remaining-keybindings`).
+/// deleted offers Delete, and only one that can be patched offers Edit
+/// (`k9s-remaining-keybindings`) - a read-only kind, like an aggregated
+/// metrics kind, offers neither.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KindVerbs {
     pub list: bool,
     pub watch: bool,
     pub delete: bool,
+    pub patch: bool,
 }
 
-/// All three, as every kind but a handful supports - what a kind built
+/// All of them, as every kind but a handful supports - what a kind built
 /// without discovery (a restored layout, a test) assumes.
 impl Default for KindVerbs {
     fn default() -> Self {
@@ -53,6 +56,7 @@ impl Default for KindVerbs {
             list: true,
             watch: true,
             delete: true,
+            patch: true,
         }
     }
 }
@@ -284,6 +288,7 @@ pub(crate) async fn discover_kinds_within(
                             list: capabilities.supports_operation(verbs::LIST),
                             watch: capabilities.supports_operation(verbs::WATCH),
                             delete: capabilities.supports_operation(verbs::DELETE),
+                            patch: capabilities.supports_operation(verbs::PATCH),
                         },
                     });
                 }

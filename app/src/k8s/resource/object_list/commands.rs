@@ -70,6 +70,8 @@ pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const YAML_KEY: &str = "y";
 /// Re-lists a polled kind now (`unwatchable-kinds`).
 pub(super) const REFRESH_KEY: &str = "r";
+/// Around a list's table while its kind can be patched: Edit's context.
+pub const EDITABLE_KEY_CONTEXT: &str = "EditableList";
 /// k9s's edit key, as the object panel's (`object_detail::EDIT_KEY`).
 pub(crate) const EDIT_KEY: &str = "e";
 
@@ -96,6 +98,15 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: PORT_FORWARD_KEY,
         context: Some("ServicesList && !Input"),
         action: Box::new(PortForwardService),
+        menu: None,
+    });
+    // Only in a list of a kind discovery says can be patched.
+    registry.register(Command {
+        id: "object_list.edit",
+        title: "List: Edit Selected Object's YAML",
+        default_binding: EDIT_KEY,
+        context: Some("EditableList && !Input"),
+        action: Box::new(EditSelected),
         menu: None,
     });
     // Only in a list of a kind discovery says can be deleted (`delete`).
@@ -150,13 +161,6 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Show Selected Object's YAML",
         YAML_KEY,
         Box::new(ShowSelectedYaml),
-        None,
-    );
-    register(
-        "object_list.edit",
-        "List: Edit Selected Object's YAML",
-        EDIT_KEY,
-        Box::new(EditSelected),
         None,
     );
     register(

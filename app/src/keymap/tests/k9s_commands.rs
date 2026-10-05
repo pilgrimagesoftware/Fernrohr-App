@@ -22,7 +22,13 @@ const NEW_COMMANDS: &[(&str, &[&str])] = &[
         "services.port_forward",
         &["ObjectListPanel", "ServicesList"],
     ),
-    ("object_detail.edit", &["ObjectDetailPanel"]),
+    (
+        "object_detail.edit",
+        &["ObjectDetailPanel", "EditableObject"],
+    ),
+    ("object_list.edit", &["ObjectListPanel", "EditableList"]),
+    ("pods.edit", &["PodsPanel"]),
+    ("pod_detail.edit", &["PodDetailPanel"]),
     (
         "object_detail.save_edit",
         &["ObjectDetailPanel", "ObjectYamlEdit"],

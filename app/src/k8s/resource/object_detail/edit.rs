@@ -61,6 +61,14 @@ impl ObjectDetailPanel {
         if self.edit.is_some() {
             return;
         }
+        if !self.verbs(cx).patch {
+            self.edit_notice = Some(format!(
+                "{} can't be edited: the server doesn't allow changing it.",
+                self.target.kind.gvk.kind
+            ));
+            cx.notify();
+            return;
+        }
         if self.target.kind.gvk.group.is_empty() && self.target.kind.gvk.kind == "Secret" {
             self.edit_notice =
                 Some("A Secret can't be edited here: its values are hidden in this view.".into());

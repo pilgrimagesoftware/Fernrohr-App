@@ -286,7 +286,11 @@ impl Render for ObjectDetailPanel {
 
         div()
             .size_full()
-            .key_context(key_context(self.edit.is_some(), deletable))
+            .key_context(key_context(
+                self.edit.is_some(),
+                deletable,
+                self.verbs(cx).patch,
+            ))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))
@@ -316,12 +320,16 @@ impl Render for ObjectDetailPanel {
 }
 
 /// The panel's own key context plus the shared one `links.go_to` is gated to -
-/// and, while `editing`, the edit's own; while `deletable`, Delete's.
-fn key_context(editing: bool, deletable: bool) -> KeyContext {
+/// and, while `editing`, the edit's own; while `deletable`, Delete's; while
+/// the kind is `patchable` and no edit is open, Edit's.
+fn key_context(editing: bool, deletable: bool, patchable: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
     if deletable {
         context.add(super::delete::DELETABLE_KEY_CONTEXT);
+    }
+    if patchable && !editing {
+        context.add(super::commands::EDITABLE_KEY_CONTEXT);
     }
     if editing {
         context.add(super::commands::EDIT_KEY_CONTEXT);
