@@ -21,7 +21,7 @@
 
 use crate::config::{
     self,
-    tunnels::{TunnelConfig, TunnelsConfig},
+    tunnels::{CommandTunnelConfig, TunnelConfig, TunnelKind, TunnelsConfig},
 };
 use crate::tunnel::secrets::TunnelSecretStore;
 use std::collections::BTreeMap;

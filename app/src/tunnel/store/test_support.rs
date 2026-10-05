@@ -33,5 +33,6 @@ pub(super) fn sample_tunnel(name: &str) -> TunnelConfig {
         bastion_port: 22,
         jump_hosts: Vec::new(),
         auth: crate::config::tunnels::TunnelAuth::default(),
+        ..Default::default()
     }
 }

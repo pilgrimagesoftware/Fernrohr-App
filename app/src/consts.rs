@@ -19,6 +19,10 @@ pub(crate) const SSH_READINESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// `SshTransport::connect` readiness probe: delay between failed dial attempts.
 pub(crate) const SSH_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
+/// A command tunnel's default startup timeout: how long its command has to start
+/// listening on the local port. Vendor CLIs that open an IAP session can take a while.
+pub(crate) const COMMAND_TUNNEL_STARTUP_TIMEOUT_SECS: u64 = 30;
+
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
 // the section 5.2 keychain wrapper this backs.
 #[allow(dead_code)]

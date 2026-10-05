@@ -54,6 +54,13 @@ impl TunnelEditor {
         let key_text = self.key_material.read(cx).value().to_string();
         let secret = (!key_text.is_empty()).then_some(key_text);
 
+        // Fields this pane doesn't edit (another kind's settings) keep their stored
+        // values.
+        let existing = self
+            .editing_id
+            .as_deref()
+            .and_then(|id| store.get(id))
+            .unwrap_or_default();
         let tunnel = TunnelConfig {
             name,
             bastion_user: user,
@@ -61,6 +68,7 @@ impl TunnelEditor {
             bastion_port: port,
             jump_hosts,
             auth: self.auth,
+            ..existing
         };
 
         let result = match self.editing_id.clone() {

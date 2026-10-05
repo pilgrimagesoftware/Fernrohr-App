@@ -153,6 +153,7 @@ async fn set_tunnel_binds_and_unbinds_through_the_store(cx: &mut gpui_kit::TestA
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )
@@ -242,6 +243,7 @@ async fn a_tunnel_created_elsewhere_appears_in_an_open_picker(cx: &mut gpui_kit:
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )

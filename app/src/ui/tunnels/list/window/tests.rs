@@ -23,6 +23,7 @@ fn sample_tunnel(name: &str) -> TunnelConfig {
         bastion_port: 22,
         jump_hosts: Vec::new(),
         auth: TunnelAuth::default(),
+        ..Default::default()
     }
 }
 

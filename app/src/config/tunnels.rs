@@ -11,6 +11,11 @@
 //! server_for_context`). No `deny_unknown_fields` here, so a `tunnels.toml` written by
 //! an older build still parses with those two fields simply ignored; the next save
 //! omits them.
+//!
+//! `command-tunnels` adds a second kind: a tunnel is an SSH tunnel (the fields above,
+//! still at the top level) or a command tunnel (the `command` table). Both sets of
+//! fields are kept whatever the kind, so a file written before kinds existed loads as
+//! SSH unchanged, and flipping a tunnel's kind in the editor and back loses nothing.
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller;
 // section 6's context binding UI is the first caller of `TunnelStore` itself.
 #![allow(dead_code)]
@@ -33,6 +38,8 @@ pub struct TunnelsConfig {
 #[serde(default)]
 pub struct TunnelConfig {
     pub name: String,
+    /// Which kind of tunnel this is; absent (an older file) means SSH.
+    pub kind: TunnelKind,
     pub bastion_user: String,
     pub bastion_host: String,
     pub bastion_port: u16,
@@ -42,17 +49,69 @@ pub struct TunnelConfig {
     /// material for `KeychainKey` lives in the OS keychain (`tunnel::secrets`), keyed
     /// by tunnel id, never here.
     pub auth: TunnelAuth,
+    /// A command tunnel's settings - kept, but unused, while `kind` is SSH.
+    pub command: CommandTunnelConfig,
 }
 
 impl Default for TunnelConfig {
     fn default() -> Self {
         Self {
             name: String::new(),
+            kind: TunnelKind::default(),
             bastion_user: String::new(),
             bastion_host: String::new(),
             bastion_port: 22,
             jump_hosts: Vec::new(),
             auth: TunnelAuth::default(),
+            command: CommandTunnelConfig::default(),
+        }
+    }
+}
+
+/// What starts a tunnel: Fernrohr's own `ssh -N -L` to a bastion, or a command the
+/// user supplies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TunnelKind {
+    #[default]
+    Ssh,
+    Command,
+}
+
+/// What a command tunnel's local port offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandTunnelMode {
+    /// An HTTP proxy: a bound context keeps its real API server URL and sends its
+    /// traffic through the proxy.
+    #[default]
+    Proxy,
+    /// A direct path to the API server: a bound context is rewritten to the loopback
+    /// port, as for an SSH tunnel.
+    Forward,
+}
+
+/// A command tunnel: the command Fernrohr runs and supervises, and what its local port
+/// is. Not secret - the editor says the command is stored in plain text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CommandTunnelConfig {
+    /// Split with POSIX quoting, never run through a shell. `{port}` is replaced with
+    /// the local port.
+    pub command_line: String,
+    pub mode: CommandTunnelMode,
+    /// A port the command itself hard-codes; `None` allocates a free one at start.
+    pub local_port: Option<u16>,
+    pub startup_timeout_secs: u64,
+}
+
+impl Default for CommandTunnelConfig {
+    fn default() -> Self {
+        Self {
+            command_line: String::new(),
+            mode: CommandTunnelMode::default(),
+            local_port: None,
+            startup_timeout_secs: crate::consts::COMMAND_TUNNEL_STARTUP_TIMEOUT_SECS,
         }
     }
 }
@@ -83,6 +142,21 @@ mod tests {
                 bastion_port: 22,
                 jump_hosts: vec!["ops@hop1.example.com".into()],
                 auth: TunnelAuth::KeychainKey,
+                ..TunnelConfig::default()
+            },
+        );
+        tunnels.insert(
+            "qa-iap".to_string(),
+            TunnelConfig {
+                name: "QA IAP".into(),
+                kind: TunnelKind::Command,
+                command: CommandTunnelConfig {
+                    command_line: "gcloud compute ssh <host> --tunnel-through-iap -- -N \\\n  -L{port}:127.0.0.1:8888".into(),
+                    mode: CommandTunnelMode::Proxy,
+                    local_port: Some(8888),
+                    startup_timeout_secs: 45,
+                },
+                ..TunnelConfig::default()
             },
         );
         let mut context_bindings = BTreeMap::new();
@@ -144,6 +218,50 @@ prod = "prod-bastion"
             !saved.contains("remote_port"),
             "remote_port must not survive a save"
         );
+    }
+
+    /// `command-tunnels` 1.1: a file written before kinds existed loads every tunnel
+    /// as SSH, with its fields and binding unchanged.
+    #[test]
+    fn a_file_without_kinds_loads_as_ssh() {
+        let before = r#"
+[tunnels.prod-bastion]
+name = "Prod bastion"
+bastion_user = "ops"
+bastion_host = "bastion.example.com"
+bastion_port = 2222
+jump_hosts = []
+auth = "keychain_key"
+
+[context_bindings]
+prod = "prod-bastion"
+"#;
+        let parsed: TunnelsConfig = toml::from_str(before).unwrap();
+        let tunnel = parsed.tunnels.get("prod-bastion").expect("tunnel loads");
+        assert_eq!(tunnel.kind, TunnelKind::Ssh);
+        assert_eq!(tunnel.bastion_port, 2222);
+        assert_eq!(tunnel.auth, TunnelAuth::KeychainKey);
+        assert_eq!(tunnel.command, CommandTunnelConfig::default());
+        assert_eq!(
+            parsed.context_bindings.get("prod").map(String::as_str),
+            Some("prod-bastion")
+        );
+    }
+
+    /// `command-tunnels` 1.1: a command tunnel's command line, mode, fixed port and
+    /// timeout survive a save and a load.
+    #[test]
+    fn a_command_tunnel_round_trips() {
+        let config = sample();
+        let text = toml::to_string(&config).unwrap();
+        let parsed: TunnelsConfig = toml::from_str(&text).unwrap();
+        let tunnel = &parsed.tunnels["qa-iap"];
+        assert_eq!(tunnel.kind, TunnelKind::Command);
+        assert_eq!(tunnel.command, config.tunnels["qa-iap"].command);
+        let unset: CommandTunnelConfig = toml::from_str("command_line = \"x {port}\"").unwrap();
+        assert_eq!(unset.mode, CommandTunnelMode::Proxy, "proxy is the default");
+        assert_eq!(unset.local_port, None);
+        assert_eq!(unset.startup_timeout_secs, 30);
     }
 
     /// Guards the design intent documented on the module and struct: a tunnel's

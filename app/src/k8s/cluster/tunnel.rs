@@ -261,6 +261,7 @@ mod tests {
             bastion_port: 22,
             jump_hosts: Vec::new(),
             auth: crate::config::tunnels::TunnelAuth::default(),
+            ..Default::default()
         }
     }
 
