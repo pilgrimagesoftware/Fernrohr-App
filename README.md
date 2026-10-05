@@ -57,6 +57,21 @@ xattr -d com.apple.quarantine "/Applications/Fernrohr.app"
 Or open it once from System Settings → Privacy & Security → Open Anyway. Builds made before
 signing landed still need `codesign --force --sign - "/Applications/Fernrohr.app"` as well.
 
+## Keyboard
+
+Every action is a command in the command palette (⌘⇧P), and you can change any command's key in
+Settings → Keyboard Shortcuts or in `keymap.toml` in the app's preferences folder.
+
+Some shortcuts take two keys, such as `⌘K ←` to split a panel group. After the first key, the
+status bar shows the keys so far, such as `⌘K …`, and above it the keys that would finish a
+shortcut there, each with what it does. Press one of those keys to run it. Any other key, or a
+change of focus, cancels the shortcut.
+
+If the keys so far are a shortcut on their own as well as the start of a longer one, Fernrohr waits
+for the next key before it runs the shorter shortcut. Set how long in Settings → Shortcut Timeout,
+from 1 to 10 seconds (3 by default), or as `shortcut_timeout_secs` in `ui.toml`. A first key that
+isn't a shortcut on its own, like `⌘K`, waits for its next key however long you take.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and contribution guidelines.
