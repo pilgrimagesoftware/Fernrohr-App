@@ -32,8 +32,6 @@ pub(crate) fn has_port_placeholder(args: &[String]) -> bool {
 }
 
 /// `args` with every `{port}` replaced by `port`.
-// UNWIRED(#126): the command transport (section 2) is the first caller.
-#[allow(dead_code)]
 pub(crate) fn substitute_port(args: &[String], port: u16) -> Vec<String> {
     let port = port.to_string();
     args.iter()

@@ -151,7 +151,7 @@ async fn last_release_drops_the_sessions_tunnel_forward(cx: &mut TestAppContext)
         })
         .unwrap()
         .expect("kind-dev is bound to test-bastion");
-    let key = ForwardKey {
+    let key = ForwardKey::Ssh {
         tunnel_id: "test-bastion".to_string(),
         host: "10.0.0.1".to_string(),
         port: 6443,

@@ -3,13 +3,13 @@
 //! than Fernrohr's own `ssh -N -L`. [`argv`] turns the stored command line into the
 //! arguments that run; [`transport`] runs and supervises them, with [`process`]
 //! spawning and stopping the process group and [`output`] keeping its recent output.
-// UNWIRED(#126): the tunnel registry (section 3) is the first caller of the transport
-// outside its own tests.
-#![allow(dead_code, unused_imports)]
+//! [`CommandTunnel`] is the supervised forward the tunnel registry shares.
 
 pub(crate) mod argv;
+mod handle;
 mod output;
 mod process;
 mod transport;
 
+pub use handle::CommandTunnel;
 pub(crate) use transport::CommandTransport;

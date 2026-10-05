@@ -4,10 +4,9 @@
 //! concern (see their own doc comments). The imports below are the
 //! submodules' shared vocabulary - each opens with `use super::*`.
 
-use super::tunnel::{self, ForwardKey};
+use super::tunnel::{self, ForwardKey, TunnelForward, TunnelRoute};
 use crate::forward::managed::{ForwardState, ManagedForward as _};
 use crate::forward::registry::RegistryHandle;
-use crate::tunnel::ssh::SshTunnel;
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Client, Config};
@@ -21,7 +20,7 @@ mod state;
 #[cfg(test)]
 mod test_support;
 
-pub(in crate::k8s::cluster) use connect::{connect_and_probe, resolve_config};
+pub(in crate::k8s::cluster) use connect::{ForwardWait, connect_and_probe, resolve_config};
 pub(crate) use probe::error_chain;
 pub use probe::probe;
 pub use state::{ClusterConnection, ConnectionState};

@@ -2,9 +2,11 @@
 // would shadow the built-in `#[test]` for these plain synchronous/tokio tests.
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::connection::connect::{
-    connect_and_probe, resolve_bound_context, resolve_named_context, rewrite_for_tunnel,
+    ForwardWait, connect_and_probe, resolve_bound_context, resolve_named_context,
+    rewrite_for_tunnel, route_through_tunnel,
 };
 use crate::k8s::cluster::connection::test_support::{config_for, respond_once, version_info_json};
+use crate::k8s::cluster::tunnel::TunnelRoute;
 use kube::Config;
 use kube::config::Kubeconfig;
 use tokio::net::TcpListener;
@@ -103,7 +105,11 @@ mod connect_and_probe_tests {
         let (tx, rx) = mpsc::channel(4);
         let handle = tokio::spawn(connect_and_probe(
             Ok(config_for(addr)),
-            Some((state_rx, addr)),
+            Some(ForwardWait {
+                state: state_rx,
+                local_addr: addr,
+                route: TunnelRoute::Rewrite,
+            }),
             tx,
         ));
 
@@ -124,7 +130,11 @@ mod connect_and_probe_tests {
         // own tests, one layer up: the forward keeps retrying, never reaching Up.
         let _task = tokio::spawn(connect_and_probe(
             Ok(config_for("127.0.0.1:1".parse().unwrap())),
-            Some((state_rx, "127.0.0.1:1".parse().unwrap())),
+            Some(ForwardWait {
+                state: state_rx,
+                local_addr: "127.0.0.1:1".parse().unwrap(),
+                route: TunnelRoute::Rewrite,
+            }),
             tx,
         ));
 
@@ -178,6 +188,52 @@ mod connect_and_probe_tests {
         assert_eq!(
             config.tls_server_name.as_deref(),
             Some("already-pinned.internal")
+        );
+    }
+}
+
+/// `command-tunnels` 3.2: the client config for each kind of tunnel - SSH and a
+/// forward-mode command tunnel rewrite the address and pin the TLS name; a
+/// proxy-mode command tunnel keeps both and sets only the proxy.
+mod routing {
+    use super::*;
+    use crate::k8s::cluster::tunnel::TunnelRoute;
+
+    fn bound() -> Config {
+        Config::new("https://api.internal:6443".parse().unwrap())
+    }
+
+    const LOCAL: &str = "127.0.0.1:53124";
+
+    #[test]
+    fn ssh_and_forward_mode_rewrite_the_address_and_pin_the_tls_name() {
+        let mut config = bound();
+        route_through_tunnel(&mut config, LOCAL.parse().unwrap(), TunnelRoute::Rewrite);
+        assert_eq!(config.cluster_url.to_string(), "https://127.0.0.1:53124/");
+        assert_eq!(config.tls_server_name.as_deref(), Some("api.internal"));
+        assert_eq!(config.proxy_url, None);
+    }
+
+    #[test]
+    fn proxy_mode_keeps_the_address_and_tls_name_and_sets_the_proxy() {
+        let mut config = bound();
+        route_through_tunnel(&mut config, LOCAL.parse().unwrap(), TunnelRoute::Proxy);
+        assert_eq!(config.cluster_url.to_string(), "https://api.internal:6443/");
+        assert_eq!(config.tls_server_name, None);
+        assert_eq!(
+            config.proxy_url.map(|url| url.to_string()).as_deref(),
+            Some("http://127.0.0.1:53124/")
+        );
+    }
+
+    #[test]
+    fn proxy_mode_overrides_a_kubeconfig_proxy() {
+        let mut config = bound();
+        config.proxy_url = Some("http://corp-proxy.example:3128".parse().unwrap());
+        route_through_tunnel(&mut config, LOCAL.parse().unwrap(), TunnelRoute::Proxy);
+        assert_eq!(
+            config.proxy_url.map(|url| url.to_string()).as_deref(),
+            Some("http://127.0.0.1:53124/")
         );
     }
 }

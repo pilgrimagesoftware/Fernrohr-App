@@ -103,7 +103,7 @@ async fn a_running_state_follows_acquire_and_release(cx: &mut TestAppContext) {
     window
         .update(cx, |this, _window, _cx| {
             assert!(!this.is_running("qa-bastion"));
-            this.running = std::collections::BTreeSet::from([ForwardKey {
+            this.running = std::collections::BTreeSet::from([ForwardKey::Ssh {
                 tunnel_id: "qa-bastion".to_string(),
                 host: "10.0.0.1".to_string(),
                 port: 6443,

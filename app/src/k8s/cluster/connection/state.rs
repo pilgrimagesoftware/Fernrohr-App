@@ -27,9 +27,9 @@ pub struct ClusterConnection {
     pub(super) since: Instant,
     /// Kept alive for as long as this connection exists - section 6.2's "release the
     /// forward when the last session using it disconnects" is just this field's own
-    /// `Drop` (via `RegistryHandle`/`SshTunnel`'s), since there is one `ClusterSession`
+    /// `Drop` (via `RegistryHandle`/the tunnel's), since there is one `ClusterSession`
     /// (and so one `ClusterConnection`) per app today. `None` for an unbound context.
-    pub(super) _forward: Option<RegistryHandle<ForwardKey, SshTunnel>>,
+    pub(super) _forward: Option<RegistryHandle<ForwardKey, TunnelForward>>,
 }
 
 impl ClusterConnection {
@@ -54,7 +54,7 @@ impl ClusterConnection {
     #[cfg(test)]
     pub(crate) fn test_with_state_and_forward(
         state: ConnectionState,
-        forward: RegistryHandle<ForwardKey, SshTunnel>,
+        forward: RegistryHandle<ForwardKey, TunnelForward>,
     ) -> Self {
         Self {
             state,
@@ -76,15 +76,11 @@ impl ClusterConnection {
             .map(|handle| handle.forward().state())
     }
 
-    /// The state receiver and local address together, for section 7.3's credential-refresh
-    /// path - it needs both to call [`connect_and_probe`] again without re-resolving the
-    /// context's tunnel binding, exactly what [`ClusterConnection::connect`] captured at the
-    /// original connect.
-    pub(in crate::k8s::cluster) fn forward_wait(
-        &self,
-    ) -> Option<(watch::Receiver<ForwardState>, SocketAddr)> {
-        self._forward
-            .as_ref()
-            .map(|handle| (handle.forward().state(), handle.forward().local_addr()))
+    /// The state receiver, local address and route together, for section 7.3's
+    /// credential-refresh path - it needs them to call [`connect_and_probe`] again
+    /// without re-resolving the context's tunnel binding, exactly what
+    /// [`ClusterConnection::connect`] captured at the original connect.
+    pub(in crate::k8s::cluster) fn forward_wait(&self) -> Option<ForwardWait> {
+        self._forward.as_ref().map(ForwardWait::of)
     }
 }
