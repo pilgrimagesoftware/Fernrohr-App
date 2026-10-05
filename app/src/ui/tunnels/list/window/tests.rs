@@ -293,7 +293,12 @@ async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppCo
     let forwards = cx.update(PortForwards::entity);
     forwards
         .update(cx, |forwards, cx| {
-            forwards.start(request.clone(), client, cx)
+            forwards.start(
+                request.clone(),
+                crate::k8s::cluster::port_forwards::ForwardObject::pod("demo", "shop", "web-1"),
+                client,
+                cx,
+            )
         })
         .expect("started");
 

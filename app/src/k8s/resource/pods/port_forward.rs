@@ -5,7 +5,7 @@
 
 use super::actions::PodActionFailure;
 use super::*;
-use crate::k8s::cluster::port_forwards::PortForwardRequest;
+use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwardRequest};
 use crate::k8s::resource::port_forwarding::{self, PortChoice};
 use crate::k8s::resource::resource_actions::ActionFailure;
 use std::rc::Rc;
@@ -54,7 +54,12 @@ fn forward(selection: &PodSelection, port: u16, report: &ForwardReport, cx: &mut
         pod: selection.name.clone(),
         remote_port: port,
     };
-    let result = port_forwarding::start(request, cx)
+    let origin = ForwardObject::pod(
+        &selection.context_name,
+        &selection.namespace,
+        &selection.name,
+    );
+    let result = port_forwarding::start(request, origin, cx)
         .map(|addr| port_forwarding::started_notice(addr, &selection.name, port));
     let report = report.clone();
     cx.defer(move |cx| report(result, cx));

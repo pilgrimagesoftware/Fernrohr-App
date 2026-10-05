@@ -8,6 +8,12 @@
 //! through the registry's reference-counted shutdown - the listener closes and
 //! its key leaves the live set. Starting the same forward twice is a no-op that
 //! returns the running one.
+//!
+//! `port-forward-indicators` 1.1: the list is an entity, so every surface showing
+//! forwards `cx.observe`s it and re-renders on any start or stop - Manage Tunnels'
+//! included. [`PortForwards::for_object`] is what each of them asks: a Pod's
+//! forwards are those reaching it, a Service's those started from it (a Service
+//! forward reaches one Pod behind it, so its request alone can't say).
 
 use crate::forward::k8s::managed::K8sPortForward;
 use crate::forward::k8s::port_forward::K8sPortForwardConfig;
@@ -28,11 +34,58 @@ pub struct PortForwardRequest {
     pub remote_port: u16,
 }
 
-/// One running forward: the handle that keeps it alive, where it listens, and
-/// its state as last reported.
+/// Which kind of object a forward was started from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ForwardKind {
+    Pod,
+    Service,
+}
+
+/// An object forwards are shown on: a Pod or a Service, in one context.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ForwardObject {
+    pub context_name: String,
+    pub namespace: String,
+    pub kind: ForwardKind,
+    pub name: String,
+}
+
+impl ForwardObject {
+    pub fn pod(context_name: &str, namespace: &str, name: &str) -> Self {
+        Self {
+            context_name: context_name.into(),
+            namespace: namespace.into(),
+            kind: ForwardKind::Pod,
+            name: name.into(),
+        }
+    }
+
+    pub fn service(context_name: &str, namespace: &str, name: &str) -> Self {
+        Self {
+            kind: ForwardKind::Service,
+            ..Self::pod(context_name, namespace, name)
+        }
+    }
+}
+
+/// One forward as an object's surfaces show it: which forward (to stop it by),
+/// where it listens, the port it reaches, and its state.
+// UNWIRED(#149): the Forwards column (section 2) is the first reader.
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ForwardSummary {
+    pub request: PortForwardRequest,
+    pub local_addr: SocketAddr,
+    pub target_port: u16,
+    pub state: ForwardState,
+}
+
+/// One running forward: the handle that keeps it alive, where it listens, its
+/// state as last reported, and the objects it was started from.
 struct Held {
     handle: RegistryHandle<PortForwardRequest, K8sPortForward>,
     state: ForwardState,
+    origins: std::collections::BTreeSet<ForwardObject>,
     _follow: Task<()>,
 }
 
@@ -59,16 +112,21 @@ impl PortForwards {
         entity
     }
 
-    /// Starts forwarding `request` through `client`, or returns the address of
-    /// the forward already running for it. Listens on the remote port's own
-    /// number locally when it's free, else on any free port.
+    /// Starts forwarding `request` through `client`, started from `origin`, or
+    /// returns the address of the forward already running for it (now started
+    /// from `origin` too). Listens on the remote port's own number locally when
+    /// it's free, else on any free port.
     pub fn start(
         &mut self,
         request: PortForwardRequest,
+        origin: ForwardObject,
         client: kube::Client,
         cx: &mut Context<Self>,
     ) -> Result<SocketAddr, String> {
-        if let Some(held) = self.held.get(&request) {
+        if let Some(held) = self.held.get_mut(&request) {
+            if held.origins.insert(origin) {
+                cx.notify();
+            }
             return Ok(held.handle.forward().local_addr());
         }
         let listener = std::net::TcpListener::bind(("127.0.0.1", request.remote_port))
@@ -97,6 +155,7 @@ impl PortForwards {
             Held {
                 handle,
                 state: ForwardState::Connecting,
+                origins: std::collections::BTreeSet::from([origin]),
                 _follow: follow,
             },
         );
@@ -153,6 +212,30 @@ impl PortForwards {
                     held.handle.forward().local_addr(),
                     held.state,
                 )
+            })
+            .collect()
+    }
+
+    /// `object`'s forwards, in request order: for a Pod, every forward reaching
+    /// it; for a Service, every forward started from it.
+    // UNWIRED(#149): see `ForwardSummary`.
+    #[allow(dead_code)]
+    pub fn for_object(&self, object: &ForwardObject) -> Vec<ForwardSummary> {
+        self.held
+            .iter()
+            .filter(|(request, held)| match object.kind {
+                ForwardKind::Pod => {
+                    request.context_name == object.context_name
+                        && request.namespace == object.namespace
+                        && request.pod == object.name
+                }
+                ForwardKind::Service => held.origins.contains(object),
+            })
+            .map(|(request, held)| ForwardSummary {
+                request: request.clone(),
+                local_addr: held.handle.forward().local_addr(),
+                target_port: request.remote_port,
+                state: held.state,
             })
             .collect()
     }

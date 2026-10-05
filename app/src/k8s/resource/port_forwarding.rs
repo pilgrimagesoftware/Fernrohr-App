@@ -5,7 +5,7 @@
 //! Pods, as `kubectl port-forward svc/...` does - and starting the forward in
 //! the app's list (`k8s::cluster::port_forwards`), where Manage Tunnels shows it.
 
-use crate::k8s::cluster::port_forwards::{PortForwardRequest, PortForwards};
+use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwardRequest, PortForwards};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
@@ -133,7 +133,11 @@ pub(crate) async fn resolve_service(
 
 /// Starts forwarding `request` in the app's list, through `context_name`'s
 /// connection when it is up.
-pub(crate) fn start(request: PortForwardRequest, cx: &mut App) -> Result<SocketAddr, String> {
+pub(crate) fn start(
+    request: PortForwardRequest,
+    origin: ForwardObject,
+    cx: &mut App,
+) -> Result<SocketAddr, String> {
     let connection =
         crate::k8s::cluster::session::ClusterRegistry::connection(cx, &request.context_name);
     let crate::k8s::cluster::connection::ConnectionState::Connected(client) =
@@ -141,7 +145,9 @@ pub(crate) fn start(request: PortForwardRequest, cx: &mut App) -> Result<SocketA
     else {
         return Err("The cluster isn't connected.".into());
     };
-    PortForwards::entity(cx).update(cx, |forwards, cx| forwards.start(request, client, cx))
+    PortForwards::entity(cx).update(cx, |forwards, cx| {
+        forwards.start(request, origin, client, cx)
+    })
 }
 
 /// What the panel says once a forward started.

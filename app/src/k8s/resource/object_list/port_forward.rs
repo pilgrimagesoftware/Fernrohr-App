@@ -9,7 +9,7 @@
 use super::commands::PortForwardService;
 use super::panel::ObjectListPanel;
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::k8s::cluster::port_forwards::PortForwardRequest;
+use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwardRequest};
 use crate::k8s::resource::port_forwarding::{self, PortChoice};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
@@ -158,7 +158,8 @@ impl ObjectListPanel {
                             pod,
                             remote_port: pod_port,
                         };
-                        port_forwarding::start(request, cx)
+                        let origin = ForwardObject::service(&context_name, &namespace, &name);
+                        port_forwarding::start(request, origin, cx)
                             .map(|addr| port_forwarding::started_notice(addr, &name, port))
                     });
                     this.report(result, cx);
