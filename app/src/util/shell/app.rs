@@ -150,6 +150,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::pod_detail::register_restore(cx);
     crate::k8s::resource::object_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
+    crate::k8s::resource::exec::register_restore(cx);
     crate::k8s::resource::object_list::register_restore(cx);
     crate::k8s::resource::events_browser::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);

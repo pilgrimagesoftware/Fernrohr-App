@@ -22,7 +22,8 @@ actions!(
         CloseQuickLook,
         OpenQuickLookDetails,
         DeletePod,
-        KillPod
+        KillPod,
+        ShellPod
     ]
 );
 
@@ -50,6 +51,8 @@ pub(super) const QUICK_LOOK_KEY: &str = "space";
 /// k9s's own keys for delete and kill.
 pub(super) const DELETE_KEY: &str = "ctrl-d";
 pub(super) const KILL_KEY: &str = "ctrl-k";
+/// k9s's shell key.
+pub(super) const SHELL_KEY: &str = "s";
 pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
 pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
@@ -86,6 +89,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: OPEN_QUICK_LOOK_DETAILS_KEY,
         context: Some(QUICK_LOOK_KEY_CONTEXT),
         action: Box::new(OpenQuickLookDetails),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "pods.shell",
+        title: "Pods: Shell into Selected Pod",
+        default_binding: SHELL_KEY,
+        context: Some(super::shell::SHELL_KEY_CONTEXT),
+        action: Box::new(ShellPod),
         menu: None,
     });
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {

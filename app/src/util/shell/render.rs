@@ -124,6 +124,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_events))
             .on_action(cx.listener(Self::on_action_focus_resources))
             .on_action(cx.listener(Self::on_action_warp_context))
+            .on_action(cx.listener(Self::on_action_open_exec))
             .on_action(cx.listener(Self::on_action_switch_namespace_set))
             .on_action(cx.listener(Self::on_action_switch_context_namespace_set))
             .on_action(cx.listener(Self::on_action_create_namespace_set))

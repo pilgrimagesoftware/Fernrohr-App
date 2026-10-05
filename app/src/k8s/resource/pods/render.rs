@@ -4,6 +4,7 @@ use super::*;
 use crate::ui::list_keys::{self, Step};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
+use gpui_kit::prelude::FluentBuilder as _;
 
 /// Up/Down with no pod selected, or with focus on the panel rather than its table
 /// (`standard-resource-panels` 5.2, [`list_keys`]).
@@ -89,6 +90,9 @@ impl Render for PodsPanel {
                     })
                     .collect();
                 let table = self.sync_table(items, window, cx);
+                // The shell command's context, only while the selected pod has a
+                // running container (`shell`).
+                let shellable = self.shell_candidates(cx).is_some();
                 // A quick look whose pod has no row - deleted while open - can't
                 // hang below it, so it sits at the top of the table instead.
                 let unanchored = self.quick_look.clone().filter(|popover| {
@@ -207,6 +211,7 @@ impl Render for PodsPanel {
                         div()
                             .flex_1()
                             .min_h_0()
+                            .when(shellable, |this| this.key_context(SHELL_KEY_CONTEXT))
                             .children(unanchored.map(|popover| {
                                 deferred(
                                     anchored().snap_to_window_with_margin(px(8.)).child(popover),
@@ -285,6 +290,7 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_quick_look))
             .on_action(cx.listener(Self::on_action_delete_pod))
             .on_action(cx.listener(Self::on_action_kill_pod))
+            .on_action(cx.listener(Self::on_action_shell_pod))
             .on_action(cx.listener(Self::on_action_close_quick_look))
             .on_action(cx.listener(Self::on_action_open_quick_look_details))
             .child(
