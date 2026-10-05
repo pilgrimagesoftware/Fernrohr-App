@@ -120,6 +120,9 @@ impl Render for MainWindow {
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
             })
+            .on_action(|_: &crate::util::key_hints::ShowKeyHints, window, cx| {
+                crate::util::key_hints::open(window, cx);
+            })
             .on_action(cx.listener(Self::on_action_show_pods))
             .on_action(cx.listener(Self::on_action_show_events))
             .on_action(cx.listener(Self::on_action_focus_resources))

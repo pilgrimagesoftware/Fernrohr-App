@@ -132,10 +132,21 @@ pub struct Command {
 }
 
 impl Command {
+    /// Whether the command applies where `active_contexts` are on the focus
+    /// path. A context is a context name, or names joined by `&&`, each
+    /// possibly negated with `!` (`"ObjectListPanel && !Input"`), read as its
+    /// key binding reads it - so a command bound outside text fields is offered
+    /// outside them too.
     pub fn is_available(&self, active_contexts: &[&str]) -> bool {
         match self.context {
             None => true,
-            Some(context) => active_contexts.contains(&context),
+            Some(context) => context.split("&&").all(|term| {
+                let term = term.trim();
+                match term.strip_prefix('!') {
+                    Some(name) => !active_contexts.contains(&name.trim()),
+                    None => active_contexts.contains(&term),
+                }
+            }),
         }
     }
 }

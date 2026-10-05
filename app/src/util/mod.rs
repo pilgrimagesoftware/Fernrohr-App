@@ -1,4 +1,5 @@
 pub(crate) mod context_lifecycle;
+pub(crate) mod key_hints;
 pub(crate) mod keychain;
 pub(crate) mod logs;
 pub(crate) mod palette;
