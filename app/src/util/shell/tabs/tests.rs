@@ -272,12 +272,16 @@ fn only_sole_holders_with_a_live_forward_lose_a_tunnel() {
 
 #[test]
 fn the_confirmation_names_the_contexts() {
+    let one = close_window_confirmation_body(&["prod".into()]);
     assert_eq!(
-        close_window_confirmation_body(&["prod".into()]),
-        "The tunnel for prod will disconnect."
+        one.plain(),
+        "The tunnel for \u{201c}prod\u{201d} will disconnect."
     );
+    assert_eq!(one.name_list(), ["prod"]);
+    let two = close_window_confirmation_body(&["prod".into(), "staging".into()]);
     assert_eq!(
-        close_window_confirmation_body(&["prod".into(), "staging".into()]),
-        "The tunnels for prod, staging will disconnect."
+        two.plain(),
+        "The tunnels for \u{201c}prod\u{201d}, \u{201c}staging\u{201d} will disconnect."
     );
+    assert_eq!(two.name_list(), ["prod", "staging"]);
 }

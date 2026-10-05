@@ -246,12 +246,13 @@ impl ExecPanel {
 
     /// What closing the panel would cost, when it costs something: a running
     /// session ends with it (`panel-move-keybindings`' Close Group asks first).
-    pub fn close_warning(&self) -> Option<String> {
+    pub(crate) fn close_warning(&self) -> Option<crate::ui::confirm_text::ConfirmText> {
         (self.state == SessionState::Running).then(|| {
-            format!(
-                "The shell in {} \u{00b7} {} ends.",
-                self.target.pod, self.target.container
-            )
+            crate::ui::confirm_text::ConfirmText::from("The shell in ")
+                .name(&self.target.pod)
+                .text(" \u{00b7} ")
+                .name(&self.target.container)
+                .text(" ends.")
         })
     }
 

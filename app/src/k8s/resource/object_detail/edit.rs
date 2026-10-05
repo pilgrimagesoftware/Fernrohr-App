@@ -201,12 +201,13 @@ impl ObjectDetailPanel {
     /// What closing the panel would cost, when it costs something: an edit not
     /// yet saved is lost with it (`panel-move-keybindings`' Close Group asks
     /// first).
-    pub fn close_warning(&self) -> Option<String> {
+    pub(crate) fn close_warning(&self) -> Option<crate::ui::confirm_text::ConfirmText> {
         self.edit.as_ref().map(|_| {
-            format!(
-                "The unsaved edit to {} {} is lost.",
-                self.target.kind.gvk.kind, self.target.name
+            crate::ui::confirm_text::ConfirmText::from(
+                format!("The unsaved edit to {} ", self.target.kind.gvk.kind).as_str(),
             )
+            .name(&self.target.name)
+            .text(" is lost.")
         })
     }
 

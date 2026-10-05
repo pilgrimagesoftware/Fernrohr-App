@@ -3,6 +3,7 @@
 //! the delete confirmation.
 
 use super::*;
+use crate::ui::confirm_text::ConfirmText;
 
 impl Render for TunnelEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -105,19 +106,7 @@ impl Render for TunnelEditor {
         let delete_confirm = self.confirming_delete.then(|| {
             let weak_confirm = cx.weak_entity();
             let weak_cancel = weak_confirm.clone();
-            let message = if self.bound_contexts.is_empty() {
-                "Delete this tunnel? No contexts are bound to it.".to_string()
-            } else {
-                let noun = if self.bound_contexts.len() == 1 {
-                    "This context"
-                } else {
-                    "These contexts"
-                };
-                format!(
-                    "Delete this tunnel? {noun} will fall back to a direct connection: {}",
-                    self.bound_contexts.join(", ")
-                )
-            };
+            let message = delete_confirm_text(&self.bound_contexts);
             div()
                 .flex()
                 .flex_col()
@@ -126,7 +115,7 @@ impl Render for TunnelEditor {
                 .border_1()
                 .border_color(theme.danger)
                 .rounded_md()
-                .child(div().text_sm().child(message))
+                .child(div().text_sm().child(message.render(cx)))
                 .child(
                     div()
                         .flex()
@@ -262,5 +251,19 @@ impl Render for TunnelEditor {
                     })),
             )
             .children(delete_confirm)
+    }
+}
+
+/// The tunnel delete prompt's question, naming the contexts that fall back.
+pub(super) fn delete_confirm_text(bound_contexts: &[String]) -> ConfirmText {
+    let question = ConfirmText::from("Delete this tunnel? ");
+    match bound_contexts {
+        [] => question.text("No contexts are bound to it."),
+        [_] => question
+            .text("This context will fall back to a direct connection: ")
+            .names(bound_contexts),
+        _ => question
+            .text("These contexts will fall back to a direct connection: ")
+            .names(bound_contexts),
     }
 }

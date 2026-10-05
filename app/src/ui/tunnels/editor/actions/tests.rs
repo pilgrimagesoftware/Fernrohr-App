@@ -181,6 +181,13 @@ async fn delete_confirm_names_the_bound_contexts(cx: &mut TestAppContext) {
             );
             editor.request_delete(_cx);
             assert!(editor.confirming_delete);
+            let question =
+                crate::ui::tunnels::editor::render::delete_confirm_text(&editor.bound_contexts);
+            assert_eq!(
+                question.name_list(),
+                ["qa-1", "qa-2"],
+                "each bound context is a name of its own"
+            );
         })
         .unwrap();
 

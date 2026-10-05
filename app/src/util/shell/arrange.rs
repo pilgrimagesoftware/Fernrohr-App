@@ -9,6 +9,8 @@
 //! outside them, or no group that way, they do nothing.
 
 use super::*;
+use crate::ui::confirm_dialog::{self, Confirmation};
+use crate::ui::confirm_text::ConfirmText;
 use crate::ui::panel::arrange::{
     self, ClosePanelGroup, Direction, MergeGroupDown, MergeGroupLeft, MergeGroupRight,
     MergeGroupUp, MovePanelDown, MovePanelLeft, MovePanelRight, MovePanelUp, SplitGroupDown,
@@ -199,7 +201,7 @@ impl MainWindow {
         let Some(group) = tabs::tabs_of(dock_area.read(cx), node) else {
             return;
         };
-        let warnings: Vec<String> = group
+        let warnings: Vec<ConfirmText> = group
             .panels
             .iter()
             .filter_map(|&panel| close_warning(dock_area.read(cx), panel, cx))
@@ -209,17 +211,19 @@ impl MainWindow {
             return;
         }
         let panels = group.panels.clone();
-        let confirmation = super::tabs::CloseConfirmation {
-            title: "Close Group?",
-            body: format!(
-                "Closing this group closes {} panels. {}",
-                panels.len(),
-                warnings.join(" ")
+        let body = warnings.into_iter().fold(
+            ConfirmText::from(
+                format!("Closing this group closes {} panels.", panels.len()).as_str(),
             ),
-            confirm: "Close Group",
+            |body, warning| body.text(" ").append(warning),
+        );
+        let confirmation = Confirmation {
+            title: "Close Group?".into(),
+            body,
+            confirm: "Close Group".into(),
             id_prefix: "close-group",
         };
-        super::tabs::open_close_confirmation(
+        confirm_dialog::open(
             confirmation,
             move |window, cx| close_panels(&dock_area, &panels, window, cx),
             window,
@@ -240,7 +244,7 @@ impl MainWindow {
 }
 
 /// What closing `panel` would cost, from the panels that can say.
-fn close_warning(area: &DockArea, panel: PanelId, cx: &App) -> Option<String> {
+fn close_warning(area: &DockArea, panel: PanelId, cx: &App) -> Option<ConfirmText> {
     match nav::opened_panel_for(area, panel, cx)? {
         OpenedPanel::Exec(panel) => panel.read(cx).close_warning(),
         OpenedPanel::ObjectDetail(panel) => panel.read(cx).close_warning(),
