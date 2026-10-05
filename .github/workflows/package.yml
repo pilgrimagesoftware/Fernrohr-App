@@ -191,8 +191,11 @@ jobs:
               || { echo "::error::$deb doesn't recommend $recommends"; exit 1; }
 
             contents=$(dpkg-deb -c "$deb")
-            grep -q '/usr/share/pixmaps/fernrohr.png$' <<<"$contents" \
-              || { echo "::error::$deb has no pixmaps icon"; exit 1; }
+            for icon in /usr/share/pixmaps/fernrohr.png \
+              /usr/share/icons/hicolor/256x256/apps/fernrohr.png \
+              /usr/share/icons/hicolor/512x512/apps/fernrohr.png; do
+              grep -q "${icon}\$" <<<"$contents" || { echo "::error::$deb lacks $icon"; exit 1; }
+            done
             entry=$(mktemp -d)
             dpkg-deb -x "$deb" "$entry"
             desktop=$(ls "$entry"/usr/share/applications/*.desktop)
@@ -224,7 +227,9 @@ jobs:
             || { echo "::error::$rpm doesn't recommend gnome-keyring"; exit 1; }
           files=$(rpm -qpl "$rpm")
           for file in /usr/bin/fernrohr /usr/share/applications/fernrohr.desktop \
-            /usr/share/pixmaps/fernrohr.png /usr/share/licenses/fernrohr/LICENSE.md; do
+            /usr/share/pixmaps/fernrohr.png /usr/share/licenses/fernrohr/LICENSE.md \
+            /usr/share/icons/hicolor/256x256/apps/fernrohr.png \
+            /usr/share/icons/hicolor/512x512/apps/fernrohr.png; do
             grep -qx -- "$file" <<<"$files" || { echo "::error::$rpm lacks $file"; exit 1; }
           done
 
