@@ -304,6 +304,7 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_select_volumes_tab))
             .on_action(cx.listener(Self::on_action_select_events_tab))
             .on_action(cx.listener(Self::on_action_select_managed_fields_tab))
+            .on_action(cx.listener(Self::on_action_view_logs))
             .flex()
             .flex_col()
             .child(header)

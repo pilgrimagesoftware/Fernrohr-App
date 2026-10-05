@@ -19,6 +19,7 @@ mod fixtures;
 mod links;
 mod live;
 mod live_events;
+mod logs;
 mod managed_fields;
 mod metadata_chips;
 mod overview_warnings;
