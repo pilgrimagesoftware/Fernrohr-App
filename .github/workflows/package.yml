@@ -80,7 +80,8 @@ jobs:
             libgtk-3-dev \
             libsecret-1-dev \
             mesa-vulkan-drivers \
-            desktop-file-utils
+            desktop-file-utils \
+            rpm
 
       - name: Validate desktop entry
         if: matrix.name == 'Linux'
@@ -90,6 +91,12 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-packager
+
+      - name: Install cargo-generate-rpm
+        if: matrix.name == 'Linux'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-generate-rpm
 
       # cargo-packager resolves `[package.metadata.packager]` from the manifest
       # in the current directory, not from a workspace root with `--packages`.
@@ -189,6 +196,32 @@ jobs:
             rm -rf "$entry"
           done
 
+      # cargo-packager has no RPM backend: build the rpm from the release build
+      # it just made, then read its requirements and recommendations back.
+      - name: Build and check rpm
+        if: matrix.name == 'Linux'
+        run: |
+          set -euo pipefail
+          cargo generate-rpm -p app --target ${{ matrix.target }}
+          shopt -s nullglob
+          rpms=(target/${{ matrix.target }}/generate-rpm/*.rpm)
+          [ ${#rpms[@]} -eq 1 ] || { echo "::error::expected one rpm, found ${#rpms[@]}"; exit 1; }
+          rpm="${rpms[0]}"
+          requires=$(rpm -qpR "$rpm")
+          recommends=$(rpm -qp --recommends "$rpm")
+          echo "Requires:"; echo "$requires"
+          echo "Recommends:"; echo "$recommends"
+          for dep in openssh-clients libsecret; do
+            grep -qx -- "$dep" <<<"$requires" || { echo "::error::$rpm doesn't require $dep"; exit 1; }
+          done
+          grep -qx gnome-keyring <<<"$recommends" \
+            || { echo "::error::$rpm doesn't recommend gnome-keyring"; exit 1; }
+          files=$(rpm -qpl "$rpm")
+          for file in /usr/bin/fernrohr /usr/share/applications/fernrohr.desktop \
+            /usr/share/pixmaps/fernrohr.png /usr/share/licenses/fernrohr/LICENSE.md; do
+            grep -qx -- "$file" <<<"$files" || { echo "::error::$rpm lacks $file"; exit 1; }
+          done
+
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
         with:
@@ -198,6 +231,7 @@ jobs:
             target/${{ matrix.target }}/release/*.app
             target/${{ matrix.target }}/release/*.AppImage
             target/${{ matrix.target }}/release/*.deb
+            target/${{ matrix.target }}/generate-rpm/*.rpm
           if-no-files-found: error
           retention-days: 30
 
@@ -211,4 +245,5 @@ jobs:
             target/${{ matrix.target }}/release/*.dmg \
             target/${{ matrix.target }}/release/*.AppImage \
             target/${{ matrix.target }}/release/*.deb \
+            target/${{ matrix.target }}/generate-rpm/*.rpm \
             --clobber
