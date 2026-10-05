@@ -34,8 +34,8 @@ fn press_and_release(cx: &mut VisualTestContext, key: &str) {
     cx.run_until_parked();
 }
 
-/// The app as `main` starts it, then Settings opened with cmd-, - focus on
-/// its first section, as a user opening it would have.
+/// The app as `main` starts it, then Settings opened with cmd-, and its
+/// Appearance section shown - focus at its top, as a user showing it would have.
 fn settings(cx: &mut TestAppContext) -> VisualTestContext {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_path("workspace"), temp_path("keymap"));
@@ -55,7 +55,11 @@ fn settings(cx: &mut TestAppContext) -> VisualTestContext {
     let handle: WindowHandle<Root> = cx
         .update(|cx| test_window(cx))
         .expect("cmd-, opened Settings");
-    VisualTestContext::from_window(handle.into(), cx)
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    // Text Size is in the Appearance section (#139).
+    vcx.update(|window, cx| window.dispatch_action(Box::new(super::super::ShowAppearance), cx));
+    vcx.run_until_parked();
+    vcx
 }
 
 fn percent(vcx: &mut VisualTestContext) -> u16 {

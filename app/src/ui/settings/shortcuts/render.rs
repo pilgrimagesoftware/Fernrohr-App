@@ -138,12 +138,22 @@ impl ShortcutsSection {
                 let summary = clash_summary(cx.global::<CommandRegistry>(), &clashes);
                 let apply = cx.weak_entity();
                 let cancel = cx.weak_entity();
+                // The question can run long - a key that starts many chords
+                // lists them all - so it wraps in whatever width is left, and
+                // the buttons keep theirs, inside the window (#139).
                 div()
+                    .w_full()
+                    .min_w_0()
                     .flex()
                     .items_center()
                     .gap_2()
                     .text_sm()
-                    .child(format!("{keys} {summary}. Apply anyway? (Enter / Escape)"))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(format!("{keys} {summary}. Apply anyway? (Enter / Escape)")),
+                    )
                     .child(
                         Button::new(SharedString::from(format!("shortcut-apply-{id}")))
                             .label("Apply")
