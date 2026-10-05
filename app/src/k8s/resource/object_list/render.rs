@@ -3,8 +3,9 @@
 //! won't list.
 
 use super::commands::{
-    DESCRIBE_KEY, DescribeSelected, FILTER_KEY, FocusFilter, NAMESPACE_KEY, OPEN_KEY, OpenSelected,
-    PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList, ShowSelectedYaml, WarpNamespace, YAML_KEY,
+    DESCRIBE_KEY, DescribeSelected, FILTER_KEY, FocusFilter, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY,
+    OPEN_KEY, OpenInBackground, OpenSelected, PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList,
+    ShowSelectedYaml, WarpNamespace, YAML_KEY,
 };
 use super::panel::ObjectListPanel;
 use super::store::ListMode;
@@ -73,6 +74,12 @@ impl ObjectListPanel {
             .text_color(cx.theme().muted_foreground)
             .child(Self::hint(&FocusFilter, FILTER_KEY, "Filter", window))
             .child(Self::hint(&OpenSelected, OPEN_KEY, "Open", window))
+            .child(Self::hint(
+                &OpenInBackground,
+                OPEN_IN_BACKGROUND_KEY,
+                "Background",
+                window,
+            ))
             // Only a namespaced kind has a picker to open.
             .when(self.scope.is_namespaced(), |hints| {
                 hints.child(Self::hint(
@@ -227,6 +234,7 @@ impl Render for ObjectListPanel {
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_focus_filter))
             .on_action(cx.listener(Self::on_action_open_selected))
+            .on_action(cx.listener(Self::on_action_open_in_background))
             .capture_action(cx.listener(Self::capture_select_down))
             .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(Self::on_action_describe_selected))

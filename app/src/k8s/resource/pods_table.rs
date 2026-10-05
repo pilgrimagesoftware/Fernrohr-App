@@ -75,6 +75,7 @@ pub(super) struct PodTableDelegate {
     /// The table's own focus handle, which the row context menu dispatches
     /// its commands from so they reach the Pods panel as their keys do.
     action_context: Option<FocusHandle>,
+    background_click: crate::ui::background_rows::BackgroundClick,
 }
 
 impl Default for PodTableDelegate {
@@ -89,6 +90,7 @@ impl Default for PodTableDelegate {
             header: Default::default(),
             quick_look: None,
             action_context: None,
+            background_click: Default::default(),
         }
     }
 }
@@ -199,9 +201,30 @@ impl PodTableDelegate {
     }
 }
 
+impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
+    fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
+        if let Some(row) = self.rows.get(row_ix) {
+            window.dispatch_action(Box::new(row.selection.background_open()), cx);
+        }
+    }
+
+    fn background_click(&mut self) -> &mut crate::ui::background_rows::BackgroundClick {
+        &mut self.background_click
+    }
+}
+
 impl TableDelegate for PodTableDelegate {
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
+    }
+
+    fn render_tr(
+        &mut self,
+        row_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Stateful<Div> {
+        crate::ui::background_rows::row(row_ix, cx)
     }
 
     fn rows_count(&self, _: &App) -> usize {

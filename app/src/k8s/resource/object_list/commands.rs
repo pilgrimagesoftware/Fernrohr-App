@@ -5,7 +5,7 @@
 
 use crate::command::{Command, CommandRegistry};
 use crate::k8s::resource::pod_detail::DetailView;
-use crate::ui::nav::ObjectTarget;
+use crate::ui::nav::{ObjectTarget, OpenMode};
 use gpui_kit::{Action, actions};
 
 actions!(
@@ -17,7 +17,8 @@ actions!(
         ShowSelectedYaml,
         WarpNamespace,
         RefreshList,
-        PortForwardService
+        PortForwardService,
+        OpenInBackground
     ]
 );
 
@@ -25,13 +26,15 @@ actions!(
 /// `y`, double-click and the row menu's "Open" dispatch. Carries its object, like
 /// `ui::link::FollowReference`, so the window's one open path (which focuses an
 /// already-open panel rather than adding a second) is all it needs. `view` is
-/// the view to show, `None` for whichever the panel is on (structured, new).
+/// the view to show, `None` for whichever the panel is on (structured, new);
+/// `mode` whether it opens in the background (`open-in-background`).
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = object_list, no_json)]
 pub struct OpenListedObject {
     pub context_name: String,
     pub target: ObjectTarget,
     pub view: Option<DetailView>,
+    pub mode: OpenMode,
 }
 
 /// The panel's key context.
@@ -44,6 +47,8 @@ pub(crate) const LIST_KEY_CONTEXT: &str = "ObjectListPanel && !Input";
 /// The default keys, also the hint bar's fallback when the keymap has none.
 pub(super) const FILTER_KEY: &str = "/";
 pub(super) const OPEN_KEY: &str = "enter";
+/// Open in Background: the platform modifier with Enter (`cmd-enter` on macOS).
+pub(super) const OPEN_IN_BACKGROUND_KEY: &str = "secondary-enter";
 pub(super) const NAMESPACE_KEY: &str = "w";
 /// The Pods table's describe and YAML keys (`pods::DESCRIBE_KEY`, `YAML_KEY`), so
 /// every list answers them alike (`standard-resource-panels` 5.1).
@@ -54,6 +59,7 @@ pub(super) const REFRESH_KEY: &str = "r";
 
 const FILTER_COMMAND_ID: &str = "object_list.focus_filter";
 const OPEN_COMMAND_ID: &str = "object_list.open";
+const OPEN_IN_BACKGROUND_COMMAND_ID: &str = "object_list.open_in_background";
 const NAMESPACE_COMMAND_ID: &str = "object_list.warp_namespace";
 const DESCRIBE_COMMAND_ID: &str = "object_list.describe";
 const YAML_COMMAND_ID: &str = "object_list.yaml";
@@ -96,6 +102,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Open Selected Object",
         OPEN_KEY,
         Box::new(OpenSelected),
+        None,
+    );
+    register(
+        OPEN_IN_BACKGROUND_COMMAND_ID,
+        "List: Open Selected Object in Background",
+        OPEN_IN_BACKGROUND_KEY,
+        Box::new(OpenInBackground),
         None,
     );
     register(

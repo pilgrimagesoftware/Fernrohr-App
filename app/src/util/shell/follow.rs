@@ -10,7 +10,7 @@ use super::MainWindow;
 use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
 use crate::k8s::resource::object_list::OpenListedObject;
 use crate::ui::link::FollowReference;
-use crate::ui::nav::{NavTarget, OpenMode};
+use crate::ui::nav::{NavTarget, OpenMode, OpenPodInBackground};
 use crate::ui::viewer::viewer_for;
 use gpui_kit::*;
 
@@ -60,7 +60,29 @@ impl MainWindow {
             action.view,
             Some(action.context_name.clone()),
             Vec::new(),
-            OpenMode::Foreground,
+            action.mode,
+            window,
+            cx,
+        );
+    }
+}
+
+impl MainWindow {
+    /// Opens a pod's detail panel in the background, in the pod's own context
+    /// (`open-in-background`): a Pods row's modified or middle click, or its Open
+    /// in Background.
+    pub(super) fn on_action_open_pod_in_background(
+        &mut self,
+        action: &OpenPodInBackground,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_target_in(
+            NavTarget::pod(action.namespace.clone(), action.name.clone()),
+            None,
+            Some(action.context_name.clone()),
+            Vec::new(),
+            OpenMode::Background,
             window,
             cx,
         );

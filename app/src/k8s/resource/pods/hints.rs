@@ -51,6 +51,12 @@ impl PodsPanel {
                 window,
             ))
             .child(hint(&DescribePod, DESCRIBE_KEY, "Describe", window))
+            .child(hint(
+                &OpenInBackground,
+                OPEN_IN_BACKGROUND_KEY,
+                "Background",
+                window,
+            ))
             .child(hint(&ShowPodLogs, LOGS_KEY, "Logs", window))
             .child(hint(&ShowPodYaml, YAML_KEY, "YAML", window))
             .when(shellable, |row| {

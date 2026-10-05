@@ -303,6 +303,7 @@ fn open_listed(
                     context_name: context.into(),
                     target,
                     view: None,
+                    mode: crate::ui::nav::OpenMode::Foreground,
                 }),
                 cx,
             );

@@ -20,6 +20,7 @@ use kube_runtime::watcher;
 
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
 mod actions;
+mod background;
 mod commands;
 mod hints;
 #[cfg(test)]
@@ -29,7 +30,10 @@ pub use commands::{
     PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs, ShowPodYaml,
     WarpAllToNamespace, WarpNamespace, register_commands,
 };
-use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY};
+use commands::{
+    DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OpenInBackground,
+    QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY,
+};
 
 mod panel;
 mod port_forward;

@@ -173,3 +173,48 @@ async fn a_foreground_open_still_shows_and_focuses(cx: &mut TestAppContext) {
     );
     assert_eq!(h.focused(), Some(services()));
 }
+
+/// 2.2: the window turns a Pods row's background open into the pod's detail as an
+/// inactive tab, focus left on the list.
+#[gpui_kit::test]
+async fn a_pod_opened_in_the_background_is_an_inactive_tab(cx: &mut TestAppContext) {
+    let mut h = harness(cx);
+    h.vcx.dispatch_action(crate::ui::nav::OpenPodInBackground {
+        context_name: "demo".into(),
+        namespace: "shop".into(),
+        name: "web-1".into(),
+    });
+    h.vcx.run_until_parked();
+
+    assert_eq!(
+        h.groups(),
+        [(
+            vec![NavTarget::pods(), NavTarget::pod("shop", "web-1")],
+            NavTarget::pods()
+        )]
+    );
+    assert_eq!(h.focused(), Some(NavTarget::pods()));
+}
+
+/// 2.1: neither list's Open in Background key clashes with a registered default -
+/// the same key, or one starting another's chord.
+#[test]
+fn the_open_in_background_keys_clash_with_nothing() {
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    for id in ["pods.open_in_background", "object_list.open_in_background"] {
+        let command = registry.get(id).expect("registered");
+        assert!(
+            command
+                .context
+                .is_some_and(|context| context.contains("!Input"))
+        );
+        let clashes = crate::keymap::conflicts(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            id,
+            command.default_binding,
+        );
+        assert!(!clashes.any_clash(), "{id}: {clashes:?}");
+    }
+}
