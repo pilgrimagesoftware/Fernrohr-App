@@ -61,7 +61,12 @@ impl StatusBarView {
             ),
             None => (None, false),
         };
-        // Another chord, or none: the last one's wait is over.
+        // Another chord, or none: the last one's wait is over. Each key of a
+        // chain counts as another chord here, so in a chain of three or more
+        // keys where every step is itself a binding (`a`, `a b`, `a b c`),
+        // each step restarts the full Shortcut timeout, not what was left of
+        // it. GPUI restarts its own timeout the same way when a binding
+        // advances.
         if self.chord.as_ref().map(|chord| &chord.keys) != keys.as_ref() {
             self.end_extension(window, cx);
             self.extended = false;
