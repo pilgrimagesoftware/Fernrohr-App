@@ -155,3 +155,20 @@ async fn l_does_not_fire_inside_a_text_field(cx: &mut TestAppContext) {
     vcx.run_until_parked();
     assert_eq!(fired.load(Ordering::SeqCst), 1, "on the panel, View Logs");
 }
+
+/// `l` is free in the panel: against every command the app registers, the
+/// conflict check - same key, or one starting another's chord - finds nothing.
+#[test]
+fn the_view_logs_key_clashes_with_nothing() {
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    let command = registry.get("pod_detail.view_logs").expect("registered");
+    let clashes = crate::keymap::conflicts(
+        &registry,
+        &KeymapConfig::default(),
+        command.id,
+        command.default_binding,
+    );
+    assert!(!clashes.any_clash(), "{clashes:?}");
+    assert!(clashes.shadows.is_empty(), "{clashes:?}");
+}
