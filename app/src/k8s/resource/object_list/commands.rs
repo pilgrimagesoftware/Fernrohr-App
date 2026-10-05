@@ -18,9 +18,22 @@ actions!(
         WarpNamespace,
         RefreshList,
         PortForwardService,
-        OpenInBackground
+        OpenInBackground,
+        EditSelected
     ]
 );
+
+/// Edits one object's YAML in `context_name`: opens (or focuses) its detail
+/// panel on the YAML and starts the edit there, once loaded - what `e` on a
+/// list row (any list, Pods too) and in a pod's detail panel dispatch, so every
+/// route reuses the object panel's one editor and apply path. A Secret's
+/// panel says why it can't be edited instead.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = object_list, no_json)]
+pub struct EditListedObject {
+    pub context_name: String,
+    pub target: ObjectTarget,
+}
 
 /// Opens one listed object's detail panel in `context_name` - what Enter, `d`,
 /// `y`, double-click and the row menu's "Open" dispatch. Carries its object, like
@@ -56,6 +69,8 @@ pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const YAML_KEY: &str = "y";
 /// Re-lists a polled kind now (`unwatchable-kinds`).
 pub(super) const REFRESH_KEY: &str = "r";
+/// k9s's edit key, as the object panel's (`object_detail::EDIT_KEY`).
+pub(crate) const EDIT_KEY: &str = "e";
 
 const FILTER_COMMAND_ID: &str = "object_list.focus_filter";
 const OPEN_COMMAND_ID: &str = "object_list.open";
@@ -123,6 +138,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Show Selected Object's YAML",
         YAML_KEY,
         Box::new(ShowSelectedYaml),
+        None,
+    );
+    register(
+        "object_list.edit",
+        "List: Edit Selected Object's YAML",
+        EDIT_KEY,
+        Box::new(EditSelected),
         None,
     );
     register(

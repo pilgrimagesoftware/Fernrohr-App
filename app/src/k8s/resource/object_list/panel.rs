@@ -270,19 +270,8 @@ impl ObjectListPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(table) = &self.table else {
+        let Some(target) = self.row_target(row_ix, cx) else {
             return;
-        };
-        let Some(row) = table.read(cx).delegate().rows().get(row_ix).cloned() else {
-            return;
-        };
-        table.update(cx, |table, _| {
-            table.delegate_mut().remember_selection(row_ix)
-        });
-        let target = ObjectTarget {
-            kind: self.kind.clone(),
-            namespace: row.object.namespace.clone(),
-            name: row.object.name.clone(),
         };
         window.dispatch_action(
             Box::new(OpenListedObject {
@@ -293,6 +282,20 @@ impl ObjectListPanel {
             }),
             cx,
         );
+    }
+
+    /// The object on row `row_ix`, remembering it as the selection.
+    pub(super) fn row_target(&self, row_ix: usize, cx: &mut Context<Self>) -> Option<ObjectTarget> {
+        let table = self.table.as_ref()?;
+        let row = table.read(cx).delegate().rows().get(row_ix).cloned()?;
+        table.update(cx, |table, _| {
+            table.delegate_mut().remember_selection(row_ix)
+        });
+        Some(ObjectTarget {
+            kind: self.kind.clone(),
+            namespace: row.object.namespace.clone(),
+            name: row.object.name.clone(),
+        })
     }
 
     /// The table's selected row, if any.

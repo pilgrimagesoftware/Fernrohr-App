@@ -161,6 +161,7 @@ impl ObjectDetailPanel {
 impl Render for ObjectDetailPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
+        self.start_pending_edit(window, cx);
         let editing = self.render_edit(window, cx);
         let content = match &self.state {
             _ if editing.is_some() => editing.unwrap_or_else(|| div().into_any_element()),

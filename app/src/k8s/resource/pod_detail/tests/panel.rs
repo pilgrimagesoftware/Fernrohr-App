@@ -276,9 +276,9 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let commands: Vec<_> = registry.iter().collect();
     assert_eq!(
         commands.len(),
-        19,
+        20,
         "the view toggle, six tabs, Hide Secret Values, the Events tab's seven window \
-         commands, Fold/Unfold All YAML, Copy Resource Name, and View Logs"
+         commands, Fold/Unfold All YAML, Copy Resource Name, View Logs, and Edit YAML"
     );
     assert!(
         commands.iter().all(|command| {
@@ -288,12 +288,12 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         "panel shortcuts are panel-scoped and stay out of the menu bar"
     );
     assert!(registry.available(&[]).is_empty());
-    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 19);
+    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 20);
 
     let mut keymap = KeymapConfig::default();
     keymap
         .bindings
-        .insert("pod_detail.tab_events".into(), "e".into());
+        .insert("pod_detail.tab_events".into(), "v".into());
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
@@ -310,7 +310,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         .unwrap();
     vcx.run_until_parked();
 
-    vcx.simulate_keystrokes("e");
+    vcx.simulate_keystrokes("v");
     vcx.run_until_parked();
     assert_eq!(
         window

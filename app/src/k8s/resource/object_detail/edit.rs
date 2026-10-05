@@ -32,6 +32,32 @@ impl ObjectDetailPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.start_edit(window, cx);
+    }
+
+    /// Edits the object as soon as it's loaded - now, or once its fetch lands
+    /// (`EditListedObject`, from a list's row or a pod detail panel). A
+    /// Secret still gets its reason instead of an editor.
+    pub(crate) fn request_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if matches!(self.state, ObjectDetailState::Loaded(..)) {
+            self.start_edit(window, cx);
+        } else {
+            self.pending_edit = true;
+            cx.notify();
+        }
+    }
+
+    /// Starts an edit [`Self::request_edit`] left waiting, once the object is
+    /// loaded. Called from render, the first point with a window after the
+    /// fetch lands.
+    pub(super) fn start_pending_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pending_edit && matches!(self.state, ObjectDetailState::Loaded(..)) {
+            self.pending_edit = false;
+            self.start_edit(window, cx);
+        }
+    }
+
+    fn start_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.edit.is_some() {
             return;
         }

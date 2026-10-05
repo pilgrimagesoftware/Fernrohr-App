@@ -95,7 +95,13 @@ impl ObjectListPanel {
                 "Describe",
                 window,
             ))
-            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window));
+            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
+            .child(Self::hint(
+                &super::commands::EditSelected,
+                super::commands::EDIT_KEY,
+                "Edit",
+                window,
+            ));
         if polled {
             hints = hints.child(Self::hint(&RefreshList, REFRESH_KEY, "Refresh", window));
         }
@@ -239,6 +245,7 @@ impl Render for ObjectListPanel {
             .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(Self::on_action_describe_selected))
             .on_action(cx.listener(Self::on_action_show_selected_yaml))
+            .on_action(cx.listener(Self::on_action_edit_selected))
             .on_action(cx.listener(Self::on_action_warp_namespace))
             .on_action(cx.listener(
                 |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {

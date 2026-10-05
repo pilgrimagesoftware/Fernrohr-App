@@ -49,6 +49,8 @@ pub struct ObjectDetailPanel {
     pub(super) edit: Option<super::edit::YamlEdit>,
     /// Why Edit did nothing - a Secret, say - until the next edit.
     pub(super) edit_notice: Option<String>,
+    /// An edit asked for before the object loaded (`request_edit`).
+    pub(super) pending_edit: bool,
     /// Revealed Secret values, by key - only while shown, and never saved.
     pub(super) revealed:
         std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
@@ -58,6 +60,12 @@ pub struct ObjectDetailPanel {
 }
 
 impl ObjectDetailPanel {
+    /// Test-only: whether an edit is open, and why Edit last did nothing.
+    #[cfg(test)]
+    pub(crate) fn test_edit_state(&self) -> (bool, Option<String>) {
+        (self.edit.is_some(), self.edit_notice.clone())
+    }
+
     pub fn new(target: ObjectTarget, scope: PanelScope, cx: &mut Context<Self>) -> Self {
         use crate::k8s::cluster::session::ClusterRegistry;
 
@@ -112,6 +120,7 @@ impl ObjectDetailPanel {
             lifecycle: None,
             edit: None,
             edit_notice: None,
+            pending_edit: false,
             revealed: Default::default(),
             yaml_view: Default::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
