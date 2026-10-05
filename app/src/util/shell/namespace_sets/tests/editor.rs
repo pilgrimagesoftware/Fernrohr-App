@@ -7,22 +7,37 @@ use crate::ui::namespace_filter::{absent_selector, checked_selector};
 use crate::ui::namespace_sets::RemoveNamespaceSet;
 use crate::ui::namespace_sets::editor::ERROR_SELECTOR;
 use crate::ui::namespace_sets::picker::{CONFIRM_DELETE_ID, row_selector};
-use gpui_kit::Modifiers;
-
-fn click(h: &mut Harness, id: &'static str) {
-    let center = h
-        .vcx
-        .update_window(h.window.into(), |_, window, cx| {
-            window.render_frame(cx);
-            window
-                .try_find(gpui_kit::ElementId::Name(id.into()))
-                .unwrap_or_else(|| panic!("{id} is drawn"))
-                .bounds()
-                .center()
-        })
-        .unwrap();
-    h.vcx.simulate_click(center, Modifiers::none());
-    h.vcx.run_until_parked();
+/// Tabs until the button `id` has focus, then presses Space on it - a key
+/// down and up, since a button fires on the release. The keyboard route,
+/// and steadier than a click on a dialog still settling into place.
+fn press_button(h: &mut Harness, id: &'static str) {
+    let focused = |h: &mut Harness| {
+        h.vcx
+            .update_window(h.window.into(), |_, window, cx| {
+                window.render_frame(cx);
+                window
+                    .try_find(gpui_kit::ElementId::Name(id.into()))
+                    .and_then(|button| button.focused())
+            })
+            .unwrap()
+            == Some(true)
+    };
+    for _ in 0..10 {
+        if focused(h) {
+            let space = gpui_kit::Keystroke::parse("space").expect("valid");
+            h.vcx.simulate_event(gpui_kit::KeyDownEvent {
+                keystroke: space.clone(),
+                is_held: false,
+                prefer_character_input: false,
+            });
+            h.vcx
+                .simulate_event(gpui_kit::KeyUpEvent { keystroke: space });
+            h.vcx.run_until_parked();
+            return;
+        }
+        press(&mut h.vcx, "tab");
+    }
+    panic!("Tab never reached {id}");
 }
 
 /// Spec: "Name the current scope" - the new set holds the focused list's
@@ -152,7 +167,7 @@ async fn an_absent_namespace_is_marked_and_removable(cx: &mut TestAppContext) {
 
 /// Spec: "Deletion is confirmed" and "Delete a set", from the palette's
 /// command (it has no default key): Escape at the question keeps the set,
-/// Delete removes it - and a list switched to it keeps its namespaces.
+/// Tab to Delete and Space removes it - and a list switched to it keeps its namespaces.
 #[gpui_kit::test]
 async fn deleting_asks_first(cx: &mut TestAppContext) {
     let mut h = harness(cx);
@@ -173,7 +188,7 @@ async fn deleting_asks_first(cx: &mut TestAppContext) {
 
     remove(&mut h);
     press(&mut h.vcx, "down enter");
-    click(&mut h, CONFIRM_DELETE_ID);
+    press_button(&mut h, CONFIRM_DELETE_ID);
     assert!(!dialog_open(&mut h));
     assert_eq!(
         saved(&mut h),
