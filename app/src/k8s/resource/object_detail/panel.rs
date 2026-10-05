@@ -45,6 +45,10 @@ pub struct ObjectDetailPanel {
     /// That the object was deleted (its last state kept, stale) or replaced
     /// by a new one of the same name.
     pub(super) lifecycle: Option<crate::ui::detail::lifecycle::Lifecycle>,
+    /// The YAML edit in progress (`edit`), if any.
+    pub(super) edit: Option<super::edit::YamlEdit>,
+    /// Why Edit did nothing - a Secret, say - until the next edit.
+    pub(super) edit_notice: Option<String>,
     /// Revealed Secret values, by key - only while shown, and never saved.
     pub(super) revealed:
         std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
@@ -106,6 +110,8 @@ impl ObjectDetailPanel {
             live,
             followed: None,
             lifecycle: None,
+            edit: None,
+            edit_notice: None,
             revealed: Default::default(),
             yaml_view: Default::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),

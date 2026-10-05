@@ -13,6 +13,7 @@ pub(crate) struct Recorded {
     pub(crate) method: String,
     /// The path and query, as sent.
     pub(crate) target: String,
+    pub(crate) content_type: Option<String>,
     pub(crate) body: String,
 }
 
@@ -77,7 +78,7 @@ impl Recorder {
 }
 
 /// Reads one request: its head, then as much body as its content-length says.
-async fn read_request(stream: &mut tokio::net::TcpStream) -> Recorded {
+pub(crate) async fn read_request(stream: &mut tokio::net::TcpStream) -> Recorded {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 4096];
     let head_end = loop {
@@ -112,6 +113,7 @@ async fn read_request(stream: &mut tokio::net::TcpStream) -> Recorded {
     Recorded {
         method: line.next().unwrap_or_default().to_string(),
         target: line.next().unwrap_or_default().to_string(),
+        content_type: header("content-type"),
         body: String::from_utf8_lossy(&buffer[head_end.min(buffer.len())..]).to_string(),
     }
 }

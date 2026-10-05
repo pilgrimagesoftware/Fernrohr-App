@@ -161,7 +161,9 @@ impl ObjectDetailPanel {
 impl Render for ObjectDetailPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
+        let editing = self.render_edit(window, cx);
         let content = match &self.state {
+            _ if editing.is_some() => editing.unwrap_or_else(|| div().into_any_element()),
             ObjectDetailState::Loading => div()
                 .size_full()
                 .p(space.panel_inset)
@@ -267,7 +269,7 @@ impl Render for ObjectDetailPanel {
 
         div()
             .size_full()
-            .key_context(key_context())
+            .key_context(key_context(self.edit.is_some()))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))
@@ -275,9 +277,14 @@ impl Render for ObjectDetailPanel {
             .on_action(cx.listener(Self::on_action_unfold_all))
             .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_go_to))
+            .capture_action(cx.listener(Self::capture_editor_escape))
+            .on_action(cx.listener(Self::on_action_edit))
+            .on_action(cx.listener(Self::on_action_save_edit))
+            .on_action(cx.listener(Self::on_action_cancel_edit))
             .flex()
             .flex_col()
             .child(header)
+            .children(self.render_edit_notice(cx))
             .child(crate::ui::detail::lifecycle::body(
                 content,
                 self.lifecycle.as_ref(),
@@ -289,10 +296,14 @@ impl Render for ObjectDetailPanel {
     }
 }
 
-/// The panel's own key context plus the shared one `links.go_to` is gated to.
-fn key_context() -> KeyContext {
+/// The panel's own key context plus the shared one `links.go_to` is gated to -
+/// and, while `editing`, the edit's own.
+fn key_context(editing: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
+    if editing {
+        context.add(super::commands::EDIT_KEY_CONTEXT);
+    }
     context.add(link::LINKS_KEY_CONTEXT);
     context
 }

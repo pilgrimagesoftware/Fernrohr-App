@@ -7,6 +7,7 @@
 
 mod cluster;
 mod copy;
+mod edit;
 mod fetch;
 mod fixtures;
 mod header;

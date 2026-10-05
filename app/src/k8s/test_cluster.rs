@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+use tokio::io::AsyncWriteExt as _;
 
 /// One stored object and the collection it belongs to.
 struct Stored {
@@ -49,6 +49,10 @@ pub(crate) struct FakeCluster {
     deletes: Arc<Mutex<Vec<(String, Value)>>>,
     /// When set, every delete is refused with this status and body.
     refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
+    /// Every patch the server was sent: the object's name and the patch body.
+    patches: Arc<Mutex<Vec<(String, Value)>>>,
+    /// When set, every patch is refused with this status and body.
+    patch_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
 }
 
 impl FakeCluster {
@@ -60,6 +64,8 @@ impl FakeCluster {
             gets: Arc::default(),
             deletes: Arc::default(),
             refusal: Arc::default(),
+            patches: Arc::default(),
+            patch_refusal: Arc::default(),
         };
         let handle = cx.update(|cx| crate::runtime::handle(cx));
         let addr = handle.block_on(cluster.clone().serve());
@@ -146,6 +152,39 @@ impl FakeCluster {
         *self.refusal.lock() = Some((status, body));
     }
 
+    /// The patches sent so far: each object's name and its patch body.
+    pub(crate) fn patches(&self) -> Vec<(String, Value)> {
+        self.patches.lock().clone()
+    }
+
+    /// Refuses every later patch with `status` (`"409 Conflict"`) and `body`.
+    pub(crate) fn refuse_patches(&self, status: &'static str, body: Value) {
+        *self.patch_refusal.lock() = Some((status, body));
+    }
+
+    /// A patch of the object `target` names: refused if
+    /// [`Self::refuse_patches`] says so, else recorded and its body written as
+    /// the object's new state - an apply of a whole manifest, as an edit sends.
+    fn answer_patch(&self, target: &str, sent: &str) -> (&'static str, String) {
+        let path = target.split_once('?').map_or(target, |(path, _)| path);
+        let Some(Request {
+            prefix,
+            plural,
+            name: Some(name),
+            ..
+        }) = Request::parse(path)
+        else {
+            return not_found();
+        };
+        if let Some((status, body)) = self.patch_refusal.lock().clone() {
+            return (status, body.to_string());
+        }
+        let object: Value = serde_json::from_str(sent).unwrap_or(Value::Null);
+        self.patches.lock().push((name.to_string(), object.clone()));
+        self.apply(prefix, plural, object.clone());
+        ("200 OK", object.to_string())
+    }
+
     async fn serve(self) -> std::net::SocketAddr {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -156,20 +195,11 @@ impl FakeCluster {
                 };
                 let cluster = self.clone();
                 tokio::spawn(async move {
-                    let mut buffer = vec![0u8; 8192];
-                    let read = stream.read(&mut buffer).await.unwrap_or(0);
-                    let request = String::from_utf8_lossy(&buffer[..read]).to_string();
-                    let line = request.lines().next().unwrap_or_default();
-                    let method = line.split(' ').next().unwrap_or_default();
-                    let target = line.split(' ').nth(1).unwrap_or_default();
-                    let sent = request
-                        .split_once("\r\n\r\n")
-                        .map(|(_, body)| body)
-                        .unwrap_or_default();
-                    let (status, body) = if method == "DELETE" {
-                        cluster.answer_delete(target, sent)
-                    } else {
-                        cluster.answer(target).await
+                    let request = crate::k8s::test_recorder::read_request(&mut stream).await;
+                    let (status, body) = match request.method.as_str() {
+                        "DELETE" => cluster.answer_delete(&request.target, &request.body),
+                        "PATCH" => cluster.answer_patch(&request.target, &request.body),
+                        _ => cluster.answer(&request.target).await,
                     };
                     let response = format!(
                         "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",

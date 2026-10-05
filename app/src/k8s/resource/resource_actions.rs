@@ -4,11 +4,14 @@
 //! resource kind that registers the commands shares the request.
 //!
 //! Owns only the request and its outcome; which panel offers a command, and
-//! whether it confirms first, is the panel's.
+//! whether it confirms first, is the panel's. Editing as YAML is [`apply`]'s.
 
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use kube::Api;
 use kube::api::{ApiResource, DeleteParams, DynamicObject};
+
+mod apply;
+pub(crate) use apply::{apply, edit_text, parse_manifest};
 
 /// Why an action failed: readable prose, and the full technical rendering kept
 /// alongside it (`k8s::error::{describe, detail}`).

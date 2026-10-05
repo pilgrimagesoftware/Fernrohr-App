@@ -4,7 +4,16 @@
 use crate::command::{Command, CommandRegistry};
 use gpui_kit::*;
 
-actions!(object_detail, [ToggleObjectView, HideSecretValues]);
+actions!(
+    object_detail,
+    [
+        ToggleObjectView,
+        HideSecretValues,
+        EditObject,
+        SaveObjectEdit,
+        CancelObjectEdit
+    ]
+);
 
 /// This panel's own key context - distinct from pod detail's, so the two can
 /// bind the same keys to their own panels.
@@ -13,6 +22,14 @@ pub(super) const TOGGLE_VIEW_KEY: &str = "y";
 const TOGGLE_VIEW_COMMAND_ID: &str = "object_detail.toggle_view";
 const HIDE_SECRET_VALUES_COMMAND_ID: &str = "object_detail.hide_secret_values";
 const HIDE_SECRET_VALUES_KEY: &str = "h";
+
+/// Added beside [`PANEL_KEY_CONTEXT`] while the object is being edited, so Save
+/// and Cancel's keys mean that only then (`k9s-remaining-keybindings` 2).
+pub const EDIT_KEY_CONTEXT: &str = "ObjectYamlEdit";
+/// k9s's edit key; Save and Cancel as an editor's.
+pub(super) const EDIT_KEY: &str = "e";
+pub(super) const SAVE_EDIT_KEY: &str = "cmd-s";
+pub(super) const CANCEL_EDIT_KEY: &str = "escape";
 
 /// `object_detail.toggle_view`: a palette entry while an object panel has
 /// focus, a `keymap.toml` override by id, and its binding (the registry's
@@ -25,6 +42,30 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: TOGGLE_VIEW_KEY,
         context: Some(PANEL_KEY_CONTEXT),
         action: Box::new(ToggleObjectView),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "object_detail.edit",
+        title: "Object Detail: Edit YAML",
+        default_binding: EDIT_KEY,
+        context: Some(PANEL_KEY_CONTEXT),
+        action: Box::new(EditObject),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "object_detail.save_edit",
+        title: "Object Detail: Save YAML Edit",
+        default_binding: SAVE_EDIT_KEY,
+        context: Some(EDIT_KEY_CONTEXT),
+        action: Box::new(SaveObjectEdit),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "object_detail.cancel_edit",
+        title: "Object Detail: Cancel YAML Edit",
+        default_binding: CANCEL_EDIT_KEY,
+        context: Some(EDIT_KEY_CONTEXT),
+        action: Box::new(CancelObjectEdit),
         menu: None,
     });
     registry.register(Command {
