@@ -21,6 +21,7 @@ use kube_runtime::watcher;
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
 mod actions;
 mod commands;
+mod hints;
 #[cfg(test)]
 pub(crate) use commands::LIST_KEY_CONTEXT;
 pub use commands::{
@@ -33,6 +34,8 @@ use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, QUICK_LOOK_KEY, WARP_ALL_K
 mod panel;
 mod port_forward;
 pub(super) mod quick_look;
+#[cfg(test)]
+mod real_window_tests;
 mod render;
 mod rows;
 mod selection;
