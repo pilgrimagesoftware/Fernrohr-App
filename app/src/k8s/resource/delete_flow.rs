@@ -89,6 +89,7 @@ pub(crate) fn confirm_delete(
 /// and tells `on_done` how it went once the cluster answers. A connection
 /// that isn't up refuses at once. The client is read here, at send time, so
 /// a confirmation left open across a reconnect uses the current one.
+/// `on_done` never runs inside this call.
 pub(crate) fn send_delete(
     target: DeleteTarget,
     connection: &Entity<ClusterConnection>,
@@ -97,13 +98,13 @@ pub(crate) fn send_delete(
     cx: &mut App,
 ) {
     let ConnectionState::Connected(client) = &connection.read(cx).state else {
-        on_done(
-            Err(ActionFailure {
-                message: format!("{} is not connected.", target.context_name),
-                detail: String::new(),
-            }),
-            cx,
-        );
+        // Deferred, like the answer from the cluster: the caller is usually
+        // mid-update in its own action handler, and `on_done` updates it.
+        let failure = ActionFailure {
+            message: format!("{} is not connected.", target.context_name),
+            detail: String::new(),
+        };
+        cx.defer(move |cx| on_done(Err(failure), cx));
         return;
     };
     let client = client.clone();

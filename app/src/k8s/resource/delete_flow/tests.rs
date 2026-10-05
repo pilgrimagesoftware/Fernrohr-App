@@ -65,3 +65,34 @@ fn the_action_says_delete_or_kill_and_names_the_object() {
     assert_eq!(pod.action(false), "Delete Pod web-1");
     assert_eq!(pod.action(true), "Kill Pod web-1");
 }
+
+/// A context that isn't connected refuses - after the call returns, so a
+/// panel can send from its own action handler and hear back in an update.
+#[gpui_kit::test]
+async fn a_disconnected_context_refuses_after_the_call(cx: &mut gpui_kit::TestAppContext) {
+    use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
+    use gpui_kit::AppContext as _;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let connection =
+        cx.update(|cx| cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connecting)));
+    let during = cx.update(|cx| {
+        let record = heard.clone();
+        super::send_delete(
+            target(DiscoveredKind::pods(), Some("default"), "web-1"),
+            &connection,
+            true,
+            Rc::new(move |result, _| record.borrow_mut().push(result)),
+            cx,
+        );
+        heard.borrow().len()
+    });
+    assert_eq!(during, 0, "nothing heard during the call");
+    cx.run_until_parked();
+    let heard = heard.borrow();
+    assert_eq!(heard.len(), 1, "one answer after it");
+    let failure = heard[0].clone().expect_err("refused");
+    assert_eq!(failure.message, "demo is not connected.");
+}
