@@ -10,7 +10,7 @@ use super::MainWindow;
 use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
 use crate::k8s::resource::object_list::OpenListedObject;
 use crate::ui::link::FollowReference;
-use crate::ui::nav::NavTarget;
+use crate::ui::nav::{NavTarget, OpenMode};
 use crate::ui::viewer::viewer_for;
 use gpui_kit::*;
 
@@ -36,6 +36,7 @@ impl MainWindow {
             None,
             Some(action.context_name.clone()),
             destination.namespaces,
+            OpenMode::Foreground,
             window,
             cx,
         );
@@ -59,6 +60,7 @@ impl MainWindow {
             action.view,
             Some(action.context_name.clone()),
             Vec::new(),
+            OpenMode::Foreground,
             window,
             cx,
         );

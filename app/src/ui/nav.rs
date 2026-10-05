@@ -29,6 +29,16 @@ actions!(
     ]
 );
 
+/// How a request for a panel treats focus (`open-in-background`): a foreground
+/// open shows the panel and focuses it; a background open adds it as an inactive
+/// tab - or, when it's already open, leaves it be - and moves nothing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OpenMode {
+    #[default]
+    Foreground,
+    Background,
+}
+
 /// Opens the events browser for the window's active context (`events-browser`).
 pub const SHOW_EVENTS_COMMAND_ID: &str = "nav.show_events";
 

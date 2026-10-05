@@ -19,7 +19,7 @@ use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
 use crate::tunnel::store::TunnelStore;
 use crate::ui::nav::{
-    self, NavTarget, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
+    self, NavTarget, OpenMode, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
 };
 use crate::ui::panel_title::{self, PanelScope};
 use crate::ui::picker_tunnel;

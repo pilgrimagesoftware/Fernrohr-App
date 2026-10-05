@@ -4,7 +4,7 @@
 
 use super::MainWindow;
 use crate::k8s::resource::exec::ExecTarget;
-use crate::ui::nav::NavTarget;
+use crate::ui::nav::{NavTarget, OpenMode};
 use gpui_kit::*;
 
 /// Asks the window to open a shell in `target`, on `context_name`'s cluster.
@@ -27,6 +27,7 @@ impl MainWindow {
             None,
             Some(action.context_name.clone()),
             Vec::new(),
+            OpenMode::Foreground,
             window,
             cx,
         );

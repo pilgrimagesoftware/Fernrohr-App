@@ -39,7 +39,15 @@ impl MainWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_target_in(target, initial_view, None, Vec::new(), window, cx);
+        self.open_target_in(
+            target,
+            initial_view,
+            None,
+            Vec::new(),
+            OpenMode::Foreground,
+            window,
+            cx,
+        );
     }
 
     /// `open_target_with_view` with the scope spelled out: `context_name` is
@@ -52,15 +60,24 @@ impl MainWindow {
     /// multi-context window need not be the active one. A context this window
     /// doesn't hold is refused rather than substituted, for the same reason
     /// `pod_scoped_context` refuses a foreign selection.
+    ///
+    /// `mode` is `open-in-background`'s: a [`OpenMode::Background`] open adds a new
+    /// panel where a foreground one would go, but as an inactive tab - every group
+    /// keeps the tab it was showing - and moves no focus, nor the window's current
+    /// target; for a panel already open it changes nothing at all. Dedup, placement
+    /// and the panel's watches are the same either way.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn open_target_in(
         &mut self,
         target: NavTarget,
         initial_view: Option<DetailView>,
         context_name: Option<String>,
         namespaces: Vec<String>,
+        mode: OpenMode,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let background = mode == OpenMode::Background;
         let WindowMode::Workspace {
             dock_area,
             contexts,
@@ -108,6 +125,7 @@ impl MainWindow {
         .scoped_to(namespaces);
         let key = PanelKey::from(&scope);
         let id = match open_panels.iter().find(|open| open.key == key) {
+            Some(_) if background => return,
             Some(open) => {
                 let id = open.id;
                 match (open.panel.as_ref(), initial_view) {
@@ -137,14 +155,19 @@ impl MainWindow {
                     })
                 };
                 let (id, opened) = dock_area.update(cx, |area, cx| {
+                    // What each group shows now, for a background open to put back.
+                    let showing = background.then(|| shown_tabs(area));
                     let (id, opened) = nav::add_panel(area, &scope, initial_view, window, cx);
                     if let Some(node) = source {
                         let target = InsertTarget::Tabs {
                             node,
                             ix: None,
-                            activate: true,
+                            activate: !background,
                         };
                         area.move_panel(id, target, window, cx);
+                    }
+                    if let Some(showing) = showing {
+                        keep_shown_tabs(area, &showing, window, cx);
                     }
                     (id, opened)
                 });
@@ -160,6 +183,13 @@ impl MainWindow {
                 id
             }
         };
+        if background {
+            if let Some(opened) = watch_scope {
+                self.watch_scope_changes(opened, window, cx);
+            }
+            cx.notify();
+            return;
+        }
         // Whichever arm ran, the panel asked for takes keyboard focus: neither
         // `select_panel` nor `add_panel_view` moves it, so without this a panel
         // opened from the keyboard needed a click before its own keys worked.
@@ -191,8 +221,41 @@ impl MainWindow {
     }
 }
 
+/// Each centre group's displayed tab, by group.
+fn shown_tabs(area: &DockArea) -> Vec<(gpui_kit::component::dock::NodeId, PanelId)> {
+    let Some(tree) = area.layout(DockPlacement::Center) else {
+        return Vec::new();
+    };
+    crate::ui::panel::arrange::group_rects(tree.root())
+        .into_iter()
+        .filter_map(|(node, _)| Some((node, crate::ui::panel::tabs::active_panel_of(area, node)?)))
+        .collect()
+}
+
+/// After a background open: puts back the tab each group was showing, where the
+/// dock changed it - `add_panel` shows the new tab in its first group before
+/// `move_panel` takes it to its own. In the same update, so nothing flickers, and a
+/// list joined by its own background open stays in view.
+fn keep_shown_tabs(
+    area: &mut DockArea,
+    showing: &[(gpui_kit::component::dock::NodeId, PanelId)],
+    window: &mut Window,
+    cx: &mut Context<DockArea>,
+) {
+    for &(group, previous) in showing {
+        let now = crate::ui::panel::tabs::active_panel_of(area, group);
+        let still_there = crate::ui::panel::tabs::group_of(area, previous) == Some(group);
+        if now != Some(previous) && still_there {
+            area.select_panel(previous, window, cx);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod background_tests;
 
 #[cfg(test)]
 mod focused_group_tests;
