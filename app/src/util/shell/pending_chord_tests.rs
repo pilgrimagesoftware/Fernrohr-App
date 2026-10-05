@@ -10,7 +10,7 @@ use crate::k8s::cluster::session::ClusterRegistry;
 use crate::ui::panel::arrange::{ClosePanelGroup, DOCK_KEY_CONTEXT};
 use crate::ui::status_bar::StatusBarView;
 use crate::ui::status_bar::chord_selectors::{
-    INDICATOR_SELECTOR, MORE_SELECTOR, completion_selector,
+    INDICATOR_SELECTOR, MORE_SELECTOR, POPOVER_SELECTOR, completion_selector,
 };
 use crate::util::shell::test_support::temp_workspace_path;
 use crate::util::shell::{MainWindow, WindowMode, init};
@@ -134,6 +134,36 @@ async fn cmd_k_shows_the_pending_keys_and_five_completions(cx: &mut TestAppConte
     for id in ARRANGE_CHORDS {
         assert!(h.drawn(completion_selector(id)), "{id} is listed");
     }
+}
+
+/// #137: the indicator sits at the bar's right end, so the popover opens up
+/// and to the left of it and stays inside the window.
+#[gpui_kit::test]
+async fn the_completion_popover_stays_inside_the_window(cx: &mut TestAppContext) {
+    let mut h = harness(cx);
+    h.press("cmd-k");
+    assert!(h.drawn(POPOVER_SELECTOR.to_string()));
+    let popover = h
+        .vcx
+        .debug_bounds(POPOVER_SELECTOR)
+        .expect("the popover is drawn");
+    let indicator = h
+        .vcx
+        .debug_bounds(INDICATOR_SELECTOR)
+        .expect("the indicator is drawn");
+    let viewport = h.vcx.update(|window, _| window.viewport_size());
+    assert!(
+        popover.right() <= viewport.width && popover.left() >= gpui_kit::px(0.),
+        "inside the window: {popover:?} in {viewport:?}"
+    );
+    assert!(
+        popover.bottom() <= indicator.top(),
+        "above the indicator: {popover:?}, {indicator:?}"
+    );
+    assert!(
+        (popover.right() - indicator.right()).abs() <= gpui_kit::px(1.),
+        "right-aligned with the indicator: {popover:?}, {indicator:?}"
+    );
 }
 
 /// More completions than the popover's eight rows end in "… and N more" -

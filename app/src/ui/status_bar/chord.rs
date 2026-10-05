@@ -40,6 +40,7 @@ pub(super) struct PendingChord {
 /// The debug selector of the indicator, and of each completion's row.
 pub(crate) const INDICATOR_SELECTOR: &str = "chord-indicator";
 pub(crate) const MORE_SELECTOR: &str = "chord-more";
+pub(crate) const POPOVER_SELECTOR: &str = "chord-popover";
 pub(crate) fn completion_selector(id: &str) -> String {
     format!("chord-completion {id}")
 }
@@ -154,32 +155,38 @@ pub(super) fn render(chord: &PendingChord, cx: &App) -> AnyElement {
     });
     let more = chord.completions.len().saturating_sub(MAX_ROWS);
     let popover = (!chord.completions.is_empty()).then(|| {
-        deferred(
-            div()
-                .absolute()
-                .bottom_full()
-                .left_0()
-                .mb_1()
-                .p_2()
-                .min_w(px(240.))
-                .flex()
-                .flex_col()
-                .gap_1()
-                .text_sm()
-                .bg(theme.popover)
-                .text_color(theme.popover_foreground)
-                .border_1()
-                .border_color(theme.border)
-                .rounded_md()
-                .shadow_md()
-                .children(rows)
-                .children((more > 0).then(|| {
-                    div()
-                        .debug_selector(|| MORE_SELECTOR.into())
-                        .text_color(muted)
-                        .child(format!("… and {more} more"))
-                })),
-        )
+        let body = div()
+            .mb_1()
+            .p_2()
+            .min_w(px(240.))
+            .flex()
+            .flex_col()
+            .gap_1()
+            .text_sm()
+            .bg(theme.popover)
+            .text_color(theme.popover_foreground)
+            .border_1()
+            .border_color(theme.border)
+            .rounded_md()
+            .shadow_md()
+            .debug_selector(|| POPOVER_SELECTOR.into())
+            .children(rows)
+            .children((more > 0).then(|| {
+                div()
+                    .debug_selector(|| MORE_SELECTOR.into())
+                    .text_color(muted)
+                    .child(format!("… and {more} more"))
+            }));
+        // The indicator sits at the bar's right end, so the popover hangs up
+        // and to the left of it: a zero-size anchor at the indicator's
+        // top-right corner holds the popover's bottom-right corner, and the
+        // popover is kept inside the window however wide its titles run.
+        div().absolute().top_0().right_0().child(deferred(
+            anchored()
+                .anchor(Anchor::BottomRight)
+                .snap_to_window_with_margin(px(8.))
+                .child(body),
+        ))
     });
     div()
         .relative()
