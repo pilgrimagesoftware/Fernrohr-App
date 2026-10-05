@@ -190,7 +190,7 @@ async fn split_opens_a_copy_beside_the_group_and_focuses_it(cx: &mut TestAppCont
 async fn move_takes_the_panel_beside_and_an_emptied_pane_goes(cx: &mut TestAppContext) {
     let mut h = harness(cx, Some(svc()));
     h.press("cmd-k right");
-    h.press("cmd-alt-left");
+    h.press("cmd-k shift-left");
     assert_eq!(
         h.groups(),
         [vec![pods(), svc(), svc()]],
@@ -199,13 +199,13 @@ async fn move_takes_the_panel_beside_and_an_emptied_pane_goes(cx: &mut TestAppCo
 
     h.press("cmd-k right");
     assert_eq!(h.groups(), [vec![pods(), svc(), svc()], vec![svc()]]);
-    h.press("cmd-alt-right");
+    h.press("cmd-k shift-right");
     assert_eq!(
         h.groups(),
         [vec![pods(), svc(), svc()], vec![svc()]],
         "nothing to the right of the right pane: unchanged"
     );
-    h.press("cmd-alt-left");
+    h.press("cmd-k shift-left");
     assert_eq!(h.groups(), [vec![pods(), svc(), svc(), svc()]]);
     assert_eq!(
         h.focused().map(|(_, target)| target),
@@ -220,14 +220,14 @@ async fn move_takes_the_panel_beside_and_an_emptied_pane_goes(cx: &mut TestAppCo
 async fn merge_joins_the_group_beside_in_order(cx: &mut TestAppContext) {
     let mut h = harness(cx, Some(svc()));
     h.press("cmd-k right");
-    h.press("cmd-alt-shift-right");
+    h.press("cmd-k alt-right");
     assert_eq!(
         h.groups(),
         [vec![pods(), svc()], vec![svc()]],
         "nothing right of the right pane: unchanged"
     );
 
-    h.press("cmd-alt-shift-left");
+    h.press("cmd-k alt-left");
     assert_eq!(
         h.groups(),
         [vec![pods(), svc(), svc()]],
@@ -364,9 +364,26 @@ async fn arrange_keys_do_nothing_while_typing(cx: &mut TestAppContext) {
     assert!(typing, "`n` focuses the namespace filter");
 
     h.press("cmd-k right");
-    h.press("cmd-alt-left");
+    h.press("cmd-k shift-left");
     h.press("cmd-k w");
 
     assert_eq!(h.groups(), before, "the layout is unchanged");
     assert!(!h.dialog_open());
+}
+
+/// #138: `cmd-alt-<arrow>` and `cmd-alt-shift-<arrow>` are taken by window
+/// managers such as Rectangle, so every arrange command's default is a
+/// `cmd-k` chord - which also lists them together in the pending-chord popover.
+#[test]
+fn every_arrange_default_is_a_cmd_k_chord() {
+    let mut registry = CommandRegistry::new();
+    crate::ui::panel::arrange::register_commands(&mut registry);
+    for command in registry.iter() {
+        assert!(
+            command.default_binding.starts_with("cmd-k "),
+            "{} defaults to {}",
+            command.id,
+            command.default_binding
+        );
+    }
 }
