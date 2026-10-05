@@ -57,8 +57,31 @@ fn describe_log_stream_error(
     }
 }
 
-/// Streams `container`'s logs in `namespace`/`pod_name` on `client`, line by
-/// line, until the stream ends or the returned `Task` is dropped. A failure
+/// Which logs to stream: one container of one pod, its current instance or -
+/// `previous` - its last-terminated one (`k9s-remaining-keybindings` 5).
+/// `context_name` names a failure only; the client carries the context.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LogTarget {
+    pub namespace: String,
+    pub pod_name: String,
+    pub container: String,
+    pub context_name: String,
+    pub previous: bool,
+}
+
+/// The log request for `target`: the current instance followed as it grows, or
+/// the previous one's log, which is complete, read to its end.
+pub(super) fn log_params(target: &LogTarget) -> kube::api::LogParams {
+    kube::api::LogParams {
+        container: Some(target.container.clone()),
+        follow: !target.previous,
+        previous: target.previous,
+        ..Default::default()
+    }
+}
+
+/// Streams `target`'s logs on `client`, line by line, until the stream ends or
+/// the returned `Task` is dropped. A failure
 /// to start the stream (e.g. the container hasn't started yet) reports
 /// through the same channel as [`LogEvent::RequestFailed`] rather than
 /// erroring the caller, matching [`LogsView`]'s own terminal-state handling.
@@ -66,10 +89,7 @@ fn describe_log_stream_error(
 /// context to stream from.
 pub fn stream_container_logs(
     client: kube::Client,
-    namespace: String,
-    pod_name: String,
-    container: String,
-    context_name: String,
+    target: LogTarget,
     view: gpui_kit::Entity<LogsView>,
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::Task<()> {
@@ -77,16 +97,22 @@ pub fn stream_container_logs(
         use futures_util::{AsyncBufReadExt, StreamExt};
         use k8s_openapi::api::core::v1::Pod;
         use kube::Api;
-        use kube::api::LogParams;
 
-        let api: Api<Pod> = Api::namespaced(client, &namespace);
-        let lp = LogParams {
-            container: Some(container),
-            follow: true,
-            ..Default::default()
-        };
-        let stream = match api.log_stream(&pod_name, &lp).await {
+        let api: Api<Pod> = Api::namespaced(client, &target.namespace);
+        let LogTarget {
+            namespace,
+            pod_name,
+            context_name,
+            previous,
+            ..
+        } = target.clone();
+        let stream = match api.log_stream(&pod_name, &log_params(&target)).await {
             Ok(stream) => stream,
+            // The API's answer for a container that never restarted.
+            Err(kube::Error::Api(status)) if previous && status.code == 400 => {
+                let _ = tx.send(LogEvent::NoPreviousInstance).await;
+                return;
+            }
             Err(error) => {
                 let message =
                     describe_log_stream_error(&error, &pod_name, &namespace, &context_name);
