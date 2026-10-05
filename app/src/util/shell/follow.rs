@@ -36,7 +36,7 @@ impl MainWindow {
             None,
             Some(action.context_name.clone()),
             destination.namespaces,
-            OpenMode::Foreground,
+            action.mode,
             window,
             cx,
         );
@@ -91,6 +91,9 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod background_tests;
 
 #[cfg(test)]
 mod list_keys_tests;

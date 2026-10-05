@@ -185,6 +185,7 @@ async fn typing_a_filter_then_enter_follows_the_match(cx: &mut TestAppContext) {
         vec![FollowReference {
             context_name: "kind-dev".into(),
             target: ObjectRef::core("Pod", "prod", "web-1"),
+            mode: crate::ui::nav::OpenMode::Foreground,
         }]
     );
     assert!(
