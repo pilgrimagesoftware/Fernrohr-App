@@ -308,12 +308,13 @@ mod live {
 }
 
 mod conflicts {
-    //! `keymap::conflicts`: same-scope collisions and cross-scope shadows.
+    //! `keymap::conflicts`: same-scope collisions, cross-scope shadows, and
+    //! keys that start another's chord.
     use crate::command::{Command, CommandRegistry};
-    use crate::keymap::{KeymapConfig, Shadow, conflicts, lacks_modifier};
+    use crate::keymap::{KeymapConfig, Prefix, PrefixKind, Shadow, conflicts, lacks_modifier};
     use gpui_kit::{Action, actions};
 
-    actions!(keymap_conflicts_test, [A, B, InPods, InLogs]);
+    actions!(keymap_conflicts_test, [A, B, InPods, InLogs, InDock]);
 
     fn registry() -> CommandRegistry {
         let mut registry = CommandRegistry::new();
@@ -322,6 +323,7 @@ mod conflicts {
             ("b", "cmd-b", None, Box::new(B)),
             ("pods", "d", Some("PodsPanel"), Box::new(InPods)),
             ("logs", "d", Some("LogsPanel"), Box::new(InLogs)),
+            ("dock", "cmd-k right", Some("Dock"), Box::new(InDock)),
         ] {
             registry.register(Command {
                 id,
@@ -392,6 +394,55 @@ mod conflicts {
                 .same_scope
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_key_that_starts_another_chord_clashes() {
+        let found = conflicts(&registry(), &KeymapConfig::default(), "a", "cmd-k");
+        assert!(found.same_scope.is_empty());
+        assert_eq!(
+            found.prefixes,
+            vec![Prefix {
+                command: "dock",
+                kind: PrefixKind::StartsTheirs
+            }],
+            "a global cmd-k would cut Dock's cmd-k right short"
+        );
+        assert!(found.any_clash());
+    }
+
+    #[test]
+    fn a_chord_that_another_key_starts_clashes() {
+        let found = conflicts(&registry(), &KeymapConfig::default(), "a", "cmd-b x");
+        assert_eq!(
+            found.prefixes,
+            vec![Prefix {
+                command: "b",
+                kind: PrefixKind::StartsMine
+            }],
+            "cmd-b fires before the chord's second key"
+        );
+        let found = conflicts(&registry(), &KeymapConfig::default(), "dock", "cmd-a right");
+        assert_eq!(
+            found.prefixes,
+            vec![Prefix {
+                command: "a",
+                kind: PrefixKind::StartsMine
+            }],
+            "a global key overlaps a panel's chord"
+        );
+    }
+
+    #[test]
+    fn prefixes_in_scopes_that_never_overlap_do_not_clash() {
+        let found = conflicts(&registry(), &KeymapConfig::default(), "pods", "cmd-k");
+        assert!(
+            found.prefixes.is_empty(),
+            "Pods and Dock are separate contexts"
+        );
+        assert!(!found.any_clash());
+        let found = conflicts(&registry(), &KeymapConfig::default(), "a", "cmd-k right");
+        assert!(found.prefixes.is_empty(), "the same chord is not a prefix");
     }
 
     #[test]

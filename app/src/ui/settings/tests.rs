@@ -167,6 +167,29 @@ async fn every_new_k9s_command_has_an_editor_row(cx: &mut TestAppContext) {
     });
 }
 
+/// `panel-move-keybindings` 6.1, automated half: each arrange command has a row
+/// in the keybindings editor - the registry's rows, no editor code of its own.
+#[gpui_kit::test]
+async fn every_arrange_command_has_an_editor_row(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (_handle, section) = open(main, cx);
+    cx.update(|cx| {
+        let ids: Vec<&str> = section
+            .read(cx)
+            .visible_rows(cx)
+            .iter()
+            .map(|row| row.id)
+            .collect();
+        for direction in ["left", "right", "up", "down"] {
+            for verb in ["split", "move", "merge"] {
+                let id = format!("panel.{verb}_{direction}");
+                assert!(ids.contains(&id.as_str()), "{id} has a row");
+            }
+        }
+        assert!(ids.contains(&"panel.close_group"));
+    });
+}
+
 /// Recording Close Window's key records it (and asks, since Close Window has
 /// it) instead of closing the window; Escape cancels.
 #[gpui_kit::test]
@@ -256,6 +279,30 @@ async fn confirming_a_conflict_applies_the_key(cx: &mut TestAppContext) {
     cx.update(|cx| {
         assert_eq!(section.read(cx).test_mode(), "browsing");
         assert_eq!(override_of(cx, "panel.focus_next"), Some(spelled("cmd-n")));
+    });
+}
+
+/// Recording a bare `cmd-k` would cut the arrange chords (`cmd-k right`...)
+/// short, so the editor asks before applying it, as for a taken key.
+#[gpui_kit::test]
+async fn a_key_that_starts_a_chord_asks_first(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (handle, section) = open(main, cx);
+    cx.update(|cx| section.update(cx, |s, cx| s.select("panel.focus_next", cx)));
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    let before = cx.update(|cx| override_of(cx, "panel.focus_next"));
+
+    press(&mut vcx, "enter");
+    press(&mut vcx, "cmd-k");
+    assert_eq!(cx.update(|cx| section.read(cx).test_mode()), "confirming");
+    press(&mut vcx, "escape");
+    cx.update(|cx| {
+        assert_eq!(section.read(cx).test_mode(), "browsing");
+        assert_eq!(
+            override_of(cx, "panel.focus_next"),
+            before,
+            "nothing applied"
+        );
     });
 }
 

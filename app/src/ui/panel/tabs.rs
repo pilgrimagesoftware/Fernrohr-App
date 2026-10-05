@@ -209,7 +209,7 @@ pub fn group_of(area: &DockArea, panel: PanelId) -> Option<NodeId> {
 }
 
 /// The tabs of the group `node`, wherever in the dock it is.
-fn tabs_of(area: &DockArea, node: NodeId) -> Option<TabGroup> {
+pub fn tabs_of(area: &DockArea, node: NodeId) -> Option<TabGroup> {
     regions(area).find_map(|tree| {
         let node = tree.find_node(node)?;
         match node.kind() {

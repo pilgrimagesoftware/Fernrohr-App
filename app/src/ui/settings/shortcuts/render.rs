@@ -6,6 +6,7 @@ use super::{
     CONTEXT, FilterShortcuts, Mode, RecordShortcut, RemoveShortcut, ResetShortcut, ShortcutsSection,
 };
 use crate::command::CommandRegistry;
+use crate::keymap;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -64,9 +65,9 @@ impl ShortcutsSection {
             Mode::Confirming {
                 id: c,
                 keys,
-                others,
+                clashes,
                 ..
-            } if *c == id => Some((keys.clone(), others.clone())),
+            } if *c == id => Some((keys.clone(), clashes.clone())),
             _ => None,
         };
         let key_label: AnyElement = if recording {
@@ -133,12 +134,8 @@ impl ShortcutsSection {
                     .text_color(theme.muted_foreground)
                     .child(note.clone())
             }))
-            .children(confirming.map(|(keys, others)| {
-                let registry = cx.global::<CommandRegistry>();
-                let names: Vec<&str> = others
-                    .iter()
-                    .map(|other| registry.get(other).map_or(*other, |c| c.title))
-                    .collect();
+            .children(confirming.map(|(keys, clashes)| {
+                let summary = clash_summary(cx.global::<CommandRegistry>(), &clashes);
                 let apply = cx.weak_entity();
                 let cancel = cx.weak_entity();
                 div()
@@ -146,10 +143,7 @@ impl ShortcutsSection {
                     .items_center()
                     .gap_2()
                     .text_sm()
-                    .child(format!(
-                        "{keys} is also used by {}. Apply anyway? (Enter / Escape)",
-                        names.join(", ")
-                    ))
+                    .child(format!("{keys} {summary}. Apply anyway? (Enter / Escape)"))
                     .child(
                         Button::new(SharedString::from(format!("shortcut-apply-{id}")))
                             .label("Apply")
@@ -250,4 +244,42 @@ fn hint_row(window: &mut Window, cx: &mut Context<ShortcutsSection>) -> impl Int
         .child(hint(&ResetShortcut, "Reset"))
         .child(hint(&RemoveShortcut, "Remove"))
         .child(hint(&FilterShortcuts, "Filter"))
+}
+
+/// What a recorded key clashes with, as the prompt's clause after the key:
+/// the commands already on it, the chords it would cut short, and the keys
+/// that would cut it short.
+fn clash_summary(registry: &CommandRegistry, clashes: &keymap::Conflicts) -> String {
+    let titles = |ids: &mut dyn Iterator<Item = &'static str>| {
+        ids.map(|id| registry.get(id).map_or(id, |command| command.title))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let of_kind = |kind| {
+        titles(
+            &mut clashes
+                .prefixes
+                .iter()
+                .filter(move |prefix| prefix.kind == kind)
+                .map(|prefix| prefix.command),
+        )
+    };
+    let mut parts = Vec::new();
+    if !clashes.same_scope.is_empty() {
+        parts.push(format!(
+            "is also used by {}",
+            titles(&mut clashes.same_scope.iter().copied())
+        ));
+    }
+    let starts_theirs = of_kind(keymap::PrefixKind::StartsTheirs);
+    if !starts_theirs.is_empty() {
+        parts.push(format!(
+            "starts the keys of {starts_theirs}, which would stop working"
+        ));
+    }
+    let starts_mine = of_kind(keymap::PrefixKind::StartsMine);
+    if !starts_mine.is_empty() {
+        parts.push(format!("can't be reached past the key of {starts_mine}"));
+    }
+    parts.join("; ")
 }

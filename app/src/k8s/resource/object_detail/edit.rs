@@ -172,6 +172,18 @@ impl ObjectDetailPanel {
         }
     }
 
+    /// What closing the panel would cost, when it costs something: an edit not
+    /// yet saved is lost with it (`panel-move-keybindings`' Close Group asks
+    /// first).
+    pub fn close_warning(&self) -> Option<String> {
+        self.edit.as_ref().map(|_| {
+            format!(
+                "The unsaved edit to {} {} is lost.",
+                self.target.kind.gvk.kind, self.target.name
+            )
+        })
+    }
+
     /// The editor's current text, for tests.
     #[cfg(test)]
     pub(crate) fn edit_text(&self, cx: &App) -> Option<String> {
