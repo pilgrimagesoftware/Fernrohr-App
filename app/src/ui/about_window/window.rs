@@ -68,6 +68,7 @@ fn about_window_options(cx: &App) -> WindowOptions {
     });
     let bounds = Bounds::centered(None, size(gpui_kit::px(360.), gpui_kit::px(420.)), cx);
     WindowOptions {
+        app_id: Some(crate::consts::APP_ID.into()),
         titlebar,
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         is_resizable: false,

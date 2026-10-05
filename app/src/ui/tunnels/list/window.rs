@@ -29,6 +29,7 @@ pub fn open_or_focus(cx: &mut App) {
 
     let (window, _) = gpui_kit::open_window(
         WindowOptions {
+            app_id: Some(crate::consts::APP_ID.into()),
             // An explicit, centered starting size: with only a minimum, the
             // platform default opened this small list-and-editor window huge.
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(

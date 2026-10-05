@@ -70,8 +70,16 @@ resources = [
     { src = "assets/fonts/Manrope-OFL.txt", target = "licenses/fonts/Manrope-OFL.txt" },
 ]
 
+# `openssh-client` runs SSH tunnels; `libsecret-1-0` talks to the Secret Service
+# that holds stored credentials. cargo-packager can't write `Recommends`, so
+# package.yml adds the Secret Service providers to the control file after
+# packaging (`linux-packaging-hardening` 1.2). The desktop entry is the one
+# checked in, shared with the rpm, and the icon also goes to pixmaps: at
+# 1254px it fits no hicolor size directory, which the icon theme only looks in.
 [package.metadata.packager.deb]
-depends = ["libsecret-1-0"]
+depends = ["openssh-client", "libsecret-1-0"]
+desktop-template = "assets/linux/fernrohr.desktop"
+files = { "../images/fernrohr-icon.png" = "usr/share/pixmaps/fernrohr.png" }
 
 [package.metadata.packager.appimage]
 libs = ["libsecret-1.so.0"]
