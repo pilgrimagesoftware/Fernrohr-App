@@ -41,6 +41,8 @@ pub struct ObjectListPanel {
     pub(super) filter: Option<Entity<InputState>>,
     /// The column layout to start the table with, once it's built.
     pub(super) initial_layout: ColumnLayout,
+    /// How the last port-forward went, in a Services list (`port_forward`).
+    pub(super) forward_message: Option<super::port_forward::ForwardMessage>,
 }
 
 impl ObjectListPanel {
@@ -84,6 +86,7 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            forward_message: None,
         };
         this.subscribe_if_connected(&connection, cx);
         this
@@ -115,6 +118,7 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            forward_message: None,
         }
     }
 

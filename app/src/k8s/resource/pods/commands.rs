@@ -23,7 +23,8 @@ actions!(
         OpenQuickLookDetails,
         DeletePod,
         KillPod,
-        ShellPod
+        ShellPod,
+        PortForwardPod
     ]
 );
 
@@ -53,6 +54,8 @@ pub(super) const DELETE_KEY: &str = "ctrl-d";
 pub(super) const KILL_KEY: &str = "ctrl-k";
 /// k9s's shell key.
 pub(super) const SHELL_KEY: &str = "s";
+/// k9s's port-forward key.
+pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
 pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
 pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
@@ -114,6 +117,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Quick Look",
         QUICK_LOOK_KEY,
         Box::new(QuickLook),
+        None,
+    );
+    register(
+        "pods.port_forward",
+        "Pods: Port-Forward Selected Pod",
+        PORT_FORWARD_KEY,
+        Box::new(PortForwardPod),
         None,
     );
     register(

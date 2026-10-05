@@ -16,7 +16,8 @@ actions!(
         DescribeSelected,
         ShowSelectedYaml,
         WarpNamespace,
-        RefreshList
+        RefreshList,
+        PortForwardService
     ]
 );
 
@@ -58,11 +59,21 @@ const DESCRIBE_COMMAND_ID: &str = "object_list.describe";
 const YAML_COMMAND_ID: &str = "object_list.yaml";
 const FIT_COMMAND_ID: &str = "object_list.fit_columns";
 const REFRESH_COMMAND_ID: &str = "object_list.refresh";
+/// k9s's port-forward key, as the Pods panel's.
+pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
 
 /// Registers the panel's shortcuts. None is in the menu bar, like their Pods
 /// twins: the bar holds global commands only (`menu-organization`), and the
 /// palette offers these while a list panel is on the focus path.
 pub fn register_commands(registry: &mut CommandRegistry) {
+    registry.register(Command {
+        id: "services.port_forward",
+        title: "Services: Port-Forward Selected Service",
+        default_binding: PORT_FORWARD_KEY,
+        context: Some(super::port_forward::SERVICES_KEY_CONTEXT),
+        action: Box::new(PortForwardService),
+        menu: None,
+    });
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {
         registry.register(Command {
             id,

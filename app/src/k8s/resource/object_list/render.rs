@@ -112,7 +112,16 @@ impl ObjectListPanel {
                     .on_action(cx.listener(Self::on_action_clear_filter))
                     .child(Input::new(&filter)),
             )
-            .child(div().flex_1().min_h_0().child(data_table(&table, cx)))
+            .children(self.render_forward_message(cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .when(self.lists_services(), |this| {
+                        this.key_context(super::port_forward::SERVICES_KEY_CONTEXT)
+                    })
+                    .child(data_table(&table, cx)),
+            )
             .child(
                 div()
                     .px_2()
@@ -230,6 +239,7 @@ impl Render for ObjectListPanel {
             ))
             .on_action(cx.listener(Self::on_action_fit_columns))
             .on_action(cx.listener(Self::on_action_refresh))
+            .on_action(cx.listener(Self::on_action_port_forward_service))
             .child(
                 div()
                     .size_full()

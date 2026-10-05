@@ -256,3 +256,84 @@ async fn the_tunnels_windows_content_is_inset_from_its_edges(cx: &mut TestAppCon
         width - button.right()
     );
 }
+
+/// `k9s-remaining-keybindings` 4.3, end to end over a fake cluster's Running pod:
+/// a forward started from a row is listed in the Tunnels window in its current
+/// state, and its Stop releases it through the registry - gone from the list
+/// and from the live set.
+#[gpui_kit::test]
+async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppContext) {
+    use crate::forward::managed::ForwardState;
+    use crate::k8s::cluster::port_forwards::{PortForwardRequest, PortForwards};
+    use crate::ui::tunnels::list::port_forwards::stop_button_id;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{Modifiers, VisualTestContext};
+
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let (cluster, client) = crate::k8s::test_cluster::FakeCluster::start(cx);
+    cluster.apply(
+        "/api/v1",
+        "pods",
+        serde_json::json!({ "apiVersion": "v1", "kind": "Pod",
+            "metadata": { "name": "web-1", "namespace": "shop", "uid": "u1" },
+            "spec": { "containers": [{ "name": "app", "image": "nginx" }] },
+            "status": { "phase": "Running" } }),
+    );
+    let request = PortForwardRequest {
+        context_name: "demo".into(),
+        namespace: "shop".into(),
+        pod: "web-1".into(),
+        remote_port: 18_084,
+    };
+    let forwards = cx.update(PortForwards::entity);
+    forwards
+        .update(cx, |forwards, cx| {
+            forwards.start(request.clone(), client, cx)
+        })
+        .expect("started");
+
+    let window = cx.add_window(|window, cx| {
+        TunnelsWindow::new(
+            temp_tunnels_path(),
+            Some(missing_kubeconfig_path()),
+            window,
+            cx,
+        )
+    });
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    for _ in 0..400 {
+        vcx.run_until_parked();
+        let up = forwards.read_with(&vcx, |forwards, _| {
+            forwards.list().first().map(|(_, _, state)| *state) == Some(ForwardState::Up)
+        });
+        if up {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let stop_id: &'static str = Box::leak(stop_button_id(0).to_string().into_boxed_str());
+    let stop = vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(stop_id)
+            .expect("the forward is listed, with its Stop")
+            .bounds()
+    });
+
+    vcx.simulate_click(stop.center(), Modifiers::none());
+    vcx.run_until_parked();
+
+    forwards.read_with(&vcx, |forwards, _| {
+        assert!(forwards.list().is_empty(), "gone from the list");
+        assert!(forwards.live_requests().is_empty(), "and released");
+    });
+    let listed = vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window.try_find(stop_id).is_some()
+    });
+    assert!(!listed, "and from the window");
+}

@@ -23,12 +23,13 @@ mod actions;
 mod commands;
 pub use commands::{
     CloseQuickLook, DeletePod, DescribePod, KillPod, OpenQuickLookDetails, PANEL_KEY_CONTEXT,
-    QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs, ShowPodYaml, WarpAllToNamespace,
-    WarpNamespace, register_commands,
+    PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs, ShowPodYaml,
+    WarpAllToNamespace, WarpNamespace, register_commands,
 };
 use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY};
 
 mod panel;
+mod port_forward;
 pub(super) mod quick_look;
 mod render;
 mod rows;

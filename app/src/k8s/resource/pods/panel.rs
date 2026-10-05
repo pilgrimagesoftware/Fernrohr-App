@@ -32,6 +32,9 @@ pub struct PodsPanel {
     /// The last row action the cluster refused, shown above the table until
     /// dismissed or the next action.
     pub(super) action_failure: Option<super::actions::PodActionFailure>,
+    /// What the last row action did, when it says something - where a
+    /// port-forward listens - until the next action.
+    pub(super) action_notice: Option<String>,
 }
 
 impl PodsPanel {
@@ -87,6 +90,7 @@ impl PodsPanel {
             pod_table: None,
             quick_look: None,
             action_failure: None,
+            action_notice: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this

@@ -7,6 +7,7 @@ mod columns;
 mod commands;
 mod panel;
 mod poll;
+mod port_forward;
 mod render;
 pub(crate) mod restore;
 mod row;
