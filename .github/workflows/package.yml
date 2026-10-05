@@ -1,7 +1,7 @@
 name: Package
 
 # Builds installable Fernrohr packages with cargo-packager for every platform
-# ci.yml already tests (macOS, Linux).
+# ci.yml already tests (macOS, Linux), plus Linux on arm64.
 #
 # Runs on every merge into develop, keeping the result as a workflow artifact,
 # and is called by release.yml with a tag, which also attaches the installers
@@ -52,6 +52,12 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             formats: appimage,deb
+          # Built natively on GitHub's arm64 runner - no cross-compiling - so the
+          # apt dependencies and the gnu linkage are the x86_64 leg's.
+          - name: Linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            formats: appimage,deb
 
     steps:
       - name: Checkout
@@ -68,7 +74,7 @@ jobs:
           cache-key: package-${{ matrix.target }}
 
       - name: Install Linux packaging dependencies
-        if: matrix.name == 'Linux'
+        if: startsWith(matrix.name, 'Linux')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -79,12 +85,24 @@ jobs:
             libvulkan1 \
             libgtk-3-dev \
             libsecret-1-dev \
-            mesa-vulkan-drivers
+            mesa-vulkan-drivers \
+            desktop-file-utils \
+            rpm
+
+      - name: Validate desktop entry
+        if: startsWith(matrix.name, 'Linux')
+        run: desktop-file-validate app/assets/linux/fernrohr.desktop
 
       - name: Install cargo-packager
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-packager
+
+      - name: Install cargo-generate-rpm
+        if: startsWith(matrix.name, 'Linux')
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-generate-rpm
 
       # cargo-packager resolves `[package.metadata.packager]` from the manifest
       # in the current directory, not from a workspace root with `--packages`.
@@ -148,6 +166,73 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$mnt/Fernrohr.app"
           codesign -dv "$mnt/Fernrohr.app"
 
+      # cargo-packager writes `Depends` but has no `Recommends`, so the Secret
+      # Service providers are added to the built deb's control file here, and the
+      # result is read back - with the desktop entry and icon it should carry.
+      - name: Finish and check deb
+        if: startsWith(matrix.name, 'Linux')
+        run: |
+          set -euo pipefail
+          recommends="gnome-keyring | kwalletmanager | keepassxc"
+          for deb in target/${{ matrix.target }}/release/*.deb; do
+            work=$(mktemp -d)
+            dpkg-deb -R "$deb" "$work"
+            grep -q '^Recommends:' "$work/DEBIAN/control" \
+              || echo "Recommends: $recommends" >> "$work/DEBIAN/control"
+            dpkg-deb --root-owner-group -b "$work" "$deb"
+            rm -rf "$work"
+
+            depends=$(dpkg-deb -f "$deb" Depends)
+            echo "Depends: $depends"
+            for dep in openssh-client libsecret-1-0; do
+              grep -qw -- "$dep" <<<"$depends" || { echo "::error::$deb doesn't depend on $dep"; exit 1; }
+            done
+            [ "$(dpkg-deb -f "$deb" Recommends)" = "$recommends" ] \
+              || { echo "::error::$deb doesn't recommend $recommends"; exit 1; }
+
+            contents=$(dpkg-deb -c "$deb")
+            for icon in /usr/share/pixmaps/fernrohr.png \
+              /usr/share/icons/hicolor/256x256/apps/fernrohr.png \
+              /usr/share/icons/hicolor/512x512/apps/fernrohr.png; do
+              grep -q "${icon}\$" <<<"$contents" || { echo "::error::$deb lacks $icon"; exit 1; }
+            done
+            entry=$(mktemp -d)
+            dpkg-deb -x "$deb" "$entry"
+            desktop=$(ls "$entry"/usr/share/applications/*.desktop)
+            desktop-file-validate "$desktop"
+            grep -qx 'StartupWMClass=fernrohr' "$desktop" \
+              || { echo "::error::$deb's desktop entry isn't the checked-in one"; exit 1; }
+            rm -rf "$entry"
+          done
+
+      # cargo-packager has no RPM backend: build the rpm from the release build
+      # it just made, then read its requirements and recommendations back.
+      - name: Build and check rpm
+        if: startsWith(matrix.name, 'Linux')
+        run: |
+          set -euo pipefail
+          cargo generate-rpm -p app --target ${{ matrix.target }}
+          shopt -s nullglob
+          rpms=(target/${{ matrix.target }}/generate-rpm/*.rpm)
+          [ ${#rpms[@]} -eq 1 ] || { echo "::error::expected one rpm, found ${#rpms[@]}"; exit 1; }
+          rpm="${rpms[0]}"
+          requires=$(rpm -qpR "$rpm")
+          recommends=$(rpm -qp --recommends "$rpm")
+          echo "Requires:"; echo "$requires"
+          echo "Recommends:"; echo "$recommends"
+          for dep in openssh-clients libsecret; do
+            grep -qx -- "$dep" <<<"$requires" || { echo "::error::$rpm doesn't require $dep"; exit 1; }
+          done
+          grep -qx gnome-keyring <<<"$recommends" \
+            || { echo "::error::$rpm doesn't recommend gnome-keyring"; exit 1; }
+          files=$(rpm -qpl "$rpm")
+          for file in /usr/bin/fernrohr /usr/share/applications/fernrohr.desktop \
+            /usr/share/pixmaps/fernrohr.png /usr/share/licenses/fernrohr/LICENSE.md \
+            /usr/share/icons/hicolor/256x256/apps/fernrohr.png \
+            /usr/share/icons/hicolor/512x512/apps/fernrohr.png; do
+            grep -qx -- "$file" <<<"$files" || { echo "::error::$rpm lacks $file"; exit 1; }
+          done
+
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
         with:
@@ -157,6 +242,7 @@ jobs:
             target/${{ matrix.target }}/release/*.app
             target/${{ matrix.target }}/release/*.AppImage
             target/${{ matrix.target }}/release/*.deb
+            target/${{ matrix.target }}/generate-rpm/*.rpm
           if-no-files-found: error
           retention-days: 30
 
@@ -170,4 +256,56 @@ jobs:
             target/${{ matrix.target }}/release/*.dmg \
             target/${{ matrix.target }}/release/*.AppImage \
             target/${{ matrix.target }}/release/*.deb \
+            target/${{ matrix.target }}/generate-rpm/*.rpm \
             --clobber
+
+  # SHA256SUMS over every package every leg built (`linux-packaging-hardening`
+  # 4.1). A fan-in, so a failed leg fails the run here before any checksum file
+  # exists. Runs for every package run - the file is kept as an artifact, which
+  # is how a develop run checks it - and is attached to the release only for a tag.
+  checksums:
+    name: Checksums
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v7
+        with:
+          pattern: Fernrohr-*-${{ github.run_number }}
+          path: downloaded
+
+      - name: Write SHA256SUMS
+        run: |
+          set -euo pipefail
+          mkdir packages
+          # File names only, no directories, as `sha256sum --check` users expect;
+          # the .app bundle is a directory and isn't a download.
+          find downloaded -type f \
+            \( -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
+            -exec cp {} packages/ \;
+          cd packages
+          # Written outside the directory first: redirecting straight into it
+          # would create SHA256SUMS before `ls` runs, listing itself.
+          ls -1 | sort | xargs -d '\n' sha256sum > ../SHA256SUMS
+          mv ../SHA256SUMS .
+          cat SHA256SUMS
+          sha256sum --check SHA256SUMS
+          files=$(ls -1 | grep -vx SHA256SUMS | wc -l)
+          lines=$(wc -l < SHA256SUMS)
+          [ "$files" -eq "$lines" ] || { echo "::error::$lines checksums for $files packages"; exit 1; }
+
+      - name: Upload SHA256SUMS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Fernrohr-SHA256SUMS-${{ github.run_number }}
+          path: packages/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach SHA256SUMS to release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.tag }}" packages/SHA256SUMS \
+            --repo "${{ github.repository }}" --clobber

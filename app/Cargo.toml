@@ -73,8 +73,47 @@ resources = [
     { src = "assets/fonts/Manrope-OFL.txt", target = "licenses/fonts/Manrope-OFL.txt" },
 ]
 
+# `openssh-client` runs SSH tunnels; `libsecret-1-0` talks to the Secret Service
+# that holds stored credentials. cargo-packager can't write `Recommends`, so
+# package.yml adds the Secret Service providers to the control file after
+# packaging (`linux-packaging-hardening` 1.2). The desktop entry is the one
+# checked in, shared with the rpm. The source icon is 1254px, which fits no
+# hicolor size directory - the only ones the icon theme looks in - so checked-in
+# 256px and 512px scalings go to hicolor, with a pixmaps copy as the fallback.
 [package.metadata.packager.deb]
-depends = ["libsecret-1-0"]
+depends = ["openssh-client", "libsecret-1-0"]
+desktop-template = "assets/linux/fernrohr.desktop"
+files = { "../images/fernrohr-icon.png" = "usr/share/pixmaps/fernrohr.png", "assets/linux/icons/256x256/fernrohr.png" = "usr/share/icons/hicolor/256x256/apps/fernrohr.png", "assets/linux/icons/512x512/fernrohr.png" = "usr/share/icons/hicolor/512x512/apps/fernrohr.png" }
+
+# The rpm (`linux-packaging-hardening` 2.1): cargo-packager has no RPM backend,
+# so package.yml runs `cargo generate-rpm --target <triple>` on each Linux leg,
+# after cargo-packager's release build. `target/release/` sources resolve to that
+# target's directory. The same checked-in desktop entry and pixmaps icon as the
+# deb, with its hicolor sizes; the licences in /usr/share/licenses. Fedora names the SSH client
+# `openssh-clients`, and the shared libraries are found automatically.
+[package.metadata.generate-rpm]
+summary = "Desktop UI for Kubernetes cluster monitoring"
+license = "MIT"
+url = "https://github.com/pilgrimagesoftware/Fernrohr-App"
+assets = [
+    { source = "target/release/fernrohr", dest = "/usr/bin/fernrohr", mode = "755" },
+    { source = "assets/linux/fernrohr.desktop", dest = "/usr/share/applications/fernrohr.desktop", mode = "644" },
+    { source = "../images/fernrohr-icon.png", dest = "/usr/share/pixmaps/fernrohr.png", mode = "644" },
+    { source = "assets/linux/icons/256x256/fernrohr.png", dest = "/usr/share/icons/hicolor/256x256/apps/fernrohr.png", mode = "644" },
+    { source = "assets/linux/icons/512x512/fernrohr.png", dest = "/usr/share/icons/hicolor/512x512/apps/fernrohr.png", mode = "644" },
+    { source = "../LICENSE.md", dest = "/usr/share/licenses/fernrohr/LICENSE.md", mode = "644", doc = true },
+    { source = "assets/icons/kubernetes/LICENSE", dest = "/usr/share/licenses/fernrohr/kubernetes-icons/LICENSE", mode = "644", doc = true },
+    { source = "assets/icons/kubernetes/README.md", dest = "/usr/share/licenses/fernrohr/kubernetes-icons/README.md", mode = "644", doc = true },
+    { source = "assets/fonts/Adamina-OFL.txt", dest = "/usr/share/licenses/fernrohr/fonts/Adamina-OFL.txt", mode = "644", doc = true },
+    { source = "assets/fonts/Manrope-OFL.txt", dest = "/usr/share/licenses/fernrohr/fonts/Manrope-OFL.txt", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+openssh-clients = "*"
+libsecret = "*"
+
+[package.metadata.generate-rpm.recommends]
+gnome-keyring = "*"
 
 [package.metadata.packager.appimage]
 libs = ["libsecret-1.so.0"]

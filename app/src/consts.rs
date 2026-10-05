@@ -8,6 +8,12 @@ use std::time::Duration;
 /// (`window-title-and-menu` design.md Risks).
 pub(crate) const APP_NAME: &str = "Fernrohr";
 
+/// The app id every window is opened with: the Wayland `app_id` and the X11
+/// `WM_CLASS`, which Linux desktops match against the installed
+/// `fernrohr.desktop` (its name, and its `StartupWMClass`) to give the windows
+/// that entry's name and icon and group them under it.
+pub(crate) const APP_ID: &str = "fernrohr";
+
 // UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
 // 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
 #[allow(dead_code)]
@@ -168,3 +174,19 @@ pub(crate) const EXEC_OUTPUT_QUEUE: usize = 256;
 pub(crate) const PORT_FORWARD_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 pub(crate) const PORT_FORWARD_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
 pub(crate) const PORT_FORWARD_BACKOFF_MAX: Duration = Duration::from_secs(30);
+
+#[cfg(test)]
+mod tests {
+    /// The checked-in desktop entry groups windows by the app id they open with.
+    #[test]
+    fn the_desktop_entry_matches_the_window_app_id() {
+        let entry = include_str!("../assets/linux/fernrohr.desktop");
+        assert!(
+            entry
+                .lines()
+                .any(|line| line == format!("StartupWMClass={}", super::APP_ID)),
+            "fernrohr.desktop's StartupWMClass must be {}",
+            super::APP_ID
+        );
+    }
+}

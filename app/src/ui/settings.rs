@@ -125,6 +125,7 @@ pub fn open_or_focus(cx: &mut App) {
     }
     let (window, _) = gpui_kit::open_window(
         WindowOptions {
+            app_id: Some(crate::consts::APP_ID.into()),
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
                 SETTINGS_WINDOW_SIZE,

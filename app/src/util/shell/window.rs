@@ -75,6 +75,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
     // Fully qualified: `util::shell` re-exports this function as `open_window`.
     gpui_kit::open_window(
         WindowOptions {
+            app_id: Some(crate::consts::APP_ID.into()),
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             // A restored layout can carry a window smaller than the picker needs
             // - it is whatever size the user last left it, from before the logo
