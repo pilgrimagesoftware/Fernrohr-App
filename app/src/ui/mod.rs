@@ -19,6 +19,7 @@ pub mod placeholder;
 pub mod raster;
 pub mod report_issue;
 pub mod settings;
+pub mod shortcut_timeout;
 pub mod space;
 pub mod status_bar;
 pub mod style;

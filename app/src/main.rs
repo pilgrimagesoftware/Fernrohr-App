@@ -36,6 +36,7 @@ fn main() {
                 ui_path.clone(),
                 cx,
             );
+            ui::shortcut_timeout::init(ui_config.shortcut_timeout_secs, ui_path.clone(), cx);
             ui::text_size::init(ui_config.text_size, ui_path, cx);
             ui::namespace_sets::store::NamespaceSets::init(
                 util::paths::preference_dir().join("namespace-sets.toml"),

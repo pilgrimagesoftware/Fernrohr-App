@@ -103,6 +103,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::panel::tabs::register_commands(registry);
     crate::ui::settings::register_commands(registry);
     crate::ui::text_size::register_commands(registry);
+    crate::ui::shortcut_timeout::register_commands(registry);
     crate::ui::report_issue::register_commands(registry);
 }
 
@@ -132,6 +133,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
     crate::ui::text_size::register_handlers(cx);
+    crate::ui::shortcut_timeout::register_handlers(cx);
     crate::ui::theme::register_handlers(cx);
     crate::ui::report_issue::register_handler(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {

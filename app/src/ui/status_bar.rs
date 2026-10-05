@@ -109,6 +109,12 @@ pub struct StatusBarView {
     /// The chord the window is waiting to complete, if any ([`chord`]).
     chord: Option<chord::PendingChord>,
     _pending_input: Option<Subscription>,
+    /// The rest of the Shortcut timeout, while GPUI's own timer is paused for
+    /// the pending chord ([`chord`]); dropping it cancels the wait.
+    extension: Option<Task<()>>,
+    /// Whether the pending chord has had its wait extended already, so the
+    /// observer firing again for the same keys doesn't start another.
+    extended: bool,
 }
 
 impl StatusBarView {
@@ -166,6 +172,8 @@ impl StatusBarView {
             tick: None,
             chord: None,
             _pending_input: None,
+            extension: None,
+            extended: false,
         };
         this.ensure_tick(cx);
         this
@@ -361,3 +369,5 @@ impl Render for StatusBarView {
 // glob). Import specific names instead, here and in `tests.rs`.
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timeout_tests;

@@ -11,6 +11,9 @@ pub struct UiConfig {
     /// How far back a new pod detail panel's Events tab looks
     /// (`pod-events-time-window` 2.2). Each panel can change its own.
     pub pod_events_window: PodEventsWindow,
+    /// How long a chord whose keys so far are also a whole binding waits for
+    /// its next key (`pending-chord-indicator`).
+    pub shortcut_timeout_secs: ShortcutTimeout,
 }
 
 impl Default for UiConfig {
@@ -20,7 +23,63 @@ impl Default for UiConfig {
             text_size: TextSize::DEFAULT,
             resource_side: ResourceSide::default(),
             pod_events_window: PodEventsWindow::default(),
+            shortcut_timeout_secs: ShortcutTimeout::DEFAULT,
         }
+    }
+}
+
+/// The Shortcut timeout preference, in whole seconds from
+/// [`ShortcutTimeout::MIN`] to [`ShortcutTimeout::MAX`].
+///
+/// Stored as the bare number (`shortcut_timeout_secs = 3`). Read through a
+/// wide integer and clamped, so a hand-edited value out of range - even one
+/// too big for the field, or negative - loads as the nearest allowed value
+/// instead of failing the whole file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "i64", into = "i64")]
+pub struct ShortcutTimeout(u8);
+
+impl ShortcutTimeout {
+    pub const MIN: Self = Self(crate::consts::SHORTCUT_TIMEOUT_MIN_SECS);
+    pub const MAX: Self = Self(crate::consts::SHORTCUT_TIMEOUT_MAX_SECS);
+    pub const DEFAULT: Self = Self(crate::consts::SHORTCUT_TIMEOUT_DEFAULT_SECS);
+
+    pub fn secs(self) -> u8 {
+        self.0
+    }
+
+    pub fn duration(self) -> std::time::Duration {
+        std::time::Duration::from_secs(u64::from(self.0))
+    }
+
+    /// One second longer, or unchanged at [`ShortcutTimeout::MAX`].
+    pub fn increase(self) -> Self {
+        Self::from(i64::from(self.0) + 1)
+    }
+
+    /// One second shorter, or unchanged at [`ShortcutTimeout::MIN`].
+    pub fn decrease(self) -> Self {
+        Self::from(i64::from(self.0) - 1)
+    }
+}
+
+impl Default for ShortcutTimeout {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Clamps into [`ShortcutTimeout::MIN`]..=[`ShortcutTimeout::MAX`].
+impl From<i64> for ShortcutTimeout {
+    fn from(secs: i64) -> Self {
+        let clamped = secs.clamp(i64::from(Self::MIN.0), i64::from(Self::MAX.0));
+        Self(u8::try_from(clamped).expect("clamped into the u8 range"))
+    }
+}
+
+impl From<ShortcutTimeout> for i64 {
+    fn from(timeout: ShortcutTimeout) -> Self {
+        i64::from(timeout.0)
     }
 }
 
@@ -193,6 +252,7 @@ mod tests {
             text_size: TextSize::from(120),
             resource_side: ResourceSide::Right,
             pod_events_window: PodEventsWindow::Hours6,
+            shortcut_timeout_secs: ShortcutTimeout::from(7),
         };
         let text = toml::to_string(&config).unwrap();
         let parsed: UiConfig = toml::from_str(&text).unwrap();
@@ -272,5 +332,43 @@ mod tests {
         assert_eq!(TextSize::default().percent(), 100);
         assert_eq!(TextSize::DEFAULT.factor(), 1.0);
         assert_eq!(TextSize::MAX.factor(), 1.5);
+    }
+
+    #[test]
+    fn the_shortcut_timeout_defaults_to_three_and_is_a_bare_number() {
+        let parsed: UiConfig = toml::from_str("theme = \"dark\"\n").unwrap();
+        assert_eq!(parsed.shortcut_timeout_secs, ShortcutTimeout::DEFAULT);
+        assert_eq!(parsed.shortcut_timeout_secs.secs(), 3);
+        let config = UiConfig {
+            shortcut_timeout_secs: ShortcutTimeout::from(6),
+            ..UiConfig::default()
+        };
+        assert!(
+            toml::to_string(&config)
+                .unwrap()
+                .contains("shortcut_timeout_secs = 6\n")
+        );
+    }
+
+    /// Spec: "Out-of-range value in the file" - clamped, the rest kept.
+    #[test]
+    fn an_out_of_range_shortcut_timeout_clamps_and_keeps_the_rest() {
+        for (written, loads) in [("30", 10), ("300", 10), ("0", 1), ("-4", 1)] {
+            let parsed: UiConfig = toml::from_str(&format!(
+                "theme = \"dark\"\ntext_size = 120\nshortcut_timeout_secs = {written}\n"
+            ))
+            .unwrap();
+            assert_eq!(parsed.shortcut_timeout_secs.secs(), loads, "{written}");
+            assert_eq!(parsed.theme, Theme::Dark, "{written} keeps the theme");
+            assert_eq!(parsed.text_size, TextSize::from(120));
+        }
+    }
+
+    #[test]
+    fn the_shortcut_timeout_steps_by_a_second_within_its_range() {
+        assert_eq!(ShortcutTimeout::DEFAULT.increase().secs(), 4);
+        assert_eq!(ShortcutTimeout::DEFAULT.decrease().secs(), 2);
+        assert_eq!(ShortcutTimeout::MAX.increase(), ShortcutTimeout::MAX);
+        assert_eq!(ShortcutTimeout::MIN.decrease(), ShortcutTimeout::MIN);
     }
 }

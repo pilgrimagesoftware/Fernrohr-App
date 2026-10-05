@@ -9,9 +9,19 @@
 //! `Window::pending_input`, which already drops input left over from an
 //! earlier focus. Nothing here is focusable or handles keys, so the next key
 //! reaches its binding exactly as it would without the indicator.
+//!
+//! It also sets how long an ambiguous chord waits. When the keys so far are
+//! themselves a whole binding, GPUI flushes them after its own short timeout
+//! ([`GPUI_PENDING_INPUT_TIMEOUT`]); the bar pauses that timer, waits out the
+//! rest of the Shortcut timeout preference, then resumes it, so the shorter
+//! binding runs after the preference in all. A chord that changes or ends
+//! first cancels the wait and releases the pause, and so does the bar going
+//! away - GPUI resumes a timeout whose pausing entity is released. A chord
+//! that isn't a whole binding yet has no timeout, and still waits forever.
 
 use super::StatusBarView;
 use crate::command::CommandRegistry;
+use crate::consts::GPUI_PENDING_INPUT_TIMEOUT;
 use crate::keymap::{self, Completion, LiveKeymap};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
@@ -44,9 +54,22 @@ impl StatusBarView {
     }
 
     fn read_pending_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let keys = window
-            .pending_input()
-            .map(|pending| pending.keystrokes().to_vec());
+        let (keys, timeout) = match window.pending_input() {
+            Some(pending) => (
+                Some(pending.keystrokes().to_vec()),
+                pending.timeout().is_some(),
+            ),
+            None => (None, false),
+        };
+        // Another chord, or none: the last one's wait is over.
+        if self.chord.as_ref().map(|chord| &chord.keys) != keys.as_ref() {
+            self.end_extension(window, cx);
+            self.extended = false;
+        }
+        if timeout && !self.extended {
+            self.extended = true;
+            self.extend(window, cx);
+        }
         self.chord = keys.map(|keys| {
             let completions = match (
                 cx.try_global::<CommandRegistry>(),
@@ -64,6 +87,31 @@ impl StatusBarView {
             PendingChord { keys, completions }
         });
         cx.notify();
+    }
+
+    /// Pauses GPUI's timeout for the pending chord and resumes it once the
+    /// rest of the Shortcut timeout has passed - nothing to do when the
+    /// preference is no longer than GPUI's own wait.
+    fn extend(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let extra = crate::ui::shortcut_timeout::current(cx)
+            .duration()
+            .saturating_sub(GPUI_PENDING_INPUT_TIMEOUT);
+        let owner = cx.entity();
+        if extra.is_zero() || !window.set_pending_input_timeout_paused(&owner, true, cx) {
+            return;
+        }
+        self.extension = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(extra).await;
+            let _ = this.update_in(cx, |this, window, cx| this.end_extension(window, cx));
+        }));
+    }
+
+    /// Cancels a running extension and lets GPUI's timeout run again.
+    fn end_extension(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.extension.take().is_some() {
+            let owner = cx.entity();
+            window.set_pending_input_timeout_paused(&owner, false, cx);
+        }
     }
 
     /// The keys the bar shows as pending (`unparse`d) and the completions'
