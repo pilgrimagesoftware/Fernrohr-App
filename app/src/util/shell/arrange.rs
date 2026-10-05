@@ -10,8 +10,9 @@
 
 use super::*;
 use crate::ui::panel::arrange::{
-    self, ClosePanelGroup, Direction, MovePanelDown, MovePanelLeft, MovePanelRight, MovePanelUp,
-    SplitGroupDown, SplitGroupLeft, SplitGroupRight, SplitGroupUp,
+    self, ClosePanelGroup, Direction, MergeGroupDown, MergeGroupLeft, MergeGroupRight,
+    MergeGroupUp, MovePanelDown, MovePanelLeft, MovePanelRight, MovePanelUp, SplitGroupDown,
+    SplitGroupLeft, SplitGroupRight, SplitGroupUp,
 };
 use crate::ui::panel::tabs;
 use gpui_kit::component::dock::{InsertTarget, NodeId};
@@ -30,8 +31,14 @@ impl MainWindow {
                 this.move_focused_panel(direction, window, cx)
             }
         };
+        let merge = |direction| {
+            move |this: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
+                this.merge_group(direction, window, cx)
+            }
+        };
         let (sl, sr, su, sd) = (split(Left), split(Right), split(Up), split(Down));
         let (ml, mr, mu, md) = (moved(Left), moved(Right), moved(Up), moved(Down));
+        let (gl, gr, gu, gd) = (merge(Left), merge(Right), merge(Up), merge(Down));
         element
             .on_action(cx.listener(move |t, _: &SplitGroupLeft, w, cx| sl(t, w, cx)))
             .on_action(cx.listener(move |t, _: &SplitGroupRight, w, cx| sr(t, w, cx)))
@@ -41,6 +48,10 @@ impl MainWindow {
             .on_action(cx.listener(move |t, _: &MovePanelRight, w, cx| mr(t, w, cx)))
             .on_action(cx.listener(move |t, _: &MovePanelUp, w, cx| mu(t, w, cx)))
             .on_action(cx.listener(move |t, _: &MovePanelDown, w, cx| md(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MergeGroupLeft, w, cx| gl(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MergeGroupRight, w, cx| gr(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MergeGroupUp, w, cx| gu(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MergeGroupDown, w, cx| gd(t, w, cx)))
             .on_action(
                 cx.listener(|this, _: &ClosePanelGroup, window, cx| this.close_group(window, cx)),
             )
@@ -146,6 +157,36 @@ impl MainWindow {
             area.move_panel(panel, into, window, cx);
         });
         Self::focus_panel(&dock_area, panel, window, cx);
+        cx.notify();
+    }
+
+    /// Moves every panel of the focused group, in order, into the group beside
+    /// it in `direction`; the emptied group goes. The focused panel keeps focus.
+    fn merge_group(&mut self, direction: Direction, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((dock_area, node)) = self.focused_center_group(window, cx) else {
+            return;
+        };
+        let area = dock_area.read(cx);
+        let (Some(group), Some(beside)) = (
+            tabs::tabs_of(area, node),
+            Self::group_beside(area, node, direction),
+        ) else {
+            return;
+        };
+        let focused = group.panels.get(group.active_ix).copied();
+        dock_area.update(cx, |area, cx| {
+            for &panel in &group.panels {
+                let into = InsertTarget::Tabs {
+                    node: beside,
+                    ix: None,
+                    activate: Some(panel) == focused,
+                };
+                area.move_panel(panel, into, window, cx);
+            }
+        });
+        if let Some(panel) = focused {
+            Self::focus_panel(&dock_area, panel, window, cx);
+        }
         cx.notify();
     }
 

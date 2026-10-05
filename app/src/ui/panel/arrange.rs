@@ -25,6 +25,10 @@ actions!(
         MovePanelRight,
         MovePanelUp,
         MovePanelDown,
+        MergeGroupLeft,
+        MergeGroupRight,
+        MergeGroupUp,
+        MergeGroupDown,
         ClosePanelGroup
     ]
 );
@@ -195,7 +199,7 @@ type CommandRow = (
     fn() -> Box<dyn Action>,
 );
 
-const COMMANDS: [CommandRow; 9] = [
+const COMMANDS: [CommandRow; 13] = [
     (
         "panel.split_left",
         "Panels: Split Group Left",
@@ -243,6 +247,30 @@ const COMMANDS: [CommandRow; 9] = [
         "Panels: Move Panel Down",
         "cmd-alt-down",
         || Box::new(MovePanelDown),
+    ),
+    (
+        "panel.merge_left",
+        "Panels: Merge Group Left",
+        "cmd-alt-shift-left",
+        || Box::new(MergeGroupLeft),
+    ),
+    (
+        "panel.merge_right",
+        "Panels: Merge Group Right",
+        "cmd-alt-shift-right",
+        || Box::new(MergeGroupRight),
+    ),
+    (
+        "panel.merge_up",
+        "Panels: Merge Group Up",
+        "cmd-alt-shift-up",
+        || Box::new(MergeGroupUp),
+    ),
+    (
+        "panel.merge_down",
+        "Panels: Merge Group Down",
+        "cmd-alt-shift-down",
+        || Box::new(MergeGroupDown),
     ),
     (
         "panel.close_group",

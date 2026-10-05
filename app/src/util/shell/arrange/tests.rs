@@ -214,6 +214,27 @@ async fn move_takes_the_panel_beside_and_an_emptied_pane_goes(cx: &mut TestAppCo
     );
 }
 
+/// 5.1: Merge Right moves the focused group's panels, in order, into the group
+/// to the right and removes the pane; with nothing that way, nothing changes.
+#[gpui_kit::test]
+async fn merge_joins_the_group_beside_in_order(cx: &mut TestAppContext) {
+    let mut h = harness(cx, Some(svc()));
+    h.press("cmd-k right");
+    h.press("cmd-alt-shift-right");
+    assert_eq!(
+        h.groups(),
+        [vec![pods(), svc()], vec![svc()]],
+        "nothing right of the right pane: unchanged"
+    );
+
+    h.press("cmd-alt-shift-left");
+    assert_eq!(
+        h.groups(),
+        [vec![pods(), svc(), svc()]],
+        "appended, in order"
+    );
+}
+
 /// 4.1: a group with nothing to lose closes at once; one with an unsaved edit
 /// asks once - Cancel closes nothing, Close Group closes every panel in it.
 #[gpui_kit::test]
@@ -283,7 +304,7 @@ async fn close_group_asks_only_when_something_would_be_lost(cx: &mut TestAppCont
     );
 }
 
-/// 2.2, 3.2, 4.2: every arrange command is offered in the dock's context
+/// 2.2, 3.2, 4.2, 5.2: every arrange command is offered in the dock's context
 /// with its default key, and a first-run keymap.toml lists it.
 #[test]
 fn every_arrange_command_is_registered_and_in_the_first_run_keymap() {
@@ -296,7 +317,7 @@ fn every_arrange_command_is_registered_and_in_the_first_run_keymap() {
         })
         .map(|command| command.id)
         .collect();
-    assert_eq!(ids.len(), 9, "{ids:?}");
+    assert_eq!(ids.len(), 13, "{ids:?}");
     let path = crate::util::test_paths::temp_path("arrange-keymap");
     let _ = std::fs::remove_file(&path);
     crate::keymap::load(&path, &registry);
