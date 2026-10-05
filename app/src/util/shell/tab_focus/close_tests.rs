@@ -1,7 +1,8 @@
 //! `tab-close-buttons` 4.3: with the Resource panel collapsed and one tab group,
 //! every close of the focused panel - by its close control or `Cmd-W`,
 //! alternating - leaves a panel focused, and the focus commands work from a
-//! window where only the root has focus.
+//! window where only the root has focus. And #135: `Cmd-W` past the last tab
+//! closes the window, from a tab or the Resource panel, without panicking.
 
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::ClusterRegistry;
@@ -259,4 +260,45 @@ async fn the_focus_commands_work_from_a_window_with_nothing_focused(cx: &mut Tes
             .update(|window, cx| resource.contains_focused(window, cx)),
         "Cmd-0 expanded and focused the Resource panel"
     );
+}
+
+fn windows(cx: &mut TestAppContext) -> usize {
+    cx.update(|cx| cx.windows().len())
+}
+
+/// #135: `Cmd-W` on the last tab closes it, and `Cmd-W` again - nothing on
+/// screen - closes the window. That second close records the window's layout,
+/// which reads `MainWindow`; read inside its own `Cmd-W` handler, it panicked.
+#[gpui_kit::test]
+async fn cmd_w_closes_the_last_tab_then_the_window(cx: &mut TestAppContext) {
+    let mut h = harness(cx);
+    assert_eq!(panels(&mut h).len(), 1);
+    press(&mut h.vcx, CLOSE_KEY);
+    assert_eq!(panels(&mut h).len(), 0, "the tab closed");
+    assert_eq!(windows(cx), 1, "the window stays");
+    press(&mut h.vcx, CLOSE_KEY);
+    assert_eq!(windows(cx), 0, "the empty window closed");
+}
+
+/// #135, from the Resource panel: `Cmd-W` closes the displayed tab, then the
+/// window.
+#[gpui_kit::test]
+async fn cmd_w_from_the_resource_panel_closes_the_tab_then_the_window(cx: &mut TestAppContext) {
+    let mut h = harness(cx);
+    let main = h.main.clone();
+    h.vcx.update(|window, cx| {
+        let resource = main
+            .read(cx)
+            .test_resource_panel()
+            .expect("a workspace")
+            .read(cx)
+            .focus_handle();
+        resource.focus(window, cx);
+    });
+    h.vcx.run_until_parked();
+    press(&mut h.vcx, CLOSE_KEY);
+    assert_eq!(panels(&mut h).len(), 0, "the displayed tab closed");
+    assert_eq!(windows(cx), 1);
+    press(&mut h.vcx, CLOSE_KEY);
+    assert_eq!(windows(cx), 0, "then the window");
 }
