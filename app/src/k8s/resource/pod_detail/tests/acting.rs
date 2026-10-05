@@ -9,7 +9,7 @@ use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::port_forwards::{PortForwardRequest, PortForwards};
 use crate::k8s::cluster::session::ClusterRegistry;
-use crate::k8s::resource::pod_detail::actions::{NOTICE_ID, hint_selector};
+use crate::k8s::resource::pod_detail::actions::hint_selector;
 use crate::k8s::resource::pod_detail::model::DetailView;
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
 use crate::k8s::resource::pod_detail::register_commands;
@@ -275,11 +275,6 @@ async fn shift_f_forwards_the_pods_port(cx: &mut TestAppContext) {
             pod: "web-1".into(),
             remote_port: 18_094,
         }]
-    );
-    harness.vcx.update(|window, cx| window.render_frame(cx));
-    assert!(
-        harness.vcx.debug_bounds(NOTICE_ID).is_some(),
-        "it says where it listens"
     );
 }
 

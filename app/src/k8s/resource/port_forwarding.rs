@@ -150,10 +150,37 @@ pub(crate) fn start(
     })
 }
 
-/// What the panel says once a forward started.
-pub(crate) fn started_notice(addr: SocketAddr, target: &str, port: u16) -> String {
-    format!("Forwarding {addr} to {target}:{port}. Stop it in Manage Tunnels.")
+/// Reports a forward that didn't start as a transient notification naming the
+/// target, the port when one was chosen, and why (`port-forward-indicators`
+/// 2.2). A started one needs no report: its row's Forwards cell shows it.
+pub(crate) fn notify_failure(
+    target: &str,
+    port: Option<u16>,
+    reason: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    use gpui_kit::component::WindowExt as _;
+    use gpui_kit::component::notification::Notification;
+    let title = match port {
+        Some(port) => format!("Couldn't forward {target}:{port}"),
+        None => format!("Couldn't forward {target}"),
+    };
+    #[cfg(test)]
+    cx.default_global::<NotifiedFailures>()
+        .0
+        .push((title.clone(), reason.to_string()));
+    window.push_notification(Notification::error(reason.to_string()).title(title), cx);
 }
+
+/// Test-only record of every failure notification: gpui-component keeps a
+/// window's notification list private, so tests read what was pushed here.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct NotifiedFailures(pub(crate) Vec<(String, String)>);
+
+#[cfg(test)]
+impl gpui_kit::Global for NotifiedFailures {}
 
 /// Asks which of `choices` to forward, then calls `chosen` with it. Keyboard:
 /// Tab to a port, Space or Enter; Escape or Cancel to back out.

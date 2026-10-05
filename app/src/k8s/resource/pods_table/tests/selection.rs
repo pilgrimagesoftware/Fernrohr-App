@@ -239,6 +239,7 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
                 pod_ip: "10.0.0.5".into(),
                 node: "node-e".into(),
                 age_secs: 50,
+                forwards: 0,
             },
             selection: PodSelection {
                 namespace: "ns-e".into(),
@@ -246,6 +247,7 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
                 containers: Vec::new(),
                 context_name: "ctx".into(),
             },
+            forwards: Vec::new(),
         },
     );
 

@@ -128,7 +128,8 @@ async fn shift_f_on_a_running_pod_forwards_its_port(cx: &mut TestAppContext) {
     assert_eq!(h.forwards(), 1, "shift-f started the forward");
 }
 
-/// A running pod that declares no port says why it can't forward.
+/// A running pod that declares no port says why it can't forward - in a
+/// notification, not inside the panel (`port-forward-indicators` 2.2).
 #[gpui_kit::test]
 async fn shift_f_on_a_running_pod_without_ports_says_why(cx: &mut TestAppContext) {
     let mut h = harness(cx, running_pod(&[]));
@@ -137,7 +138,18 @@ async fn shift_f_on_a_running_pod_without_ports_says_why(cx: &mut TestAppContext
     h.press("shift-f");
     assert_eq!(h.forwards(), 0);
     assert!(!h.vcx.update(|window, cx| window.has_active_dialog(cx)));
-    assert!(h.drawn(FAILURE_ID.to_string()), "it says it has no ports");
+    let notified = h.vcx.update(|_, cx| {
+        cx.try_global::<crate::k8s::resource::port_forwarding::NotifiedFailures>()
+            .map(|failures| failures.0.clone())
+            .unwrap_or_default()
+    });
+    assert!(
+        notified
+            .iter()
+            .any(|(_, reason)| reason.contains("declares no container ports")),
+        "it says it has no ports: {notified:?}"
+    );
+    assert!(!h.drawn(FAILURE_ID.to_string()), "and nothing in the panel");
 }
 
 #[gpui_kit::test]

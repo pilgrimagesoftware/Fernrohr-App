@@ -65,6 +65,8 @@ impl Render for PodsPanel {
             ConnectionState::Connected(_) => {
                 let now = Timestamp::now();
                 let namespaces = &self.scope.namespaces;
+                let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+                let forwards = forwards.read(cx);
                 let items: Vec<PodTableRow> = self
                     .table
                     .read(cx)
@@ -83,9 +85,19 @@ impl Render for PodsPanel {
                             containers,
                             context_name: self.scope.context_name.clone(),
                         };
+                        let forwards = forwards.for_object(
+                            &crate::k8s::cluster::port_forwards::ForwardObject::pod(
+                                &selection.context_name,
+                                &selection.namespace,
+                                &selection.name,
+                            ),
+                        );
+                        let mut row = pod_row(pod, now);
+                        row.forwards = forwards.len();
                         PodTableRow {
-                            row: pod_row(pod, now),
+                            row,
                             selection,
+                            forwards,
                         }
                     })
                     .collect();
@@ -106,7 +118,6 @@ impl Render for PodsPanel {
                     .flex_col()
                     .p(space.panel_inset)
                     .children(self.render_action_failure(cx))
-                    .children(self.render_action_notice(cx))
                     .child(
                         div()
                             .flex_1()

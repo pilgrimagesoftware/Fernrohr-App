@@ -5,6 +5,7 @@ pub mod confirm_dialog;
 pub mod confirm_text;
 pub mod copy;
 pub mod detail;
+pub mod forward_indicator;
 pub mod icon;
 pub mod link;
 pub mod list_keys;

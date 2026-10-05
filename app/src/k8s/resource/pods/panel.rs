@@ -32,9 +32,6 @@ pub struct PodsPanel {
     /// The last row action the cluster refused, shown above the table until
     /// dismissed or the next action.
     pub(super) action_failure: Option<super::actions::PodActionFailure>,
-    /// What the last row action did, when it says something - where a
-    /// port-forward listens - until the next action.
-    pub(super) action_notice: Option<String>,
 }
 
 impl PodsPanel {
@@ -69,6 +66,10 @@ impl PodsPanel {
         })
         .detach();
         cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
+        // Redrawn on any forward starting or stopping, from here or elsewhere,
+        // for the Forwards column (`port-forward-indicators` 2.1).
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         cx.on_release({
             let context_name = context_name.clone();
             move |this: &mut Self, cx| {
@@ -90,7 +91,6 @@ impl PodsPanel {
             pod_table: None,
             quick_look: None,
             action_failure: None,
-            action_notice: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this

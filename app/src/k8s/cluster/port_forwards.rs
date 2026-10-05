@@ -70,8 +70,6 @@ impl ForwardObject {
 
 /// One forward as an object's surfaces show it: which forward (to stop it by),
 /// where it listens, the port it reaches, and its state.
-// UNWIRED(#149): the Forwards column (section 2) is the first reader.
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ForwardSummary {
     pub request: PortForwardRequest,
@@ -110,6 +108,13 @@ impl PortForwards {
         let entity = cx.new(|_| Self::default());
         cx.set_global(PortForwardsGlobal(entity.clone()));
         entity
+    }
+
+    /// The app's forwards if any surface has made them yet - for a reader with
+    /// only `&App`, to which no list means no forwards.
+    pub fn existing(cx: &App) -> Option<Entity<Self>> {
+        cx.try_global::<PortForwardsGlobal>()
+            .map(|global| global.0.clone())
     }
 
     /// Starts forwarding `request` through `client`, started from `origin`, or
@@ -218,8 +223,6 @@ impl PortForwards {
 
     /// `object`'s forwards, in request order: for a Pod, every forward reaching
     /// it; for a Service, every forward started from it.
-    // UNWIRED(#149): see `ForwardSummary`.
-    #[allow(dead_code)]
     pub fn for_object(&self, object: &ForwardObject) -> Vec<ForwardSummary> {
         self.held
             .iter()

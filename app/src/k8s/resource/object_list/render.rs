@@ -148,7 +148,6 @@ impl ObjectListPanel {
                     .on_action(cx.listener(Self::on_action_clear_filter))
                     .child(Input::new(&filter)),
             )
-            .children(self.render_forward_message(cx))
             .children(self.render_refusal(cx))
             .child({
                 let context = self.table_key_context();

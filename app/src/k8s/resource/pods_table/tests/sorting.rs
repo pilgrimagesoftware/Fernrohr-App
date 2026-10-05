@@ -28,6 +28,7 @@ fn compare_orders_rows_by_every_column() {
         pod_ip: "10.0.0.1".into(),
         node: "node-a".into(),
         age_secs: 100,
+        forwards: 1,
     };
     let b = PodRow {
         status_tone: crate::ui::style::Tone::Neutral,
@@ -41,6 +42,7 @@ fn compare_orders_rows_by_every_column() {
         pod_ip: "10.0.0.2".into(),
         node: "node-b".into(),
         age_secs: 200,
+        forwards: 2,
     };
 
     for col in PodColumn::DEFAULT_ORDER {
@@ -135,6 +137,7 @@ fn set_rows_keeps_an_active_sort_applied() {
                 pod_ip: "10.0.0.5".into(),
                 node: "node-e".into(),
                 age_secs: 50,
+                forwards: 0,
             },
             selection: PodSelection {
                 namespace: "ns-e".into(),
@@ -142,6 +145,7 @@ fn set_rows_keeps_an_active_sort_applied() {
                 containers: Vec::new(),
                 context_name: "ctx".into(),
             },
+            forwards: Vec::new(),
         },
     );
     delegate.set_rows(updated.clone());
@@ -187,6 +191,7 @@ fn moving_columns_renders_each_visual_position_from_its_own_column() {
             pod_ip: "10.0.0.9".into(),
             node: "node-z".into(),
             age_secs: 60,
+            forwards: 0,
         },
         selection: PodSelection {
             namespace: "default".into(),
@@ -194,12 +199,13 @@ fn moving_columns_renders_each_visual_position_from_its_own_column() {
             containers: Vec::new(),
             context_name: "ctx".into(),
         },
+        forwards: Vec::new(),
     }]);
 
-    // Default order: [Name, Namespace, Ready, Status, Restarts, Age, Ip, Node].
-    delegate.reorder_columns(7, 0); // Node to the front.
+    // Default order: [Name, Namespace, Ready, Status, Forwards, Restarts, Age, Ip, Node].
+    delegate.reorder_columns(8, 0); // Node to the front.
     delegate.reorder_columns(2, 0); // Namespace (now at index 2) to the front.
-    // Now: [Namespace, Node, Name, Ready, Status, Restarts, Age, Ip].
+    // Now: [Namespace, Node, Name, Ready, Status, Forwards, Restarts, Age, Ip].
     assert_eq!(
         delegate.cell_text_at(0, 0),
         "default",

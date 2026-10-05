@@ -168,4 +168,15 @@ async fn a_service_forwards_its_chosen_port_to_a_running_pod(cx: &mut TestAppCon
         [expected],
         "port 80's `http` target is the pod's 18083"
     );
+
+    // `port-forward-indicators` 2.1: the Service's own row shows it.
+    vcx.update(|window, cx| {
+        use gpui_kit::test::TestWindowExt as _;
+        window.render_frame(cx)
+    });
+    let selector: &'static str = crate::ui::forward_indicator::selector("web").leak();
+    assert!(
+        vcx.debug_bounds(selector).is_some(),
+        "the Service's row shows its forward"
+    );
 }
