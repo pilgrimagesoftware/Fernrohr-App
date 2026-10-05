@@ -5,7 +5,7 @@ use super::commands::{
     CONFIGURATION_TAB_KEY, CONTAINERS_TAB_KEY, EVENTS_TAB_KEY, MANAGED_FIELDS_TAB_KEY,
     OVERVIEW_TAB_KEY, PANEL_KEY_CONTEXT, SelectConfigurationTab, SelectContainersTab,
     SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab, SelectVolumesTab, TOGGLE_VIEW_KEY,
-    ToggleDetailView, VOLUMES_TAB_KEY,
+    ToggleDetailView, VIEW_LOGS_KEY, VOLUMES_TAB_KEY, ViewLogs,
 };
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
@@ -193,6 +193,18 @@ impl Render for PodDetailPanel {
                 .unwrap_or_else(|| {
                     Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
                 });
+        let logs_key = Kbd::binding_for_action(&ViewLogs, Some(PANEL_KEY_CONTEXT), window)
+            .unwrap_or_else(|| {
+                Kbd::new(Keystroke::parse(VIEW_LOGS_KEY).expect("valid keybinding"))
+            });
+        let logs_hint = div()
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap_1()
+            .whitespace_nowrap()
+            .child(logs_key)
+            .child("Logs");
         let toggle_hint = div()
             .flex()
             .items_center()
@@ -285,6 +297,7 @@ impl Render for PodDetailPanel {
                                 .test_support(),
                         )
                     })
+                    .child(logs_hint)
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 

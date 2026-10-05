@@ -1,19 +1,34 @@
-//! View Logs (`l`): before the pod loads it does nothing, and its key never
-//! fires inside a text field. Opening Logs from a loaded panel is the window's
-//! test (`util::shell::pod_detail_logs_tests`).
+//! View Logs (`l`): from a loaded panel it publishes the pod - containers in
+//! spec order, so Logs starts on the first - and asks for Logs; before the pod
+//! loads it does nothing; and its key never fires inside a text field.
 
+use super::fixtures::rich_pod;
 use super::panel::{registered_bindings, stub_panel};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::resource::pod_detail::commands::{PANEL_KEY_CONTEXT, ViewLogs};
-use crate::k8s::resource::pods::SelectedPod;
+use crate::k8s::resource::pod_detail::fetch::PodDetailState;
+use crate::k8s::resource::pods::{PodSelection, SelectedPod};
 use crate::keymap::KeymapConfig;
 use crate::ui::nav::ShowLogs;
 use gpui_kit::{
     Context, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render,
     TestAppContext, VisualTestContext, Window, div,
 };
+use k8s_openapi::api::core::v1::{Container, Pod};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// `rich_pod` with a sidecar after its `app` container.
+fn two_container_pod() -> Pod {
+    let mut pod = rich_pod();
+    if let Some(spec) = pod.spec.as_mut() {
+        spec.containers.push(Container {
+            name: "sidecar".into(),
+            ..Default::default()
+        });
+    }
+    pod
+}
 
 /// Counts every `ShowLogs` that reaches the app - the window would turn each
 /// into an open (or focus) of the Logs panel.
@@ -29,6 +44,39 @@ fn count_show_logs(cx: &mut TestAppContext) -> Arc<AtomicUsize> {
         });
     });
     count
+}
+
+/// 2.2, 3.2: `l` on a loaded two-container pod publishes it with its
+/// containers in spec order - Logs defaults to the first, as from the Pods
+/// list - and asks for Logs once.
+#[gpui_kit::test]
+async fn l_on_a_loaded_pod_asks_for_its_logs(cx: &mut TestAppContext) {
+    let shown = count_show_logs(cx);
+    let window = stub_panel(cx, ConnectionState::Connecting);
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    window
+        .update(&mut vcx, |panel, window, cx| {
+            panel.state = PodDetailState::Loaded(Box::new(two_container_pod()));
+            panel.focus_handle.clone().focus(window, cx);
+            cx.notify();
+        })
+        .unwrap();
+    vcx.run_until_parked();
+
+    vcx.simulate_keystrokes("l");
+    vcx.run_until_parked();
+
+    assert_eq!(shown.load(Ordering::SeqCst), 1, "Logs was asked for");
+    let selected = vcx.update(|_, cx| cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()));
+    assert_eq!(
+        selected,
+        Some(PodSelection {
+            namespace: "staging".into(),
+            name: "api-7d9f-ftg5t".into(),
+            containers: vec!["app".into(), "sidecar".into()],
+            context_name: "kind-dev".into(),
+        })
+    );
 }
 
 /// 2.1: before the pod has loaded there is nothing to show logs for.
