@@ -101,7 +101,10 @@ impl MainWindow {
         }
         let tunneled = self.contexts_losing_a_tunnel(cx);
         if tunneled.is_empty() {
-            close_window(window, cx);
+            // Deferred: closing records the window's layout, which reads this
+            // `MainWindow` - still mid-update here, so reading it now panics
+            // (#135). Once this handler returns, the read is free.
+            window.defer(cx, close_window);
         } else {
             open_close_window_dialog(tunneled, window, cx);
         }
