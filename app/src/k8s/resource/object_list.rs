@@ -6,6 +6,7 @@
 mod background;
 mod columns;
 mod commands;
+mod delete;
 mod panel;
 mod poll;
 mod port_forward;

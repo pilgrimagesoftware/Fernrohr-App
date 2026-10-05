@@ -34,7 +34,8 @@ impl PodsPanel {
         };
         self.clear_action_report(cx);
         let on_done = self.on_deleted(&target, false, cx);
-        delete_flow::confirm_delete(target, on_done, window, cx);
+        let connection = self.connection.clone();
+        delete_flow::confirm_delete(target, connection, on_done, window, cx);
     }
 
     /// `KillPod`: deletes the selected pod at once, with no grace period and
@@ -50,7 +51,8 @@ impl PodsPanel {
         };
         self.clear_action_report(cx);
         let on_done = self.on_deleted(&target, true, cx);
-        delete_flow::send_delete(target, true, on_done, cx);
+        let connection = self.connection.clone();
+        delete_flow::send_delete(target, &connection, true, on_done, cx);
     }
 
     /// The selected pod, as a delete addresses it.

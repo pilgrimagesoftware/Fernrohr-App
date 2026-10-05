@@ -3,9 +3,9 @@
 //! won't list.
 
 use super::commands::{
-    DESCRIBE_KEY, DescribeSelected, FILTER_KEY, FocusFilter, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY,
-    OPEN_KEY, OpenInBackground, OpenSelected, PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList,
-    ShowSelectedYaml, WarpNamespace, YAML_KEY,
+    DELETE_KEY, DESCRIBE_KEY, DeleteSelected, DescribeSelected, FILTER_KEY, FocusFilter,
+    NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OPEN_KEY, OpenInBackground, OpenSelected,
+    PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList, ShowSelectedYaml, WarpNamespace, YAML_KEY,
 };
 use super::panel::ObjectListPanel;
 use super::store::ListMode;
@@ -105,6 +105,24 @@ impl ObjectListPanel {
         if polled {
             hints = hints.child(Self::hint(&RefreshList, REFRESH_KEY, "Refresh", window));
         }
+        if self.deletable() {
+            let key = Kbd::binding_for_action(
+                &DeleteSelected,
+                Some(super::delete::DELETABLE_KEY_CONTEXT),
+                window,
+            )
+            .unwrap_or_else(|| {
+                Kbd::new(Keystroke::parse(DELETE_KEY).expect("a valid default key"))
+            });
+            hints = hints.child(
+                div()
+                    .flex()
+                    .gap_1()
+                    .items_center()
+                    .child(key)
+                    .child("Delete"),
+            );
+        }
         if self.kind.namespaced {
             hints = hints.child(Self::hint(
                 &WarpNamespace,
@@ -126,14 +144,23 @@ impl ObjectListPanel {
                     .child(Input::new(&filter)),
             )
             .children(self.render_forward_message(cx))
+            .children(self.render_refusal(cx))
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
-                    .when(self.lists_services(), |this| {
-                        this.key_context(super::port_forward::SERVICES_KEY_CONTEXT)
+                    .when(self.deletable(), |this| {
+                        this.key_context(super::delete::DELETABLE_KEY_CONTEXT)
                     })
-                    .child(data_table(&table, cx)),
+                    .on_action(cx.listener(Self::on_action_delete_selected))
+                    .child(
+                        div()
+                            .size_full()
+                            .when(self.lists_services(), |this| {
+                                this.key_context(super::port_forward::SERVICES_KEY_CONTEXT)
+                            })
+                            .child(data_table(&table, cx)),
+                    ),
             )
             .child(
                 div()

@@ -19,7 +19,8 @@ actions!(
         RefreshList,
         PortForwardService,
         OpenInBackground,
-        EditSelected
+        EditSelected,
+        DeleteSelected
     ]
 );
 
@@ -80,6 +81,8 @@ const DESCRIBE_COMMAND_ID: &str = "object_list.describe";
 const YAML_COMMAND_ID: &str = "object_list.yaml";
 const FIT_COMMAND_ID: &str = "object_list.fit_columns";
 const REFRESH_COMMAND_ID: &str = "object_list.refresh";
+/// The Pods list's delete key, so every list deletes alike.
+pub(super) const DELETE_KEY: &str = "ctrl-d";
 /// k9s's port-forward key, as the Pods panel's.
 pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
 
@@ -93,6 +96,15 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: PORT_FORWARD_KEY,
         context: Some("ServicesList && !Input"),
         action: Box::new(PortForwardService),
+        menu: None,
+    });
+    // Only in a list of a kind discovery says can be deleted (`delete`).
+    registry.register(Command {
+        id: "object_list.delete",
+        title: "List: Delete Selected Object",
+        default_binding: DELETE_KEY,
+        context: Some("DeletableList && !Input"),
+        action: Box::new(DeleteSelected),
         menu: None,
     });
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {

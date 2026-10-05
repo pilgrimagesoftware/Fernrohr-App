@@ -11,9 +11,8 @@
 //! Owns the question and the request's round trip, not which panel offers the
 //! command or how it shows a refusal ([`refusal`]).
 
-use crate::k8s::cluster::connection::ConnectionState;
+use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::DiscoveredKind;
-use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::resource_actions::{self, ActionFailure};
 use crate::ui::confirm_dialog::{self, Confirmation};
 use crate::ui::confirm_text::ConfirmText;
@@ -63,10 +62,11 @@ impl DeleteTarget {
     }
 }
 
-/// Asks before deleting `target`, then deletes it if the user confirms -
-/// telling `on_done` how it went.
+/// Asks before deleting `target` over `connection`, then deletes it if the
+/// user confirms - telling `on_done` how it went.
 pub(crate) fn confirm_delete(
     target: DeleteTarget,
+    connection: Entity<ClusterConnection>,
     on_done: OnDeleted,
     window: &mut Window,
     cx: &mut App,
@@ -79,17 +79,23 @@ pub(crate) fn confirm_delete(
     };
     confirm_dialog::open(
         confirmation,
-        move |_window, cx| send_delete(target.clone(), false, on_done.clone(), cx),
+        move |_window, cx| send_delete(target.clone(), &connection, false, on_done.clone(), cx),
         window,
         cx,
     );
 }
 
-/// Deletes `target` now - `force` for a zero-grace kill - and tells
-/// `on_done` how it went once the cluster answers. A context that isn't
-/// connected refuses at once.
-pub(crate) fn send_delete(target: DeleteTarget, force: bool, on_done: OnDeleted, cx: &mut App) {
-    let connection = ClusterRegistry::connection(cx, &target.context_name);
+/// Deletes `target` over `connection` now - `force` for a zero-grace kill -
+/// and tells `on_done` how it went once the cluster answers. A connection
+/// that isn't up refuses at once. The client is read here, at send time, so
+/// a confirmation left open across a reconnect uses the current one.
+pub(crate) fn send_delete(
+    target: DeleteTarget,
+    connection: &Entity<ClusterConnection>,
+    force: bool,
+    on_done: OnDeleted,
+    cx: &mut App,
+) {
     let ConnectionState::Connected(client) = &connection.read(cx).state else {
         on_done(
             Err(ActionFailure {
