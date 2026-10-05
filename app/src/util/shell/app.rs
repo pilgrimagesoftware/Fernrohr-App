@@ -85,6 +85,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     tunnels::register_commands(registry);
     crate::k8s::resource::pods::register_commands(registry);
     crate::util::logs::register_commands(registry);
+    crate::ui::namespace_jump::register_commands(registry);
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::ui::status_bar::register_commands(registry);

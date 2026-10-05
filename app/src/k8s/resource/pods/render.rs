@@ -270,7 +270,7 @@ impl Render for PodsPanel {
         if self.quick_look.is_some() {
             key_context.add(QUICK_LOOK_KEY_CONTEXT);
         }
-        div()
+        let panel = div()
             .size_full()
             .key_context(key_context)
             .track_focus(&self.focus_handle)
@@ -304,6 +304,13 @@ impl Render for PodsPanel {
                     .child(div().flex_1().min_h_0().child(content)),
             )
             // Tab stays in the panel: see `ui::panel::focus`.
-            .focus_trap("pods-panel-tab-trap", &self.focus_handle)
+            .focus_trap("pods-panel-tab-trap", &self.focus_handle);
+        // Namespace quick-jump's context, as its own frame around the panel so
+        // it's on the focus path with the panel or its table focused.
+        div()
+            .size_full()
+            .key_context(crate::ui::namespace_jump::KEY_CONTEXT)
+            .on_action(cx.listener(Self::on_action_jump_namespace))
+            .child(panel)
     }
 }

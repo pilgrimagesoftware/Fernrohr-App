@@ -174,6 +174,20 @@ impl PodsPanel {
         );
     }
 
+    /// `JumpToNamespace` (`alt-<n>`): scopes the list to the namespace at that
+    /// position in its namespace list, or to all at 0; past the end, nothing.
+    pub(super) fn on_action_jump_namespace(
+        &mut self,
+        action: &crate::ui::namespace_jump::JumpToNamespace,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let names = self.namespaces.read(cx).names().to_vec();
+        if let Some(namespaces) = crate::ui::namespace_jump::scope_for(&names, action.position) {
+            self.set_namespaces(namespaces, cx);
+        }
+    }
+
     /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
     /// what Warp All to Namespace applies to every namespaced panel in a context.
     pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
@@ -354,5 +368,7 @@ impl Panel for PodsPanel {
 
 #[cfg(test)]
 mod list_keys_tests;
+#[cfg(test)]
+mod namespace_jump_tests;
 #[cfg(test)]
 mod tests;

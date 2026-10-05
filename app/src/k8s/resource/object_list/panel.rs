@@ -358,6 +358,23 @@ impl ObjectListPanel {
         self.set_namespaces(vec![namespace], cx);
     }
 
+    /// `JumpToNamespace` (`alt-<n>`): scopes a namespaced list to the namespace at
+    /// that position in its namespace list, or to all at 0; past the end, nothing.
+    pub(super) fn on_action_jump_namespace(
+        &mut self,
+        action: &crate::ui::namespace_jump::JumpToNamespace,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.kind.namespaced {
+            return;
+        }
+        let names = self.namespaces.read(cx).names().to_vec();
+        if let Some(namespaces) = crate::ui::namespace_jump::scope_for(&names, action.position) {
+            self.set_namespaces(namespaces, cx);
+        }
+    }
+
     /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
     /// what Warp All to Namespace applies to every namespaced panel in a context.
     pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {

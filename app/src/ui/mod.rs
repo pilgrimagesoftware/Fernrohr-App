@@ -7,6 +7,7 @@ pub mod link;
 pub mod list_keys;
 pub mod menu;
 pub mod namespace_filter;
+pub mod namespace_jump;
 pub mod namespace_picker;
 pub mod namespace_sets;
 pub mod nav;
