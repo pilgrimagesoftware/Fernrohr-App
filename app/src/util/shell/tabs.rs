@@ -104,7 +104,7 @@ impl MainWindow {
             // Deferred: closing records the window's layout, which reads this
             // `MainWindow` - still mid-update here, so reading it now panics
             // (#135). Once this handler returns, the read is free.
-            window.defer(cx, |window, cx| close_window(window, cx));
+            window.defer(cx, close_window);
         } else {
             open_close_window_dialog(tunneled, window, cx);
         }
