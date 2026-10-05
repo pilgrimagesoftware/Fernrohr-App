@@ -133,6 +133,7 @@ async fn a_kind_without_watch_is_polled_and_refresh_relists(cx: &mut TestAppCont
     let kind = component_statuses(KindVerbs {
         list: true,
         watch: false,
+        delete: true,
     });
 
     let table = cx.update(|cx| ClusterRegistry::subscribe_kind(cx, "kind-dev", client, &kind));
@@ -156,6 +157,7 @@ async fn a_kind_without_list_is_unlistable(cx: &mut TestAppContext) {
     let kind = component_statuses(KindVerbs {
         list: false,
         watch: false,
+        delete: true,
     });
 
     let table = cx.update(|cx| ClusterRegistry::subscribe_kind(cx, "kind-dev", client, &kind));

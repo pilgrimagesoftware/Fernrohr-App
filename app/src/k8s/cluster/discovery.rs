@@ -34,22 +34,25 @@ pub struct DiscoveredKind {
     pub verbs: KindVerbs,
 }
 
-/// The verbs a list panel cares about. A kind that can be listed but not
+/// The verbs the panels care about. A kind that can be listed but not
 /// watched (`componentstatuses`) is polled instead; one that can't be listed
-/// at all says so rather than showing an empty table.
+/// at all says so rather than showing an empty table. Only a kind that can be
+/// deleted offers Delete (`k9s-remaining-keybindings`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KindVerbs {
     pub list: bool,
     pub watch: bool,
+    pub delete: bool,
 }
 
-/// Both, as every kind but a handful supports - what a kind built without
-/// discovery (a restored layout, a test) assumes.
+/// All three, as every kind but a handful supports - what a kind built
+/// without discovery (a restored layout, a test) assumes.
 impl Default for KindVerbs {
     fn default() -> Self {
         Self {
             list: true,
             watch: true,
+            delete: true,
         }
     }
 }
@@ -280,6 +283,7 @@ pub(crate) async fn discover_kinds_within(
                         verbs: KindVerbs {
                             list: capabilities.supports_operation(verbs::LIST),
                             watch: capabilities.supports_operation(verbs::WATCH),
+                            delete: capabilities.supports_operation(verbs::DELETE),
                         },
                     });
                 }

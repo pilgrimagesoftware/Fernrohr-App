@@ -123,7 +123,7 @@ async fn a_refused_delete_shows_why_and_keeps_the_row(cx: &mut TestAppContext) {
 
     harness.vcx.update(|_, cx| {
         let failure = harness.panel.read(cx).action_failure.clone().unwrap();
-        assert_eq!(failure.action, "Kill pod web-1");
+        assert_eq!(failure.action, "Kill Pod web-1");
         assert!(
             failure.failure.message.starts_with("Forbidden: "),
             "{failure:?}"

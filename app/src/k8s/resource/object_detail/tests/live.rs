@@ -142,6 +142,7 @@ async fn a_polled_kinds_object_updates_on_the_next_list(cx: &mut TestAppContext)
         verbs: KindVerbs {
             list: true,
             watch: false,
+            delete: true,
         },
         ..kind("apps", "v1", "Deployment", true)
     };
