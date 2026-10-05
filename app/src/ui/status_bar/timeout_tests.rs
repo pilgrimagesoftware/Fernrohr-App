@@ -35,6 +35,8 @@ struct Counts {
 /// status bar watching its window.
 struct Host {
     focus: FocusHandle,
+    /// Somewhere outside the dock to move focus to.
+    elsewhere: FocusHandle,
     counts: Rc<Counts>,
     bar: Option<Entity<StatusBarView>>,
 }
@@ -48,12 +50,21 @@ impl Render for Host {
         );
         div()
             .size_full()
-            .track_focus(&self.focus)
-            .key_context(DOCK_KEY_CONTEXT)
-            .on_action(move |_: &Short, _, _| short.short.set(short.short.get() + 1))
-            .on_action(move |_: &Long, _, _| long.long.set(long.long.get() + 1))
-            .on_action(move |_: &ClosePanelGroup, _, _| closed.closed.set(closed.closed.get() + 1))
-            .children(self.bar.clone())
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .flex_1()
+                    .track_focus(&self.focus)
+                    .key_context(DOCK_KEY_CONTEXT)
+                    .on_action(move |_: &Short, _, _| short.short.set(short.short.get() + 1))
+                    .on_action(move |_: &Long, _, _| long.long.set(long.long.get() + 1))
+                    .on_action(move |_: &ClosePanelGroup, _, _| {
+                        closed.closed.set(closed.closed.get() + 1)
+                    })
+                    .children(self.bar.clone()),
+            )
+            .child(div().track_focus(&self.elsewhere).child("elsewhere"))
     }
 }
 
@@ -92,6 +103,7 @@ fn harness(cx: &mut TestAppContext, timeout: Option<u8>) -> Harness {
         });
         let host = cx.new(|cx| Host {
             focus: cx.focus_handle(),
+            elsewhere: cx.focus_handle(),
             counts: counts.clone(),
             bar: Some(bar),
         });
@@ -163,6 +175,38 @@ async fn a_chord_that_changes_mid_wait_cancels_it(cx: &mut TestAppContext) {
     assert!(!h.pending());
     h.wait(10_000);
     assert_eq!(h.counts.short.get(), 0, "the cancelled wait runs nothing");
+}
+
+/// A focus change mid-wait drops the chord: the indicator clears, the
+/// extension's timer is cancelled rather than left to fire later, and the
+/// shorter binding never runs - in the new focus or the old.
+#[gpui_kit::test]
+async fn a_focus_change_mid_wait_cancels_it(cx: &mut TestAppContext) {
+    let mut h = harness(cx, None);
+    h.press("ctrl-b");
+    h.wait(500);
+    let bar = h
+        .host
+        .read_with(&h.vcx, |host, _| host.bar.clone())
+        .expect("the bar");
+    let extending = h.vcx.read_entity(&bar, |bar, _| bar.extension.is_some());
+    assert!(extending, "the bar is extending the wait");
+
+    let host = h.host.clone();
+    h.vcx.update(|window, cx| {
+        let elsewhere = host.read(cx).elsewhere.clone();
+        elsewhere.focus(window, cx);
+    });
+    h.vcx.run_until_parked();
+    let (chord, extension) = h.vcx.read_entity(&bar, |bar, _| {
+        (bar.pending_chord(), bar.extension.is_some())
+    });
+    assert_eq!(chord, None, "the indicator clears");
+    assert!(!extension, "the extension's timer is cancelled");
+
+    h.wait(10_000);
+    assert_eq!(h.counts.short.get(), 0, "the shorter binding never runs");
+    assert_eq!(h.counts.long.get(), 0);
 }
 
 /// A bar that goes away mid-wait - its window closing - releases the pause,
