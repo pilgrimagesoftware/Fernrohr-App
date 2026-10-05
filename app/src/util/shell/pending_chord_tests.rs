@@ -124,7 +124,11 @@ async fn cmd_k_shows_the_pending_keys_and_five_completions(cx: &mut TestAppConte
     h.press("cmd-k");
     assert_eq!(
         h.chord(),
-        Some((vec!["cmd-k".to_string()], ARRANGE_CHORDS.to_vec()))
+        // `cmd` is the platform key: it reads back as `super-k` on Linux.
+        Some((
+            vec![gpui_kit::Keystroke::parse("cmd-k").unwrap().unparse()],
+            ARRANGE_CHORDS.to_vec()
+        ))
     );
     assert!(h.drawn(INDICATOR_SELECTOR.to_string()));
     for id in ARRANGE_CHORDS {
