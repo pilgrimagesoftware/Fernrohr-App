@@ -10,8 +10,8 @@
 
 use super::*;
 use crate::ui::panel::arrange::{
-    self, Direction, MovePanelDown, MovePanelLeft, MovePanelRight, MovePanelUp, SplitGroupDown,
-    SplitGroupLeft, SplitGroupRight, SplitGroupUp,
+    self, ClosePanelGroup, Direction, MovePanelDown, MovePanelLeft, MovePanelRight, MovePanelUp,
+    SplitGroupDown, SplitGroupLeft, SplitGroupRight, SplitGroupUp,
 };
 use crate::ui::panel::tabs;
 use gpui_kit::component::dock::{InsertTarget, NodeId};
@@ -41,6 +41,9 @@ impl MainWindow {
             .on_action(cx.listener(move |t, _: &MovePanelRight, w, cx| mr(t, w, cx)))
             .on_action(cx.listener(move |t, _: &MovePanelUp, w, cx| mu(t, w, cx)))
             .on_action(cx.listener(move |t, _: &MovePanelDown, w, cx| md(t, w, cx)))
+            .on_action(
+                cx.listener(|this, _: &ClosePanelGroup, window, cx| this.close_group(window, cx)),
+            )
     }
 
     /// The dock, and the centre-region group focus is in - none from outside one.
@@ -146,6 +149,43 @@ impl MainWindow {
         cx.notify();
     }
 
+    /// Closes every panel of the focused group - asking first, once, when any
+    /// would lose something by closing (a running shell, an unsaved edit).
+    fn close_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((dock_area, node)) = self.focused_center_group(window, cx) else {
+            return;
+        };
+        let Some(group) = tabs::tabs_of(dock_area.read(cx), node) else {
+            return;
+        };
+        let warnings: Vec<String> = group
+            .panels
+            .iter()
+            .filter_map(|&panel| close_warning(dock_area.read(cx), panel, cx))
+            .collect();
+        if warnings.is_empty() {
+            close_panels(&dock_area, &group.panels, window, cx);
+            return;
+        }
+        let panels = group.panels.clone();
+        let confirmation = super::tabs::CloseConfirmation {
+            title: "Close Group?",
+            body: format!(
+                "Closing this group closes {} panels. {}",
+                panels.len(),
+                warnings.join(" ")
+            ),
+            confirm: "Close Group",
+            id_prefix: "close-group",
+        };
+        super::tabs::open_close_confirmation(
+            confirmation,
+            move |window, cx| close_panels(&dock_area, &panels, window, cx),
+            window,
+            cx,
+        );
+    }
+
     fn focus_panel(
         dock_area: &Entity<DockArea>,
         panel: PanelId,
@@ -155,6 +195,45 @@ impl MainWindow {
         if let Some(view) = dock_area.read(cx).panel(panel) {
             window.focus(&view.focus_handle(cx), cx);
         }
+    }
+}
+
+/// What closing `panel` would cost, from the panels that can say.
+fn close_warning(area: &DockArea, panel: PanelId, cx: &App) -> Option<String> {
+    match nav::opened_panel_for(area, panel, cx)? {
+        OpenedPanel::Exec(panel) => panel.read(cx).close_warning(),
+        OpenedPanel::ObjectDetail(panel) => panel.read(cx).close_warning(),
+        OpenedPanel::Pods(_)
+        | OpenedPanel::ObjectList(_)
+        | OpenedPanel::Events(_)
+        | OpenedPanel::Placeholder(_)
+        | OpenedPanel::Logs(_)
+        | OpenedPanel::PodDetail(_) => None,
+    }
+}
+
+/// Closes each of `panels` through the dock's own close, as its tab's close
+/// button does.
+fn close_panels(
+    dock_area: &Entity<DockArea>,
+    panels: &[PanelId],
+    window: &mut Window,
+    cx: &mut App,
+) {
+    for &panel in panels {
+        let Some(opened) = nav::opened_panel_for(dock_area.read(cx), panel, cx) else {
+            continue;
+        };
+        dock_area.update(cx, |area, cx| match opened {
+            OpenedPanel::Pods(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::ObjectList(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::Events(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::ObjectDetail(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::Exec(panel) => area.remove_panel(panel, window, cx),
+        });
     }
 }
 

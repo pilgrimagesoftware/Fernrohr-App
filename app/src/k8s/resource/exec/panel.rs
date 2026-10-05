@@ -244,6 +244,17 @@ impl ExecPanel {
         this
     }
 
+    /// What closing the panel would cost, when it costs something: a running
+    /// session ends with it (`panel-move-keybindings`' Close Group asks first).
+    pub fn close_warning(&self) -> Option<String> {
+        (self.state == SessionState::Running).then(|| {
+            format!(
+                "The shell in {} \u{00b7} {} ends.",
+                self.target.pod, self.target.container
+            )
+        })
+    }
+
     /// The input line, for tests to type into.
     #[cfg(test)]
     pub(crate) fn input(&self) -> Entity<InputState> {
