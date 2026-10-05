@@ -84,7 +84,7 @@ impl TunnelsWindow {
     /// `~/.kube/config`, the same default every other kubeconfig read uses) and
     /// `Some(fixture)` in tests, so the stale-bindings check never depends on this
     /// machine's real kubeconfig.
-    fn new(
+    pub(super) fn new(
         tunnels_path: PathBuf,
         kubeconfig_path: Option<PathBuf>,
         window: &mut Window,
