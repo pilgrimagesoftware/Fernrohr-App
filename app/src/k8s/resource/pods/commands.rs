@@ -25,7 +25,8 @@ actions!(
         KillPod,
         ShellPod,
         PortForwardPod,
-        OpenInBackground
+        OpenInBackground,
+        EditPod
     ]
 );
 
@@ -66,6 +67,8 @@ pub(super) const KILL_KEY: &str = "ctrl-k";
 pub(super) const SHELL_KEY: &str = "s";
 /// k9s's port-forward key.
 pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
+/// k9s's edit key, as every list's (#140).
+pub(super) const EDIT_KEY: &str = "e";
 pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
 pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
@@ -122,6 +125,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu,
         });
     };
+    register(
+        "pods.edit",
+        "Pods: Edit Selected Pod's YAML",
+        EDIT_KEY,
+        Box::new(EditPod),
+        None,
+    );
     register(
         QUICK_LOOK_COMMAND_ID,
         "Pods: Quick Look",

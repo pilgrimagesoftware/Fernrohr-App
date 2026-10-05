@@ -15,7 +15,8 @@ actions!(
         SelectEventsTab,
         SelectManagedFieldsTab,
         HideSecretValues,
-        ViewLogs
+        ViewLogs,
+        EditPodYaml
     ]
 );
 
@@ -39,6 +40,8 @@ pub(super) const VIEW_LOGS_KEY: &str = "l";
 /// Where View Logs is bound: the panel minus any text field in it, so its
 /// bare letter never fires while typing.
 pub(super) const VIEW_LOGS_CONTEXT: &str = "PodDetailPanel && !Input";
+/// k9s's edit key, as the object panel's and every list's (#140).
+pub(super) const EDIT_KEY: &str = "e";
 
 const TOGGLE_VIEW_COMMAND_ID: &str = "pod_detail.toggle_view";
 const OVERVIEW_TAB_COMMAND_ID: &str = "pod_detail.tab_overview";
@@ -142,6 +145,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: VIEW_LOGS_KEY,
         context: Some(VIEW_LOGS_CONTEXT),
         action: Box::new(ViewLogs),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "pod_detail.edit",
+        title: "Pod Detail: Edit YAML",
+        default_binding: EDIT_KEY,
+        context: Some(VIEW_LOGS_CONTEXT),
+        action: Box::new(EditPodYaml),
         menu: None,
     });
     super::window_commands::register_commands(registry);

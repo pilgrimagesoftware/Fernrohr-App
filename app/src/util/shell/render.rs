@@ -150,6 +150,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_follow_reference))
             .on_action(cx.listener(Self::on_action_open_listed_object))
             .on_action(cx.listener(Self::on_action_open_pod_in_background))
+            .on_action(cx.listener(Self::on_action_edit_listed_object))
             .on_action(cx.listener(Self::on_action_toggle_resource_panel))
             .on_action(cx.listener(Self::on_action_move_resource_panel))
             .on_action(cx.listener(Self::on_action_add_context))

@@ -5,7 +5,7 @@
 
 use super::ObjectListPanel;
 use crate::k8s::resource::object_list::commands::{
-    DescribeSelected, RefreshList, ShowSelectedYaml,
+    DescribeSelected, EditListedObject, EditSelected, RefreshList, ShowSelectedYaml,
 };
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::list_keys::{self, Step};
@@ -33,6 +33,28 @@ impl ObjectListPanel {
         if let Some(row_ix) = self.selected_row(cx) {
             self.open_row_as(row_ix, Some(DetailView::Yaml), window, cx);
         }
+    }
+
+    /// `e`: edits the selected row's YAML in its detail panel.
+    pub(in crate::k8s::resource::object_list) fn on_action_edit_selected(
+        &mut self,
+        _: &EditSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(target) = self
+            .selected_row(cx)
+            .and_then(|row_ix| self.row_target(row_ix, cx))
+        else {
+            return;
+        };
+        window.dispatch_action(
+            Box::new(EditListedObject {
+                context_name: self.scope.context_name.clone(),
+                target,
+            }),
+            cx,
+        );
     }
 
     /// Fits every column to its contents (`ui::table_fit`).

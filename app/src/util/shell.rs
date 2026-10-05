@@ -53,6 +53,8 @@ pub(crate) use exec::OpenExecSession;
 pub(crate) use warp::WarpContextToNamespace;
 #[cfg(test)]
 mod chord_precedence_tests;
+#[cfg(test)]
+mod edit_yaml_tests;
 mod open;
 mod panel_focus;
 mod panels;

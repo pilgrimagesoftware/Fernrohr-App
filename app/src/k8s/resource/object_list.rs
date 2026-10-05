@@ -17,7 +17,7 @@ mod table;
 mod watch;
 
 pub(crate) use commands::LIST_KEY_CONTEXT;
-pub use commands::{OpenListedObject, register_commands};
+pub use commands::{EditListedObject, OpenListedObject, register_commands};
 pub use panel::ObjectListPanel;
 pub use restore::register_restore;
 #[cfg(test)]
