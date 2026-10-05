@@ -51,6 +51,8 @@ mod namespace_sets;
 mod warp;
 pub(crate) use exec::OpenExecSession;
 pub(crate) use warp::WarpContextToNamespace;
+#[cfg(test)]
+mod chord_precedence_tests;
 mod open;
 mod panel_focus;
 mod panels;

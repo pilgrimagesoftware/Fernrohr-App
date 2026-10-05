@@ -33,7 +33,9 @@ pub(crate) use commands::{AddContext, DisconnectActiveContext, register_commands
 /// The chord indicator's debug selectors, for tests outside this module.
 #[cfg(test)]
 pub(crate) mod chord_selectors {
-    pub(crate) use super::chord::{INDICATOR_SELECTOR, MORE_SELECTOR, completion_selector};
+    pub(crate) use super::chord::{
+        INDICATOR_SELECTOR, MORE_SELECTOR, POPOVER_SELECTOR, completion_selector,
+    };
 }
 
 /// The bar's height at the default text size - layout-only, so it stays local rather

@@ -106,9 +106,38 @@ pub fn apply(cx: &mut App, id: &str, edit: Edit) -> std::io::Result<()> {
                 command.action.boxed_clone(),
                 mapper.as_ref(),
             ));
+            // Bound after the new key, the chords it starts stay reachable:
+            // GPUI keeps a chord pending against a complete shorter binding
+            // only when the chord was bound later (see `super::bindings`).
+            for other in registry.iter().filter(|other| other.id != command.id) {
+                if let Some(keys) = bound_keys(other, &config, mapper.as_ref())
+                    && starts(new, &keys)
+                {
+                    changes.extend(load_binding(
+                        other,
+                        &keys,
+                        other.action.boxed_clone(),
+                        mapper.as_ref(),
+                    ));
+                }
+            }
         }
     }
     cx.global_mut::<LiveKeymap>().config = config;
     cx.bind_keys(changes);
     Ok(())
+}
+
+/// Whether `prefix` is a proper prefix of `keys`, keystroke by keystroke
+/// after parsing, so equivalent spellings compare equal.
+fn starts(prefix: &str, keys: &str) -> bool {
+    let parse = |keys: &str| -> Option<Vec<gpui_kit::Keystroke>> {
+        keys.split_whitespace()
+            .map(|key| gpui_kit::Keystroke::parse(key).ok())
+            .collect()
+    };
+    match (parse(prefix), parse(keys)) {
+        (Some(prefix), Some(keys)) => prefix.len() < keys.len() && keys.starts_with(&prefix),
+        _ => false,
+    }
 }
