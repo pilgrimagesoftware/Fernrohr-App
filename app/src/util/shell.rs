@@ -56,6 +56,8 @@ mod panel_focus;
 mod panels;
 mod persist;
 #[cfg(test)]
+mod pod_detail_logs_tests;
+#[cfg(test)]
 mod quick_look_window_tests;
 mod render;
 mod resource_edge;

@@ -12,8 +12,8 @@
 //! and [`format`] the `Pod` -> field-list projection itself,
 //! [`container_detail`] a container card's expanded fields, [`references`]
 //! the objects that projection points at, [`fetch`] the
-//! one-shot read, and [`panel`], [`field_view`], [`container_view`] and [`render`] the dock panel
-//! that draws it.
+//! one-shot read, [`logs`] its View Logs action, and [`panel`], [`field_view`], [`container_view`]
+//! and [`render`] the dock panel that draws it.
 
 mod commands;
 mod configuration;
@@ -27,6 +27,7 @@ mod format;
 pub(crate) mod glance;
 mod live;
 pub(super) mod live_events;
+mod logs;
 pub(super) mod managed_fields_view;
 mod model;
 mod panel;

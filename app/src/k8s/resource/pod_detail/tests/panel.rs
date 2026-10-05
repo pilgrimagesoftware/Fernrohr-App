@@ -4,7 +4,7 @@
 use super::fixtures::{field, rich_pod};
 use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
-use crate::k8s::resource::pod_detail::commands::PANEL_KEY_CONTEXT;
+use crate::k8s::resource::pod_detail::commands::{PANEL_KEY_CONTEXT, VIEW_LOGS_CONTEXT};
 use crate::k8s::resource::pod_detail::fetch::PodDetailState;
 use crate::k8s::resource::pod_detail::model::{DetailSection, DetailView, PodFieldValue};
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
@@ -17,7 +17,10 @@ use jiff::Timestamp;
 
 /// The panel's bindings as the app builds them: from its registered commands,
 /// through `keymap::bindings`, with `keymap`'s overrides.
-fn registered_bindings(keymap: &KeymapConfig, cx: &gpui_kit::App) -> Vec<gpui_kit::KeyBinding> {
+pub(super) fn registered_bindings(
+    keymap: &KeymapConfig,
+    cx: &gpui_kit::App,
+) -> Vec<gpui_kit::KeyBinding> {
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
     crate::keymap::bindings(&registry, keymap, cx.keyboard_mapper().as_ref())
@@ -273,18 +276,19 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let commands: Vec<_> = registry.iter().collect();
     assert_eq!(
         commands.len(),
-        18,
+        19,
         "the view toggle, six tabs, Hide Secret Values, the Events tab's seven window \
-         commands, Fold/Unfold All YAML, and Copy Resource Name"
+         commands, Fold/Unfold All YAML, Copy Resource Name, and View Logs"
     );
     assert!(
-        commands
-            .iter()
-            .all(|command| command.context == Some(PANEL_KEY_CONTEXT) && command.menu.is_none()),
+        commands.iter().all(|command| {
+            matches!(command.context, Some(PANEL_KEY_CONTEXT | VIEW_LOGS_CONTEXT))
+                && command.menu.is_none()
+        }),
         "panel shortcuts are panel-scoped and stay out of the menu bar"
     );
     assert!(registry.available(&[]).is_empty());
-    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 18);
+    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 19);
 
     let mut keymap = KeymapConfig::default();
     keymap
