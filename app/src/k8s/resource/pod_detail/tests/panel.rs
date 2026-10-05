@@ -276,21 +276,41 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let commands: Vec<_> = registry.iter().collect();
     assert_eq!(
         commands.len(),
-        20,
+        24,
         "the view toggle, six tabs, Hide Secret Values, the Events tab's seven window \
-         commands, Fold/Unfold All YAML, Copy Resource Name, View Logs, and Edit YAML"
+         commands, Fold/Unfold All YAML, Copy Resource Name, View Logs, Edit YAML, and \
+         Delete, Kill, Shell and Port Forward on the panel's pod"
     );
     assert!(
         commands.iter().all(|command| {
-            matches!(command.context, Some(PANEL_KEY_CONTEXT | VIEW_LOGS_CONTEXT))
-                && command.menu.is_none()
+            matches!(
+                command.context,
+                Some(
+                    PANEL_KEY_CONTEXT
+                        | VIEW_LOGS_CONTEXT
+                        | "PodDetailShellable && !Input"
+                        | "DeletablePod && !Input"
+                )
+            ) && command.menu.is_none()
         }),
         "panel shortcuts are panel-scoped and stay out of the menu bar"
     );
     assert!(registry.available(&[]).is_empty());
-    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 20);
+    assert_eq!(
+        registry.available(&[PANEL_KEY_CONTEXT]).len(),
+        21,
+        "all but Shell, which needs a running container, and Delete and Kill, \
+         which need a pod that can be deleted"
+    );
+    assert_eq!(
+        registry
+            .available(&[PANEL_KEY_CONTEXT, "PodDetailShellable", "DeletablePod"])
+            .len(),
+        24
+    );
 
     let mut keymap = KeymapConfig::default();
+    // `v`, not `e`: `e` is now Edit YAML's key in this panel (#140).
     keymap
         .bindings
         .insert("pod_detail.tab_events".into(), "v".into());

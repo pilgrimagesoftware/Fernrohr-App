@@ -199,3 +199,57 @@ async fn e_on_a_secret_row_says_why_it_cannot(cx: &mut TestAppContext) {
     assert!(!editing);
     assert!(notice.is_some_and(|notice| notice.contains("Secret")));
 }
+
+/// A kind discovery lists no `patch` for - read-only, like an aggregated
+/// metrics kind - offers no Edit: no context for `e`, and `e` on its row
+/// opens no editor.
+#[gpui_kit::test]
+async fn e_on_a_read_only_kinds_row_does_nothing(cx: &mut TestAppContext) {
+    let read_only = DiscoveredKind {
+        verbs: crate::k8s::cluster::discovery::KindVerbs {
+            patch: false,
+            ..Default::default()
+        },
+        ..kind("apps", "Deployment", "deployments")
+    };
+    let mut h = harness(cx, NavTarget::Kind(read_only));
+    h.wait_for("listed the object", |h| h.row_drawn());
+    h.press("down");
+    let editable = h.vcx.update(|window, _| {
+        window.context_stack().iter().any(|context| {
+            context.contains(crate::k8s::resource::object_list::EDITABLE_KEY_CONTEXT)
+        })
+    });
+    assert!(!editable, "no Edit context");
+    h.press("e");
+    assert_eq!(h.object_panel("web"), None, "no object panel, no editor");
+}
+
+/// Every Edit command is guarded outside text fields, and its `e` clashes
+/// with no other default - the same key, or one starting another's chord.
+#[test]
+fn the_edit_keys_clash_with_nothing() {
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    for id in [
+        "object_list.edit",
+        "pods.edit",
+        "pod_detail.edit",
+        "object_detail.edit",
+    ] {
+        let command = registry.get(id).expect("registered");
+        assert!(
+            command
+                .context
+                .is_some_and(|context| context.contains("!Input")),
+            "{id} is guarded outside text fields"
+        );
+        let clashes = crate::keymap::conflicts(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            id,
+            command.default_binding,
+        );
+        assert!(!clashes.any_clash(), "{id}: {clashes:?}");
+    }
+}

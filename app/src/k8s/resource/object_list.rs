@@ -6,6 +6,7 @@
 mod background;
 mod columns;
 mod commands;
+mod delete;
 mod panel;
 mod poll;
 mod port_forward;
@@ -16,6 +17,8 @@ mod store;
 mod table;
 mod watch;
 
+#[cfg(test)]
+pub(crate) use commands::EDITABLE_KEY_CONTEXT;
 pub(crate) use commands::LIST_KEY_CONTEXT;
 pub use commands::{EditListedObject, OpenListedObject, register_commands};
 pub use panel::ObjectListPanel;

@@ -6,13 +6,13 @@
 //! module moves focus and dispatches, since the window owns the dock.
 
 use super::*;
+use crate::ui::confirm_dialog::{self, Confirmation};
+use crate::ui::confirm_text::ConfirmText;
 use crate::ui::menu::CloseWindow;
 use crate::ui::panel::tabs::{
     self, NextTab, PreviousTab, SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5,
     SelectTab6, SelectTab7, SelectTab8, SelectTab9, TabTarget,
 };
-use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::dock::{ClosePanel, DockLayout, Panel};
 
 impl MainWindow {
@@ -151,77 +151,27 @@ pub(super) fn losing_a_tunnel(
         .collect()
 }
 
-/// What a close that would lose something asks first: the window's one close
-/// confirmation, shared by Close Window (a tunnel would disconnect) and Close
-/// Group (a shell would end, an edit be lost) so every close asks alike.
-pub(super) struct CloseConfirmation {
-    /// "Close Window?"
-    pub(super) title: &'static str,
-    /// What closing loses.
-    pub(super) body: String,
-    /// The confirm button's label: "Close Window".
-    pub(super) confirm: &'static str,
-    /// The buttons' ids are `<id_prefix>-cancel` and `<id_prefix>-confirm`.
-    pub(super) id_prefix: &'static str,
-}
-
-/// Asks `confirmation`, running `on_confirm` only if the user confirms;
-/// Cancel, or Escape, closes nothing.
-pub(super) fn open_close_confirmation(
-    confirmation: CloseConfirmation,
-    on_confirm: impl Fn(&mut Window, &mut App) + 'static,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let on_confirm = std::rc::Rc::new(on_confirm);
-    let CloseConfirmation {
-        title,
-        body,
-        confirm,
-        id_prefix,
-    } = confirmation;
-    window.open_dialog(cx, move |dialog, _window, _cx| {
-        let on_confirm = on_confirm.clone();
-        dialog.title(title).child(body.clone()).footer(
-            DialogFooter::new()
-                .child(
-                    Button::new(SharedString::from(format!("{id_prefix}-cancel")))
-                        .label("Cancel")
-                        .on_click(|_event, window, cx| {
-                            window.close_dialog(cx);
-                        }),
-                )
-                .child(
-                    Button::new(SharedString::from(format!("{id_prefix}-confirm")))
-                        .label(confirm)
-                        .with_variant(gpui_kit::component::button::ButtonVariant::Danger)
-                        .on_click(move |_event, window, cx| {
-                            window.close_dialog(cx);
-                            on_confirm(window, cx);
-                        }),
-                ),
-        )
-    });
-}
-
 /// "Close Window?" naming the contexts whose tunnel will disconnect - the
 /// context bar's Disconnect dialog, with Close Window as the confirm.
 fn open_close_window_dialog(tunneled: Vec<String>, window: &mut Window, cx: &mut App) {
-    let confirmation = CloseConfirmation {
-        title: "Close Window?",
+    let confirmation = Confirmation {
+        title: "Close Window?".into(),
         body: close_window_confirmation_body(&tunneled),
-        confirm: "Close Window",
+        confirm: "Close Window".into(),
         id_prefix: "close-window",
     };
-    open_close_confirmation(confirmation, close_window, window, cx);
+    confirm_dialog::open(confirmation, close_window, window, cx);
 }
 
 /// The confirmation's body: which contexts' tunnels will disconnect.
-pub(super) fn close_window_confirmation_body(tunneled: &[String]) -> String {
-    match tunneled {
-        [context_name] => format!("The tunnel for {context_name} will disconnect."),
-        names => format!("The tunnels for {} will disconnect.", names.join(", ")),
-    }
+pub(super) fn close_window_confirmation_body(tunneled: &[String]) -> ConfirmText {
+    let lead = match tunneled {
+        [_] => "The tunnel for ",
+        _ => "The tunnels for ",
+    };
+    ConfirmText::from(lead)
+        .names(tunneled)
+        .text(" will disconnect.")
 }
 
 /// Closes `panel` in the window `window` belongs to: the title bar close

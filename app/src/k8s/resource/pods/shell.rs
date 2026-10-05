@@ -8,6 +8,7 @@
 
 use super::*;
 use crate::k8s::resource::exec::ExecTarget;
+use crate::ui::confirm_text::ConfirmText;
 use crate::util::shell::OpenExecSession;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -70,39 +71,53 @@ impl PodsPanel {
         let Some((selection, running)) = self.shell_candidates(cx) else {
             return;
         };
-        if let [container] = running.as_slice() {
-            open_shell(&selection, container, window, cx);
-            return;
-        }
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            let mut footer = DialogFooter::new();
-            for container in &running {
-                let (selection, container) = (selection.clone(), container.clone());
-                footer = footer.child(
-                    Button::new(container_button_id(&container))
-                        .label(container.clone())
-                        .primary()
-                        .on_click(move |_event, window, cx| {
-                            window.close_dialog(cx);
-                            open_shell(&selection, &container, window, cx);
-                        }),
-                );
-            }
-            dialog
-                .title("Shell into Which Container?")
-                .child(format!(
-                    "Pod {} runs more than one container.",
-                    selection.name
-                ))
-                .footer(
-                    footer.child(Button::new(CANCEL_SHELL_ID).label("Cancel").on_click(
-                        |_event, window, cx| {
-                            window.close_dialog(cx);
-                        },
-                    )),
-                )
-        });
+        shell_into(selection, running, window, cx);
     }
+}
+
+/// Opens a shell in `selection`'s pod: in its one running container, or -
+/// with several in `running` - after asking which. Shared by the Pods list
+/// and the pod detail panel, so both ask alike.
+pub(crate) fn shell_into(
+    selection: PodSelection,
+    running: Vec<String>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if let [container] = running.as_slice() {
+        open_shell(&selection, container, window, cx);
+        return;
+    }
+    window.open_dialog(cx, move |dialog, _window, cx| {
+        let mut footer = DialogFooter::new();
+        for container in &running {
+            let (selection, container) = (selection.clone(), container.clone());
+            footer = footer.child(
+                Button::new(container_button_id(&container))
+                    .label(container.clone())
+                    .primary()
+                    .on_click(move |_event, window, cx| {
+                        window.close_dialog(cx);
+                        open_shell(&selection, &container, window, cx);
+                    }),
+            );
+        }
+        dialog
+            .title("Shell into Which Container?")
+            .child(
+                ConfirmText::from("Pod ")
+                    .name(&selection.name)
+                    .text(" runs more than one container.")
+                    .render(cx),
+            )
+            .footer(
+                footer.child(Button::new(CANCEL_SHELL_ID).label("Cancel").on_click(
+                    |_event, window, cx| {
+                        window.close_dialog(cx);
+                    },
+                )),
+            )
+    });
 }
 
 fn open_shell(selection: &PodSelection, container: &str, window: &mut Window, cx: &mut App) {

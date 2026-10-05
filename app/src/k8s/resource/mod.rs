@@ -1,3 +1,4 @@
+pub(crate) mod delete_flow;
 pub(crate) mod events;
 pub(crate) mod events_browser;
 pub(crate) mod exec;

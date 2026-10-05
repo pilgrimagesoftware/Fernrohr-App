@@ -1,6 +1,8 @@
 pub mod about_window;
 pub mod accent;
 pub mod background_rows;
+pub mod confirm_dialog;
+pub mod confirm_text;
 pub mod copy;
 pub mod detail;
 pub mod icon;

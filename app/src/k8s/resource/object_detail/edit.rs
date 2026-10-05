@@ -61,6 +61,14 @@ impl ObjectDetailPanel {
         if self.edit.is_some() {
             return;
         }
+        if !self.verbs(cx).patch {
+            self.edit_notice = Some(format!(
+                "{} can't be edited: the server doesn't allow changing it.",
+                self.target.kind.gvk.kind
+            ));
+            cx.notify();
+            return;
+        }
         if self.target.kind.gvk.group.is_empty() && self.target.kind.gvk.kind == "Secret" {
             self.edit_notice =
                 Some("A Secret can't be edited here: its values are hidden in this view.".into());
@@ -201,12 +209,13 @@ impl ObjectDetailPanel {
     /// What closing the panel would cost, when it costs something: an edit not
     /// yet saved is lost with it (`panel-move-keybindings`' Close Group asks
     /// first).
-    pub fn close_warning(&self) -> Option<String> {
+    pub(crate) fn close_warning(&self) -> Option<crate::ui::confirm_text::ConfirmText> {
         self.edit.as_ref().map(|_| {
-            format!(
-                "The unsaved edit to {} {} is lost.",
-                self.target.kind.gvk.kind, self.target.name
+            crate::ui::confirm_text::ConfirmText::from(
+                format!("The unsaved edit to {} ", self.target.kind.gvk.kind).as_str(),
             )
+            .name(&self.target.name)
+            .text(" is lost.")
         })
     }
 

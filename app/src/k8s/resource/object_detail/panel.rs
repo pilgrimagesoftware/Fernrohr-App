@@ -56,6 +56,8 @@ pub struct ObjectDetailPanel {
         std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
     /// The YAML view's folds and scroll position.
     pub(super) yaml_view: crate::ui::yaml_view::YamlViewState,
+    /// The last delete the cluster refused, shown until dismissed (`delete`).
+    pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -123,6 +125,7 @@ impl ObjectDetailPanel {
             pending_edit: false,
             revealed: Default::default(),
             yaml_view: Default::default(),
+            refusal: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);

@@ -152,11 +152,12 @@ impl ShortcutsSection {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .child(format!("{keys} {summary}. Apply anyway? (Enter / Escape)")),
+                            .child(format!("{keys} {summary}. Apply anyway?")),
                     )
                     .child(
                         Button::new(SharedString::from(format!("shortcut-apply-{id}")))
                             .label("Apply")
+                            .child(prompt_key("enter"))
                             .xsmall()
                             .on_click(move |_event, _window, cx| {
                                 let _ = apply.update(cx, |this, cx| this.confirm(cx));
@@ -165,6 +166,7 @@ impl ShortcutsSection {
                     .child(
                         Button::new(SharedString::from(format!("shortcut-cancel-{id}")))
                             .label("Cancel")
+                            .child(prompt_key("escape"))
                             .xsmall()
                             .ghost()
                             .on_click(move |_event, _window, cx| {
@@ -219,6 +221,13 @@ impl ShortcutsSection {
 }
 
 /// A binding as key caps - one per keystroke, so chords show both.
+/// The key that answers the conflict prompt - Enter applies, Escape cancels.
+/// The recorder takes them straight from the keystroke, not from a binding,
+/// so the hint is the literal key, in the hint rows' `Kbd` style.
+fn prompt_key(key: &str) -> Kbd {
+    Kbd::new(Keystroke::parse(key).expect("valid keystroke"))
+}
+
 fn keys_element(keys: &str) -> impl IntoElement {
     div().flex().gap_1().children(
         keys.split_whitespace()

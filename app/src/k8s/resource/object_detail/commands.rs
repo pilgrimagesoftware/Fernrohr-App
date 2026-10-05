@@ -11,7 +11,8 @@ actions!(
         HideSecretValues,
         EditObject,
         SaveObjectEdit,
-        CancelObjectEdit
+        CancelObjectEdit,
+        DeleteObject
     ]
 );
 
@@ -26,6 +27,9 @@ const TOGGLE_VIEW_COMMAND_ID: &str = "object_detail.toggle_view";
 const HIDE_SECRET_VALUES_COMMAND_ID: &str = "object_detail.hide_secret_values";
 const HIDE_SECRET_VALUES_KEY: &str = "h";
 
+/// Added beside [`PANEL_KEY_CONTEXT`] while the object's kind can be patched,
+/// so Edit is offered only then.
+pub const EDITABLE_KEY_CONTEXT: &str = "EditableObject";
 /// Added beside [`PANEL_KEY_CONTEXT`] while the object is being edited, so Save
 /// and Cancel's keys mean that only then (`k9s-remaining-keybindings` 2).
 pub const EDIT_KEY_CONTEXT: &str = "ObjectYamlEdit";
@@ -33,6 +37,8 @@ pub const EDIT_KEY_CONTEXT: &str = "ObjectYamlEdit";
 pub(super) const EDIT_KEY: &str = "e";
 pub(super) const SAVE_EDIT_KEY: &str = "cmd-s";
 pub(super) const CANCEL_EDIT_KEY: &str = "escape";
+/// The lists' delete key, so an object deletes alike wherever it is shown.
+pub(super) const DELETE_KEY: &str = "ctrl-d";
 
 /// `object_detail.toggle_view`: a palette entry while an object panel has
 /// focus, a `keymap.toml` override by id, and its binding (the registry's
@@ -51,7 +57,8 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "object_detail.edit",
         title: "Object Detail: Edit YAML",
         default_binding: EDIT_KEY,
-        context: Some(PANEL_KEYS_CONTEXT),
+        // Only for a kind the server lets a client patch.
+        context: Some("EditableObject && !Input"),
         action: Box::new(EditObject),
         menu: None,
     });
@@ -69,6 +76,15 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: CANCEL_EDIT_KEY,
         context: Some(EDIT_KEY_CONTEXT),
         action: Box::new(CancelObjectEdit),
+        menu: None,
+    });
+    // Only while the panel's object can be deleted (`delete`).
+    registry.register(Command {
+        id: "object_detail.delete",
+        title: "Object Detail: Delete Object",
+        default_binding: DELETE_KEY,
+        context: Some("DeletableObject && !Input"),
+        action: Box::new(DeleteObject),
         menu: None,
     });
     registry.register(Command {

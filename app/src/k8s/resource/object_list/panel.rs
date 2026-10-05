@@ -43,6 +43,8 @@ pub struct ObjectListPanel {
     pub(super) initial_layout: ColumnLayout,
     /// How the last port-forward went, in a Services list (`port_forward`).
     pub(super) forward_message: Option<super::port_forward::ForwardMessage>,
+    /// The last delete the cluster refused, shown until dismissed (`delete`).
+    pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
 }
 
 impl ObjectListPanel {
@@ -87,6 +89,7 @@ impl ObjectListPanel {
             filter: None,
             initial_layout: Vec::new(),
             forward_message: None,
+            refusal: None,
         };
         this.subscribe_if_connected(&connection, cx);
         this
@@ -119,6 +122,7 @@ impl ObjectListPanel {
             filter: None,
             initial_layout: Vec::new(),
             forward_message: None,
+            refusal: None,
         }
     }
 

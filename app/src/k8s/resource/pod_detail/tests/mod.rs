@@ -6,6 +6,7 @@
 //! `gpui_kit::*` re-exports its own `test` macro, which would shadow
 //! `core::prelude::v1::test` for the plain synchronous tests.
 
+mod acting;
 mod collapse;
 mod config_fixture;
 mod configuration;
