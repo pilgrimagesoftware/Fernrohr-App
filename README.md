@@ -57,6 +57,39 @@ xattr -d com.apple.quarantine "/Applications/Fernrohr.app"
 Or open it once from System Settings → Privacy & Security → Open Anyway. Builds made before
 signing landed still need `codesign --force --sign - "/Applications/Fernrohr.app"` as well.
 
+## Installing on Linux
+
+Each release has Linux packages for x86_64 and for arm64 (aarch64). Pick the one for your system:
+
+| Package | For | Install |
+|---|---|---|
+| `.deb` | Debian, Ubuntu and derivatives | `sudo apt install ./fernrohr_<version>_amd64.deb` (`_arm64.deb` on arm64) |
+| `.rpm` | Fedora, RHEL and derivatives | `sudo dnf install ./fernrohr-<version>-1.x86_64.rpm` (`.aarch64.rpm` on arm64) |
+| AppImage | Any distribution, without installing | `chmod +x fernrohr_<version>_x86_64.AppImage`, then run it |
+
+The `.deb` and `.rpm` bring in what Fernrohr needs at run time:
+
+- **`openssh-client`** (`openssh-clients` on Fedora): Fernrohr runs `ssh` for SSH tunnels.
+- **`libsecret`**: Fernrohr stores tunnel keys and other credentials through the Secret Service.
+  A Secret Service provider has to be running for that, so the packages recommend one
+  (`gnome-keyring`, KWallet or KeePassXC). Most desktops already run one, and it can be any of
+  them.
+
+The AppImage bundles `libsecret` but can't install anything, so the host needs `ssh` on its `PATH`
+and a running Secret Service provider.
+
+### Verifying a download
+
+Each release also has a `SHA256SUMS` file. Download it into the same directory as the package,
+then check the package against it:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+The package's line should end in `OK`. `--ignore-missing` skips the other packages listed in the
+file that you didn't download.
+
 ## Keyboard
 
 Every action is a command in the command palette (⌘⇧P), and you can change any command's key in

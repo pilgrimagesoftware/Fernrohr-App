@@ -253,3 +253,54 @@ jobs:
             target/${{ matrix.target }}/release/*.deb \
             target/${{ matrix.target }}/generate-rpm/*.rpm \
             --clobber
+
+  # SHA256SUMS over every package every leg built (`linux-packaging-hardening`
+  # 4.1). A fan-in, so a failed leg fails the run here before any checksum file
+  # exists. Runs for every package run - the file is kept as an artifact, which
+  # is how a develop run checks it - and is attached to the release only for a tag.
+  checksums:
+    name: Checksums
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v7
+        with:
+          pattern: Fernrohr-*-${{ github.run_number }}
+          path: downloaded
+
+      - name: Write SHA256SUMS
+        run: |
+          set -euo pipefail
+          mkdir packages
+          # File names only, no directories, as `sha256sum --check` users expect;
+          # the .app bundle is a directory and isn't a download.
+          find downloaded -type f \
+            \( -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
+            -exec cp {} packages/ \;
+          cd packages
+          # Written outside the directory first: redirecting straight into it
+          # would create SHA256SUMS before `ls` runs, listing itself.
+          ls -1 | sort | xargs -d '\n' sha256sum > ../SHA256SUMS
+          mv ../SHA256SUMS .
+          cat SHA256SUMS
+          sha256sum --check SHA256SUMS
+          files=$(ls -1 | grep -vx SHA256SUMS | wc -l)
+          lines=$(wc -l < SHA256SUMS)
+          [ "$files" -eq "$lines" ] || { echo "::error::$lines checksums for $files packages"; exit 1; }
+
+      - name: Upload SHA256SUMS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Fernrohr-SHA256SUMS-${{ github.run_number }}
+          path: packages/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach SHA256SUMS to release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.tag }}" packages/SHA256SUMS \
+            --repo "${{ github.repository }}" --clobber
