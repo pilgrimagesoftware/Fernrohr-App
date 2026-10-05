@@ -96,6 +96,12 @@ const SCRIPT_EXTENSIONS: [&str; 5] = ["py", "sh", "rb", "pl", "js"];
 
 /// Whether `command` (a `ps` command line) runs `program`: one of its first three
 /// arguments' basenames is `program`, or `program` with a script extension.
+///
+/// Accepted residual risk: a recycled pid now running something whose first three
+/// arguments happen to include such a name (say `vim gcloud.sh`) would match. The
+/// parent-pid check bounds it - the process must also be orphaned to pid 1 (startup
+/// sweep) or be this app's own child (quit sweep) - so it would take a recycled pid
+/// that passes both.
 pub(super) fn is_command_for(command: &str, program: &str) -> bool {
     command.split_whitespace().take(3).any(|arg| {
         let path = Path::new(arg);

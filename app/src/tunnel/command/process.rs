@@ -91,12 +91,17 @@ pub(super) fn spawn(argv: &[String], path: &str, tail: &OutputTail) -> Result<Ru
 
 impl Running {
     /// Stops the process group: `SIGTERM`, up to [`COMMAND_TUNNEL_STOP_GRACE`] for the
-    /// leader to exit, then `SIGKILL` for whatever of the group is left.
+    /// leader to exit, then `SIGKILL` for whatever of the group is left. The group
+    /// signals are unix-only, so the leader itself is killed too - on every platform,
+    /// as a backstop - before the final wait, which would otherwise hang on a command
+    /// that ignores stdin closing.
     pub(super) async fn stop(mut self) {
         if let Some(pid) = self.child.id() {
             pidfile::terminate_process_group(pid);
             let _ = tokio::time::timeout(COMMAND_TUNNEL_STOP_GRACE, self.child.wait()).await;
             pidfile::kill_process_group(pid);
+            // Fails harmlessly once the leader has exited.
+            let _ = self.child.start_kill();
         }
         let _ = self.child.wait().await;
         self.finish_output().await;
