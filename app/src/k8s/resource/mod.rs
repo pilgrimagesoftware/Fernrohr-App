@@ -5,4 +5,5 @@ pub(crate) mod object_list;
 pub(crate) mod pod_detail;
 pub(crate) mod pods;
 mod pods_table;
+pub(crate) mod resource_actions;
 pub(crate) mod secret_value;

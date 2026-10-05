@@ -29,6 +29,9 @@ pub struct PodsPanel {
     pub(super) pod_table: Option<Entity<TableState<PodTableDelegate>>>,
     /// The open quick look over the selected pod, if any (`pod-quick-look`).
     pub(super) quick_look: Option<Entity<super::quick_look::QuickLookPopover>>,
+    /// The last row action the cluster refused, shown above the table until
+    /// dismissed or the next action.
+    pub(super) action_failure: Option<super::actions::PodActionFailure>,
 }
 
 impl PodsPanel {
@@ -83,6 +86,7 @@ impl PodsPanel {
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
             quick_look: None,
+            action_failure: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this

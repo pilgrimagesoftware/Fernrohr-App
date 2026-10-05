@@ -202,6 +202,7 @@ impl Render for PodsPanel {
                     .flex()
                     .flex_col()
                     .p(space.panel_inset)
+                    .children(self.render_action_failure(cx))
                     .child(
                         div()
                             .flex_1()
@@ -282,6 +283,8 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
             .on_action(cx.listener(Self::on_action_fit_columns))
             .on_action(cx.listener(Self::on_action_quick_look))
+            .on_action(cx.listener(Self::on_action_delete_pod))
+            .on_action(cx.listener(Self::on_action_kill_pod))
             .on_action(cx.listener(Self::on_action_close_quick_look))
             .on_action(cx.listener(Self::on_action_open_quick_look_details))
             .child(

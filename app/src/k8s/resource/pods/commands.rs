@@ -20,7 +20,9 @@ actions!(
         ShowPodYaml,
         QuickLook,
         CloseQuickLook,
-        OpenQuickLookDetails
+        OpenQuickLookDetails,
+        DeletePod,
+        KillPod
     ]
 );
 
@@ -45,6 +47,9 @@ pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const LOGS_KEY: &str = "l";
 pub(super) const YAML_KEY: &str = "y";
 pub(super) const QUICK_LOOK_KEY: &str = "space";
+/// k9s's own keys for delete and kill.
+pub(super) const DELETE_KEY: &str = "ctrl-d";
+pub(super) const KILL_KEY: &str = "ctrl-k";
 pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
 pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
@@ -55,6 +60,8 @@ const LOGS_COMMAND_ID: &str = "pods.logs";
 const YAML_COMMAND_ID: &str = "pods.yaml";
 const FIT_COMMAND_ID: &str = "pods.fit_columns";
 const QUICK_LOOK_COMMAND_ID: &str = "pods.quick_look";
+const DELETE_COMMAND_ID: &str = "pods.delete";
+const KILL_COMMAND_ID: &str = "pods.kill";
 const CLOSE_QUICK_LOOK_COMMAND_ID: &str = "pods.close_quick_look";
 const OPEN_QUICK_LOOK_DETAILS_COMMAND_ID: &str = "pods.quick_look_open_details";
 
@@ -96,6 +103,20 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Quick Look",
         QUICK_LOOK_KEY,
         Box::new(QuickLook),
+        None,
+    );
+    register(
+        DELETE_COMMAND_ID,
+        "Pods: Delete Selected Pod",
+        DELETE_KEY,
+        Box::new(DeletePod),
+        None,
+    );
+    register(
+        KILL_COMMAND_ID,
+        "Pods: Kill Selected Pod (No Grace Period)",
+        KILL_KEY,
+        Box::new(KillPod),
         None,
     );
     register(

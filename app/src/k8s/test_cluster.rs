@@ -44,6 +44,11 @@ pub(crate) struct FakeCluster {
     /// How many single-object `get`s the server answered - a panel that follows
     /// a watch shouldn't need more of them.
     gets: Arc<AtomicUsize>,
+    /// Every delete the server was sent: the object's name and the request's
+    /// options body, as JSON.
+    deletes: Arc<Mutex<Vec<(String, Value)>>>,
+    /// When set, every delete is refused with this status and body.
+    refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
 }
 
 impl FakeCluster {
@@ -53,6 +58,8 @@ impl FakeCluster {
             state: Arc::default(),
             version: Arc::new(tokio::sync::watch::channel(0).0),
             gets: Arc::default(),
+            deletes: Arc::default(),
+            refusal: Arc::default(),
         };
         let handle = cx.update(|cx| crate::runtime::handle(cx));
         let addr = handle.block_on(cluster.clone().serve());
@@ -129,6 +136,16 @@ impl FakeCluster {
         self.gets.load(Ordering::SeqCst)
     }
 
+    /// The deletes sent so far: each object's name and its delete options.
+    pub(crate) fn deletes(&self) -> Vec<(String, Value)> {
+        self.deletes.lock().clone()
+    }
+
+    /// Refuses every later delete with `status` (`"403 Forbidden"`) and `body`.
+    pub(crate) fn refuse_deletes(&self, status: &'static str, body: Value) {
+        *self.refusal.lock() = Some((status, body));
+    }
+
     async fn serve(self) -> std::net::SocketAddr {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -141,13 +158,19 @@ impl FakeCluster {
                 tokio::spawn(async move {
                     let mut buffer = vec![0u8; 8192];
                     let read = stream.read(&mut buffer).await.unwrap_or(0);
-                    let line = String::from_utf8_lossy(&buffer[..read])
-                        .lines()
-                        .next()
-                        .unwrap_or_default()
-                        .to_string();
+                    let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                    let line = request.lines().next().unwrap_or_default();
+                    let method = line.split(' ').next().unwrap_or_default();
                     let target = line.split(' ').nth(1).unwrap_or_default();
-                    let (status, body) = cluster.answer(target).await;
+                    let sent = request
+                        .split_once("\r\n\r\n")
+                        .map(|(_, body)| body)
+                        .unwrap_or_default();
+                    let (status, body) = if method == "DELETE" {
+                        cluster.answer_delete(target, sent)
+                    } else {
+                        cluster.answer(target).await
+                    };
                     let response = format!(
                         "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                         body.len()
@@ -157,6 +180,33 @@ impl FakeCluster {
             }
         });
         addr
+    }
+
+    /// A delete of the object `target` names, with `sent` its options: refused
+    /// if [`Self::refuse_deletes`] says so, else recorded and applied - the
+    /// object leaves the collection as a `DELETED` write.
+    fn answer_delete(&self, target: &str, sent: &str) -> (&'static str, String) {
+        let path = target.split_once('?').map_or(target, |(path, _)| path);
+        let Some(Request {
+            prefix,
+            namespace,
+            plural,
+            name: Some(name),
+        }) = Request::parse(path)
+        else {
+            return not_found();
+        };
+        if let Some((status, body)) = self.refusal.lock().clone() {
+            return (status, body.to_string());
+        }
+        self.deletes.lock().push((
+            name.to_string(),
+            serde_json::from_str(sent).unwrap_or(Value::Null),
+        ));
+        self.delete(prefix, plural, namespace.unwrap_or_default(), name);
+        let done =
+            json!({ "kind": "Status", "apiVersion": "v1", "status": "Success", "code": 200 });
+        ("200 OK", done.to_string())
     }
 
     /// The status and body for a request to `target` (path and query).

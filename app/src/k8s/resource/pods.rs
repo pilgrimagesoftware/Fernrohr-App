@@ -19,10 +19,12 @@ use k8s_openapi::api::core::v1::Pod;
 use kube_runtime::watcher;
 
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
+mod actions;
 mod commands;
 pub use commands::{
-    CloseQuickLook, DescribePod, OpenQuickLookDetails, PANEL_KEY_CONTEXT, QUICK_LOOK_KEY_CONTEXT,
-    QuickLook, ShowPodLogs, ShowPodYaml, WarpAllToNamespace, WarpNamespace, register_commands,
+    CloseQuickLook, DeletePod, DescribePod, KillPod, OpenQuickLookDetails, PANEL_KEY_CONTEXT,
+    QUICK_LOOK_KEY_CONTEXT, QuickLook, ShowPodLogs, ShowPodYaml, WarpAllToNamespace, WarpNamespace,
+    register_commands,
 };
 use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY};
 
@@ -34,6 +36,8 @@ mod selection;
 mod store;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod test_window;
 mod watch;
 
 pub use panel::{PodsPanel, register_restore};
