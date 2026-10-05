@@ -22,6 +22,15 @@ pub(crate) const SSH_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(5
 /// A command tunnel's default startup timeout: how long its command has to start
 /// listening on the local port. Vendor CLIs that open an IAP session can take a while.
 pub(crate) const COMMAND_TUNNEL_STARTUP_TIMEOUT_SECS: u64 = 30;
+/// How often a starting command tunnel's local port is dialled to see if it's ready.
+pub(crate) const COMMAND_TUNNEL_POLL_INTERVAL: Duration = Duration::from_millis(250);
+/// How long a stopping command tunnel's process group has between `SIGTERM` and
+/// `SIGKILL`.
+pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
+/// How many of a command tunnel's most recent output lines a failure reason carries.
+pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
+/// How long resolving the login shell's `PATH` may take before falling back.
+pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
 // the section 5.2 keychain wrapper this backs.

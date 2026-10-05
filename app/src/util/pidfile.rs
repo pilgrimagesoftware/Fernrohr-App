@@ -22,6 +22,10 @@
 //! parent we'd expect (gone, for a startup sweep's crash recovery; us, for a live
 //! quit-time kill) - a bare "is something still running at this pid" check would
 //! risk killing an unrelated process that happened to reuse a recycled pid.
+//!
+//! `command-tunnels` adds a second directory, `cmd-pids`, for command tunnels: their
+//! program is the user's, not `ssh`, so each pidfile also records its program's
+//! basename and the sweeps check for that instead (`command`).
 
 use crate::util::paths;
 use std::fs;
@@ -47,14 +51,24 @@ pub(crate) fn kill_process_group(_pid: u32) {}
 /// Checks whether `pid` (interpreted as a process group id, i.e. `-pid`) still has
 /// any member alive, via a zero-signal `kill -0`.
 #[cfg(unix)]
-fn process_group_alive(pid: u32) -> bool {
+pub(crate) fn process_group_alive(pid: u32) -> bool {
     signal_process_group("-0", pid)
 }
 
 #[cfg(not(unix))]
-fn process_group_alive(_pid: u32) -> bool {
+pub(crate) fn process_group_alive(_pid: u32) -> bool {
     false
 }
+
+/// Sends `SIGTERM` to `pid`'s process group - the graceful first half of stopping a
+/// command tunnel, whose program may be a wrapper that has to pass the signal on.
+#[cfg(unix)]
+pub(crate) fn terminate_process_group(pid: u32) {
+    let _ = signal_process_group("-TERM", pid);
+}
+
+#[cfg(not(unix))]
+pub(crate) fn terminate_process_group(_pid: u32) {}
 
 /// Runs `kill <signal> -- -<pid>` and reports whether it succeeded.
 ///
@@ -97,6 +111,12 @@ impl PidFile {
         fs::write(&path, pid.to_string())?;
         Ok(Self { path })
     }
+
+    /// Writes a command tunnel's pidfile: `pid`, then its program's basename, which
+    /// the sweeps check the running process against (`command`).
+    pub(crate) fn write_command(pid: u32, program: &str) -> std::io::Result<Self> {
+        command::write(pid, program)
+    }
 }
 
 impl Drop for PidFile {
@@ -112,6 +132,7 @@ impl Drop for PidFile {
 /// Returns the number of pidfiles found (killed, refused, or already dead).
 pub(crate) fn sweep_stale() -> usize {
     sweep_dir(&pid_dir(), looks_like_orphaned_forward)
+        + command::sweep_dir(&command::pid_dir(), command::looks_like_orphaned)
 }
 
 /// Quit-time teardown: kills every pidfile-recorded forward this *running* process
@@ -122,6 +143,7 @@ pub(crate) fn sweep_stale() -> usize {
 /// the number of pidfiles found.
 pub(crate) fn kill_live_forwards() -> usize {
     sweep_dir(&pid_dir(), looks_like_live_forward)
+        + command::sweep_dir(&command::pid_dir(), command::looks_like_live)
 }
 
 /// Shared sweep loop behind [`sweep_stale`] and [`kill_live_forwards`]: every `*.pid`
@@ -228,6 +250,8 @@ fn process_command(pid: u32) -> Option<String> {
     let command = String::from_utf8_lossy(&output.stdout).trim().to_string();
     (!command.is_empty()).then_some(command)
 }
+
+mod command;
 
 #[cfg(all(test, unix))]
 mod tests;
