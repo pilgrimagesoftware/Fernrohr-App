@@ -23,6 +23,7 @@ fn sample_tunnel(name: &str) -> TunnelConfig {
         bastion_port: 22,
         jump_hosts: Vec::new(),
         auth: TunnelAuth::default(),
+        ..Default::default()
     }
 }
 
@@ -102,7 +103,7 @@ async fn a_running_state_follows_acquire_and_release(cx: &mut TestAppContext) {
     window
         .update(cx, |this, _window, _cx| {
             assert!(!this.is_running("qa-bastion"));
-            this.running = std::collections::BTreeSet::from([ForwardKey {
+            this.running = std::collections::BTreeSet::from([ForwardKey::Ssh {
                 tunnel_id: "qa-bastion".to_string(),
                 host: "10.0.0.1".to_string(),
                 port: 6443,
@@ -336,4 +337,44 @@ async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppCo
         window.try_find(stop_id).is_some()
     });
     assert!(!listed, "and from the window");
+}
+
+/// `command-tunnels` 4.2: every row carries its kind badge.
+#[gpui_kit::test]
+async fn each_row_draws_its_kind_badge(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::runtime::init(cx);
+    });
+    let tunnels_path = crate::util::test_paths::temp_path("tunnels-kind-badge");
+    let store = TunnelStore::new(tunnels_path.clone());
+    store
+        .create("qa-bastion", sample_tunnel("QA bastion"), None)
+        .unwrap();
+    store
+        .create(
+            "qa-iap",
+            TunnelConfig {
+                name: "QA IAP".into(),
+                kind: crate::config::tunnels::TunnelKind::Command,
+                command: crate::config::tunnels::CommandTunnelConfig {
+                    command_line: "ssh -N -L{port}:127.0.0.1:8888 b".into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    let kubeconfig = std::env::temp_dir().join("fernrohr-kind-badge-no-such-kubeconfig.yaml");
+    let window = cx.add_window({
+        let tunnels_path = tunnels_path.clone();
+        move |window, cx| TunnelsWindow::new(tunnels_path, Some(kubeconfig), window, cx)
+    });
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+    assert!(vcx.debug_bounds("tunnel-kind-qa-bastion").is_some());
+    assert!(vcx.debug_bounds("tunnel-kind-qa-iap").is_some());
+    let _ = std::fs::remove_file(&tunnels_path);
 }

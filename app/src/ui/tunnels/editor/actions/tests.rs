@@ -70,6 +70,7 @@ async fn renaming_keeps_bindings_intact(cx: &mut TestAppContext) {
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )
@@ -159,6 +160,7 @@ async fn delete_confirm_names_the_bound_contexts(cx: &mut TestAppContext) {
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )

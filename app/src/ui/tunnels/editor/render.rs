@@ -8,6 +8,7 @@ impl Render for TunnelEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let is_new = self.editing_id.is_none();
+        let is_ssh = self.kind == TunnelKind::Ssh;
 
         let field = |label: &'static str,
                      input: &Entity<InputState>,
@@ -175,29 +176,33 @@ impl Render for TunnelEditor {
                     .text_color(theme.danger)
                     .child(error.clone())
             }))
+            .child(self.render_kind_switch(cx))
             .child(field("Name", &self.name, None))
-            .child(field("Host", &self.host, host_error))
-            .child(field("User", &self.user, user_error))
-            .child(field("Port", &self.port, port_error))
-            .child(field(
-                "Jump hosts (comma-separated, optional)",
-                &self.jump_hosts,
-                None,
-            ))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
+            .when(is_ssh, |pane| {
+                pane.child(field("Host", &self.host, host_error))
+                    .child(field("User", &self.user, user_error))
+                    .child(field("Port", &self.port, port_error))
+                    .child(field(
+                        "Jump hosts (comma-separated, optional)",
+                        &self.jump_hosts,
+                        None,
+                    ))
                     .child(
                         div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child("Authentication"),
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Authentication"),
+                            )
+                            .child(auth_button),
                     )
-                    .child(auth_button),
-            )
-            .children(key_field)
+                    .children(key_field)
+            })
+            .when(!is_ssh, |pane| pane.child(self.render_command_form(cx)))
             .child(
                 div()
                     .flex()

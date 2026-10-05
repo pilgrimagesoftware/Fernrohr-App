@@ -4,6 +4,44 @@
 
 use super::*;
 
+/// The row's kind badge.
+pub(super) fn kind_label(kind: TunnelKind) -> &'static str {
+    match kind {
+        TunnelKind::Ssh => "SSH",
+        TunnelKind::Command => "Command",
+    }
+}
+
+/// The row's second line: where an SSH tunnel goes, or a command tunnel's command -
+/// its first line, shortened - and mode.
+pub(super) fn tunnel_summary(tunnel: &TunnelConfig) -> String {
+    match tunnel.kind {
+        TunnelKind::Ssh => format!(
+            "{}@{}:{}",
+            tunnel.bastion_user, tunnel.bastion_host, tunnel.bastion_port
+        ),
+        TunnelKind::Command => {
+            let first = tunnel
+                .command
+                .command_line
+                .lines()
+                .next()
+                .unwrap_or_default();
+            let first = first.trim().trim_end_matches('\\').trim_end();
+            let mut command: String = first.chars().take(60).collect();
+            if first.chars().count() > 60 || tunnel.command.command_line.trim().lines().count() > 1
+            {
+                command.push('\u{2026}');
+            }
+            let mode = match tunnel.command.mode {
+                CommandTunnelMode::Proxy => "proxy",
+                CommandTunnelMode::Forward => "forward",
+            };
+            format!("{command} ({mode})")
+        }
+    }
+}
+
 fn usage_label(count: usize) -> String {
     match count {
         0 => "Unused".to_string(),
@@ -33,64 +71,81 @@ impl Render for TunnelsWindow {
                     }),
             );
 
-        let rows =
-            self.tunnels.iter().map(|(id, tunnel)| {
-                let usage = self.usage.get(id).copied().unwrap_or(0);
-                let running = self.is_running(id);
-                let weak_edit = cx.weak_entity();
-                let id_for_edit = id.clone();
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
-                    .py_1()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .child(div().text_sm().font_medium().child(tunnel.name.clone()))
-                            .child(div().text_xs().text_color(theme.muted_foreground).child(
-                                format!(
-                                    "{}@{}:{}",
-                                    tunnel.bastion_user, tunnel.bastion_host, tunnel.bastion_port
-                                ),
-                            )),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(usage_label(usage)),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(if running {
-                                        theme.success
-                                    } else {
-                                        theme.muted_foreground
-                                    })
-                                    .child(if running { "Running" } else { "Idle" }),
-                            )
-                            .child(
-                                Button::new(format!("tunnels-edit-{id}"))
-                                    .label("Edit")
-                                    .outline()
-                                    .xsmall()
-                                    .on_click(move |_event, window, cx| {
-                                        let _ = weak_edit.update(cx, |this, cx| {
-                                            this.open_edit(id_for_edit.clone(), window, cx)
-                                        });
-                                    }),
-                            ),
-                    )
-            });
+        let rows = self.tunnels.iter().map(|(id, tunnel)| {
+            let usage = self.usage.get(id).copied().unwrap_or(0);
+            let running = self.is_running(id);
+            let weak_edit = cx.weak_entity();
+            let id_for_edit = id.clone();
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .py_1()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(div().text_sm().font_medium().child(tunnel.name.clone()))
+                                .child({
+                                    let selector = format!("tunnel-kind-{id}");
+                                    div()
+                                        .px_1()
+                                        .rounded_sm()
+                                        .border_1()
+                                        .border_color(theme.border)
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .debug_selector(move || selector.clone())
+                                        .child(kind_label(tunnel.kind))
+                                }),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child(tunnel_summary(tunnel)),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child(usage_label(usage)),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(if running {
+                                    theme.success
+                                } else {
+                                    theme.muted_foreground
+                                })
+                                .child(if running { "Running" } else { "Idle" }),
+                        )
+                        .child(
+                            Button::new(format!("tunnels-edit-{id}"))
+                                .label("Edit")
+                                .outline()
+                                .xsmall()
+                                .on_click(move |_event, window, cx| {
+                                    let _ = weak_edit.update(cx, |this, cx| {
+                                        this.open_edit(id_for_edit.clone(), window, cx)
+                                    });
+                                }),
+                        ),
+                )
+        });
 
         let stale_section = (!self.stale.is_empty()).then(|| {
             let rows = self.stale.iter().map(|(context, tunnel_id)| {
@@ -159,3 +214,6 @@ impl Render for TunnelsWindow {
             }))
     }
 }
+
+#[cfg(test)]
+mod tests;

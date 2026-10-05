@@ -194,6 +194,7 @@ async fn a_tunnel_bound_after_the_bar_exists_appears_once_tunnels_revision_fires
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )

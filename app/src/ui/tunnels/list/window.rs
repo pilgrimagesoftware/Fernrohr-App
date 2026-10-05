@@ -151,7 +151,7 @@ impl TunnelsWindow {
     }
 
     pub(super) fn is_running(&self, tunnel_id: &str) -> bool {
-        self.running.iter().any(|key| key.tunnel_id == tunnel_id)
+        self.running.iter().any(|key| key.tunnel_id() == tunnel_id)
     }
 
     fn watch_editor(&mut self, editor: &Entity<TunnelEditor>, cx: &mut Context<Self>) {

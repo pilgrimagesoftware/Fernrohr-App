@@ -51,6 +51,64 @@ fn resolve_bound_context(context_name: Option<String>) -> Option<String> {
     })
 }
 
+/// What the connect path waits on and routes through for a tunnel-bound context:
+/// the forward's state, its local address, and whether that address is the API
+/// server or a proxy to it.
+pub(in crate::k8s::cluster) struct ForwardWait {
+    pub(in crate::k8s::cluster) state: watch::Receiver<ForwardState>,
+    pub(in crate::k8s::cluster) local_addr: SocketAddr,
+    pub(in crate::k8s::cluster) route: TunnelRoute,
+}
+
+impl ForwardWait {
+    pub(in crate::k8s::cluster) fn of(handle: &RegistryHandle<ForwardKey, TunnelForward>) -> Self {
+        let forward = handle.forward();
+        Self {
+            state: forward.state(),
+            local_addr: forward.local_addr(),
+            route: forward.route(),
+        }
+    }
+}
+
+/// Routes `config` through a tunnel's local port: rewritten to it for an SSH or
+/// forward-mode tunnel, or through it as an HTTP proxy for a proxy-mode one - the real
+/// API server URL and TLS name kept, so TLS runs end to end and is validated against
+/// the real host. The proxy is set on this client only, never on the process
+/// environment, so other contexts and the app's other requests don't use it.
+fn route_through_tunnel(config: &mut Config, local_addr: SocketAddr, route: TunnelRoute) {
+    match route {
+        TunnelRoute::Rewrite => rewrite_for_tunnel(config, local_addr),
+        TunnelRoute::Proxy => {
+            if let Some(own) = &config.proxy_url {
+                log::debug!("the bound tunnel's proxy overrides the kubeconfig's proxy-url {own}");
+            }
+            config.proxy_url = Some(
+                format!("http://{local_addr}")
+                    .parse()
+                    .expect("a socket addr always parses as a URI authority"),
+            );
+        }
+    }
+}
+
+/// A proxy-mode failure, saying it went through the tunnel's proxy - and, when the
+/// proxy refused the `CONNECT` (hyper-util reports that only as "tunnel error"), that
+/// the proxy is what refused.
+fn name_the_proxy(state: ConnectionState, proxy: SocketAddr) -> ConnectionState {
+    match state {
+        ConnectionState::Failed(reason) if reason.contains("tunnel error") => {
+            ConnectionState::Failed(format!(
+                "the tunnel's proxy at {proxy} refused to connect to the API server ({reason})"
+            ))
+        }
+        ConnectionState::Failed(reason) => {
+            ConnectionState::Failed(format!("{reason} (through the tunnel's proxy at {proxy})"))
+        }
+        other => other,
+    }
+}
+
 /// Points `config.cluster_url` at the tunnel's local forward and pins
 /// `tls_server_name` to the API server host the certificate was actually issued for
 /// (section 1.2's spike), unless the kubeconfig already set one explicitly.
@@ -78,14 +136,19 @@ fn rewrite_for_tunnel(config: &mut Config, local_addr: SocketAddr) {
 /// dance a first connect does, just triggered by a different signal.
 pub(in crate::k8s::cluster) async fn connect_and_probe(
     config_result: Result<Config, String>,
-    forward_wait: Option<(watch::Receiver<ForwardState>, SocketAddr)>,
+    forward_wait: Option<ForwardWait>,
     tx: mpsc::Sender<ConnectionState>,
 ) {
-    let rewrite = if let Some((mut state_rx, local_addr)) = forward_wait {
+    let rewrite = if let Some(ForwardWait {
+        state: mut state_rx,
+        local_addr,
+        route,
+    }) = forward_wait
+    {
         let _ = tx.send(ConnectionState::WaitingForTunnel).await;
         loop {
             if *state_rx.borrow() == ForwardState::Up {
-                break Some(local_addr);
+                break Some((local_addr, route));
             }
             if state_rx.changed().await.is_err() {
                 let _ = tx
@@ -102,10 +165,14 @@ pub(in crate::k8s::cluster) async fn connect_and_probe(
 
     let state = match config_result {
         Ok(mut config) => {
-            if let Some(local_addr) = rewrite {
-                rewrite_for_tunnel(&mut config, local_addr);
+            if let Some((local_addr, route)) = rewrite {
+                route_through_tunnel(&mut config, local_addr, route);
             }
-            probe(config).await
+            let state = probe(config).await;
+            match rewrite {
+                Some((local_addr, TunnelRoute::Proxy)) => name_the_proxy(state, local_addr),
+                _ => state,
+            }
         }
         Err(error) => ConnectionState::Failed(error),
     };
@@ -147,9 +214,7 @@ impl ClusterConnection {
                 };
             }
             let forward = acquired.and_then(Result::ok).flatten();
-            let forward_wait = forward
-                .as_ref()
-                .map(|handle| (handle.forward().state(), handle.forward().local_addr()));
+            let forward_wait = forward.as_ref().map(ForwardWait::of);
 
             let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
                 let config_result = resolve_config(context_name.as_deref()).await;
@@ -175,5 +240,7 @@ impl ClusterConnection {
     }
 }
 
+#[cfg(test)]
+mod proxy_tests;
 #[cfg(test)]
 mod tests;

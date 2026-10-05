@@ -9,7 +9,7 @@
 use super::editor::{TunnelEditor, TunnelEditorEvent};
 use super::{TunnelsRevision, notify_tunnels_changed};
 use crate::command::{Command, CommandRegistry};
-use crate::config::tunnels::TunnelConfig;
+use crate::config::tunnels::{CommandTunnelMode, TunnelConfig, TunnelKind};
 use crate::consts::{TUNNELS_WINDOW_MIN_SIZE, TUNNELS_WINDOW_SIZE};
 use crate::k8s::cluster::kubeconfig;
 use crate::k8s::cluster::tunnel::{self, ForwardKey};

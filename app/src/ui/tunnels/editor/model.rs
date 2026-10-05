@@ -32,6 +32,8 @@ pub struct TunnelEditor {
     /// `None` for a brand new tunnel; `Some(id)` for an existing one.
     pub(super) editing_id: Option<String>,
     pub(super) name: Entity<InputState>,
+    /// Which form is showing, and which kind Save writes.
+    pub(super) kind: TunnelKind,
     pub(super) host: Entity<InputState>,
     pub(super) user: Entity<InputState>,
     pub(super) port: Entity<InputState>,
@@ -41,6 +43,12 @@ pub struct TunnelEditor {
     /// `KeychainKey` tunnel means "keep the stored secret" - `TunnelStore::update`'s
     /// own `None`-secret contract, so leaving this field alone changes nothing.
     pub(super) key_material: Entity<InputState>,
+    /// The command form: multi-line, so a pasted backslash-continued command keeps
+    /// its shape.
+    pub(super) command_line: Entity<TextareaState>,
+    pub(super) mode: CommandTunnelMode,
+    pub(super) local_port: Entity<InputState>,
+    pub(super) startup_timeout: Entity<InputState>,
     pub(super) field_errors: Vec<TunnelFieldError>,
     /// A failure `field_errors` can't name (a duplicate id on create, a keychain/io
     /// error) - every other `TunnelStoreError` variant.
