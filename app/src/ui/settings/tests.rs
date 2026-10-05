@@ -131,6 +131,42 @@ async fn every_registered_command_has_a_row(cx: &mut TestAppContext) {
     });
 }
 
+/// `k9s-remaining-keybindings` 8.2, the editor half: each command the change
+/// added has a row to rebind it, with no editor code of its own - the rows are
+/// the registry's.
+#[gpui_kit::test]
+async fn every_new_k9s_command_has_an_editor_row(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (_handle, section) = open(main, cx);
+    cx.update(|cx| {
+        let ids: Vec<&str> = section
+            .read(cx)
+            .visible_rows(cx)
+            .iter()
+            .map(|row| row.id)
+            .collect();
+        for id in [
+            "pods.delete",
+            "pods.kill",
+            "pods.shell",
+            "pods.port_forward",
+            "services.port_forward",
+            "object_detail.edit",
+            "object_detail.save_edit",
+            "object_detail.cancel_edit",
+            "logs.toggle_previous",
+            "namespaces.jump_all",
+            "namespaces.jump_9",
+            "global.show_key_hints",
+        ] {
+            assert!(
+                ids.contains(&id),
+                "{id} has a row in the keybindings editor"
+            );
+        }
+    });
+}
+
 /// Recording Close Window's key records it (and asks, since Close Window has
 /// it) instead of closing the window; Escape cancels.
 #[gpui_kit::test]

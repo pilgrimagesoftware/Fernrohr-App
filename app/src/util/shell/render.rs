@@ -120,10 +120,14 @@ impl Render for MainWindow {
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
             })
+            .on_action(|_: &crate::util::key_hints::ShowKeyHints, window, cx| {
+                crate::util::key_hints::open(window, cx);
+            })
             .on_action(cx.listener(Self::on_action_show_pods))
             .on_action(cx.listener(Self::on_action_show_events))
             .on_action(cx.listener(Self::on_action_focus_resources))
             .on_action(cx.listener(Self::on_action_warp_context))
+            .on_action(cx.listener(Self::on_action_open_exec))
             .on_action(cx.listener(Self::on_action_switch_namespace_set))
             .on_action(cx.listener(Self::on_action_switch_context_namespace_set))
             .on_action(cx.listener(Self::on_action_create_namespace_set))

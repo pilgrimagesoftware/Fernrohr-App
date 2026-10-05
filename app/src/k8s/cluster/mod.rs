@@ -7,6 +7,7 @@ pub mod kubeconfig;
 #[cfg(test)]
 pub(crate) mod mock_api;
 pub mod namespaces;
+pub(crate) mod port_forwards;
 pub mod session;
 pub mod tunnel;
 pub mod watch_registry;

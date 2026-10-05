@@ -224,7 +224,9 @@ impl MainWindow {
             // A pod's detail panel shows one pod rather than a namespace-
             // filterable list of many, so it carries no picker and never
             // re-scopes.
-            nav::OpenedPanel::PodDetail(_) | nav::OpenedPanel::ObjectDetail(_) => {}
+            nav::OpenedPanel::PodDetail(_)
+            | nav::OpenedPanel::ObjectDetail(_)
+            | nav::OpenedPanel::Exec(_) => {}
         }
     }
 

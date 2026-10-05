@@ -183,6 +183,7 @@ impl MainWindow {
                 OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::ObjectDetail(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::Exec(panel) => area.remove_panel(panel, window, cx),
             });
         }
 

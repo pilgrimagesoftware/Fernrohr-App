@@ -71,7 +71,7 @@ impl PanelScope {
     pub fn is_namespaced(&self) -> bool {
         match &self.target {
             NavTarget::Kind(kind) => kind.namespaced,
-            NavTarget::Logs | NavTarget::Pod(_) => true,
+            NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Exec(_) => true,
             NavTarget::Object(object) => object.kind.namespaced,
         }
     }

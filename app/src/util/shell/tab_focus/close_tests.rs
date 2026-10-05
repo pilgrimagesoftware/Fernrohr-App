@@ -69,6 +69,7 @@ fn panels(h: &mut Harness) -> Vec<(EntityId, FocusHandle)> {
                     OpenedPanel::ObjectDetail(panel) => panel.entity_id(),
                     OpenedPanel::Logs(panel) => panel.entity_id(),
                     OpenedPanel::Placeholder(panel) => panel.entity_id(),
+                    OpenedPanel::Exec(panel) => panel.entity_id(),
                 };
                 (id, panel.focus_handle(cx))
             })

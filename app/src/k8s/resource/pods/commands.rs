@@ -20,7 +20,11 @@ actions!(
         ShowPodYaml,
         QuickLook,
         CloseQuickLook,
-        OpenQuickLookDetails
+        OpenQuickLookDetails,
+        DeletePod,
+        KillPod,
+        ShellPod,
+        PortForwardPod
     ]
 );
 
@@ -29,6 +33,13 @@ actions!(
 /// nothing anywhere else. A context binding matches at any depth of that path,
 /// so these still fire once a table row has taken focus from the panel.
 pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
+/// Where every Pods command is bound: the panel minus its text fields (the
+/// namespace picker's filter), so a key typed there - `d`, or `ctrl-k` - types
+/// rather than acting on the selected pod.
+pub(crate) const LIST_KEY_CONTEXT: &str = "PodsPanel && !Input";
+/// The quick look's and the shell command's contexts, guarded the same way.
+const QUICK_LOOK_LIST_CONTEXT: &str = "PodQuickLook && !Input";
+const SHELL_LIST_CONTEXT: &str = "PodShellable && !Input";
 
 /// Added beside [`PANEL_KEY_CONTEXT`] while a quick look is open
 /// (`pod-quick-look` D3), so its Escape and Enter mean "close" and "open
@@ -45,6 +56,13 @@ pub(super) const DESCRIBE_KEY: &str = "d";
 pub(super) const LOGS_KEY: &str = "l";
 pub(super) const YAML_KEY: &str = "y";
 pub(super) const QUICK_LOOK_KEY: &str = "space";
+/// k9s's own keys for delete and kill.
+pub(super) const DELETE_KEY: &str = "ctrl-d";
+pub(super) const KILL_KEY: &str = "ctrl-k";
+/// k9s's shell key.
+pub(super) const SHELL_KEY: &str = "s";
+/// k9s's port-forward key.
+pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
 pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
 pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
@@ -55,6 +73,8 @@ const LOGS_COMMAND_ID: &str = "pods.logs";
 const YAML_COMMAND_ID: &str = "pods.yaml";
 const FIT_COMMAND_ID: &str = "pods.fit_columns";
 const QUICK_LOOK_COMMAND_ID: &str = "pods.quick_look";
+const DELETE_COMMAND_ID: &str = "pods.delete";
+const KILL_COMMAND_ID: &str = "pods.kill";
 const CLOSE_QUICK_LOOK_COMMAND_ID: &str = "pods.close_quick_look";
 const OPEN_QUICK_LOOK_DETAILS_COMMAND_ID: &str = "pods.quick_look_open_details";
 
@@ -69,7 +89,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: CLOSE_QUICK_LOOK_COMMAND_ID,
         title: "Pods: Close Quick Look",
         default_binding: CLOSE_QUICK_LOOK_KEY,
-        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        context: Some(QUICK_LOOK_LIST_CONTEXT),
         action: Box::new(CloseQuickLook),
         menu: None,
     });
@@ -77,8 +97,16 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: OPEN_QUICK_LOOK_DETAILS_COMMAND_ID,
         title: "Pods: Open Quick Look's Pod Details",
         default_binding: OPEN_QUICK_LOOK_DETAILS_KEY,
-        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        context: Some(QUICK_LOOK_LIST_CONTEXT),
         action: Box::new(OpenQuickLookDetails),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "pods.shell",
+        title: "Pods: Shell into Selected Pod",
+        default_binding: SHELL_KEY,
+        context: Some(SHELL_LIST_CONTEXT),
+        action: Box::new(ShellPod),
         menu: None,
     });
     let mut register = |id, title, default_binding, action: Box<dyn Action>, menu| {
@@ -86,7 +114,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             id,
             title,
             default_binding,
-            context: Some(PANEL_KEY_CONTEXT),
+            context: Some(LIST_KEY_CONTEXT),
             action,
             menu,
         });
@@ -96,6 +124,27 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Quick Look",
         QUICK_LOOK_KEY,
         Box::new(QuickLook),
+        None,
+    );
+    register(
+        "pods.port_forward",
+        "Pods: Port-Forward Selected Pod",
+        PORT_FORWARD_KEY,
+        Box::new(PortForwardPod),
+        None,
+    );
+    register(
+        DELETE_COMMAND_ID,
+        "Pods: Delete Selected Pod",
+        DELETE_KEY,
+        Box::new(DeletePod),
+        None,
+    );
+    register(
+        KILL_COMMAND_ID,
+        "Pods: Kill Selected Pod (No Grace Period)",
+        KILL_KEY,
+        Box::new(KillPod),
         None,
     );
     register(
@@ -144,7 +193,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(crate::ui::namespace_picker::pick_namespaces_command(
         "pods.pick_namespaces",
         "Pods: Pick Namespaces",
-        PANEL_KEY_CONTEXT,
+        LIST_KEY_CONTEXT,
     ));
 }
 

@@ -5,6 +5,7 @@
 //! state and lifecycle, [`render`] draws it, and [`title`] is its dock
 //! identity (saved-layout dump, title/tab/toolbar/zoom).
 
+mod commands;
 mod panel;
 mod render;
 mod stream;
@@ -28,4 +29,6 @@ use std::rc::Rc;
 use stream::*;
 use view::*;
 
+use commands::PREVIOUS_KEY;
+pub use commands::{PANEL_KEY_CONTEXT, TogglePreviousLogs, register_commands};
 pub use panel::{LogsPanel, register_restore};

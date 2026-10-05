@@ -19,21 +19,29 @@ use k8s_openapi::api::core::v1::Pod;
 use kube_runtime::watcher;
 
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
+mod actions;
 mod commands;
+#[cfg(test)]
+pub(crate) use commands::LIST_KEY_CONTEXT;
 pub use commands::{
-    CloseQuickLook, DescribePod, OpenQuickLookDetails, PANEL_KEY_CONTEXT, QUICK_LOOK_KEY_CONTEXT,
-    QuickLook, ShowPodLogs, ShowPodYaml, WarpAllToNamespace, WarpNamespace, register_commands,
+    CloseQuickLook, DeletePod, DescribePod, KillPod, OpenQuickLookDetails, PANEL_KEY_CONTEXT,
+    PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs, ShowPodYaml,
+    WarpAllToNamespace, WarpNamespace, register_commands,
 };
 use commands::{DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY};
 
 mod panel;
+mod port_forward;
 pub(super) mod quick_look;
 mod render;
 mod rows;
 mod selection;
+mod shell;
 mod store;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod test_window;
 mod watch;
 
 pub use panel::{PodsPanel, register_restore};
@@ -41,6 +49,7 @@ pub(crate) use rows::BAD_WAITING_REASONS;
 pub(crate) use rows::format_age;
 pub use rows::{PodRow, matches_namespaces, pod_row};
 pub use selection::{PodSelection, SelectedPod};
+pub use shell::SHELL_KEY_CONTEXT;
 pub use store::PodsTable;
 pub use watch::watch_all_namespaces;
 

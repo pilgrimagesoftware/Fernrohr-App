@@ -18,9 +18,6 @@ use kube::{Api, Client};
 use tokio::net::{TcpListener, TcpStream};
 
 /// Everything needed to hold one Pod port-forward open: which Pod/port to forward to.
-// UNWIRED(#3): section 6.2's connect-path integration is the first real caller; today
-// only this module's own tests build one.
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct K8sPortForwardConfig {
     pub client: Client,
@@ -39,14 +36,11 @@ impl K8sPortForwardConfig {
 /// and health both mean "the Pod exists and is `Running`". There is no persistent
 /// process to supervise the way `SshTransport` supervises `ssh` - the actual data path
 /// is a fresh portforward per local connection, handled by [`serve`] below.
-// UNWIRED(#3): see the note on `K8sPortForwardConfig`.
-#[allow(dead_code)]
 pub struct PodPortForwardTransport {
     config: K8sPortForwardConfig,
 }
 
 impl PodPortForwardTransport {
-    #[allow(dead_code)]
     pub fn new(config: K8sPortForwardConfig) -> Self {
         Self { config }
     }
@@ -62,8 +56,6 @@ impl ForwardTransport for PodPortForwardTransport {
     }
 }
 
-// UNWIRED(#3): see the note on `K8sPortForwardConfig`.
-#[allow(dead_code)]
 async fn check_pod_running(pods: &Api<Pod>, pod_name: &str) -> Result<(), String> {
     let pod = pods
         .get(pod_name)
@@ -109,11 +101,8 @@ async fn bridge_connection(
 /// Runs the accept loop for one local port-forward listener: every accepted connection
 /// is bridged (section 4.1) on its own task so one slow or failed forward can't block
 /// the next connection. Runs until `listener` errors or is dropped elsewhere (there is
-/// no explicit stop signal at this layer - section 6.2's connect-path integration owns
-/// the task this runs on and aborts it like any other owned spawned work).
-// UNWIRED(#3): section 6.2's connect-path integration is the first real caller; today
-// only this module's own tests drive it directly against a listener they made.
-#[allow(dead_code)]
+/// no explicit stop signal at this layer - [`super::managed::K8sPortForward`] owns the
+/// task this runs on and aborts it when the forward is dropped).
 pub async fn serve(listener: TcpListener, config: K8sPortForwardConfig) {
     loop {
         let (local, _peer_addr) = match listener.accept().await {

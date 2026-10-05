@@ -100,6 +100,11 @@ fn panel_key(state: &PanelState) -> Option<PanelKey> {
     let target = match state.panel_name.as_str() {
         "Pods" => NavTarget::pods(),
         "Logs" => NavTarget::Logs,
+        "Exec" => NavTarget::Exec(crate::k8s::resource::exec::ExecTarget {
+            namespace: data["namespace"].as_str()?.to_string(),
+            pod: data["pod"].as_str()?.to_string(),
+            container: data["container"].as_str()?.to_string(),
+        }),
         "PodDetail" => NavTarget::pod(
             data["pod_namespace"].as_str()?.to_string(),
             data["pod_name"].as_str()?.to_string(),

@@ -26,6 +26,9 @@ pub struct LogsPanel {
     pub(super) view: Entity<LogsView>,
     stream: Option<Task<()>>,
     pub(super) current: Option<(String, String, String)>,
+    /// Whether the panel shows the container's previous instance's logs
+    /// rather than its current one's (`k9s-remaining-keybindings` 5).
+    pub(super) previous: bool,
     pub(super) scroll_handle: UniformListScrollHandle,
     pub(super) focus_handle: FocusHandle,
 }
@@ -46,6 +49,7 @@ impl LogsPanel {
             view: cx.new(|_| LogsView::new(vec![String::new()])),
             stream: None,
             current: None,
+            previous: false,
             scroll_handle: UniformListScrollHandle::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
@@ -79,7 +83,7 @@ impl LogsPanel {
             namespace,
             name,
             containers,
-            context_name,
+            ..
         } = selection;
         let container = containers.first().cloned().unwrap_or_default();
         let key = (namespace.clone(), name.clone(), container.clone());
@@ -87,28 +91,10 @@ impl LogsPanel {
             return;
         }
         self.current = Some(key);
-
+        // A newly selected pod starts on its current logs.
+        self.previous = false;
         let client = client.clone();
-        let view = cx.new(|_| LogsView::new(containers));
-        cx.observe(&view, |this: &mut Self, view, cx| {
-            if view.read(cx).follow_state() == FollowState::Following {
-                let last = view.read(cx).lines().len().saturating_sub(1);
-                this.scroll_handle
-                    .scroll_to_item(last, gpui_kit::ScrollStrategy::Bottom);
-            }
-            cx.notify();
-        })
-        .detach();
-        self.stream = Some(stream_container_logs(
-            client,
-            namespace,
-            name,
-            container,
-            context_name,
-            view.clone(),
-            cx,
-        ));
-        self.view = view;
+        self.restart(client, containers, cx);
     }
 
     /// Restarts the stream on `container`, reusing the current pod/namespace -
@@ -127,10 +113,39 @@ impl LogsPanel {
             return;
         };
         let containers = self.view.read(cx).containers().to_vec();
-        self.current = Some((namespace.clone(), name.clone(), container.clone()));
-
+        self.current = Some((namespace, name, container));
         let client = client.clone();
-        let view = cx.new(|_| LogsView::new(containers));
+        self.restart(client, containers, cx);
+    }
+
+    /// `TogglePreviousLogs`: switches between the container's current logs and
+    /// its previous instance's. Back on current, the stream restarts from the
+    /// start, so lines written while previous logs showed are there too.
+    pub(super) fn toggle_previous(&mut self, cx: &mut Context<Self>) {
+        if self.current.is_none() {
+            return;
+        }
+        let crate::k8s::cluster::connection::ConnectionState::Connected(client) =
+            &self.connection.read(cx).state
+        else {
+            return;
+        };
+        let client = client.clone();
+        let containers = self.view.read(cx).containers().to_vec();
+        self.previous = !self.previous;
+        self.restart(client, containers, cx);
+        cx.notify();
+    }
+
+    /// (Re)starts the stream for the current pod and container, on the current
+    /// or previous instance as `previous` says, onto a fresh view.
+    fn restart(&mut self, client: kube::Client, containers: Vec<String>, cx: &mut Context<Self>) {
+        let Some((namespace, pod_name, container)) = self.current.clone() else {
+            return;
+        };
+        let mut view_model = LogsView::new(containers);
+        view_model.select_container(&container);
+        let view = cx.new(|_| view_model);
         cx.observe(&view, |this: &mut Self, view, cx| {
             if view.read(cx).follow_state() == FollowState::Following {
                 let last = view.read(cx).lines().len().saturating_sub(1);
@@ -140,15 +155,14 @@ impl LogsPanel {
             cx.notify();
         })
         .detach();
-        self.stream = Some(stream_container_logs(
-            client,
+        let target = LogTarget {
             namespace,
-            name,
+            pod_name,
             container,
-            self.scope.context_name.clone(),
-            view.clone(),
-            cx,
-        ));
+            context_name: self.scope.context_name.clone(),
+            previous: self.previous,
+        };
+        self.stream = Some(stream_container_logs(client, target, view.clone(), cx));
         self.view = view;
     }
 }

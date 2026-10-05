@@ -126,3 +126,18 @@ pub(crate) const TERMINATING_COUNTDOWN_TICK: Duration = Duration::from_secs(1);
 /// How opaque a detail panel draws a deleted object's last known state, kept
 /// on screen below its "deleted at" banner (`live-detail-panels`).
 pub(crate) const STALE_OPACITY: f32 = 0.6;
+
+/// A shell panel's transcript, kept to this many bytes from its end, so a
+/// chatty session can't grow without bound (`k9s-remaining-keybindings` 3).
+pub(crate) const EXEC_TRANSCRIPT_LIMIT: usize = 1024 * 1024;
+/// How many typed lines may wait for the shell's stdin, and how many output
+/// chunks for the panel, before the sender waits - room for a burst, not a log.
+pub(crate) const EXEC_INPUT_QUEUE: usize = 64;
+pub(crate) const EXEC_OUTPUT_QUEUE: usize = 256;
+
+/// A port-forward started from a resource row (`k9s-remaining-keybindings` 4):
+/// how often its Pod is checked to still be Running, and how a failed check
+/// backs off before trying again - the SSH tunnels' own pace.
+pub(crate) const PORT_FORWARD_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
+pub(crate) const PORT_FORWARD_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
+pub(crate) const PORT_FORWARD_BACKOFF_MAX: Duration = Duration::from_secs(30);

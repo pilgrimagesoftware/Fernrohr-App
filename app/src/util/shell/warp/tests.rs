@@ -192,7 +192,8 @@ fn warp_all_is_a_pods_scoped_palette_command() {
     let command = registry.get("pods.warp_all_namespace").expect("registered");
     assert_eq!(
         command.context,
-        Some(crate::k8s::resource::pods::PANEL_KEY_CONTEXT)
+        Some(crate::k8s::resource::pods::LIST_KEY_CONTEXT),
+        "the Pods panel, outside its text fields"
     );
     assert_eq!(
         command.menu, None,

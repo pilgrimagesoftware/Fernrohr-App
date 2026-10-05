@@ -4,6 +4,7 @@ use super::*;
 use crate::ui::list_keys::{self, Step};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
+use gpui_kit::prelude::FluentBuilder as _;
 
 /// Up/Down with no pod selected, or with focus on the panel rather than its table
 /// (`standard-resource-panels` 5.2, [`list_keys`]).
@@ -89,6 +90,9 @@ impl Render for PodsPanel {
                     })
                     .collect();
                 let table = self.sync_table(items, window, cx);
+                // The shell command's context, only while the selected pod has a
+                // running container (`shell`).
+                let shellable = self.shell_candidates(cx).is_some();
                 // A quick look whose pod has no row - deleted while open - can't
                 // hang below it, so it sits at the top of the table instead.
                 let unanchored = self.quick_look.clone().filter(|popover| {
@@ -202,10 +206,13 @@ impl Render for PodsPanel {
                     .flex()
                     .flex_col()
                     .p(space.panel_inset)
+                    .children(self.render_action_failure(cx))
+                    .children(self.render_action_notice(cx))
                     .child(
                         div()
                             .flex_1()
                             .min_h_0()
+                            .when(shellable, |this| this.key_context(SHELL_KEY_CONTEXT))
                             .children(unanchored.map(|popover| {
                                 deferred(
                                     anchored().snap_to_window_with_margin(px(8.)).child(popover),
@@ -263,7 +270,7 @@ impl Render for PodsPanel {
         if self.quick_look.is_some() {
             key_context.add(QUICK_LOOK_KEY_CONTEXT);
         }
-        div()
+        let panel = div()
             .size_full()
             .key_context(key_context)
             .track_focus(&self.focus_handle)
@@ -282,6 +289,10 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_show_pod_yaml))
             .on_action(cx.listener(Self::on_action_fit_columns))
             .on_action(cx.listener(Self::on_action_quick_look))
+            .on_action(cx.listener(Self::on_action_delete_pod))
+            .on_action(cx.listener(Self::on_action_kill_pod))
+            .on_action(cx.listener(Self::on_action_shell_pod))
+            .on_action(cx.listener(Self::on_action_port_forward_pod))
             .on_action(cx.listener(Self::on_action_close_quick_look))
             .on_action(cx.listener(Self::on_action_open_quick_look_details))
             .child(
@@ -293,6 +304,13 @@ impl Render for PodsPanel {
                     .child(div().flex_1().min_h_0().child(content)),
             )
             // Tab stays in the panel: see `ui::panel::focus`.
-            .focus_trap("pods-panel-tab-trap", &self.focus_handle)
+            .focus_trap("pods-panel-tab-trap", &self.focus_handle);
+        // Namespace quick-jump's context, as its own frame around the panel so
+        // it's on the focus path with the panel or its table focused.
+        div()
+            .size_full()
+            .key_context(crate::ui::namespace_jump::KEY_CONTEXT)
+            .on_action(cx.listener(Self::on_action_jump_namespace))
+            .child(panel)
     }
 }

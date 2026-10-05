@@ -12,6 +12,8 @@
 //! [`restore`] the dock panel itself.
 
 mod commands;
+mod edit;
+mod edit_view;
 mod fetch;
 mod live;
 mod metadata;

@@ -37,7 +37,12 @@ fn streaming_title(
 
 impl LogsPanel {
     fn streaming_title(&self) -> String {
-        streaming_title(self.current.as_ref(), || panel_title::title(&self.scope))
+        let title = streaming_title(self.current.as_ref(), || panel_title::title(&self.scope));
+        if self.previous && self.current.is_some() {
+            format!("{title} (previous)")
+        } else {
+            title
+        }
     }
 }
 

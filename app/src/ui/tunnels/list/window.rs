@@ -73,6 +73,8 @@ pub struct TunnelsWindow {
     pub(super) stale: Vec<(String, String)>,
     pub(super) running: BTreeSet<ForwardKey>,
     pub(super) editor: Option<Entity<TunnelEditor>>,
+    /// The app's row-started port-forwards, listed under the tunnels.
+    pub(super) forwards: Entity<crate::k8s::cluster::port_forwards::PortForwards>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -87,7 +89,10 @@ impl TunnelsWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
+            forwards,
             tunnels_path,
             kubeconfig_path,
             tunnels: Vec::new(),

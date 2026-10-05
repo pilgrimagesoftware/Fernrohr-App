@@ -112,7 +112,16 @@ impl ObjectListPanel {
                     .on_action(cx.listener(Self::on_action_clear_filter))
                     .child(Input::new(&filter)),
             )
-            .child(div().flex_1().min_h_0().child(data_table(&table, cx)))
+            .children(self.render_forward_message(cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .when(self.lists_services(), |this| {
+                        this.key_context(super::port_forward::SERVICES_KEY_CONTEXT)
+                    })
+                    .child(data_table(&table, cx)),
+            )
             .child(
                 div()
                     .px_2()
@@ -212,7 +221,7 @@ impl Render for ObjectListPanel {
                 cx.theme().muted_foreground,
             ))
             .children(namespace_bar);
-        div()
+        let panel = div()
             .size_full()
             .key_context(PANEL_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
@@ -230,6 +239,7 @@ impl Render for ObjectListPanel {
             ))
             .on_action(cx.listener(Self::on_action_fit_columns))
             .on_action(cx.listener(Self::on_action_refresh))
+            .on_action(cx.listener(Self::on_action_port_forward_service))
             .child(
                 div()
                     .size_full()
@@ -239,6 +249,16 @@ impl Render for ObjectListPanel {
                     .child(div().flex_1().min_h_0().child(content)),
             )
             // Tab stays in the panel: see `ui::panel::focus`.
-            .focus_trap("object-list-panel-tab-trap", &self.focus_handle)
+            .focus_trap("object-list-panel-tab-trap", &self.focus_handle);
+        // Namespace quick-jump's context, for a namespaced kind's list - its own
+        // frame around the panel, so it's on the focus path with the panel or
+        // its table focused.
+        div()
+            .size_full()
+            .when(self.kind.namespaced, |this| {
+                this.key_context(crate::ui::namespace_jump::KEY_CONTEXT)
+            })
+            .on_action(cx.listener(Self::on_action_jump_namespace))
+            .child(panel)
     }
 }

@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 mod command;
+pub(super) mod port_forwards;
 mod render;
 mod window;
 

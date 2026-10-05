@@ -41,6 +41,8 @@ pub struct ObjectListPanel {
     pub(super) filter: Option<Entity<InputState>>,
     /// The column layout to start the table with, once it's built.
     pub(super) initial_layout: ColumnLayout,
+    /// How the last port-forward went, in a Services list (`port_forward`).
+    pub(super) forward_message: Option<super::port_forward::ForwardMessage>,
 }
 
 impl ObjectListPanel {
@@ -84,6 +86,7 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            forward_message: None,
         };
         this.subscribe_if_connected(&connection, cx);
         this
@@ -115,6 +118,7 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            forward_message: None,
         }
     }
 
@@ -352,6 +356,23 @@ impl ObjectListPanel {
             return;
         };
         self.set_namespaces(vec![namespace], cx);
+    }
+
+    /// `JumpToNamespace` (`alt-<n>`): scopes a namespaced list to the namespace at
+    /// that position in its namespace list, or to all at 0; past the end, nothing.
+    pub(super) fn on_action_jump_namespace(
+        &mut self,
+        action: &crate::ui::namespace_jump::JumpToNamespace,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.kind.namespaced {
+            return;
+        }
+        let names = self.namespaces.read(cx).names().to_vec();
+        if let Some(namespaces) = crate::ui::namespace_jump::scope_for(&names, action.position) {
+            self.set_namespaces(namespaces, cx);
+        }
     }
 
     /// Scopes this panel to `namespaces` (empty for all), as its own picker does -

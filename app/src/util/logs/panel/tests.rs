@@ -9,6 +9,8 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::{AppContext as _, TestAppContext};
 
+mod previous;
+
 /// `1-window-context-bar` bug 1's third root cause: `LogsPanel::sync` used to
 /// re-sync to *any* `SelectedPod`, from any context - streaming whichever pod's
 /// row was clicked last against its own scope's context, regardless of which

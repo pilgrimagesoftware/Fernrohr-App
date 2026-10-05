@@ -148,6 +148,7 @@ impl Render for TunnelsWindow {
             .track_focus(&self.focus_handle)
             .child(header)
             .child(div().flex().flex_col().gap_1().children(rows))
+            .children(self.port_forwards_section(cx))
             .children(stale_section)
             .children(self.editor.clone().map(|editor| {
                 div()

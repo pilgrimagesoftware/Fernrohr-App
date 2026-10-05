@@ -318,7 +318,7 @@ impl PodsPanel {
     }
 
     /// The pod this panel's table has selected, by identity.
-    fn table_selection(&self, cx: &App) -> Option<PodSelection> {
+    pub(super) fn table_selection(&self, cx: &App) -> Option<PodSelection> {
         let table = self.pod_table.as_ref()?.read(cx);
         let row = table.selected_row()?;
         table
