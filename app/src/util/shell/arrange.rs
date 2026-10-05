@@ -10,7 +10,8 @@
 
 use super::*;
 use crate::ui::panel::arrange::{
-    Direction, SplitGroupDown, SplitGroupLeft, SplitGroupRight, SplitGroupUp,
+    self, Direction, MovePanelDown, MovePanelLeft, MovePanelRight, MovePanelUp, SplitGroupDown,
+    SplitGroupLeft, SplitGroupRight, SplitGroupUp,
 };
 use crate::ui::panel::tabs;
 use gpui_kit::component::dock::{InsertTarget, NodeId};
@@ -24,12 +25,22 @@ impl MainWindow {
                 this.split_group(direction, window, cx)
             }
         };
+        let moved = |direction| {
+            move |this: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
+                this.move_focused_panel(direction, window, cx)
+            }
+        };
         let (sl, sr, su, sd) = (split(Left), split(Right), split(Up), split(Down));
+        let (ml, mr, mu, md) = (moved(Left), moved(Right), moved(Up), moved(Down));
         element
             .on_action(cx.listener(move |t, _: &SplitGroupLeft, w, cx| sl(t, w, cx)))
             .on_action(cx.listener(move |t, _: &SplitGroupRight, w, cx| sr(t, w, cx)))
             .on_action(cx.listener(move |t, _: &SplitGroupUp, w, cx| su(t, w, cx)))
             .on_action(cx.listener(move |t, _: &SplitGroupDown, w, cx| sd(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MovePanelLeft, w, cx| ml(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MovePanelRight, w, cx| mr(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MovePanelUp, w, cx| mu(t, w, cx)))
+            .on_action(cx.listener(move |t, _: &MovePanelDown, w, cx| md(t, w, cx)))
     }
 
     /// The dock, and the centre-region group focus is in - none from outside one.
@@ -45,6 +56,12 @@ impl MainWindow {
         let node = crate::ui::panel::focus::focused_group(area, window, cx)?;
         area.layout(DockPlacement::Center)?.find_node(node)?;
         Some((dock_area.clone(), node))
+    }
+
+    /// The centre-region group beside `node` in `direction`.
+    fn group_beside(area: &DockArea, node: NodeId, direction: Direction) -> Option<NodeId> {
+        let tree = area.layout(DockPlacement::Center)?;
+        arrange::adjacent(&arrange::group_rects(tree.root()), node, direction)
     }
 
     /// Splits the focused group: a new group in `direction` holding a second
@@ -97,6 +114,35 @@ impl MainWindow {
         });
         self.watch_scope_changes(opened, window, cx);
         Self::focus_panel(&dock_area, id, window, cx);
+        cx.notify();
+    }
+
+    /// Moves the focused panel into the group beside its own, in `direction`.
+    fn move_focused_panel(
+        &mut self,
+        direction: Direction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((dock_area, node)) = self.focused_center_group(window, cx) else {
+            return;
+        };
+        let area = dock_area.read(cx);
+        let (Some(panel), Some(beside)) = (
+            tabs::active_panel_of(area, node),
+            Self::group_beside(area, node, direction),
+        ) else {
+            return;
+        };
+        dock_area.update(cx, |area, cx| {
+            let into = InsertTarget::Tabs {
+                node: beside,
+                ix: None,
+                activate: true,
+            };
+            area.move_panel(panel, into, window, cx);
+        });
+        Self::focus_panel(&dock_area, panel, window, cx);
         cx.notify();
     }
 

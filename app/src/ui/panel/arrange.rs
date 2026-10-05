@@ -20,7 +20,11 @@ actions!(
         SplitGroupLeft,
         SplitGroupRight,
         SplitGroupUp,
-        SplitGroupDown
+        SplitGroupDown,
+        MovePanelLeft,
+        MovePanelRight,
+        MovePanelUp,
+        MovePanelDown
     ]
 );
 
@@ -54,9 +58,6 @@ impl Direction {
 
 /// A group's rectangle in the unit square the dock region is scaled to.
 #[derive(Clone, Copy, Debug, PartialEq)]
-// UNWIRED(#122): the arrange commands' geometry, ahead of the commands;
-// nothing outside tests calls it yet.
-#[allow(dead_code)]
 pub struct Rect {
     pub left: f32,
     pub top: f32,
@@ -68,9 +69,6 @@ pub struct Rect {
 /// sizes: a measured size weighs as itself, an unmeasured one as the mean of
 /// its measured siblings - or all equally when none is measured, as the dock
 /// lays out a fresh split.
-// UNWIRED(#122): the arrange commands' geometry, ahead of the commands;
-// nothing outside tests calls it yet.
-#[allow(dead_code)]
 pub fn group_rects(root: &PaneNode) -> Vec<(NodeId, Rect)> {
     let mut rects = Vec::new();
     lay_out(
@@ -141,9 +139,6 @@ const EPSILON: f32 = 1e-4;
 
 /// The group adjacent to `from` in `direction` among `rects`, or `None` when
 /// none lies that way or two tie for it.
-// UNWIRED(#122): the arrange commands' geometry, ahead of the commands;
-// nothing outside tests calls it yet.
-#[allow(dead_code)]
 pub fn adjacent(rects: &[(NodeId, Rect)], from: NodeId, direction: Direction) -> Option<NodeId> {
     let (_, origin) = rects.iter().find(|(id, _)| *id == from)?;
     let overlap = |a0: f32, a1: f32, b0: f32, b1: f32| (a1.min(b1) - a0.max(b0)).max(0.);
@@ -199,7 +194,7 @@ type CommandRow = (
     fn() -> Box<dyn Action>,
 );
 
-const COMMANDS: [CommandRow; 4] = [
+const COMMANDS: [CommandRow; 8] = [
     (
         "panel.split_left",
         "Panels: Split Group Left",
@@ -223,6 +218,30 @@ const COMMANDS: [CommandRow; 4] = [
         "Panels: Split Group Down",
         "cmd-k down",
         || Box::new(SplitGroupDown),
+    ),
+    (
+        "panel.move_left",
+        "Panels: Move Panel Left",
+        "cmd-alt-left",
+        || Box::new(MovePanelLeft),
+    ),
+    (
+        "panel.move_right",
+        "Panels: Move Panel Right",
+        "cmd-alt-right",
+        || Box::new(MovePanelRight),
+    ),
+    (
+        "panel.move_up",
+        "Panels: Move Panel Up",
+        "cmd-alt-up",
+        || Box::new(MovePanelUp),
+    ),
+    (
+        "panel.move_down",
+        "Panels: Move Panel Down",
+        "cmd-alt-down",
+        || Box::new(MovePanelDown),
     ),
 ];
 

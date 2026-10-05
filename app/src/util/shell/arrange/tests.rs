@@ -152,7 +152,37 @@ async fn split_opens_a_copy_beside_the_group_and_focuses_it(cx: &mut TestAppCont
     assert_eq!(target, svc());
 }
 
-/// 2.2: every arrange command is offered in the dock's context
+/// 3.1: Move Right takes the focused panel into the group to the right; moving
+/// a group's last panel removes its pane; with nothing that way, nothing moves.
+#[gpui_kit::test]
+async fn move_takes_the_panel_beside_and_an_emptied_pane_goes(cx: &mut TestAppContext) {
+    let mut h = harness(cx, Some(svc()));
+    h.press("cmd-k right");
+    h.press("cmd-alt-left");
+    assert_eq!(
+        h.groups(),
+        [vec![pods(), svc(), svc()]],
+        "the copy moved back, its pane gone"
+    );
+
+    h.press("cmd-k right");
+    assert_eq!(h.groups(), [vec![pods(), svc(), svc()], vec![svc()]]);
+    h.press("cmd-alt-right");
+    assert_eq!(
+        h.groups(),
+        [vec![pods(), svc(), svc()], vec![svc()]],
+        "nothing to the right of the right pane: unchanged"
+    );
+    h.press("cmd-alt-left");
+    assert_eq!(h.groups(), [vec![pods(), svc(), svc(), svc()]]);
+    assert_eq!(
+        h.focused().map(|(_, target)| target),
+        Some(svc()),
+        "the moved panel has focus"
+    );
+}
+
+/// 2.2, 3.2: every arrange command is offered in the dock's context
 /// with its default key, and a first-run keymap.toml lists it.
 #[test]
 fn every_arrange_command_is_registered_and_in_the_first_run_keymap() {
@@ -165,7 +195,7 @@ fn every_arrange_command_is_registered_and_in_the_first_run_keymap() {
         })
         .map(|command| command.id)
         .collect();
-    assert_eq!(ids.len(), 4, "{ids:?}");
+    assert_eq!(ids.len(), 8, "{ids:?}");
     let path = crate::util::test_paths::temp_path("arrange-keymap");
     let _ = std::fs::remove_file(&path);
     crate::keymap::load(&path, &registry);
@@ -189,7 +219,7 @@ fn every_arrange_command_is_registered_and_in_the_first_run_keymap() {
 }
 
 /// The k9s review's lesson: the arrange keys are bound outside text fields.
-/// With the Pods panel's namespace filter focused, split
+/// With the Pods panel's namespace filter focused, split and move
 /// keys change nothing.
 #[gpui_kit::test]
 async fn arrange_keys_do_nothing_while_typing(cx: &mut TestAppContext) {
@@ -205,6 +235,7 @@ async fn arrange_keys_do_nothing_while_typing(cx: &mut TestAppContext) {
     assert!(typing, "`n` focuses the namespace filter");
 
     h.press("cmd-k right");
+    h.press("cmd-alt-left");
 
     assert_eq!(h.groups(), before, "the layout is unchanged");
 }
