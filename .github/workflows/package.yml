@@ -1,7 +1,7 @@
 name: Package
 
 # Builds installable Fernrohr packages with cargo-packager for every platform
-# ci.yml already tests (macOS, Linux).
+# ci.yml already tests (macOS, Linux), plus Linux on arm64.
 #
 # Runs on every merge into develop, keeping the result as a workflow artifact,
 # and is called by release.yml with a tag, which also attaches the installers
@@ -52,6 +52,12 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             formats: appimage,deb
+          # Built natively on GitHub's arm64 runner - no cross-compiling - so the
+          # apt dependencies and the gnu linkage are the x86_64 leg's.
+          - name: Linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            formats: appimage,deb
 
     steps:
       - name: Checkout
@@ -68,7 +74,7 @@ jobs:
           cache-key: package-${{ matrix.target }}
 
       - name: Install Linux packaging dependencies
-        if: matrix.name == 'Linux'
+        if: startsWith(matrix.name, 'Linux')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -84,7 +90,7 @@ jobs:
             rpm
 
       - name: Validate desktop entry
-        if: matrix.name == 'Linux'
+        if: startsWith(matrix.name, 'Linux')
         run: desktop-file-validate app/assets/linux/fernrohr.desktop
 
       - name: Install cargo-packager
@@ -93,7 +99,7 @@ jobs:
           tool: cargo-packager
 
       - name: Install cargo-generate-rpm
-        if: matrix.name == 'Linux'
+        if: startsWith(matrix.name, 'Linux')
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-generate-rpm
@@ -164,7 +170,7 @@ jobs:
       # Service providers are added to the built deb's control file here, and the
       # result is read back - with the desktop entry and icon it should carry.
       - name: Finish and check deb
-        if: matrix.name == 'Linux'
+        if: startsWith(matrix.name, 'Linux')
         run: |
           set -euo pipefail
           recommends="gnome-keyring | kwalletmanager | keepassxc"
@@ -199,7 +205,7 @@ jobs:
       # cargo-packager has no RPM backend: build the rpm from the release build
       # it just made, then read its requirements and recommendations back.
       - name: Build and check rpm
-        if: matrix.name == 'Linux'
+        if: startsWith(matrix.name, 'Linux')
         run: |
           set -euo pipefail
           cargo generate-rpm -p app --target ${{ matrix.target }}
