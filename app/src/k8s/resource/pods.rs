@@ -53,11 +53,13 @@ mod test_window;
 mod watch;
 
 pub use panel::{PodsPanel, register_restore};
+pub(crate) use port_forward::{ForwardReport, forward_pod};
 pub(crate) use rows::BAD_WAITING_REASONS;
 pub(crate) use rows::format_age;
 pub use rows::{PodRow, matches_namespaces, pod_row};
 pub use selection::{PodSelection, SelectedPod};
 pub use shell::SHELL_KEY_CONTEXT;
+pub(crate) use shell::{running_containers, shell_into};
 pub use store::PodsTable;
 pub use watch::watch_all_namespaces;
 

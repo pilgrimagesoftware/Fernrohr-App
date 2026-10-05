@@ -205,6 +205,8 @@ impl Render for PodDetailPanel {
             .whitespace_nowrap()
             .child(logs_key)
             .child("Logs");
+        let shellable = !self.running().is_empty();
+        let acting_hints = self.acting_hints(shellable, window);
         let toggle_hint = div()
             .flex()
             .items_center()
@@ -298,12 +300,13 @@ impl Render for PodDetailPanel {
                         )
                     })
                     .child(logs_hint)
+                    .children(acting_hints)
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
         Self::with_window_actions(div(), cx)
             .size_full()
-            .key_context(key_context())
+            .key_context(key_context(shellable))
             .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
@@ -319,9 +322,14 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_select_managed_fields_tab))
             .on_action(cx.listener(Self::on_action_view_logs))
             .on_action(cx.listener(Self::on_action_edit_pod_yaml))
+            .on_action(cx.listener(Self::on_action_delete_pod))
+            .on_action(cx.listener(Self::on_action_kill_pod))
+            .on_action(cx.listener(Self::on_action_shell_pod))
+            .on_action(cx.listener(Self::on_action_port_forward_pod))
             .flex()
             .flex_col()
             .child(header)
+            .children(self.render_action_report(cx))
             .child(crate::ui::detail::lifecycle::body(
                 content,
                 self.lifecycle().as_ref(),
@@ -334,10 +342,14 @@ impl Render for PodDetailPanel {
 }
 
 /// The panel's own key context plus the shared one `links.go_to` is gated to,
-/// so `g` reaches this panel without the link module knowing it exists.
-fn key_context() -> KeyContext {
+/// so `g` reaches this panel without the link module knowing it exists - and,
+/// while the pod has a running container, Shell's.
+fn key_context(shellable: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
+    if shellable {
+        context.add(super::actions::SHELLABLE_KEY_CONTEXT);
+    }
     context.add(crate::ui::link::LINKS_KEY_CONTEXT);
     context
 }

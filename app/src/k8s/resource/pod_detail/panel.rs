@@ -86,6 +86,10 @@ pub struct PodDetailPanel {
     /// values live only here, and only until hidden, the tab is left, or the
     /// panel closes.
     pub(super) configuration: super::configuration::ConfigurationState,
+    /// The last action the cluster refused, or what the last action did
+    /// (`actions`), shown above the content until the next one.
+    pub(super) action_refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
+    pub(super) action_notice: Option<String>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -106,6 +110,8 @@ impl PodDetailPanel {
             discovery,
             state: PodDetailState::Loading,
             configuration: Default::default(),
+            action_refusal: None,
+            action_notice: None,
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
@@ -143,6 +149,8 @@ impl PodDetailPanel {
             discovery,
             state: PodDetailState::Loading,
             configuration: Default::default(),
+            action_refusal: None,
+            action_notice: None,
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),

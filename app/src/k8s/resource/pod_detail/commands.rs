@@ -56,6 +56,15 @@ const COPY_NAME_COMMAND_ID: &str = "pod_detail.copy_name";
 const UNFOLD_ALL_COMMAND_ID: &str = "pod_detail.yaml_unfold_all";
 const VIEW_LOGS_COMMAND_ID: &str = "pod_detail.view_logs";
 
+/// The Pods list's keys for acting on a pod, so they read as one shortcut
+/// from the list or the pod's panel (`k9s-remaining-keybindings`).
+pub(super) const DELETE_KEY: &str = "ctrl-d";
+pub(super) const KILL_KEY: &str = "ctrl-k";
+pub(super) const SHELL_KEY: &str = "s";
+pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
+/// Where Shell is bound: only while the pod has a running container.
+const SHELL_CONTEXT: &str = "PodDetailShellable && !Input";
+
 /// The panel's shortcuts as registry commands, gated to its key context: each
 /// gets a palette entry while a detail panel has focus, and a `keymap.toml`
 /// override by id. None belongs in the menu bar - they act on one panel, not
@@ -155,5 +164,46 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(EditPodYaml),
         menu: None,
     });
+    // The Pods list's own actions, bound here for the panel's pod - outside
+    // text fields, like View Logs.
+    use crate::k8s::resource::pods::{DeletePod, KillPod, PortForwardPod, ShellPod};
+    let mut acting = |id, title, default_binding, context, action: Box<dyn Action>| {
+        registry.register(Command {
+            id,
+            title,
+            default_binding,
+            context: Some(context),
+            action,
+            menu: None,
+        });
+    };
+    acting(
+        "pod_detail.delete",
+        "Pod Detail: Delete Pod",
+        DELETE_KEY,
+        VIEW_LOGS_CONTEXT,
+        Box::new(DeletePod),
+    );
+    acting(
+        "pod_detail.kill",
+        "Pod Detail: Kill Pod (No Grace Period)",
+        KILL_KEY,
+        VIEW_LOGS_CONTEXT,
+        Box::new(KillPod),
+    );
+    acting(
+        "pod_detail.shell",
+        "Pod Detail: Shell into Pod",
+        SHELL_KEY,
+        SHELL_CONTEXT,
+        Box::new(ShellPod),
+    );
+    acting(
+        "pod_detail.port_forward",
+        "Pod Detail: Port-Forward Pod",
+        PORT_FORWARD_KEY,
+        VIEW_LOGS_CONTEXT,
+        Box::new(PortForwardPod),
+    );
     super::window_commands::register_commands(registry);
 }
