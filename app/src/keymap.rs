@@ -90,9 +90,14 @@ fn load_binding(
     gpui_kit::KeyBinding::load(keys, action, context, false, None, mapper).ok()
 }
 
+mod completions;
 mod conflicts;
 mod live;
 
+// UNWIRED(#131): the status bar's chord indicator is its caller, in the next
+// section of `pending-chord-indicator`.
+#[allow(unused_imports)]
+pub use completions::{Completion, completions};
 pub use conflicts::{Conflicts, PrefixKind, conflicts, lacks_modifier};
 #[cfg(test)]
 pub use conflicts::{Prefix, Shadow};
