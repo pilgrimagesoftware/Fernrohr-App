@@ -77,6 +77,7 @@ async fn a_discovered_owner_is_a_link_that_follows(cx: &mut TestAppContext) {
         vec![FollowReference {
             context_name: "kind-dev".into(),
             target: ObjectRef::namespaced("apps", "Deployment", "staging", "web"),
+            mode: crate::ui::nav::OpenMode::Foreground,
         }]
     );
 }

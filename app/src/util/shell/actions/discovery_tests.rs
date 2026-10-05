@@ -193,6 +193,7 @@ fn follow_pod_metrics(h: &mut Harness) -> bool {
             namespace: Some("default".into()),
             name: "web-1".into(),
         },
+        mode: crate::ui::nav::OpenMode::Foreground,
     });
     h.vcx.run_until_parked();
     h.vcx.update(|_, cx| {

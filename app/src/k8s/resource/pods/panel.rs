@@ -264,6 +264,22 @@ impl PodsPanel {
                     return;
                 }
                 let row_ix = match event {
+                    // A modified click's selection is put back, and nothing
+                    // follows the clicked row (`ui::background_rows`).
+                    TableEvent::SelectRow(_)
+                        if table.update(cx, |table, cx| {
+                            crate::ui::background_rows::undo_select(table, cx)
+                        }) =>
+                    {
+                        return;
+                    }
+                    TableEvent::DoubleClickedRow(_)
+                        if table.update(cx, |table, _| {
+                            crate::ui::background_rows::swallow_double_click(table)
+                        }) =>
+                    {
+                        return;
+                    }
                     TableEvent::SelectRow(row_ix) => *row_ix,
                     // A single click only selects (drives WarpNamespace/
                     // ShowPodLogs, which read SelectedPod); opening the

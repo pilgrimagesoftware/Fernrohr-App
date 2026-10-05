@@ -12,7 +12,7 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::DetailView;
-use crate::ui::nav::ObjectTarget;
+use crate::ui::nav::{ObjectTarget, OpenMode};
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState,
@@ -208,6 +208,10 @@ impl ObjectListPanel {
                 delegate.set_on_open(move |row_ix, window, cx| {
                     let _ = this.update(cx, |this, cx| this.open_row(row_ix, window, cx));
                 });
+                let open = self.background_opener();
+                delegate.set_on_open_in_background(move |row, window, cx| {
+                    window.dispatch_action(Box::new(open(row)), cx);
+                });
                 TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
@@ -220,11 +224,20 @@ impl ObjectListPanel {
                 window,
                 |this, table, event, window, cx| match event {
                     TableEvent::SelectRow(row_ix) => {
-                        table.update(cx, |table, _| {
-                            table.delegate_mut().remember_selection(*row_ix)
+                        table.update(cx, |table, cx| {
+                            if !crate::ui::background_rows::undo_select(table, cx) {
+                                table.delegate_mut().remember_selection(*row_ix)
+                            }
                         });
                     }
-                    TableEvent::DoubleClickedRow(row_ix) => this.open_row(*row_ix, window, cx),
+                    TableEvent::DoubleClickedRow(row_ix) => {
+                        let background = table.update(cx, |table, _| {
+                            crate::ui::background_rows::swallow_double_click(table)
+                        });
+                        if !background {
+                            this.open_row(*row_ix, window, cx);
+                        }
+                    }
                     TableEvent::ColumnWidthsChanged(widths) => {
                         table.update(cx, |table, _| table.delegate_mut().set_widths(widths));
                     }
@@ -276,6 +289,7 @@ impl ObjectListPanel {
                 context_name: self.scope.context_name.clone(),
                 target,
                 view,
+                mode: OpenMode::Foreground,
             }),
             cx,
         );

@@ -190,6 +190,9 @@ pub(super) fn data_table(
 
 /// What a row's "Open" calls with the row it was raised on.
 type OpenRow = std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>;
+/// Opens a row's object in the background, from the row itself - the table is
+/// mid-update when a row is clicked, so the panel can't read it back.
+type OpenRowInBackground = std::rc::Rc<dyn Fn(&ListRow, &mut Window, &mut App)>;
 
 /// The [`TableDelegate`] behind a list panel's table: the column order and
 /// widths, the active sort, and the rows in their natural and displayed order.
@@ -206,6 +209,9 @@ pub(super) struct ObjectTableDelegate {
     selected: Option<(Option<String>, String)>,
     /// Asks the panel to open the row a context menu was raised on.
     on_open: Option<OpenRow>,
+    /// What a modified or middle click on a row does with it.
+    on_open_in_background: Option<OpenRowInBackground>,
+    background_click: crate::ui::background_rows::BackgroundClick,
     /// The header cells' drawn bounds, for a divider double-click to fit a
     /// column (`ui::table_fit`).
     header: crate::ui::table_fit::HeaderBounds,
@@ -220,6 +226,8 @@ impl ObjectTableDelegate {
             sort: None,
             selected: None,
             on_open: None,
+            on_open_in_background: None,
+            background_click: Default::default(),
             header: Default::default(),
         }
     }
@@ -227,6 +235,14 @@ impl ObjectTableDelegate {
     /// What the row context menu's "Open" does with the row it was raised on.
     pub(super) fn set_on_open(&mut self, on_open: impl Fn(usize, &mut Window, &mut App) + 'static) {
         self.on_open = Some(std::rc::Rc::new(on_open));
+    }
+
+    /// What a modified or middle click on a row does with that row.
+    pub(super) fn set_on_open_in_background(
+        &mut self,
+        open: impl Fn(&ListRow, &mut Window, &mut App) + 'static,
+    ) {
+        self.on_open_in_background = Some(std::rc::Rc::new(open));
     }
 
     /// Replaces the rows, keeping the active sort applied.
@@ -313,9 +329,31 @@ impl ObjectTableDelegate {
     }
 }
 
+impl crate::ui::background_rows::BackgroundRows for ObjectTableDelegate {
+    fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
+        if let (Some(open), Some(row)) = (self.on_open_in_background.clone(), self.rows.get(row_ix))
+        {
+            open(row, window, cx);
+        }
+    }
+
+    fn background_click(&mut self) -> &mut crate::ui::background_rows::BackgroundClick {
+        &mut self.background_click
+    }
+}
+
 impl TableDelegate for ObjectTableDelegate {
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
+    }
+
+    fn render_tr(
+        &mut self,
+        row_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Stateful<Div> {
+        crate::ui::background_rows::row(row_ix, cx)
     }
 
     fn rows_count(&self, _: &App) -> usize {

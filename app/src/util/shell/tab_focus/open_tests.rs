@@ -139,6 +139,7 @@ async fn an_object_detail_opened_from_a_list_takes_its_keys(cx: &mut TestAppCont
         context_name: "kind-dev".into(),
         target: target.clone(),
         view: None,
+        mode: crate::ui::nav::OpenMode::Foreground,
     });
     vcx.run_until_parked();
     let Some(OpenedPanel::ObjectDetail(detail)) =

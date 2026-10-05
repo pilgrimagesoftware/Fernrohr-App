@@ -24,7 +24,8 @@ actions!(
         DeletePod,
         KillPod,
         ShellPod,
-        PortForwardPod
+        PortForwardPod,
+        OpenInBackground
     ]
 );
 
@@ -53,6 +54,8 @@ pub(super) const NAMESPACE_KEY: &str = "w";
 /// shifted for every list in the context.
 pub(super) const WARP_ALL_KEY: &str = "shift-w";
 pub(super) const DESCRIBE_KEY: &str = "d";
+/// Open in Background: the platform modifier with Enter (`cmd-enter` on macOS).
+pub(super) const OPEN_IN_BACKGROUND_KEY: &str = "secondary-enter";
 pub(super) const LOGS_KEY: &str = "l";
 pub(super) const YAML_KEY: &str = "y";
 pub(super) const QUICK_LOOK_KEY: &str = "space";
@@ -159,6 +162,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Warp All to Selected Pod's Namespace",
         WARP_ALL_KEY,
         Box::new(WarpAllToNamespace),
+        None,
+    );
+    register(
+        "pods.open_in_background",
+        "Pods: Open Selected Pod in Background",
+        OPEN_IN_BACKGROUND_KEY,
+        Box::new(OpenInBackground),
         None,
     );
     register(

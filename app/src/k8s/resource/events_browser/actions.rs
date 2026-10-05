@@ -37,6 +37,7 @@ impl EventsPanel {
             Box::new(FollowReference {
                 context_name: self.scope.context_name.clone(),
                 target: Self::involved_ref(&row),
+                mode: crate::ui::nav::OpenMode::Foreground,
             }),
             cx,
         );

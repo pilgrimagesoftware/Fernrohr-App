@@ -65,6 +65,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
             None,
             Some("other".into()),
             Vec::new(),
+            crate::ui::nav::OpenMode::Foreground,
             window,
             cx,
         );

@@ -60,6 +60,7 @@ async fn a_namespace_reference_is_a_link_and_an_owner_with_no_viewer_is_not(
         vec![FollowReference {
             context_name: "kind-dev".into(),
             target: ObjectRef::cluster_scoped("", "Namespace", "staging"),
+            mode: crate::ui::nav::OpenMode::Foreground,
         }],
         "clicking the namespace follows it, from the panel's own context"
     );
@@ -122,6 +123,7 @@ async fn an_owner_becomes_a_link_once_its_kind_is_discovered(cx: &mut TestAppCon
         vec![FollowReference {
             context_name: "kind-dev".into(),
             target: ObjectRef::namespaced("apps", "ReplicaSet", "staging", "api-7d9f"),
+            mode: crate::ui::nav::OpenMode::Foreground,
         }]
     );
 }
@@ -222,6 +224,7 @@ async fn g_opens_the_picker_on_a_pod_and_enter_follows_its_namespace(cx: &mut Te
         vec![FollowReference {
             context_name: "kind-dev".into(),
             target: ObjectRef::cluster_scoped("", "Namespace", "staging"),
+            mode: crate::ui::nav::OpenMode::Foreground,
         }]
     );
 }

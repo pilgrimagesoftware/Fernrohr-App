@@ -10,6 +10,9 @@ use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
 use gpui_kit::*;
 
+mod open_mode;
+pub use open_mode::{OpenMode, OpenPodInBackground};
+
 // `ShowPodDetail` and `ShowPodDetailYaml` are deliberately not registered
 // commands: unlike the two above them they need a pod already selected
 // (`SelectedPod`), so they are dispatched from within a Pods panel rather than

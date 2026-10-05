@@ -20,6 +20,17 @@ pub struct PodSelection {
     pub context_name: String,
 }
 
+impl PodSelection {
+    /// This pod's detail panel, opened in the background.
+    pub(crate) fn background_open(&self) -> crate::ui::nav::OpenPodInBackground {
+        crate::ui::nav::OpenPodInBackground {
+            context_name: self.context_name.clone(),
+            namespace: self.namespace.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct SelectedPod(pub Option<PodSelection>);
 
