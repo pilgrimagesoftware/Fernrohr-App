@@ -25,10 +25,16 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 mod capsule;
+mod chord;
 mod commands;
 mod theme_switch;
 
 pub(crate) use commands::{AddContext, DisconnectActiveContext, register_commands};
+/// The chord indicator's debug selectors, for tests outside this module.
+#[cfg(test)]
+pub(crate) mod chord_selectors {
+    pub(crate) use super::chord::{INDICATOR_SELECTOR, MORE_SELECTOR, completion_selector};
+}
 
 /// The bar's height at the default text size - layout-only, so it stays local rather
 /// than in `consts.rs` (see `.claude/rules/rust-structure.md`). It scales with the
@@ -100,6 +106,15 @@ pub struct StatusBarView {
     /// than `Connected` (design.md decision 4) - `None` once everything is healthy, so an
     /// idle, fully connected window never wakes on a timer.
     tick: Option<Task<()>>,
+    /// The chord the window is waiting to complete, if any ([`chord`]).
+    chord: Option<chord::PendingChord>,
+    _pending_input: Option<Subscription>,
+    /// The rest of the Shortcut timeout, while GPUI's own timer is paused for
+    /// the pending chord ([`chord`]); dropping it cancels the wait.
+    extension: Option<Task<()>>,
+    /// Whether the pending chord has had its wait extended already, so the
+    /// observer firing again for the same keys doesn't start another.
+    extended: bool,
 }
 
 impl StatusBarView {
@@ -155,6 +170,10 @@ impl StatusBarView {
             _registry_observation: registry_observation,
             _connection_observations: connection_observations,
             tick: None,
+            chord: None,
+            _pending_input: None,
+            extension: None,
+            extended: false,
         };
         this.ensure_tick(cx);
         this
@@ -336,6 +355,7 @@ impl Render for StatusBarView {
                     )
                     .child(capsule::render_add_button(this)),
             )
+            .children(self.chord.as_ref().map(|chord| chord::render(chord, cx)))
             .child(theme_switch::render_theme_switch(cx))
     }
 }
@@ -349,3 +369,5 @@ impl Render for StatusBarView {
 // glob). Import specific names instead, here and in `tests.rs`.
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timeout_tests;

@@ -90,9 +90,11 @@ fn load_binding(
     gpui_kit::KeyBinding::load(keys, action, context, false, None, mapper).ok()
 }
 
+mod completions;
 mod conflicts;
 mod live;
 
+pub use completions::{Completion, completions};
 pub use conflicts::{Conflicts, PrefixKind, conflicts, lacks_modifier};
 #[cfg(test)]
 pub use conflicts::{Prefix, Shadow};

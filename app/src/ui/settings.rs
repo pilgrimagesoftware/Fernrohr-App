@@ -10,6 +10,7 @@ use gpui_kit::*;
 
 mod recorder;
 mod rows;
+mod shortcut_timeout;
 pub mod shortcuts;
 #[cfg(test)]
 mod tests;
@@ -153,7 +154,11 @@ impl Render for SettingsWindow {
                         div()
                             .px(space.panel_inset)
                             .pt(space.panel_inset)
+                            .flex()
+                            .flex_col()
+                            .gap(space.control_gap)
                             .child(text_size::row(window, cx))
+                            .child(shortcut_timeout::row(cx))
                     })
                     .child(div().flex_1().min_h_0().child(self.shortcuts.clone())),
             )

@@ -88,6 +88,20 @@ pub const COLLAPSED_VALUE_PREVIEW_CHARS: usize = 20;
 /// 10% steps from 90 to 150, plus an 85% floor for dense screens. Ascending.
 pub(crate) const TEXT_SIZE_STEPS: [u16; 8] = [85, 90, 100, 110, 120, 130, 140, 150];
 
+/// `pending-chord-indicator`: the Shortcut timeout preference's range and default,
+/// in whole seconds - how long a chord whose keys so far are also a whole
+/// binding waits for its next key before the shorter binding runs.
+pub(crate) const SHORTCUT_TIMEOUT_MIN_SECS: u8 = 1;
+pub(crate) const SHORTCUT_TIMEOUT_MAX_SECS: u8 = 10;
+pub(crate) const SHORTCUT_TIMEOUT_DEFAULT_SECS: u8 = 3;
+
+/// GPUI's own wait before it flushes an ambiguous pending chord - its
+/// crate-private `PENDING_INPUT_TIMEOUT` in gpui-pre 0.3.7, which can't be read
+/// from here. The status bar pauses that timer for the rest of the preference
+/// and lets this much run out at the end, so the total is the preference. A test
+/// pins the total wait, so a GPUI release that changes this fails it.
+pub(crate) const GPUI_PENDING_INPUT_TIMEOUT: Duration = Duration::from_secs(1);
+
 /// The frame and data roles' size at 100% text size: the rem every window uses,
 /// gpui-component's own default, which every size the app used before the
 /// text-size preference is relative to.
