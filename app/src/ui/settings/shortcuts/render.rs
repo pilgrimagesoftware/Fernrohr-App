@@ -274,12 +274,41 @@ fn clash_summary(registry: &CommandRegistry, clashes: &keymap::Conflicts) -> Str
     let starts_theirs = of_kind(keymap::PrefixKind::StartsTheirs);
     if !starts_theirs.is_empty() {
         parts.push(format!(
-            "starts the keys of {starts_theirs}, which would stop working"
+            "starts the keys of {starts_theirs}, so it waits for your next key, up to \
+             the Shortcut timeout, before it runs"
         ));
     }
     let starts_mine = of_kind(keymap::PrefixKind::StartsMine);
     if !starts_mine.is_empty() {
-        parts.push(format!("can't be reached past the key of {starts_mine}"));
+        parts.push(format!(
+            "starts with the key of {starts_mine}, which then waits for your next key, up \
+             to the Shortcut timeout, before it runs"
+        ));
     }
     parts.join("; ")
+}
+
+#[cfg(test)]
+mod clash_tests {
+    use super::clash_summary;
+    use crate::command::CommandRegistry;
+    use crate::keymap::{self, KeymapConfig};
+
+    /// #137: a key that starts other commands' chords now makes the shorter
+    /// one wait for the Shortcut timeout, and the warning says so instead of
+    /// claiming the chords stop working.
+    #[test]
+    fn a_prefix_warning_describes_the_wait() {
+        let mut registry = CommandRegistry::new();
+        crate::util::shell::register_commands(&mut registry);
+        let clashes = keymap::conflicts(
+            &registry,
+            &KeymapConfig::default(),
+            "resource.focus",
+            "cmd-k",
+        );
+        let summary = clash_summary(&registry, &clashes);
+        assert!(summary.contains("waits for your next key"), "{summary}");
+        assert!(!summary.contains("stop working"), "{summary}");
+    }
 }

@@ -49,12 +49,19 @@ pub fn resolve(command_id: &str, default_binding: &str, keymap: &KeymapConfig) -
 /// command can never end up with a menu item and palette entry but no key - the
 /// failure a hand-maintained list of bindings allowed. An override that doesn't parse
 /// falls back to the default; a command whose default doesn't parse is skipped.
+///
+/// Shorter keys come first. GPUI keeps a chord pending against a complete
+/// shorter binding only when the chord was bound after it, so a key that is a
+/// command on its own and also starts a chord (`cmd-k` against `cmd-k w`)
+/// waits for the next key, as the Shortcut timeout specifies, rather than
+/// running at once and making the chord unreachable. The sort is stable, so
+/// bindings of equal length keep registration order.
 pub fn bindings(
     registry: &CommandRegistry,
     keymap: &KeymapConfig,
     mapper: &dyn gpui_kit::PlatformKeyboardMapper,
 ) -> Vec<gpui_kit::KeyBinding> {
-    registry
+    let mut bindings = registry
         .iter()
         .filter_map(|command| {
             let load =
@@ -70,7 +77,9 @@ pub fn bindings(
                 load(command.default_binding)
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    bindings.sort_by_key(|binding| binding.keystrokes().len());
+    bindings
 }
 
 /// `keys` bound to `action` in `command`'s context - the command's own action,
