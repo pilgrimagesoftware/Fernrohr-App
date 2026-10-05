@@ -15,6 +15,10 @@ const NEW_COMMANDS: &[(&str, &[&str])] = &[
     ("pods.port_forward", &["PodsPanel"]),
     ("object_list.delete", &["ObjectListPanel", "DeletableList"]),
     (
+        "object_detail.delete",
+        &["ObjectDetailPanel", "DeletableObject"],
+    ),
+    (
         "services.port_forward",
         &["ObjectListPanel", "ServicesList"],
     ),

@@ -1,7 +1,9 @@
 //! Drawing the object panel: the header with its shortcut hints, the
 //! stacked sections, the events, and the YAML view.
 
-use super::commands::{PANEL_KEY_CONTEXT, TOGGLE_VIEW_KEY, ToggleObjectView};
+use super::commands::{
+    DELETE_KEY, DeleteObject, PANEL_KEY_CONTEXT, TOGGLE_VIEW_KEY, ToggleObjectView,
+};
 use super::fetch::ObjectDetailState;
 use super::model::{FieldValue, ObjectField};
 use super::panel::ObjectDetailPanel;
@@ -202,6 +204,7 @@ impl Render for ObjectDetailPanel {
         let window_contexts = crate::util::shell::window_context_count(window, cx);
         let yaml = self.viewing == DetailView::Yaml;
         let has_links = !self.followable(cx).is_empty();
+        let deletable = self.deletable(cx);
         let toggle_key =
             Kbd::binding_for_action(&ToggleObjectView, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| {
@@ -262,6 +265,19 @@ impl Render for ObjectDetailPanel {
                                 .test_support(),
                         )
                     })
+                    .when(deletable, |this| {
+                        this.child(hint(
+                            Kbd::binding_for_action(
+                                &DeleteObject,
+                                Some(super::delete::DELETABLE_KEY_CONTEXT),
+                                window,
+                            )
+                            .unwrap_or_else(|| {
+                                Kbd::new(Keystroke::parse(DELETE_KEY).expect("valid keybinding"))
+                            }),
+                            "Delete",
+                        ))
+                    })
                     .child(hint(
                         toggle_key,
                         if yaml { "Show fields" } else { "Show YAML" },
@@ -270,7 +286,7 @@ impl Render for ObjectDetailPanel {
 
         div()
             .size_full()
-            .key_context(key_context(self.edit.is_some()))
+            .key_context(key_context(self.edit.is_some(), deletable))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))
@@ -282,10 +298,12 @@ impl Render for ObjectDetailPanel {
             .on_action(cx.listener(Self::on_action_edit))
             .on_action(cx.listener(Self::on_action_save_edit))
             .on_action(cx.listener(Self::on_action_cancel_edit))
+            .on_action(cx.listener(Self::on_action_delete_object))
             .flex()
             .flex_col()
             .child(header)
             .children(self.render_edit_notice(cx))
+            .children(self.render_refusal(cx))
             .child(crate::ui::detail::lifecycle::body(
                 content,
                 self.lifecycle.as_ref(),
@@ -298,10 +316,13 @@ impl Render for ObjectDetailPanel {
 }
 
 /// The panel's own key context plus the shared one `links.go_to` is gated to -
-/// and, while `editing`, the edit's own.
-fn key_context(editing: bool) -> KeyContext {
+/// and, while `editing`, the edit's own; while `deletable`, Delete's.
+fn key_context(editing: bool, deletable: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
+    if deletable {
+        context.add(super::delete::DELETABLE_KEY_CONTEXT);
+    }
     if editing {
         context.add(super::commands::EDIT_KEY_CONTEXT);
     } else {
