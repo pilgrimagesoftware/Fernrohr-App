@@ -21,6 +21,8 @@ use kube_runtime::watcher;
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
 mod actions;
 mod commands;
+#[cfg(test)]
+pub(crate) use commands::LIST_KEY_CONTEXT;
 pub use commands::{
     CloseQuickLook, DeletePod, DescribePod, KillPod, OpenQuickLookDetails, PANEL_KEY_CONTEXT,
     PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs, ShowPodYaml,

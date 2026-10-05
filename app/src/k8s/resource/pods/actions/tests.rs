@@ -151,3 +151,41 @@ async fn a_refused_delete_shows_why_and_keeps_the_row(cx: &mut TestAppContext) {
         "Dismiss clears it"
     );
 }
+
+/// Review fix: the Pods keys are bound outside text fields. With the namespace
+/// picker's filter focused, `ctrl-k`, `ctrl-d`, `d`, `y` and `shift-f` type
+/// there - none kills, deletes, opens or forwards anything.
+#[gpui_kit::test]
+async fn keys_typed_into_the_namespace_filter_do_not_act_on_the_pod(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    harness.press("n");
+    let in_filter = harness.vcx.update(|window, _| {
+        window
+            .context_stack()
+            .iter()
+            .any(|context| context.contains("Input"))
+    });
+    assert!(in_filter, "`n` focuses the picker's filter");
+
+    harness.press("ctrl-k");
+    harness.press("ctrl-d");
+    harness.press("d");
+    harness.press("y");
+    harness.press("shift-f");
+    harness.vcx.run_until_parked();
+
+    assert!(
+        harness.cluster.deletes().is_empty(),
+        "nothing killed or deleted"
+    );
+    let forwards = harness.vcx.update(|_, cx| {
+        crate::k8s::cluster::port_forwards::PortForwards::entity(cx)
+            .read(cx)
+            .list()
+            .len()
+    });
+    assert_eq!(forwards, 0, "nothing forwarded");
+    assert!(!dialog_open(&mut harness), "no Delete prompt");
+    assert_eq!(harness.details_opened.get(), 0, "no detail panel");
+    assert_eq!(listed(&mut harness).len(), 2, "both pods stay");
+}

@@ -255,3 +255,24 @@ async fn a_secret_is_not_offered_for_editing(cx: &mut TestAppContext) {
     let notice = h.vcx.update(|_, cx| h.panel.read(cx).edit_notice.clone());
     assert!(notice.is_some_and(|notice| notice.contains("Secret")));
 }
+
+/// Review fix: keys typed into the YAML editor are text. `h`, `y` and `g` -
+/// Hide Secret Values, the YAML toggle and Go to outside the editor - insert
+/// "hyg" and run nothing.
+#[gpui_kit::test]
+async fn typing_in_the_editor_types_rather_than_running_commands(cx: &mut TestAppContext) {
+    let mut h = open(cx, deployments(), APPS, "deployments", deployment(2));
+    h.press("e");
+    let before = h.edit_text().expect("editing");
+
+    h.press("h y g");
+
+    let after = h.edit_text().expect("still editing");
+    assert_eq!(after, format!("hyg{before}"), "the keys were typed");
+    let view = h.vcx.update(|_, cx| h.panel.read(cx).view());
+    assert_eq!(
+        view,
+        crate::k8s::resource::pod_detail::DetailView::Structured,
+        "`y` didn't toggle the view"
+    );
+}

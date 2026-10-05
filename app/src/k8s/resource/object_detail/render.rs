@@ -303,7 +303,10 @@ fn key_context(editing: bool) -> KeyContext {
     context.add(PANEL_KEY_CONTEXT);
     if editing {
         context.add(super::commands::EDIT_KEY_CONTEXT);
+    } else {
+        // `g` (go to) is a links command, not the panel's: leave its context
+        // out while editing, so `g` typed into the YAML types.
+        context.add(link::LINKS_KEY_CONTEXT);
     }
-    context.add(link::LINKS_KEY_CONTEXT);
     context
 }

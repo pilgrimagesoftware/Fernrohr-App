@@ -33,6 +33,13 @@ actions!(
 /// nothing anywhere else. A context binding matches at any depth of that path,
 /// so these still fire once a table row has taken focus from the panel.
 pub const PANEL_KEY_CONTEXT: &str = "PodsPanel";
+/// Where every Pods command is bound: the panel minus its text fields (the
+/// namespace picker's filter), so a key typed there - `d`, or `ctrl-k` - types
+/// rather than acting on the selected pod.
+pub(crate) const LIST_KEY_CONTEXT: &str = "PodsPanel && !Input";
+/// The quick look's and the shell command's contexts, guarded the same way.
+const QUICK_LOOK_LIST_CONTEXT: &str = "PodQuickLook && !Input";
+const SHELL_LIST_CONTEXT: &str = "PodShellable && !Input";
 
 /// Added beside [`PANEL_KEY_CONTEXT`] while a quick look is open
 /// (`pod-quick-look` D3), so its Escape and Enter mean "close" and "open
@@ -82,7 +89,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: CLOSE_QUICK_LOOK_COMMAND_ID,
         title: "Pods: Close Quick Look",
         default_binding: CLOSE_QUICK_LOOK_KEY,
-        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        context: Some(QUICK_LOOK_LIST_CONTEXT),
         action: Box::new(CloseQuickLook),
         menu: None,
     });
@@ -90,7 +97,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: OPEN_QUICK_LOOK_DETAILS_COMMAND_ID,
         title: "Pods: Open Quick Look's Pod Details",
         default_binding: OPEN_QUICK_LOOK_DETAILS_KEY,
-        context: Some(QUICK_LOOK_KEY_CONTEXT),
+        context: Some(QUICK_LOOK_LIST_CONTEXT),
         action: Box::new(OpenQuickLookDetails),
         menu: None,
     });
@@ -98,7 +105,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "pods.shell",
         title: "Pods: Shell into Selected Pod",
         default_binding: SHELL_KEY,
-        context: Some(super::shell::SHELL_KEY_CONTEXT),
+        context: Some(SHELL_LIST_CONTEXT),
         action: Box::new(ShellPod),
         menu: None,
     });
@@ -107,7 +114,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             id,
             title,
             default_binding,
-            context: Some(PANEL_KEY_CONTEXT),
+            context: Some(LIST_KEY_CONTEXT),
             action,
             menu,
         });
@@ -186,7 +193,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(crate::ui::namespace_picker::pick_namespaces_command(
         "pods.pick_namespaces",
         "Pods: Pick Namespaces",
-        PANEL_KEY_CONTEXT,
+        LIST_KEY_CONTEXT,
     ));
 }
 

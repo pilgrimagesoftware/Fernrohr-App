@@ -18,6 +18,9 @@ actions!(
 /// This panel's own key context - distinct from pod detail's, so the two can
 /// bind the same keys to their own panels.
 pub const PANEL_KEY_CONTEXT: &str = "ObjectDetailPanel";
+/// Where the panel's own commands are bound: outside text fields - the YAML
+/// editor above all - so `y`, `h` or `e` typed into an edit types.
+const PANEL_KEYS_CONTEXT: &str = "ObjectDetailPanel && !Input";
 pub(super) const TOGGLE_VIEW_KEY: &str = "y";
 const TOGGLE_VIEW_COMMAND_ID: &str = "object_detail.toggle_view";
 const HIDE_SECRET_VALUES_COMMAND_ID: &str = "object_detail.hide_secret_values";
@@ -40,7 +43,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: TOGGLE_VIEW_COMMAND_ID,
         title: "Object Detail: Toggle Fields/YAML",
         default_binding: TOGGLE_VIEW_KEY,
-        context: Some(PANEL_KEY_CONTEXT),
+        context: Some(PANEL_KEYS_CONTEXT),
         action: Box::new(ToggleObjectView),
         menu: None,
     });
@@ -48,7 +51,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "object_detail.edit",
         title: "Object Detail: Edit YAML",
         default_binding: EDIT_KEY,
-        context: Some(PANEL_KEY_CONTEXT),
+        context: Some(PANEL_KEYS_CONTEXT),
         action: Box::new(EditObject),
         menu: None,
     });
@@ -72,7 +75,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: HIDE_SECRET_VALUES_COMMAND_ID,
         title: "Object Detail: Hide Secret Values",
         default_binding: HIDE_SECRET_VALUES_KEY,
-        context: Some(PANEL_KEY_CONTEXT),
+        context: Some(PANEL_KEYS_CONTEXT),
         action: Box::new(HideSecretValues),
         menu: None,
     });
@@ -80,7 +83,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "object_detail.copy_name",
         title: "Object Detail: Copy Resource Name",
         default_binding: crate::ui::copy::COPY_NAME_KEY,
-        context: Some(PANEL_KEY_CONTEXT),
+        context: Some(PANEL_KEYS_CONTEXT),
         action: Box::new(crate::ui::copy::CopyResourceName),
         menu: None,
     });
@@ -88,7 +91,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "object_detail.yaml_fold_all",
         title: "Object Detail: Fold All YAML",
         default_binding: crate::ui::yaml_view::FOLD_ALL_KEY,
-        context: Some(PANEL_KEY_CONTEXT),
+        context: Some(PANEL_KEYS_CONTEXT),
         action: Box::new(crate::ui::yaml_view::FoldAll),
         menu: None,
     });
@@ -96,7 +99,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "object_detail.yaml_unfold_all",
         title: "Object Detail: Unfold All YAML",
         default_binding: crate::ui::yaml_view::UNFOLD_ALL_KEY,
-        context: Some(PANEL_KEY_CONTEXT),
+        context: Some(PANEL_KEYS_CONTEXT),
         action: Box::new(crate::ui::yaml_view::UnfoldAll),
         menu: None,
     });

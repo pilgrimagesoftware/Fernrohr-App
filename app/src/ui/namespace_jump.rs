@@ -13,6 +13,8 @@ use gpui_kit::*;
 
 /// The context namespaced list panels wrap themselves in.
 pub const KEY_CONTEXT: &str = "NamespacedList";
+/// Where the jumps are bound: the list minus its text fields.
+const KEYS_CONTEXT: &str = "NamespacedList && !Input";
 
 /// Scope the focused list to the namespace at `position` (1-based) in its
 /// namespace list - or, at 0, to all namespaces.
@@ -42,7 +44,8 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             id,
             title,
             default_binding: keys,
-            context: Some(KEY_CONTEXT),
+            // Option-digit types a character in a text field on macOS.
+            context: Some(KEYS_CONTEXT),
             action: Box::new(JumpToNamespace { position }),
             menu: None,
         });

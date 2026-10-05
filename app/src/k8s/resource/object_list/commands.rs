@@ -70,7 +70,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: "services.port_forward",
         title: "Services: Port-Forward Selected Service",
         default_binding: PORT_FORWARD_KEY,
-        context: Some(super::port_forward::SERVICES_KEY_CONTEXT),
+        context: Some("ServicesList && !Input"),
         action: Box::new(PortForwardService),
         menu: None,
     });
@@ -139,6 +139,6 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(crate::ui::namespace_picker::pick_namespaces_command(
         "object_list.pick_namespaces",
         "List: Pick Namespaces",
-        PANEL_KEY_CONTEXT,
+        LIST_KEY_CONTEXT,
     ));
 }
