@@ -54,6 +54,8 @@ pub(crate) use warp::WarpContextToNamespace;
 mod open;
 mod panel_focus;
 mod panels;
+#[cfg(test)]
+mod pending_chord_tests;
 mod persist;
 #[cfg(test)]
 mod pod_detail_logs_tests;

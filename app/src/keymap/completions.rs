@@ -13,8 +13,6 @@ use crate::command::CommandRegistry;
 use gpui_kit::{KeyContext, Keystroke, PlatformKeyboardMapper};
 
 /// One way to finish the pending chord.
-// UNWIRED(#131): read by the status bar's chord indicator, next section.
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Completion {
     /// The keys still to press, after the pending ones.
@@ -27,8 +25,6 @@ pub struct Completion {
 /// `contexts` (lowest to highest, as `Window::context_stack` gives it), in
 /// registration order - the command palette's order. Empty for no pending
 /// keys, or keys that start no command's chord.
-// UNWIRED(#131): called by the status bar's chord indicator, next section.
-#[allow(dead_code)]
 pub fn completions(
     registry: &CommandRegistry,
     config: &KeymapConfig,
