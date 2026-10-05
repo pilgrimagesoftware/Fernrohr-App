@@ -11,6 +11,8 @@ use gpui_kit::{
     Action, App, Entity, KeyContext, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
 };
 
+mod layout;
+
 fn temp_path(name: &str) -> std::path::PathBuf {
     crate::util::test_paths::temp_path(&format!("settings-{name}"))
 }

@@ -1,13 +1,21 @@
 //! The Settings window: `settings.open` (Settings…, `cmd-,`, the App menu), a
-//! single-instance window with a sections sidebar. Keyboard Shortcuts is its
-//! only section today ([`shortcuts`]); later settings join the sidebar rather
-//! than each opening a window of its own.
+//! single-instance window with a sections sidebar: Keyboard Shortcuts
+//! ([`shortcuts`], with the Shortcut Timeout above the list) and Appearance
+//! ([`appearance`]: Text Size and the theme). Later settings join the sidebar
+//! rather than each opening a window of its own.
+//!
+//! The sidebar's entries are buttons - Tab reaches them, Enter or Space shows
+//! the section - and Show Keyboard Shortcuts and Show Appearance are palette
+//! commands while the window has focus. They have no default key: a plain
+//! `cmd-<digit>` would tie with the global show-panel keys. Showing a section
+//! moves focus into it, so the next Tab reaches its first control.
 
 use crate::command::{Command, CommandRegistry, MenuSlot};
 use crate::consts::{SETTINGS_WINDOW_MIN_SIZE, SETTINGS_WINDOW_SIZE};
 use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::*;
 
+mod appearance;
 mod recorder;
 mod rows;
 mod shortcut_timeout;
@@ -18,7 +26,38 @@ mod text_size;
 
 pub use shortcuts::ShortcutsSection;
 
-actions!(settings, [OpenSettings]);
+actions!(
+    settings,
+    [OpenSettings, ShowKeyboardShortcuts, ShowAppearance]
+);
+
+/// The window's key context: where the section commands are bound.
+pub(crate) const KEY_CONTEXT: &str = "SettingsWindow";
+
+/// Which section the window shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Section {
+    #[default]
+    KeyboardShortcuts,
+    Appearance,
+}
+
+impl Section {
+    fn title(self) -> &'static str {
+        match self {
+            Section::KeyboardShortcuts => "Keyboard Shortcuts",
+            Section::Appearance => "Appearance",
+        }
+    }
+
+    /// The sidebar button's element id.
+    pub(crate) fn button_id(self) -> &'static str {
+        match self {
+            Section::KeyboardShortcuts => "settings-section-shortcuts",
+            Section::Appearance => "settings-section-appearance",
+        }
+    }
+}
 
 /// Registers Settings… and the Keyboard Shortcuts section's own commands.
 pub fn register_commands(registry: &mut CommandRegistry) {
@@ -30,6 +69,29 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(OpenSettings),
         menu: Some(MenuSlot::App),
     });
+    for (id, title, default_binding, action) in [
+        (
+            "settings.show_shortcuts",
+            "Settings: Show Keyboard Shortcuts",
+            "",
+            Box::new(ShowKeyboardShortcuts) as Box<dyn Action>,
+        ),
+        (
+            "settings.show_appearance",
+            "Settings: Show Appearance",
+            "",
+            Box::new(ShowAppearance),
+        ),
+    ] {
+        registry.register(Command {
+            id,
+            title,
+            default_binding,
+            context: Some(KEY_CONTEXT),
+            action,
+            menu: None,
+        });
+    }
     shortcuts::register_commands(registry);
 }
 
@@ -101,13 +163,52 @@ fn test_window(cx: &App) -> Option<WindowHandle<Root>> {
 
 pub struct SettingsWindow {
     shortcuts: Entity<ShortcutsSection>,
+    section: Section,
+    /// The Appearance section's own focus, where showing it puts focus.
+    appearance_focus: FocusHandle,
 }
 
 impl SettingsWindow {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             shortcuts: cx.new(|cx| ShortcutsSection::new(window, cx)),
+            section: Section::default(),
+            appearance_focus: cx.focus_handle(),
         }
+    }
+
+    /// Shows `section` and puts focus in it: the shortcuts list, or the top of
+    /// the Appearance section, so Tab goes on to its first control.
+    fn show(&mut self, section: Section, window: &mut Window, cx: &mut Context<Self>) {
+        self.section = section;
+        match section {
+            Section::KeyboardShortcuts => {
+                let focus = self.shortcuts.read(cx).list_focus();
+                window.focus(&focus, cx);
+            }
+            Section::Appearance => window.focus(&self.appearance_focus, cx),
+        }
+        cx.notify();
+    }
+
+    /// Test-only: the section shown.
+    #[cfg(test)]
+    pub(crate) fn section(&self) -> Section {
+        self.section
+    }
+
+    /// A sidebar entry: a button that shows `section`, marked while shown.
+    fn sidebar_button(&self, section: Section, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_kit::component::Selectable as _;
+        use gpui_kit::component::button::{Button, ButtonVariants as _};
+        use gpui_kit::prelude::FluentBuilder as _;
+        let shown = self.section == section;
+        Button::new(section.button_id())
+            .label(section.title())
+            .w_full()
+            .ghost()
+            .when(shown, |button| button.selected(true))
+            .on_click(cx.listener(move |this, _event, window, cx| this.show(section, window, cx)))
     }
 
     /// Test-only: the Keyboard Shortcuts section.
@@ -120,47 +221,55 @@ impl SettingsWindow {
 impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
+        let space = crate::ui::space::spacing(cx);
         let sidebar = div()
             .w(px(180.))
             .h_full()
-            .p(crate::ui::space::spacing(cx).control_gap)
+            .p(space.control_gap)
+            .flex()
+            .flex_col()
+            .gap_1()
             .border_r_1()
             .border_color(theme.border)
             .bg(theme.sidebar)
-            .child(
-                div()
-                    .px_2()
-                    .py_1()
-                    .rounded_md()
-                    .bg(crate::ui::style::accent_subtle(cx))
-                    .child("Keyboard Shortcuts"),
-            );
+            .child(self.sidebar_button(Section::KeyboardShortcuts, cx))
+            .child(self.sidebar_button(Section::Appearance, cx));
+        let content = match self.section {
+            Section::KeyboardShortcuts => div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                // Inset like the Shortcuts list below it, whose own top inset
+                // is the gap between the two.
+                .child(
+                    div()
+                        .px(space.panel_inset)
+                        .pt(space.panel_inset)
+                        .child(shortcut_timeout::row(cx)),
+                )
+                .child(div().flex_1().min_h_0().child(self.shortcuts.clone()))
+                .into_any_element(),
+            Section::Appearance => div()
+                .flex_1()
+                .min_w_0()
+                .track_focus(&self.appearance_focus)
+                .child(appearance::section(window, cx))
+                .into_any_element(),
+        };
         div()
+            .key_context(KEY_CONTEXT)
+            .on_action(cx.listener(|this, _: &ShowKeyboardShortcuts, window, cx| {
+                this.show(Section::KeyboardShortcuts, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowAppearance, window, cx| {
+                this.show(Section::Appearance, window, cx)
+            }))
             .size_full()
             .flex()
             .bg(theme.background)
             .text_color(theme.foreground)
             .child(sidebar)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    // Inset like the Shortcuts section below it, whose own top
-                    // inset is the gap between the two.
-                    .child({
-                        let space = crate::ui::space::spacing(cx);
-                        div()
-                            .px(space.panel_inset)
-                            .pt(space.panel_inset)
-                            .flex()
-                            .flex_col()
-                            .gap(space.control_gap)
-                            .child(text_size::row(window, cx))
-                            .child(shortcut_timeout::row(cx))
-                    })
-                    .child(div().flex_1().min_h_0().child(self.shortcuts.clone())),
-            )
+            .child(content)
     }
 }
