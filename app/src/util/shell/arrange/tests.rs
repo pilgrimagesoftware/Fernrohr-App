@@ -336,6 +336,13 @@ fn every_arrange_command_is_registered_and_in_the_first_run_keymap() {
             written.bindings.get(id).map(String::as_str),
             Some(command.default_binding)
         );
+        let clashes = crate::keymap::conflicts(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            id,
+            command.default_binding,
+        );
+        assert!(!clashes.any_clash(), "{id}: {clashes:?}");
     }
     let _ = std::fs::remove_file(&path);
 }

@@ -93,9 +93,9 @@ fn load_binding(
 mod conflicts;
 mod live;
 
+pub use conflicts::{Conflicts, PrefixKind, conflicts, lacks_modifier};
 #[cfg(test)]
-pub use conflicts::Shadow;
-pub use conflicts::{conflicts, lacks_modifier};
+pub use conflicts::{Prefix, Shadow};
 pub use live::{Edit, LiveKeymap, apply};
 
 #[cfg(test)]

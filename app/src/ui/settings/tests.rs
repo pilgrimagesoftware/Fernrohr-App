@@ -282,6 +282,30 @@ async fn confirming_a_conflict_applies_the_key(cx: &mut TestAppContext) {
     });
 }
 
+/// Recording a bare `cmd-k` would cut the arrange chords (`cmd-k right`...)
+/// short, so the editor asks before applying it, as for a taken key.
+#[gpui_kit::test]
+async fn a_key_that_starts_a_chord_asks_first(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (handle, section) = open(main, cx);
+    cx.update(|cx| section.update(cx, |s, cx| s.select("panel.focus_next", cx)));
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    let before = cx.update(|cx| override_of(cx, "panel.focus_next"));
+
+    press(&mut vcx, "enter");
+    press(&mut vcx, "cmd-k");
+    assert_eq!(cx.update(|cx| section.read(cx).test_mode()), "confirming");
+    press(&mut vcx, "escape");
+    cx.update(|cx| {
+        assert_eq!(section.read(cx).test_mode(), "browsing");
+        assert_eq!(
+            override_of(cx, "panel.focus_next"),
+            before,
+            "nothing applied"
+        );
+    });
+}
+
 /// Backspace removes the selected command's key; cmd-backspace resets it.
 #[gpui_kit::test]
 async fn remove_and_reset_from_the_keyboard(cx: &mut TestAppContext) {
