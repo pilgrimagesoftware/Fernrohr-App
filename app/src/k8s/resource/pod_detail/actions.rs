@@ -29,6 +29,8 @@ use std::rc::Rc;
 /// Added beside the panel's own context while its pod has a running
 /// container - the Shell command's context.
 pub const SHELLABLE_KEY_CONTEXT: &str = "PodDetailShellable";
+/// Added while the pod can be deleted - Delete's and Kill's context.
+pub const DELETABLE_KEY_CONTEXT: &str = "DeletablePod";
 /// The debug selector of the hint labelled `label`.
 pub(super) fn hint_selector(label: &str) -> String {
     format!("pod-detail-hint {label}")
@@ -47,6 +49,19 @@ impl PodDetailPanel {
             PodDetailState::Loaded(pod) if !gone => Some(pod),
             _ => None,
         }
+    }
+
+    /// Whether Delete and Kill are offered: there is a live pod, and the Pod
+    /// kind can be deleted - by discovery's word when it has one, else assumed.
+    pub(super) fn deletable(&self, cx: &App) -> bool {
+        let pods = DiscoveredKind::pods();
+        let verbs = self
+            .discovery
+            .read(cx)
+            .kinds()
+            .and_then(|kinds| kinds.iter().find(|kind| **kind == pods))
+            .map_or(pods.verbs, |kind| kind.verbs);
+        self.live_pod().is_some() && verbs.delete
     }
 
     /// The pod's running containers - empty when there is no live pod.
@@ -106,7 +121,7 @@ impl PodDetailPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.live_pod().is_none() {
+        if !self.deletable(cx) {
             return;
         }
         self.clear_action_report(cx);
@@ -122,7 +137,7 @@ impl PodDetailPanel {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.live_pod().is_none() {
+        if !self.deletable(cx) {
             return;
         }
         self.clear_action_report(cx);
@@ -183,9 +198,10 @@ impl PodDetailPanel {
     }
 
     /// The acting keys' hints, after Logs: Shell while `shellable`, Port
-    /// forward and Delete while there is a pod to act on.
-    pub(super) fn acting_hints(&self, shellable: bool, window: &Window) -> Vec<Div> {
+    /// forward while there is a pod to act on, Delete while it can be deleted.
+    pub(super) fn acting_hints(&self, shellable: bool, window: &Window, cx: &App) -> Vec<Div> {
         let live = self.live_pod().is_some();
+        let deletable = self.deletable(cx);
         let hint = |action: &dyn Action, context: &str, fallback: &str, label: &'static str| {
             let key = Kbd::binding_for_action(action, Some(context), window)
                 .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("valid keybinding")));
@@ -211,7 +227,14 @@ impl PodDetailPanel {
                 PORT_FORWARD_KEY,
                 "Port forward",
             ));
-            hints.push(hint(&DeletePod, PANEL_KEY_CONTEXT, DELETE_KEY, "Delete"));
+        }
+        if deletable {
+            hints.push(hint(
+                &DeletePod,
+                DELETABLE_KEY_CONTEXT,
+                DELETE_KEY,
+                "Delete",
+            ));
         }
         hints
     }

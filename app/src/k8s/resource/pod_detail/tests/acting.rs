@@ -58,6 +58,15 @@ struct Harness {
 /// window with a `Root` (for its dialogs), its keys bound and focus in it,
 /// once it shows the pod.
 fn open(cx: &mut TestAppContext, initial: Value) -> Harness {
+    open_with(cx, initial, None)
+}
+
+/// [`open`], with discovery reporting `kinds` for the context when given.
+fn open_with(
+    cx: &mut TestAppContext,
+    initial: Value,
+    kinds: Option<Vec<crate::k8s::cluster::discovery::DiscoveredKind>>,
+) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
         gpui_kit::init(cx);
@@ -76,6 +85,11 @@ fn open(cx: &mut TestAppContext, initial: Value) -> Harness {
     cluster.apply("/api/v1", "pods", initial);
     cx.update(|cx| {
         ClusterRegistry::insert_test_session(cx, CONTEXT, ConnectionState::Connected(client));
+        if let Some(kinds) = kinds {
+            crate::k8s::cluster::discovery_registry::DiscoveryRegistry::insert_test(
+                cx, CONTEXT, kinds,
+            );
+        }
     });
     let mut built = None;
     let window = cx.add_window(|window, cx| {
@@ -267,4 +281,26 @@ async fn shift_f_forwards_the_pods_port(cx: &mut TestAppContext) {
         harness.vcx.debug_bounds(NOTICE_ID).is_some(),
         "it says where it listens"
     );
+}
+
+/// Discovery lists no `delete` for Pods: the panel offers neither Delete nor
+/// Kill - no hint, and `ctrl-d` and `ctrl-k` send nothing.
+#[gpui_kit::test]
+async fn a_pod_kind_without_delete_offers_no_delete_or_kill(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::discovery::{DiscoveredKind, KindVerbs};
+    let pods = DiscoveredKind {
+        verbs: KindVerbs {
+            delete: false,
+            ..KindVerbs::default()
+        },
+        ..DiscoveredKind::pods()
+    };
+    let mut harness = open_with(cx, pod(true, 18_095), Some(vec![pods]));
+    assert!(!harness.hint_shown("Delete"), "no Delete hint");
+
+    harness.press("ctrl-d");
+    assert!(!harness.dialog_open(), "no question");
+    harness.press("ctrl-k");
+    harness.vcx.run_until_parked();
+    assert!(harness.cluster.deletes().is_empty(), "nothing deleted");
 }

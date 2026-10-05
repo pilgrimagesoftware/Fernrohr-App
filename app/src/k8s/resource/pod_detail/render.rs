@@ -206,7 +206,8 @@ impl Render for PodDetailPanel {
             .child(logs_key)
             .child("Logs");
         let shellable = !self.running().is_empty();
-        let acting_hints = self.acting_hints(shellable, window);
+        let deletable = self.deletable(cx);
+        let acting_hints = self.acting_hints(shellable, window, cx);
         let toggle_hint = div()
             .flex()
             .items_center()
@@ -306,7 +307,7 @@ impl Render for PodDetailPanel {
 
         Self::with_window_actions(div(), cx)
             .size_full()
-            .key_context(key_context(shellable))
+            .key_context(key_context(shellable, deletable))
             .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
@@ -343,12 +344,16 @@ impl Render for PodDetailPanel {
 
 /// The panel's own key context plus the shared one `links.go_to` is gated to,
 /// so `g` reaches this panel without the link module knowing it exists - and,
-/// while the pod has a running container, Shell's.
-fn key_context(shellable: bool) -> KeyContext {
+/// while the pod has a running container, Shell's; while it can be deleted,
+/// Delete's and Kill's.
+fn key_context(shellable: bool, deletable: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
     if shellable {
         context.add(super::actions::SHELLABLE_KEY_CONTEXT);
+    }
+    if deletable {
+        context.add(super::actions::DELETABLE_KEY_CONTEXT);
     }
     context.add(crate::ui::link::LINKS_KEY_CONTEXT);
     context

@@ -64,6 +64,8 @@ pub(super) const SHELL_KEY: &str = "s";
 pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
 /// Where Shell is bound: only while the pod has a running container.
 const SHELL_CONTEXT: &str = "PodDetailShellable && !Input";
+/// Where Delete and Kill are bound: only while the pod can be deleted.
+const DELETE_CONTEXT: &str = "DeletablePod && !Input";
 
 /// The panel's shortcuts as registry commands, gated to its key context: each
 /// gets a palette entry while a detail panel has focus, and a `keymap.toml`
@@ -181,14 +183,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "pod_detail.delete",
         "Pod Detail: Delete Pod",
         DELETE_KEY,
-        VIEW_LOGS_CONTEXT,
+        DELETE_CONTEXT,
         Box::new(DeletePod),
     );
     acting(
         "pod_detail.kill",
         "Pod Detail: Kill Pod (No Grace Period)",
         KILL_KEY,
-        VIEW_LOGS_CONTEXT,
+        DELETE_CONTEXT,
         Box::new(KillPod),
     );
     acting(

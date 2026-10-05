@@ -178,6 +178,46 @@ mod tests {
         }
     }
 
+    /// A command gated to a context nothing on the focus path adds is not
+    /// offered: the palette is empty, and Enter runs nothing.
+    #[gpui_kit::test]
+    async fn an_absent_contexts_command_is_not_offered(cx: &mut TestAppContext) {
+        let ran = Rc::new(Cell::new(false));
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            let mut registry = CommandRegistry::new();
+            registry.register(Command {
+                id: "test.absent",
+                title: "Absent Test Command",
+                default_binding: "",
+                context: Some("NotPushed && !Input"),
+                action: Box::new(First),
+                menu: None,
+            });
+            cx.set_global(registry);
+            let flag = ran.clone();
+            cx.on_action(move |_: &First, _cx| flag.set(true));
+        });
+        let window = cx.add_window(|window, cx| {
+            let host = cx.new(|cx| Host {
+                focus: cx.focus_handle(),
+            });
+            let focus = host.read(cx).focus.clone();
+            window.focus(&focus, cx);
+            Root::new(host, window, cx)
+        });
+        let mut vcx = VisualTestContext::from_window(window.into(), cx);
+        vcx.run_until_parked();
+        vcx.update(open);
+        vcx.run_until_parked();
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert!(
+            !ran.get(),
+            "a command whose context isn't pushed isn't offered"
+        );
+    }
+
     /// A command gated to a context an element adds beside its primary one -
     /// `PodDetailShellable` beside `PodDetailPanel` - is offered, and runs.
     #[gpui_kit::test]

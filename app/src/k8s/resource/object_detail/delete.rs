@@ -36,12 +36,14 @@ impl ObjectDetailPanel {
             .map_or(self.target.kind.verbs, |kind| kind.verbs)
     }
 
-    /// Whether Delete is offered: the object is loaded and not known gone, and
-    /// its kind can be deleted.
+    /// Whether Delete is offered: the object is loaded and not known gone, its
+    /// kind can be deleted, and no YAML edit is open - deleting under an edit
+    /// would silently discard it, even with focus on its Save or Cancel
+    /// button rather than in the editor.
     pub(super) fn deletable(&self, cx: &App) -> bool {
         let loaded = matches!(self.state, ObjectDetailState::Loaded(..));
         let gone = matches!(self.lifecycle, Some(Lifecycle::Deleted { .. }));
-        loaded && !gone && self.verbs(cx).delete
+        loaded && !gone && self.edit.is_none() && self.verbs(cx).delete
     }
 
     /// `DeleteObject`: asks before deleting the shown object.

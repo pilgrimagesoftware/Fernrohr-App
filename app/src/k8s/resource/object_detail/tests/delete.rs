@@ -163,3 +163,34 @@ async fn a_kind_without_delete_offers_no_delete(cx: &mut TestAppContext) {
     assert!(!harness.dialog_open(), "no question");
     assert!(harness.cluster.deletes().is_empty(), "nothing deleted");
 }
+
+/// With a YAML edit open, Delete isn't offered - even with focus outside the
+/// editor, on the panel itself, where `!Input` doesn't hold it back - so
+/// `ctrl-d` can't discard the unsaved edit.
+#[gpui_kit::test]
+async fn ctrl_d_with_an_edit_open_does_nothing(cx: &mut TestAppContext) {
+    let mut harness = open(cx, true);
+    harness.press("e");
+    let panel = harness.panel.clone();
+    assert!(
+        harness
+            .vcx
+            .update(|_, cx| panel.read(cx).edit_text(cx).is_some()),
+        "`e` opened an edit"
+    );
+    harness.vcx.update(|window, cx| {
+        panel.read(cx).focus_handle(cx).focus(window, cx);
+    });
+    harness.vcx.run_until_parked();
+    assert!(!harness.deletable_focused(), "no Delete context");
+
+    harness.press("ctrl-d");
+    assert!(!harness.dialog_open(), "no question");
+    assert!(harness.cluster.deletes().is_empty(), "nothing deleted");
+    assert!(
+        harness
+            .vcx
+            .update(|_, cx| panel.read(cx).edit_text(cx).is_some()),
+        "the edit is still open"
+    );
+}

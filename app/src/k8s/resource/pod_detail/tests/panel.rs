@@ -285,7 +285,12 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         commands.iter().all(|command| {
             matches!(
                 command.context,
-                Some(PANEL_KEY_CONTEXT | VIEW_LOGS_CONTEXT | "PodDetailShellable && !Input")
+                Some(
+                    PANEL_KEY_CONTEXT
+                        | VIEW_LOGS_CONTEXT
+                        | "PodDetailShellable && !Input"
+                        | "DeletablePod && !Input"
+                )
             ) && command.menu.is_none()
         }),
         "panel shortcuts are panel-scoped and stay out of the menu bar"
@@ -293,12 +298,13 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     assert!(registry.available(&[]).is_empty());
     assert_eq!(
         registry.available(&[PANEL_KEY_CONTEXT]).len(),
-        23,
-        "all but Shell, which needs a running container"
+        21,
+        "all but Shell, which needs a running container, and Delete and Kill, \
+         which need a pod that can be deleted"
     );
     assert_eq!(
         registry
-            .available(&[PANEL_KEY_CONTEXT, "PodDetailShellable"])
+            .available(&[PANEL_KEY_CONTEXT, "PodDetailShellable", "DeletablePod"])
             .len(),
         24
     );
