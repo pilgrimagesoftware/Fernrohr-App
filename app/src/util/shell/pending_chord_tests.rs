@@ -25,11 +25,20 @@ use gpui_kit::{
 use std::cell::Cell;
 use std::rc::Rc;
 
-const ARRANGE_CHORDS: [&str; 5] = [
+/// Every arrange command, all under `cmd-k`, in palette order (#138).
+const ARRANGE_CHORDS: [&str; 13] = [
     "panel.split_left",
     "panel.split_right",
     "panel.split_up",
     "panel.split_down",
+    "panel.move_left",
+    "panel.move_right",
+    "panel.move_up",
+    "panel.move_down",
+    "panel.merge_left",
+    "panel.merge_right",
+    "panel.merge_up",
+    "panel.merge_down",
     "panel.close_group",
 ];
 
@@ -116,9 +125,10 @@ impl Harness {
     }
 }
 
-/// Spec: "First key of a chord".
+/// Spec: "First key of a chord" - with split, move, merge and close group all
+/// under `cmd-k`, the popover lists the first eight and "… and 5 more".
 #[gpui_kit::test]
-async fn cmd_k_shows_the_pending_keys_and_five_completions(cx: &mut TestAppContext) {
+async fn cmd_k_shows_the_pending_keys_and_every_arrange_completion(cx: &mut TestAppContext) {
     let mut h = harness(cx);
     assert_eq!(h.chord(), None);
     h.press("cmd-k");
@@ -131,9 +141,10 @@ async fn cmd_k_shows_the_pending_keys_and_five_completions(cx: &mut TestAppConte
         ))
     );
     assert!(h.drawn(INDICATOR_SELECTOR.to_string()));
-    for id in ARRANGE_CHORDS {
+    for id in &ARRANGE_CHORDS[..8] {
         assert!(h.drawn(completion_selector(id)), "{id} is listed");
     }
+    assert!(h.drawn(MORE_SELECTOR.to_string()), "… and 5 more");
 }
 
 /// More completions than the popover's eight rows end in "… and N more" -

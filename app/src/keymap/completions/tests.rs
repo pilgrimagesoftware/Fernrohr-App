@@ -52,6 +52,14 @@ fn cmd_k_in_a_panel_group_lists_the_arrange_chords_in_palette_order() {
             ("right".to_string(), "panel.split_right"),
             ("up".to_string(), "panel.split_up"),
             ("down".to_string(), "panel.split_down"),
+            ("shift-left".to_string(), "panel.move_left"),
+            ("shift-right".to_string(), "panel.move_right"),
+            ("shift-up".to_string(), "panel.move_up"),
+            ("shift-down".to_string(), "panel.move_down"),
+            ("alt-left".to_string(), "panel.merge_left"),
+            ("alt-right".to_string(), "panel.merge_right"),
+            ("alt-up".to_string(), "panel.merge_up"),
+            ("alt-down".to_string(), "panel.merge_down"),
             ("w".to_string(), "panel.close_group"),
         ]
     );
@@ -66,7 +74,7 @@ fn a_completion_carries_its_command_title() {
         &contexts(&["Dock"]),
         &DummyKeyboardMapper,
     );
-    assert_eq!(found[4].title, "Panels: Close Group");
+    assert_eq!(found[12].title, "Panels: Close Group");
 }
 
 #[test]
