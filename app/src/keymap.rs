@@ -54,8 +54,13 @@ pub fn resolve(command_id: &str, default_binding: &str, keymap: &KeymapConfig) -
 /// shorter binding only when the chord was bound after it, so a key that is a
 /// command on its own and also starts a chord (`cmd-k` against `cmd-k w`)
 /// waits for the next key, as the Shortcut timeout specifies, rather than
-/// running at once and making the chord unreachable. The sort is stable, so
-/// bindings of equal length keep registration order.
+/// running at once and making the chord unreachable.
+///
+/// Within each length, the user's `keymap.toml` overrides come after the
+/// defaults: GPUI's later binding wins, so an override onto a key another
+/// command has by default beats that default, whichever command was
+/// registered first - as a live rebind, appended last, already does. The sort
+/// is stable, so otherwise registration order is kept.
 pub fn bindings(
     registry: &CommandRegistry,
     keymap: &KeymapConfig,
@@ -72,14 +77,18 @@ pub fn bindings(
             if chosen.is_empty() {
                 return None;
             }
-            load(&chosen).or_else(|| {
-                log::warn!("keymap.toml: invalid binding {chosen:?} for {}", command.id);
-                load(command.default_binding)
-            })
+            let overridden = keymap.bindings.contains_key(command.id);
+            match load(&chosen) {
+                Some(binding) => Some((binding, overridden)),
+                None => {
+                    log::warn!("keymap.toml: invalid binding {chosen:?} for {}", command.id);
+                    load(command.default_binding).map(|binding| (binding, false))
+                }
+            }
         })
         .collect::<Vec<_>>();
-    bindings.sort_by_key(|binding| binding.keystrokes().len());
-    bindings
+    bindings.sort_by_key(|(binding, overridden)| (binding.keystrokes().len(), *overridden));
+    bindings.into_iter().map(|(binding, _)| binding).collect()
 }
 
 /// `keys` bound to `action` in `command`'s context - the command's own action,
