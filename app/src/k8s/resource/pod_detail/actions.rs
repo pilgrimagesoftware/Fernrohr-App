@@ -204,6 +204,14 @@ impl PodDetailPanel {
                 "Port forward",
             ));
         }
+        if !self.pod_forwards(cx).is_empty() {
+            hints.push(hint(
+                &crate::k8s::resource::pods::StopPortForward,
+                PANEL_KEY_CONTEXT,
+                crate::k8s::resource::pods::STOP_PORT_FORWARD_KEY,
+                "Stop forward",
+            ));
+        }
         if deletable {
             hints.push(hint(
                 &DeletePod,

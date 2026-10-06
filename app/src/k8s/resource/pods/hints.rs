@@ -1,7 +1,8 @@
 //! The Pods panel's hint row: each shortcut's live key (from the keymap, else
 //! its default) and what it does. Shell shows while the selected pod has a
 //! running container, the condition that binds `s`; Port forward shows while
-//! a pod is selected, since it either forwards or says why it can't.
+//! a pod is selected, since it either forwards or says why it can't; Stop
+//! forward while the selected pod has one (`port-forward-indicators` 4.1).
 
 use super::*;
 use commands::{PORT_FORWARD_KEY, SHELL_KEY};
@@ -30,6 +31,7 @@ impl PodsPanel {
     /// The row, for a selection that `shellable` says can take a shell.
     pub(super) fn render_hints(&self, shellable: bool, window: &Window, cx: &App) -> Div {
         let selected = self.table_selection(cx).is_some();
+        let stoppable = !self.selected_forwards(cx).is_empty();
         div()
             .flex()
             .flex_wrap()
@@ -67,6 +69,14 @@ impl PodsPanel {
                     &PortForwardPod,
                     PORT_FORWARD_KEY,
                     "Port forward",
+                    window,
+                ))
+            })
+            .when(stoppable, |row| {
+                row.child(hint(
+                    &StopPortForward,
+                    crate::k8s::resource::pods::STOP_PORT_FORWARD_KEY,
+                    "Stop forward",
                     window,
                 ))
             })

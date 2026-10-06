@@ -77,6 +77,39 @@ impl PodsPanel {
             .cloned();
         forward_pod(selection, pod.as_ref(), window, cx);
     }
+
+    /// The selected pod's forwards (`port-forward-indicators`).
+    pub(super) fn selected_forwards(
+        &self,
+        cx: &App,
+    ) -> Vec<crate::k8s::cluster::port_forwards::ForwardSummary> {
+        let (Some(selection), Some(forwards)) = (
+            self.table_selection(cx),
+            crate::k8s::cluster::port_forwards::PortForwards::existing(cx),
+        ) else {
+            return Vec::new();
+        };
+        forwards.read(cx).for_object(&ForwardObject::pod(
+            &selection.context_name,
+            &selection.namespace,
+            &selection.name,
+        ))
+    }
+
+    /// `StopPortForward`: stops one of the selected pod's forwards - asking which
+    /// when it has several - once confirmed.
+    pub(super) fn on_action_stop_port_forward(
+        &mut self,
+        _: &StopPortForward,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(selection) = self.table_selection(cx) else {
+            return;
+        };
+        let forwards = self.selected_forwards(cx);
+        crate::ui::forward_stop::stop_one_of("pod", selection.name, forwards, window, cx);
+    }
 }
 
 #[cfg(test)]

@@ -198,3 +198,57 @@ async fn a_pod_without_ports_says_so_in_a_notification(cx: &mut TestAppContext) 
     harness.vcx.update(|window, cx| window.render_frame(cx));
     assert!(harness.vcx.debug_bounds(FAILURE_ID).is_none());
 }
+
+/// `port-forward-indicators` 4.1, "Stop by keyboard": with the selected pod's one
+/// forward running, Stop Port Forward opens the confirmation for it straight
+/// away - no picker - and confirming stops it; its key clashes with no default.
+#[gpui_kit::test]
+async fn stop_port_forward_confirms_the_selected_pods_one_forward(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    harness.cluster.apply(
+        PODS.0,
+        PODS.1,
+        pod_with_ports("u1", "web-1", &[("app", 18_210, "http")]),
+    );
+    harness.wait_for("listed web-1's port", |panel, cx| {
+        panel.table.read(cx).pods().iter().any(|pod| {
+            pod.spec
+                .as_ref()
+                .is_some_and(|spec| spec.containers[0].ports.is_some())
+        })
+    });
+    harness.press("shift-f");
+    assert_eq!(forwards(&mut harness), [request("web-1", 18_210)]);
+
+    harness.press("ctrl-shift-f");
+    assert!(
+        harness
+            .vcx
+            .update(|window, cx| window.has_active_dialog(cx)),
+        "the confirmation, for the one forward"
+    );
+    harness.press("enter");
+    assert!(forwards(&mut harness).is_empty(), "confirmed, it stops");
+
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    for id in [
+        "pods.stop_port_forward",
+        "services.stop_port_forward",
+        "pod_detail.stop_port_forward",
+    ] {
+        let command = registry.get(id).expect("registered");
+        assert!(
+            command
+                .context
+                .is_some_and(|context| context.contains("!Input"))
+        );
+        let clashes = crate::keymap::conflicts(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            id,
+            command.default_binding,
+        );
+        assert!(!clashes.any_clash(), "{id}: {clashes:?}");
+    }
+}

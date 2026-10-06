@@ -4,11 +4,13 @@
 //! and the port it reaches, and stopping it only once confirmed. Enter or Stop
 //! Forward stops it; Escape or Cancel keeps it.
 //!
-//! [`stop_forward`] is that whole path for one forward.
+//! [`stop_forward`] is that whole path for one forward; [`stop_one_of`] is the
+//! Stop Port Forward command's, asking which first when an object has several.
 
 use crate::k8s::cluster::port_forwards::{ForwardSummary, PortForwards};
 use crate::ui::confirm_dialog::{self, Confirmation};
 use crate::ui::confirm_text::ConfirmText;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::*;
 use std::net::SocketAddr;
 
@@ -85,6 +87,64 @@ pub fn stop_forward(
         window,
         cx,
     );
+}
+
+/// The picker's buttons, for tests.
+pub fn pick_button_id(index: usize) -> SharedString {
+    format!("forward-stop-pick-{index}").into()
+}
+pub const PICK_CANCEL_ID: &str = "forward-stop-pick-cancel";
+
+/// Stop Port Forward on `kind` `name`, whose forwards are `forwards`: nothing
+/// with none, the confirmation with one, and with several a choice of which
+/// first - each forward a button, Cancel (Escape) backing out.
+pub fn stop_one_of(
+    kind: &'static str,
+    name: String,
+    forwards: Vec<ForwardSummary>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    match forwards.as_slice() {
+        [] => {}
+        [only] => stop_forward(kind, &name, only, window, cx),
+        _ => {
+            let forwards = std::rc::Rc::new(forwards);
+            window.open_dialog(cx, move |dialog, window, _cx| {
+                use gpui_kit::component::button::{Button, ButtonVariants as _};
+                use gpui_kit::component::dialog::{Cancel, DialogFooter};
+                use gpui_kit::component::kbd::Kbd;
+                let mut footer = DialogFooter::new();
+                for (index, forward) in forwards.iter().enumerate() {
+                    let (forwards, name) = (forwards.clone(), name.clone());
+                    footer = footer.child(
+                        Button::new(pick_button_id(index))
+                            .label(format!(
+                                "{} \u{2192} {}",
+                                forward.local_addr, forward.target_port
+                            ))
+                            .primary()
+                            .on_click(move |_event, window, cx| {
+                                window.close_dialog(cx);
+                                stop_forward(kind, &name, &forwards[index], window, cx);
+                            }),
+                    );
+                }
+                let cancel_key = Kbd::binding_for_action(&Cancel, Some("Dialog"), window);
+                dialog
+                    .title("Stop Which Port Forward?")
+                    .child(format!("{kind} {name} has more than one port-forward."))
+                    .footer(
+                        footer.child(
+                            Button::new(PICK_CANCEL_ID)
+                                .label("Cancel")
+                                .children(cancel_key)
+                                .on_click(|_event, window, cx| window.close_dialog(cx)),
+                        ),
+                    )
+            });
+        }
+    }
 }
 
 #[cfg(test)]

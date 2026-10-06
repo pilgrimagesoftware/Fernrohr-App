@@ -2,7 +2,8 @@
 //! real window with the panel's keymap: the forward strip comes and goes with the
 //! pod's forwards, copies an address and stops a forward once confirmed; a
 //! container port's start icon forwards that port with no prompt, then offers
-//! copy and stop; and each icon names itself in a tooltip.
+//! copy and stop; each icon names itself in a tooltip; and Stop Port Forward
+//! confirms straight away for one forward, asking which first for several.
 
 use super::acting::{CONTEXT, Harness, open, pod};
 use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwards};
@@ -10,7 +11,7 @@ use crate::k8s::resource::pod_detail::forwards::{
     COPY_TOOLTIP, START_TOOLTIP, STOP_TOOLTIP, STRIP_ID, port_start_id, port_stop_id,
     strip_copy_id, strip_stop_id,
 };
-use crate::ui::forward_stop::{cancel_id, confirm_id};
+use crate::ui::forward_stop::{cancel_id, confirm_id, pick_button_id};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{Modifiers, TestAppContext};
 use serde_json::{Value, json};
@@ -105,6 +106,7 @@ async fn the_strip_shows_copies_and_stops_a_forward(cx: &mut TestAppContext) {
     h.key("shift-f");
     assert_eq!(h.forwarded_ports(), [18_201]);
     assert!(h.drawn(STRIP_ID), "the strip shows it");
+    assert!(h.hint_shown("Stop forward"), "and Stop forward is a hint");
 
     h.click(strip_copy_id(0));
     let copied = h
@@ -154,4 +156,26 @@ async fn each_forward_icon_has_its_tooltip(cx: &mut TestAppContext) {
     h.click(port_start_id("app", 18_204));
     assert!(h.tooltip_shows(strip_copy_id(0), COPY_TOOLTIP));
     assert!(h.tooltip_shows(strip_stop_id(0), STOP_TOOLTIP));
+}
+
+/// 4.1: Stop Port Forward with one forward goes straight to the confirmation;
+/// with two it asks which first, and Escape anywhere keeps it.
+#[gpui_kit::test]
+async fn stop_port_forward_asks_which_only_when_there_are_several(cx: &mut TestAppContext) {
+    let mut h = open(cx, pod_with_ports(&[18_206, 18_207]));
+    h.key("2");
+    h.click(port_start_id("app", 18_206));
+
+    h.key("ctrl-shift-f");
+    assert!(h.dialog_open(), "one forward: the confirmation");
+    h.key("escape");
+    assert_eq!(h.forwarded_ports(), [18_206], "Escape keeps it");
+
+    h.click(port_start_id("app", 18_207));
+    h.key("ctrl-shift-f");
+    assert!(h.dialog_open(), "two forwards: which?");
+    h.click(pick_button_id(1));
+    assert!(h.dialog_open(), "then the confirmation");
+    h.key("enter");
+    assert_eq!(h.forwarded_ports(), [18_206], "the chosen one stopped");
 }

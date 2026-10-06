@@ -23,6 +23,39 @@ impl ObjectListPanel {
         self.kind.gvk.group.is_empty() && self.kind.gvk.kind == "Service"
     }
 
+    /// The selected Service's forwards; none in any other list.
+    pub(super) fn selected_forwards(
+        &self,
+        cx: &App,
+    ) -> Vec<crate::k8s::cluster::port_forwards::ForwardSummary> {
+        let Some(row_ix) = self.selected_row(cx) else {
+            return Vec::new();
+        };
+        let Some(row) = self
+            .table
+            .as_ref()
+            .and_then(|table| table.read(cx).delegate().rows().get(row_ix).cloned())
+        else {
+            return Vec::new();
+        };
+        self.forwards_of(&row.object, cx)
+    }
+
+    /// `StopPortForward` in a Services list: stops one of the selected Service's
+    /// forwards - asking which when it has several - once confirmed.
+    pub(super) fn on_action_stop_port_forward(
+        &mut self,
+        _: &crate::k8s::resource::pods::StopPortForward,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((_, name)) = self.selected_object(cx) else {
+            return;
+        };
+        let forwards = self.selected_forwards(cx);
+        crate::ui::forward_stop::stop_one_of("service", name, forwards, window, cx);
+    }
+
     /// The forwards started from `row`'s Service; none in any other list.
     pub(super) fn forwards_of(
         &self,

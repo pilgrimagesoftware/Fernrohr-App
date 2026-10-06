@@ -1,7 +1,8 @@
 //! The pod's port-forwards in its detail panel (`port-forward-indicators` 3-4):
 //! a strip above the tabs listing each forward's local address and target port,
 //! with copy and stop icons; beside each container port in the Containers tab, a
-//! start icon - or, once forwarded, the address with copy and stop icons.
+//! start icon - or, once forwarded, the address with copy and stop icons; and
+//! Stop Port Forward, which asks which forward when there are several.
 //!
 //! Every control is an icon button with a tooltip (`ui::icon_tooltip`), a tab
 //! stop that Enter or Space presses, and every stop asks first
@@ -9,6 +10,7 @@
 
 use super::panel::PodDetailPanel;
 use crate::k8s::cluster::port_forwards::{ForwardObject, ForwardSummary, PortForwards};
+use crate::k8s::resource::pods::StopPortForward;
 use crate::ui::icon_tooltip::with_tooltip;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -181,5 +183,18 @@ impl PodDetailPanel {
             .child("Ports:")
             .children(chips)
             .into_any_element()
+    }
+
+    /// `StopPortForward`: stops one of the pod's forwards - asking which when it
+    /// has several - once confirmed.
+    pub(super) fn on_action_stop_port_forward(
+        &mut self,
+        _: &StopPortForward,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let forwards = self.pod_forwards(cx);
+        let name = self.pod.name.clone();
+        crate::ui::forward_stop::stop_one_of("pod", name, forwards, window, cx);
     }
 }

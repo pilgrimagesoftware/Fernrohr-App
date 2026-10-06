@@ -204,6 +204,7 @@ impl Render for PodsPanel {
             .on_action(cx.listener(Self::on_action_kill_pod))
             .on_action(cx.listener(Self::on_action_shell_pod))
             .on_action(cx.listener(Self::on_action_port_forward_pod))
+            .on_action(cx.listener(Self::on_action_stop_port_forward))
             .on_action(cx.listener(Self::on_action_edit_pod))
             .on_action(cx.listener(Self::on_action_close_quick_look))
             .on_action(cx.listener(Self::on_action_open_quick_look_details))
