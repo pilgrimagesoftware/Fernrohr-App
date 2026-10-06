@@ -148,3 +148,70 @@ async fn the_theme_buttons_change_the_theme(cx: &mut TestAppContext) {
     press_button(&mut vcx, handle.into(), theme_button_id(Theme::Light));
     assert_eq!(cx.update(|cx| crate::ui::theme::current(cx)), Theme::Light);
 }
+
+/// #166: each sidebar button spans the sidebar - so its selected background
+/// does - and its title starts at the left, whole: at the default text size
+/// the title's natural width fits the room the button gives it, so nothing
+/// is ellipsized.
+#[gpui_kit::test]
+async fn sidebar_buttons_span_the_sidebar_with_whole_left_aligned_titles(cx: &mut TestAppContext) {
+    use gpui_kit::component::ActiveTheme as _;
+    let main = app(cx);
+    let (handle, _) = open(main, cx);
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+
+    for section in [Section::KeyboardShortcuts, Section::Appearance] {
+        // The title's natural width, in the font and size the window draws
+        // it in, and the button's bounds, from a fresh frame.
+        let (natural, button) = vcx
+            .update_window(handle.into(), |_, window, cx| {
+                window.render_frame(cx);
+                let theme = cx.theme();
+                let title: gpui_kit::SharedString = section.title().into();
+                let natural = window
+                    .text_system()
+                    .shape_line(
+                        title.clone(),
+                        theme.font_size,
+                        &[gpui_kit::TextRun {
+                            len: title.len(),
+                            font: gpui_kit::font(theme.font_family.clone()),
+                            color: theme.foreground,
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        }],
+                        None,
+                    )
+                    .width;
+                let button = window
+                    .try_find(ElementId::Name(section.button_id().into()))
+                    .unwrap_or_else(|| panic!("{} is drawn", section.button_id()))
+                    .bounds();
+                (natural, button)
+            })
+            .unwrap();
+        let sidebar = vcx
+            .debug_bounds(super::super::SIDEBAR)
+            .expect("the sidebar is drawn");
+        let label = vcx
+            .debug_bounds(section.label_selector())
+            .expect("the title is drawn");
+        // The same padding both sides, plus the sidebar's 1px right border.
+        let inset = button.left() - sidebar.left();
+        assert!(
+            (sidebar.right() - button.right() - inset - gpui_kit::px(1.)).abs() < gpui_kit::px(0.5),
+            "{section:?} spans the sidebar, inset alike both sides: \
+             sidebar {sidebar:?}, button {button:?}"
+        );
+        assert!(
+            label.left() - button.left() < gpui_kit::px(20.),
+            "{section:?}'s title starts at the left: button {button:?}, title {label:?}"
+        );
+        assert!(
+            natural <= label.size.width,
+            "{section:?}'s title fits whole: needs {natural:?}, has {:?}",
+            label.size.width
+        );
+    }
+}
