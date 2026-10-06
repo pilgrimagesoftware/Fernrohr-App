@@ -87,7 +87,7 @@ impl PodDetailPanel {
         stop_id: SharedString,
     ) -> [Stateful<Div>; 2] {
         let address = forward.local_addr.to_string();
-        let (name, stopping) = (self.pod.name.clone(), forward.clone());
+        let stopping = forward.clone();
         [
             icon_button(copy_id, IconName::Copy, COPY_TOOLTIP, move |_, _, cx| {
                 crate::ui::copy::copy_text(&address, cx)
@@ -96,9 +96,7 @@ impl PodDetailPanel {
                 stop_id,
                 IconName::CircleX,
                 STOP_TOOLTIP,
-                move |_, window, cx| {
-                    crate::ui::forward_stop::stop_forward("pod", &name, &stopping, window, cx)
-                },
+                move |_, window, cx| crate::ui::forward_stop::stop_forward(&stopping, window, cx),
             ),
         ]
     }

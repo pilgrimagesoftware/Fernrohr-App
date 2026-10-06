@@ -27,22 +27,26 @@ pub fn confirm_id() -> SharedString {
     confirm_dialog::confirm_id(ID_PREFIX)
 }
 
-/// What is being stopped: `kind` and `name` of the object it forwards to, where
-/// it listens, and the port it reaches.
+/// What is being stopped: the pod it reaches and the Service it was started
+/// from, if any, where it listens, and the port it reaches.
 pub struct StopTarget {
-    pub kind: &'static str,
-    pub name: String,
+    pub pod: String,
+    pub via_service: Option<String>,
     pub local_addr: SocketAddr,
     pub target_port: u16,
 }
 
 /// The question, the names set apart.
 fn body(target: &StopTarget) -> ConfirmText {
-    ConfirmText::new()
+    let text = ConfirmText::new()
         .text("Stop forwarding ")
         .name(&target.local_addr.to_string())
-        .text(&format!(" to {} ", target.kind))
-        .name(&format!("{}:{}", target.name, target.target_port))
+        .text(" to ");
+    let text = match &target.via_service {
+        Some(service) => text.text("service ").name(service).text(" \u{2192} pod "),
+        None => text.text("pod "),
+    };
+    text.name(&format!("{}:{}", target.pod, target.target_port))
         .text("? Anything connected through it is disconnected.")
 }
 
@@ -62,17 +66,14 @@ pub fn confirm_stop(
     confirm_dialog::open(confirmation, stop, window, cx);
 }
 
-/// Asks, then stops `forward` - one of `kind` `name`'s.
-pub fn stop_forward(
-    kind: &'static str,
-    name: &str,
-    forward: &ForwardSummary,
-    window: &mut Window,
-    cx: &mut App,
-) {
+/// Asks, then stops `forward` - naming its pod, and the Service it was started
+/// from when it was.
+pub fn stop_forward(forward: &ForwardSummary, window: &mut Window, cx: &mut App) {
+    let via_service = PortForwards::existing(cx)
+        .and_then(|forwards| forwards.read(cx).via_service(&forward.request));
     let target = StopTarget {
-        kind,
-        name: name.to_string(),
+        pod: forward.request.pod.clone(),
+        via_service,
         local_addr: forward.local_addr,
         target_port: forward.target_port,
     };
@@ -107,7 +108,7 @@ pub fn stop_one_of(
 ) {
     match forwards.as_slice() {
         [] => {}
-        [only] => stop_forward(kind, &name, only, window, cx),
+        [only] => stop_forward(only, window, cx),
         _ => {
             let forwards = std::rc::Rc::new(forwards);
             window.open_dialog(cx, move |dialog, window, _cx| {
@@ -116,7 +117,7 @@ pub fn stop_one_of(
                 use gpui_kit::component::kbd::Kbd;
                 let mut footer = DialogFooter::new();
                 for (index, forward) in forwards.iter().enumerate() {
-                    let (forwards, name) = (forwards.clone(), name.clone());
+                    let forwards = forwards.clone();
                     footer = footer.child(
                         Button::new(pick_button_id(index))
                             .label(format!(
@@ -126,7 +127,7 @@ pub fn stop_one_of(
                             .primary()
                             .on_click(move |_event, window, cx| {
                                 window.close_dialog(cx);
-                                stop_forward(kind, &name, &forwards[index], window, cx);
+                                stop_forward(&forwards[index], window, cx);
                             }),
                     );
                 }
@@ -154,12 +155,22 @@ mod tests {
 
     #[test]
     fn the_question_names_the_address_and_the_target() {
-        let text = body(&StopTarget {
-            kind: "pod",
-            name: "web-1".into(),
+        let target = |via_service: Option<&str>| StopTarget {
+            pod: "web-1".into(),
+            via_service: via_service.map(str::to_string),
             local_addr: "127.0.0.1:18080".parse().unwrap(),
             target_port: 8080,
-        });
-        assert_eq!(text.name_list(), ["127.0.0.1:18080", "web-1:8080"]);
+        };
+        assert_eq!(
+            body(&target(None)).name_list(),
+            ["127.0.0.1:18080", "web-1:8080"]
+        );
+        let via = body(&target(Some("web")));
+        assert_eq!(via.name_list(), ["127.0.0.1:18080", "web", "web-1:8080"]);
+        assert!(
+            via.plain().contains("service \u{201c}web\u{201d}") || via.plain().contains("service "),
+            "{}",
+            via.plain()
+        );
     }
 }

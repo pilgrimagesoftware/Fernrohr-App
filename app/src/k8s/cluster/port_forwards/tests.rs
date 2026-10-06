@@ -158,6 +158,7 @@ async fn the_index_follows_starts_and_stops_and_every_observer_hears(cx: &mut Te
             "now on the Service too"
         );
         assert_eq!(forwards.for_object(&origin()).len(), 1, "still one forward");
+        assert_eq!(forwards.via_service(&request).as_deref(), Some("web"));
     });
 
     let before: Vec<usize> = heard.iter().map(|count| count.get()).collect();

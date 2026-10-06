@@ -221,6 +221,16 @@ impl PortForwards {
             .collect()
     }
 
+    /// The Service `request`'s forward was started from, if it was started from
+    /// one - what a stop confirmation names in front of the pod.
+    pub fn via_service(&self, request: &PortForwardRequest) -> Option<String> {
+        self.held
+            .get(request)?
+            .origins
+            .iter()
+            .find_map(|origin| (origin.kind == ForwardKind::Service).then(|| origin.name.clone()))
+    }
+
     /// `object`'s forwards, in request order: for a Pod, every forward reaching
     /// it; for a Service, every forward started from it.
     pub fn for_object(&self, object: &ForwardObject) -> Vec<ForwardSummary> {

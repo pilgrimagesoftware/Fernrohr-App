@@ -64,10 +64,13 @@ pub(crate) fn open(
         dialog
             .title(title.clone())
             .child(body.render(cx))
-            // Enter: the dialog closes itself once this returns true.
+            // Enter: closes, then acts - the click path's order - and returns
+            // false, as the dialog is already closed. Closing after acting would
+            // close any dialog the action opened instead of this one.
             .on_ok(move |_event, window, cx| {
+                window.close_dialog(cx);
                 on_ok(window, cx);
-                true
+                false
             })
             .footer(
                 DialogFooter::new()

@@ -10,6 +10,7 @@
 
 use super::*;
 use crate::forward::managed::ForwardState;
+use crate::k8s::cluster::port_forwards::ForwardSummary;
 
 /// The divider between the Tunnels list and this section.
 pub(super) const DIVIDER_ID: &str = "tunnels-port-forwards-divider";
@@ -47,7 +48,6 @@ impl TunnelsWindow {
             .into_iter()
             .enumerate()
             .map(|(index, (request, addr, state))| {
-                let entity = self.forwards.clone();
                 let request_for_stop = request.clone();
                 div()
                     .flex()
@@ -90,24 +90,13 @@ impl TunnelsWindow {
                                     .ghost()
                                     .xsmall()
                                     .on_click(move |_event, window, cx| {
-                                        let (entity, request) =
-                                            (entity.clone(), request_for_stop.clone());
-                                        let target = crate::ui::forward_stop::StopTarget {
-                                            kind: "pod",
-                                            name: request.pod.clone(),
+                                        let forward = ForwardSummary {
+                                            request: request_for_stop.clone(),
                                             local_addr: addr,
-                                            target_port: request.remote_port,
+                                            target_port: request_for_stop.remote_port,
+                                            state,
                                         };
-                                        crate::ui::forward_stop::confirm_stop(
-                                            target,
-                                            move |_window, cx| {
-                                                entity.update(cx, |forwards, cx| {
-                                                    forwards.stop(&request, cx);
-                                                });
-                                            },
-                                            window,
-                                            cx,
-                                        );
+                                        crate::ui::forward_stop::stop_forward(&forward, window, cx);
                                     }),
                             )),
                     )
