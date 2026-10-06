@@ -9,6 +9,8 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::{AppContext as _, TestAppContext};
 
+mod previous;
+
 /// `1-window-context-bar` bug 1's third root cause: `LogsPanel::sync` used to
 /// re-sync to *any* `SelectedPod`, from any context - streaming whichever pod's
 /// row was clicked last against its own scope's context, regardless of which
@@ -23,7 +25,7 @@ use gpui_kit::{AppContext as _, TestAppContext};
 #[gpui_kit::test]
 async fn a_logs_panel_ignores_a_selection_from_a_different_context(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         ClusterRegistry::insert_test_session(cx, "a", ConnectionState::Connecting);
     });
@@ -56,7 +58,7 @@ async fn a_logs_panel_ignores_a_selection_from_a_different_context(cx: &mut Test
 #[gpui_kit::test]
 async fn a_click_focuses_the_logs_panel(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         ClusterRegistry::insert_test_session(cx, "a", ConnectionState::Connecting);
     });

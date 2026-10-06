@@ -1,8 +1,12 @@
+pub(crate) mod delete_flow;
 pub(crate) mod events;
 pub(crate) mod events_browser;
+pub(crate) mod exec;
 pub(crate) mod object_detail;
 pub(crate) mod object_list;
 pub(crate) mod pod_detail;
 pub(crate) mod pods;
 mod pods_table;
+pub(crate) mod port_forwarding;
+pub(crate) mod resource_actions;
 pub(crate) mod secret_value;

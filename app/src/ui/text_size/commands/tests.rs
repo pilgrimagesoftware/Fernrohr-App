@@ -20,7 +20,7 @@ fn app(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_path("workspace"), temp_path("keymap"));
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::ui::theme::init(ThemePreference::Light, cx);
         crate::util::shell::init(cx, workspace, &keymap);

@@ -8,6 +8,12 @@ use std::time::Duration;
 /// (`window-title-and-menu` design.md Risks).
 pub(crate) const APP_NAME: &str = "Fernrohr";
 
+/// The app id every window is opened with: the Wayland `app_id` and the X11
+/// `WM_CLASS`, which Linux desktops match against the installed
+/// `fernrohr.desktop` (its name, and its `StartupWMClass`) to give the windows
+/// that entry's name and icon and group them under it.
+pub(crate) const APP_ID: &str = "fernrohr";
+
 // UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
 // 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
 #[allow(dead_code)]
@@ -18,6 +24,19 @@ pub(crate) const SSH_READINESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 #[allow(dead_code)]
 /// `SshTransport::connect` readiness probe: delay between failed dial attempts.
 pub(crate) const SSH_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// A command tunnel's default startup timeout: how long its command has to start
+/// listening on the local port. Vendor CLIs that open an IAP session can take a while.
+pub(crate) const COMMAND_TUNNEL_STARTUP_TIMEOUT_SECS: u64 = 30;
+/// How often a starting command tunnel's local port is dialled to see if it's ready.
+pub(crate) const COMMAND_TUNNEL_POLL_INTERVAL: Duration = Duration::from_millis(250);
+/// How long a stopping command tunnel's process group has between `SIGTERM` and
+/// `SIGKILL`.
+pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
+/// How many of a command tunnel's most recent output lines a failure reason carries.
+pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
+/// How long resolving the login shell's `PATH` may take before falling back.
+pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
 // the section 5.2 keychain wrapper this backs.
@@ -88,6 +107,20 @@ pub const COLLAPSED_VALUE_PREVIEW_CHARS: usize = 20;
 /// 10% steps from 90 to 150, plus an 85% floor for dense screens. Ascending.
 pub(crate) const TEXT_SIZE_STEPS: [u16; 8] = [85, 90, 100, 110, 120, 130, 140, 150];
 
+/// `pending-chord-indicator`: the Shortcut timeout preference's range and default,
+/// in whole seconds - how long a chord whose keys so far are also a whole
+/// binding waits for its next key before the shorter binding runs.
+pub(crate) const SHORTCUT_TIMEOUT_MIN_SECS: u8 = 1;
+pub(crate) const SHORTCUT_TIMEOUT_MAX_SECS: u8 = 10;
+pub(crate) const SHORTCUT_TIMEOUT_DEFAULT_SECS: u8 = 3;
+
+/// GPUI's own wait before it flushes an ambiguous pending chord - its
+/// crate-private `PENDING_INPUT_TIMEOUT` in gpui-pre 0.3.7, which can't be read
+/// from here. The status bar pauses that timer for the rest of the preference
+/// and lets this much run out at the end, so the total is the preference. A test
+/// pins the total wait, so a GPUI release that changes this fails it.
+pub(crate) const GPUI_PENDING_INPUT_TIMEOUT: Duration = Duration::from_secs(1);
+
 /// The frame and data roles' size at 100% text size: the rem every window uses,
 /// gpui-component's own default, which every size the app used before the
 /// text-size preference is relative to.
@@ -126,3 +159,40 @@ pub(crate) const TERMINATING_COUNTDOWN_TICK: Duration = Duration::from_secs(1);
 /// How opaque a detail panel draws a deleted object's last known state, kept
 /// on screen below its "deleted at" banner (`live-detail-panels`).
 pub(crate) const STALE_OPACITY: f32 = 0.6;
+
+/// How many chunks of typed input may wait for the shell's stdin before the
+/// terminal refuses more - room for a paste or a burst of keys, not a log.
+pub(crate) const EXEC_INPUT_QUEUE: usize = 256;
+/// How long a shell's terminal size must hold before it is sent to the
+/// container (`embedded-exec-terminal` decision 1): a drag that resizes the
+/// panel many times sends only the size it ends at.
+pub(crate) const EXEC_RESIZE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(120);
+/// How long a shell's exit status may take to arrive once its output has
+/// ended. A connection that drops uncleanly may never deliver one; past this
+/// the session ends as a lost connection rather than staying "running".
+pub(crate) const EXEC_STATUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// How long a note about refused input stays under the shell.
+pub(crate) const EXEC_INPUT_NOTICE: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// A port-forward started from a resource row (`k9s-remaining-keybindings` 4):
+/// how often its Pod is checked to still be Running, and how a failed check
+/// backs off before trying again - the SSH tunnels' own pace.
+pub(crate) const PORT_FORWARD_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
+pub(crate) const PORT_FORWARD_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
+pub(crate) const PORT_FORWARD_BACKOFF_MAX: Duration = Duration::from_secs(30);
+
+#[cfg(test)]
+mod tests {
+    /// The checked-in desktop entry groups windows by the app id they open with.
+    #[test]
+    fn the_desktop_entry_matches_the_window_app_id() {
+        let entry = include_str!("../assets/linux/fernrohr.desktop");
+        assert!(
+            entry
+                .lines()
+                .any(|line| line == format!("StartupWMClass={}", super::APP_ID)),
+            "fernrohr.desktop's StartupWMClass must be {}",
+            super::APP_ID
+        );
+    }
+}

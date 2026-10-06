@@ -14,7 +14,9 @@ actions!(
         SelectVolumesTab,
         SelectEventsTab,
         SelectManagedFieldsTab,
-        HideSecretValues
+        HideSecretValues,
+        ViewLogs,
+        EditPodYaml
     ]
 );
 
@@ -33,6 +35,13 @@ pub(super) const VOLUMES_TAB_KEY: &str = "4";
 pub(super) const EVENTS_TAB_KEY: &str = "5";
 pub(super) const MANAGED_FIELDS_TAB_KEY: &str = "6";
 pub(super) const HIDE_SECRET_VALUES_KEY: &str = "h";
+/// The Pods list's own key for the same intent, so it reads as one shortcut.
+pub(super) const VIEW_LOGS_KEY: &str = "l";
+/// Where View Logs is bound: the panel minus any text field in it, so its
+/// bare letter never fires while typing.
+pub(super) const VIEW_LOGS_CONTEXT: &str = "PodDetailPanel && !Input";
+/// k9s's edit key, as the object panel's and every list's (#140).
+pub(super) const EDIT_KEY: &str = "e";
 
 const TOGGLE_VIEW_COMMAND_ID: &str = "pod_detail.toggle_view";
 const OVERVIEW_TAB_COMMAND_ID: &str = "pod_detail.tab_overview";
@@ -45,6 +54,18 @@ const HIDE_SECRET_VALUES_COMMAND_ID: &str = "pod_detail.hide_secret_values";
 const FOLD_ALL_COMMAND_ID: &str = "pod_detail.yaml_fold_all";
 const COPY_NAME_COMMAND_ID: &str = "pod_detail.copy_name";
 const UNFOLD_ALL_COMMAND_ID: &str = "pod_detail.yaml_unfold_all";
+const VIEW_LOGS_COMMAND_ID: &str = "pod_detail.view_logs";
+
+/// The Pods list's keys for acting on a pod, so they read as one shortcut
+/// from the list or the pod's panel (`k9s-remaining-keybindings`).
+pub(super) const DELETE_KEY: &str = "ctrl-d";
+pub(super) const KILL_KEY: &str = "ctrl-k";
+pub(super) const SHELL_KEY: &str = "s";
+pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
+/// Where Shell is bound: only while the pod has a running container.
+const SHELL_CONTEXT: &str = "PodDetailShellable && !Input";
+/// Where Delete and Kill are bound: only while the pod can be deleted.
+const DELETE_CONTEXT: &str = "DeletablePod && !Input";
 
 /// The panel's shortcuts as registry commands, gated to its key context: each
 /// gets a palette entry while a detail panel has focus, and a `keymap.toml`
@@ -129,5 +150,71 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
+    registry.register(Command {
+        id: VIEW_LOGS_COMMAND_ID,
+        title: "Pod Detail: View Logs",
+        default_binding: VIEW_LOGS_KEY,
+        context: Some(VIEW_LOGS_CONTEXT),
+        action: Box::new(ViewLogs),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "pod_detail.edit",
+        title: "Pod Detail: Edit YAML",
+        default_binding: EDIT_KEY,
+        context: Some(VIEW_LOGS_CONTEXT),
+        action: Box::new(EditPodYaml),
+        menu: None,
+    });
+    // The Pods list's own actions, bound here for the panel's pod - outside
+    // text fields, like View Logs.
+    use crate::k8s::resource::pods::{
+        DeletePod, KillPod, PortForwardPod, STOP_PORT_FORWARD_KEY, ShellPod, StopPortForward,
+    };
+    let mut acting = |id, title, default_binding, context, action: Box<dyn Action>| {
+        registry.register(Command {
+            id,
+            title,
+            default_binding,
+            context: Some(context),
+            action,
+            menu: None,
+        });
+    };
+    acting(
+        "pod_detail.delete",
+        "Pod Detail: Delete Pod",
+        DELETE_KEY,
+        DELETE_CONTEXT,
+        Box::new(DeletePod),
+    );
+    acting(
+        "pod_detail.kill",
+        "Pod Detail: Kill Pod (No Grace Period)",
+        KILL_KEY,
+        DELETE_CONTEXT,
+        Box::new(KillPod),
+    );
+    acting(
+        "pod_detail.shell",
+        "Pod Detail: Shell into Pod",
+        SHELL_KEY,
+        SHELL_CONTEXT,
+        Box::new(ShellPod),
+    );
+    acting(
+        "pod_detail.port_forward",
+        "Pod Detail: Port-Forward Pod",
+        PORT_FORWARD_KEY,
+        VIEW_LOGS_CONTEXT,
+        Box::new(PortForwardPod),
+    );
+    acting(
+        "pod_detail.stop_port_forward",
+        "Pod Detail: Stop Port-Forward",
+        STOP_PORT_FORWARD_KEY,
+        VIEW_LOGS_CONTEXT,
+        Box::new(StopPortForward),
+    );
     super::window_commands::register_commands(registry);
 }

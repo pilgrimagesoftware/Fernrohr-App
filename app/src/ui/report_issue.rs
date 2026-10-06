@@ -293,7 +293,7 @@ mod tests {
 
     fn open_test_window(cx: &mut gpui_kit::TestAppContext) -> gpui_kit::AnyWindowHandle {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let (handle, _view) =
                 gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |_, cx| {
                     cx.new(|_| Blank)

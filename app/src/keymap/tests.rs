@@ -6,6 +6,8 @@ use gpui_kit::actions;
 
 actions!(keymap_test, [TestAction]);
 
+mod k9s_commands;
+
 /// `keys` as GPUI spells it back on this platform - `cmd` reads `super` off
 /// macOS - for comparing with a keystroke's `unparse`.
 fn spelled(keys: &str) -> String {
@@ -205,7 +207,7 @@ mod live {
         let path = super::temp_path();
         let _ = std::fs::remove_file(&path);
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let registry = registry();
             let config = load(&path, &registry);
             cx.bind_keys(bindings(&registry, &config, &gpui_kit::DummyKeyboardMapper));
@@ -305,13 +307,127 @@ mod live {
     }
 }
 
-mod conflicts {
-    //! `keymap::conflicts`: same-scope collisions and cross-scope shadows.
+mod override_precedence {
+    //! A `keymap.toml` override for one command beats another command's
+    //! default on the same keys - whichever was registered first - both at
+    //! load and after a live rebind. `bindings` sorts shorter keys first (for
+    //! #137's chords); the override has to survive that sort.
     use crate::command::{Command, CommandRegistry};
-    use crate::keymap::{KeymapConfig, Shadow, conflicts, lacks_modifier};
+    use crate::keymap::{Edit, KeymapConfig, LiveKeymap, apply, bindings};
+    use gpui_kit::{Action, App, KeyContext, Keystroke, TestAppContext, actions};
+
+    actions!(keymap_override_test, [Early, Late, ChordEarly, ChordLate]);
+
+    /// `Early` registered before `Late`, and `ChordEarly` before `ChordLate`,
+    /// all global.
+    fn registry() -> CommandRegistry {
+        let mut registry = CommandRegistry::new();
+        for (id, default_binding, action) in [
+            ("test.early", "cmd-e", Box::new(Early) as Box<dyn Action>),
+            ("test.chord_early", "cmd-k e", Box::new(ChordEarly)),
+            ("test.late", "cmd-l", Box::new(Late)),
+            ("test.chord_late", "cmd-k l", Box::new(ChordLate)),
+        ] {
+            registry.register(Command {
+                id,
+                title: id,
+                default_binding,
+                context: None,
+                action,
+                menu: None,
+            });
+        }
+        registry
+    }
+
+    /// The action `keys` runs: the highest-precedence binding for them.
+    fn runs(cx: &App, keys: &str) -> Option<Box<dyn Action>> {
+        let keystrokes: Vec<Keystroke> = keys
+            .split(' ')
+            .map(|key| Keystroke::parse(key).expect("a valid keystroke"))
+            .collect();
+        let context = [KeyContext::default()];
+        let (matched, _) = cx
+            .key_bindings()
+            .borrow()
+            .bindings_for_input(&keystrokes, &context);
+        matched
+            .first()
+            .map(|binding| binding.action().boxed_clone())
+    }
+
+    fn app(cx: &mut TestAppContext, keymap_text: &str) -> std::path::PathBuf {
+        let path = super::temp_path();
+        std::fs::write(&path, keymap_text).expect("written");
+        cx.update(|cx| {
+            crate::util::test_ui::init(cx);
+            let registry = registry();
+            let config = crate::keymap::load(&path, &registry);
+            cx.bind_keys(bindings(&registry, &config, &gpui_kit::DummyKeyboardMapper));
+            cx.set_global(LiveKeymap::new(path.clone(), config));
+            cx.set_global(registry);
+        });
+        path
+    }
+
+    fn assert_runs(cx: &App, keys: &str, action: &dyn Action, why: &str) {
+        let ran = runs(cx, keys);
+        assert!(
+            ran.as_ref().is_some_and(|ran| ran.partial_eq(action)),
+            "{keys} runs {action:?}, not {ran:?}: {why}"
+        );
+    }
+
+    /// At load: an override onto a later-registered command's default key -
+    /// a single key, and a chord - wins over that default.
+    #[gpui_kit::test]
+    fn an_override_beats_an_unrelated_default_at_load(cx: &mut TestAppContext) {
+        let path = app(
+            cx,
+            "[bindings]\n\"test.early\" = \"cmd-l\"\n\"test.chord_early\" = \"cmd-k l\"\n",
+        );
+        cx.update(|cx| {
+            assert_runs(cx, "cmd-l", &Early, "the override beats Late's default");
+            assert_runs(
+                cx,
+                "cmd-k l",
+                &ChordEarly,
+                "the chord override beats ChordLate's default",
+            );
+        });
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Live, through Settings' path: the same overrides made after launch
+    /// win too.
+    #[gpui_kit::test]
+    fn an_override_beats_an_unrelated_default_after_a_live_rebind(cx: &mut TestAppContext) {
+        let path = app(cx, "");
+        cx.update(|cx| {
+            apply(cx, "test.early", Edit::Set("cmd-l".into())).expect("saved");
+            apply(cx, "test.chord_early", Edit::Set("cmd-k l".into())).expect("saved");
+            assert_runs(cx, "cmd-l", &Early, "the override beats Late's default");
+            assert_runs(
+                cx,
+                "cmd-k l",
+                &ChordEarly,
+                "the chord override beats ChordLate's default",
+            );
+        });
+        let saved: KeymapConfig = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved.bindings["test.early"], "cmd-l");
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+mod conflicts {
+    //! `keymap::conflicts`: same-scope collisions, cross-scope shadows, and
+    //! keys that start another's chord.
+    use crate::command::{Command, CommandRegistry};
+    use crate::keymap::{KeymapConfig, Prefix, PrefixKind, Shadow, conflicts, lacks_modifier};
     use gpui_kit::{Action, actions};
 
-    actions!(keymap_conflicts_test, [A, B, InPods, InLogs]);
+    actions!(keymap_conflicts_test, [A, B, InPods, InLogs, InDock]);
 
     fn registry() -> CommandRegistry {
         let mut registry = CommandRegistry::new();
@@ -320,6 +436,7 @@ mod conflicts {
             ("b", "cmd-b", None, Box::new(B)),
             ("pods", "d", Some("PodsPanel"), Box::new(InPods)),
             ("logs", "d", Some("LogsPanel"), Box::new(InLogs)),
+            ("dock", "cmd-k right", Some("Dock"), Box::new(InDock)),
         ] {
             registry.register(Command {
                 id,
@@ -390,6 +507,55 @@ mod conflicts {
                 .same_scope
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_key_that_starts_another_chord_clashes() {
+        let found = conflicts(&registry(), &KeymapConfig::default(), "a", "cmd-k");
+        assert!(found.same_scope.is_empty());
+        assert_eq!(
+            found.prefixes,
+            vec![Prefix {
+                command: "dock",
+                kind: PrefixKind::StartsTheirs
+            }],
+            "a global cmd-k would cut Dock's cmd-k right short"
+        );
+        assert!(found.any_clash());
+    }
+
+    #[test]
+    fn a_chord_that_another_key_starts_clashes() {
+        let found = conflicts(&registry(), &KeymapConfig::default(), "a", "cmd-b x");
+        assert_eq!(
+            found.prefixes,
+            vec![Prefix {
+                command: "b",
+                kind: PrefixKind::StartsMine
+            }],
+            "cmd-b fires before the chord's second key"
+        );
+        let found = conflicts(&registry(), &KeymapConfig::default(), "dock", "cmd-a right");
+        assert_eq!(
+            found.prefixes,
+            vec![Prefix {
+                command: "a",
+                kind: PrefixKind::StartsMine
+            }],
+            "a global key overlaps a panel's chord"
+        );
+    }
+
+    #[test]
+    fn prefixes_in_scopes_that_never_overlap_do_not_clash() {
+        let found = conflicts(&registry(), &KeymapConfig::default(), "pods", "cmd-k");
+        assert!(
+            found.prefixes.is_empty(),
+            "Pods and Dock are separate contexts"
+        );
+        assert!(!found.any_clash());
+        let found = conflicts(&registry(), &KeymapConfig::default(), "a", "cmd-k right");
+        assert!(found.prefixes.is_empty(), "the same chord is not a prefix");
     }
 
     #[test]

@@ -1,13 +1,19 @@
-//! Owns the editor pane's layout: the field list with inline errors, the auth choice
-//! and its private-key field, the connectivity-test status, Save/Cancel/Delete, and
-//! the delete confirmation.
+//! Owns the editor's body: the field list with inline errors, the auth choice and its
+//! private-key field, and Test with its status. The dialog around it
+//! (`list::editor_dialog`) owns the title and Save/Cancel/Delete.
+//!
+//! The body scrolls itself, each section a child of the scroll area wrapped in a
+//! focus handle of its own (never a tab stop), so the section holding focus - the
+//! field Tab just reached - is scrolled into view; gpui doesn't follow focus.
 
 use super::*;
+use crate::ui::confirm_text::ConfirmText;
+use gpui_kit::component::scroll::ScrollableElement as _;
 
 impl Render for TunnelEditor {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
-        let is_new = self.editing_id.is_none();
+        let is_ssh = self.kind == TunnelKind::Ssh;
 
         let field = |label: &'static str,
                      input: &Entity<InputState>,
@@ -101,90 +107,33 @@ impl Render for TunnelEditor {
             })
         };
 
-        let delete_confirm = self.confirming_delete.then(|| {
-            let weak_confirm = cx.weak_entity();
-            let weak_cancel = weak_confirm.clone();
-            let message = if self.bound_contexts.is_empty() {
-                "Delete this tunnel? No contexts are bound to it.".to_string()
-            } else {
-                let noun = if self.bound_contexts.len() == 1 {
-                    "This context"
-                } else {
-                    "These contexts"
-                };
-                format!(
-                    "Delete this tunnel? {noun} will fall back to a direct connection: {}",
-                    self.bound_contexts.join(", ")
-                )
-            };
-            div()
-                .flex()
-                .flex_col()
-                .gap(crate::ui::space::spacing(cx).control_gap)
-                .p(crate::ui::space::spacing(cx).card_padding)
-                .border_1()
-                .border_color(theme.danger)
-                .rounded_md()
-                .child(div().text_sm().child(message))
-                .child(
-                    div()
-                        .flex()
-                        .gap(crate::ui::space::spacing(cx).control_gap)
-                        .child(
-                            Button::new("tunnel-delete-confirm")
-                                .label("Delete")
-                                .danger()
-                                .small()
-                                .on_click(move |_event, _window, cx| {
-                                    let _ = weak_confirm
-                                        .update(cx, |editor, cx| editor.confirm_delete(cx));
-                                }),
-                        )
-                        .child(
-                            Button::new("tunnel-delete-cancel")
-                                .label("Keep")
-                                .outline()
-                                .small()
-                                .on_click(move |_event, _window, cx| {
-                                    let _ = weak_cancel
-                                        .update(cx, |editor, cx| editor.cancel_delete(cx));
-                                }),
-                        ),
-                )
-        });
-
-        let weak_save = cx.weak_entity();
         let weak_test = cx.weak_entity();
-        let weak_cancel_pane = cx.weak_entity();
-        let weak_delete = cx.weak_entity();
 
-        div()
-            .flex()
-            .flex_col()
-            .gap(crate::ui::space::spacing(cx).section_gap)
-            .p(crate::ui::space::spacing(cx).panel_inset)
-            .track_focus(&self.focus_handle)
-            .child(div().text_base().font_semibold().child(if is_new {
-                "New Tunnel"
-            } else {
-                "Edit Tunnel"
-            }))
-            .children(self.general_error.as_ref().map(|error| {
+        let mut sections: Vec<AnyElement> = Vec::new();
+        if let Some(error) = &self.general_error {
+            sections.push(
                 div()
                     .text_sm()
                     .text_color(theme.danger)
                     .child(error.clone())
-            }))
-            .child(field("Name", &self.name, None))
-            .child(field("Host", &self.host, host_error))
-            .child(field("User", &self.user, user_error))
-            .child(field("Port", &self.port, port_error))
-            .child(field(
-                "Jump hosts (comma-separated, optional)",
-                &self.jump_hosts,
-                None,
-            ))
-            .child(
+                    .into_any_element(),
+            );
+        }
+        sections.push(self.render_kind_switch(cx).into_any_element());
+        sections.push(field("Name", &self.name, None).into_any_element());
+        if is_ssh {
+            sections.push(field("Host", &self.host, host_error).into_any_element());
+            sections.push(field("User", &self.user, user_error).into_any_element());
+            sections.push(field("Port", &self.port, port_error).into_any_element());
+            sections.push(
+                field(
+                    "Jump hosts (comma-separated, optional)",
+                    &self.jump_hosts,
+                    None,
+                )
+                .into_any_element(),
+            );
+            sections.push(
                 div()
                     .flex()
                     .flex_col()
@@ -195,67 +144,83 @@ impl Render for TunnelEditor {
                             .text_color(theme.muted_foreground)
                             .child("Authentication"),
                     )
-                    .child(auth_button),
+                    .child(auth_button)
+                    .into_any_element(),
+            );
+            sections.extend(key_field.map(IntoElement::into_any_element));
+        } else {
+            sections.extend(self.render_command_form(cx));
+        }
+        sections.push(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Button::new("tunnel-test")
+                        .label("Test")
+                        .outline()
+                        .small()
+                        .disabled(self.testing)
+                        .on_click(move |_event, _window, cx| {
+                            let _ = weak_test.update(cx, |editor, cx| editor.run_test(cx));
+                        }),
+                )
+                .children(test_status)
+                .into_any_element(),
+        );
+
+        while self.sections.len() < sections.len() {
+            self.sections.push(cx.focus_handle());
+        }
+        self.reveal_focused(window, cx);
+
+        div()
+            .id("tunnel-editor-body")
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap(crate::ui::space::spacing(cx).section_gap)
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll)
+            .vertical_scrollbar(&self.scroll)
+            .track_focus(&self.focus_handle)
+            .children(
+                sections
+                    .into_iter()
+                    .zip(&self.sections)
+                    .map(|(section, focus)| div().track_focus(focus).child(section)),
             )
-            .children(key_field)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        Button::new("tunnel-test")
-                            .label("Test")
-                            .outline()
-                            .small()
-                            .disabled(self.testing)
-                            .on_click(move |_event, _window, cx| {
-                                let _ = weak_test.update(cx, |editor, cx| editor.run_test(cx));
-                            }),
-                    )
-                    .children(test_status),
-            )
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(
-                                Button::new("tunnel-save")
-                                    .label("Save")
-                                    .primary()
-                                    .small()
-                                    .on_click(move |_event, window, cx| {
-                                        let _ = weak_save
-                                            .update(cx, |editor, cx| editor.save(window, cx));
-                                    }),
-                            )
-                            .child(
-                                Button::new("tunnel-cancel")
-                                    .label("Cancel")
-                                    .ghost()
-                                    .small()
-                                    .on_click(move |_event, _window, cx| {
-                                        let _ = weak_cancel_pane
-                                            .update(cx, |editor, cx| editor.cancel(cx));
-                                    }),
-                            ),
-                    )
-                    .children((!is_new).then(|| {
-                        Button::new("tunnel-delete")
-                            .label("Delete")
-                            .danger()
-                            .small()
-                            .on_click(move |_event, _window, cx| {
-                                let _ =
-                                    weak_delete.update(cx, |editor, cx| editor.request_delete(cx));
-                            })
-                    })),
-            )
-            .children(delete_confirm)
+    }
+}
+
+impl TunnelEditor {
+    /// Scrolls the section holding focus into view once, when focus reaches it, so
+    /// the user can still scroll away from it after.
+    fn reveal_focused(&mut self, window: &Window, cx: &App) {
+        let focused = self
+            .sections
+            .iter()
+            .position(|section| section.contains_focused(window, cx));
+        if focused != self.revealed
+            && let Some(ix) = focused
+        {
+            self.scroll.scroll_to_item(ix);
+        }
+        self.revealed = focused;
+    }
+}
+
+/// The tunnel delete prompt's question, naming the contexts that fall back.
+pub(super) fn delete_confirm_text(bound_contexts: &[String]) -> ConfirmText {
+    let question = ConfirmText::from("Delete this tunnel? ");
+    match bound_contexts {
+        [] => question.text("No contexts are bound to it."),
+        [_] => question
+            .text("This context will fall back to a direct connection: ")
+            .names(bound_contexts),
+        _ => question
+            .text("These contexts will fall back to a direct connection: ")
+            .names(bound_contexts),
     }
 }

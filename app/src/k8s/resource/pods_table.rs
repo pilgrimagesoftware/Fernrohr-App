@@ -20,6 +20,8 @@ pub(super) use columns::{PodColumn, compare};
 pub(super) struct PodTableRow {
     pub(super) row: PodRow,
     pub(super) selection: PodSelection,
+    /// The forwards reaching the pod, for the Forwards cell's tooltip.
+    pub(super) forwards: Vec<crate::k8s::cluster::port_forwards::ForwardSummary>,
 }
 
 /// The Pods panel's table over `state`: striped, bordered, scrollable both
@@ -75,6 +77,7 @@ pub(super) struct PodTableDelegate {
     /// The table's own focus handle, which the row context menu dispatches
     /// its commands from so they reach the Pods panel as their keys do.
     action_context: Option<FocusHandle>,
+    background_click: crate::ui::background_rows::BackgroundClick,
 }
 
 impl Default for PodTableDelegate {
@@ -89,6 +92,7 @@ impl Default for PodTableDelegate {
             header: Default::default(),
             quick_look: None,
             action_context: None,
+            background_click: Default::default(),
         }
     }
 }
@@ -199,9 +203,30 @@ impl PodTableDelegate {
     }
 }
 
+impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
+    fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
+        if let Some(row) = self.rows.get(row_ix) {
+            window.dispatch_action(Box::new(row.selection.background_open()), cx);
+        }
+    }
+
+    fn background_click(&mut self) -> &mut crate::ui::background_rows::BackgroundClick {
+        &mut self.background_click
+    }
+}
+
 impl TableDelegate for PodTableDelegate {
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
+    }
+
+    fn render_tr(
+        &mut self,
+        row_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Stateful<Div> {
+        crate::ui::background_rows::row(row_ix, cx)
     }
 
     fn rows_count(&self, _: &App) -> usize {
@@ -284,6 +309,10 @@ impl TableDelegate for PodTableDelegate {
             PodColumn::Restarts if row.restarts > 0 => cell
                 .text_color(style::status(Tone::Warning, cx))
                 .child(text),
+            PodColumn::Forwards => cell.children(crate::ui::forward_indicator::indicator(
+                &row.name,
+                &self.rows[row_ix].forwards,
+            )),
             _ => cell.child(text),
         };
         // An open quick look hangs below the selected row's first cell, in an

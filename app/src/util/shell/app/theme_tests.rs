@@ -30,7 +30,7 @@ fn two_windows(
     };
     crate::config::save(&ui, &stored).expect("temp ui.toml written");
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::ui::theme::init(stored.theme, cx);
         crate::ui::theme::save_to(ui.clone(), cx);
@@ -78,7 +78,7 @@ async fn the_dark_command_switches_every_window_and_saves(cx: &mut TestAppContex
     // The next launch reads it.
     let relaunch = TestAppContext::single();
     relaunch.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::ui::theme::init(saved.theme, cx);
         assert_eq!(cx.global::<Theme>().mode, ThemeMode::Dark);
     });

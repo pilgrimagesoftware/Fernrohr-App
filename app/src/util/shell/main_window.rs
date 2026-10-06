@@ -130,11 +130,13 @@ impl MainWindow {
         .detach();
         let main_window_handle = cx.weak_entity();
         let status_bar = cx.new(|cx| {
-            crate::ui::status_bar::StatusBarView::for_window(
+            let mut bar = crate::ui::status_bar::StatusBarView::for_window(
                 contexts.clone(),
                 main_window_handle,
                 cx,
-            )
+            );
+            bar.watch_pending_input(window, cx);
+            bar
         });
         self.mode = WindowMode::Workspace {
             dock_area,
@@ -224,7 +226,9 @@ impl MainWindow {
             // A pod's detail panel shows one pod rather than a namespace-
             // filterable list of many, so it carries no picker and never
             // re-scopes.
-            nav::OpenedPanel::PodDetail(_) | nav::OpenedPanel::ObjectDetail(_) => {}
+            nav::OpenedPanel::PodDetail(_)
+            | nav::OpenedPanel::ObjectDetail(_)
+            | nav::OpenedPanel::Exec(_) => {}
         }
     }
 

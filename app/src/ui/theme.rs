@@ -177,7 +177,7 @@ mod tests {
             ThemePreference::System,
         ] {
             cx.update(|cx| {
-                gpui_kit::init(cx);
+                crate::util::test_ui::init(cx);
                 init(preference, cx);
 
                 let theme = cx.global::<Theme>();

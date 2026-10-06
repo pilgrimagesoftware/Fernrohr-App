@@ -40,7 +40,7 @@ fn init(cx: &mut TestAppContext) {
     // `k8s::cluster::session`'s and `ui/status_bar.rs`'s own tests use for this reason.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 }
@@ -194,6 +194,7 @@ async fn a_tunnel_bound_after_the_bar_exists_appears_once_tunnels_revision_fires
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )

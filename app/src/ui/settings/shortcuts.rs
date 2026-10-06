@@ -86,12 +86,12 @@ enum Mode {
         id: &'static str,
         _recorder: Recorder,
     },
-    /// `keys` is already used by `others` in the same scope; Enter applies,
-    /// Escape cancels.
+    /// `keys` clashes with other commands' keys - the same key in the same
+    /// scope, or one starting the other's chord; Enter applies, Escape cancels.
     Confirming {
         id: &'static str,
         keys: String,
-        others: Vec<&'static str>,
+        clashes: keymap::Conflicts,
         _recorder: Recorder,
     },
 }
@@ -235,14 +235,13 @@ impl ShortcutsSection {
             (_, Recorded::Cancelled) => self.stop(cx),
             (Mode::Recording { id, .. }, Recorded::Keys(keys)) => {
                 let id = *id;
-                let others = cx
+                let clashes = cx
                     .try_global::<LiveKeymap>()
                     .map(|live| {
                         keymap::conflicts(cx.global::<CommandRegistry>(), live.config(), id, &keys)
-                            .same_scope
                     })
                     .unwrap_or_default();
-                if others.is_empty() {
+                if !clashes.any_clash() {
                     self.stop(cx);
                     self.edit(id, Edit::Set(keys), cx);
                 } else {
@@ -255,7 +254,7 @@ impl ShortcutsSection {
                     self.mode = Mode::Confirming {
                         id,
                         keys,
-                        others,
+                        clashes,
                         _recorder,
                     };
                     cx.notify();

@@ -4,7 +4,7 @@
 use super::fixtures::{field, rich_pod};
 use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
-use crate::k8s::resource::pod_detail::commands::PANEL_KEY_CONTEXT;
+use crate::k8s::resource::pod_detail::commands::{PANEL_KEY_CONTEXT, VIEW_LOGS_CONTEXT};
 use crate::k8s::resource::pod_detail::fetch::PodDetailState;
 use crate::k8s::resource::pod_detail::model::{DetailSection, DetailView, PodFieldValue};
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
@@ -17,7 +17,10 @@ use jiff::Timestamp;
 
 /// The panel's bindings as the app builds them: from its registered commands,
 /// through `keymap::bindings`, with `keymap`'s overrides.
-fn registered_bindings(keymap: &KeymapConfig, cx: &gpui_kit::App) -> Vec<gpui_kit::KeyBinding> {
+pub(super) fn registered_bindings(
+    keymap: &KeymapConfig,
+    cx: &gpui_kit::App,
+) -> Vec<gpui_kit::KeyBinding> {
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
     crate::keymap::bindings(&registry, keymap, cx.keyboard_mapper().as_ref())
@@ -58,7 +61,7 @@ fn stub_panel_viewing(
 #[gpui_kit::test]
 async fn a_panel_can_be_built_opening_on_the_yaml(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel_viewing(cx, ConnectionState::Connecting, DetailView::Yaml);
@@ -83,7 +86,7 @@ async fn a_panel_can_be_built_opening_on_the_yaml(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
@@ -135,7 +138,7 @@ async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestApp
 #[gpui_kit::test]
 async fn the_toolbar_toggles_between_fields_and_yaml(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
@@ -162,7 +165,7 @@ async fn the_toolbar_toggles_between_fields_and_yaml(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn switching_tabs_shows_only_that_tabs_fields(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
@@ -206,7 +209,7 @@ async fn switching_tabs_shows_only_that_tabs_fields(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.bind_keys(registered_bindings(&KeymapConfig::default(), cx));
     });
@@ -273,25 +276,46 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let commands: Vec<_> = registry.iter().collect();
     assert_eq!(
         commands.len(),
-        18,
+        25,
         "the view toggle, six tabs, Hide Secret Values, the Events tab's seven window \
-         commands, Fold/Unfold All YAML, and Copy Resource Name"
+         commands, Fold/Unfold All YAML, Copy Resource Name, View Logs, Edit YAML, and \
+         Delete, Kill, Shell, Port Forward and Stop Port Forward on the panel's pod"
     );
     assert!(
-        commands
-            .iter()
-            .all(|command| command.context == Some(PANEL_KEY_CONTEXT) && command.menu.is_none()),
+        commands.iter().all(|command| {
+            matches!(
+                command.context,
+                Some(
+                    PANEL_KEY_CONTEXT
+                        | VIEW_LOGS_CONTEXT
+                        | "PodDetailShellable && !Input"
+                        | "DeletablePod && !Input"
+                )
+            ) && command.menu.is_none()
+        }),
         "panel shortcuts are panel-scoped and stay out of the menu bar"
     );
     assert!(registry.available(&[]).is_empty());
-    assert_eq!(registry.available(&[PANEL_KEY_CONTEXT]).len(), 18);
+    assert_eq!(
+        registry.available(&[PANEL_KEY_CONTEXT]).len(),
+        22,
+        "all but Shell, which needs a running container, and Delete and Kill, \
+         which need a pod that can be deleted"
+    );
+    assert_eq!(
+        registry
+            .available(&[PANEL_KEY_CONTEXT, "PodDetailShellable", "DeletablePod"])
+            .len(),
+        25
+    );
 
     let mut keymap = KeymapConfig::default();
+    // `v`, not `e`: `e` is now Edit YAML's key in this panel (#140).
     keymap
         .bindings
-        .insert("pod_detail.tab_events".into(), "e".into());
+        .insert("pod_detail.tab_events".into(), "v".into());
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.bind_keys(registered_bindings(&keymap, cx));
     });
@@ -306,7 +330,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         .unwrap();
     vcx.run_until_parked();
 
-    vcx.simulate_keystrokes("e");
+    vcx.simulate_keystrokes("v");
     vcx.run_until_parked();
     assert_eq!(
         window
@@ -322,7 +346,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
 #[gpui_kit::test]
 async fn a_missing_pod_shows_that_it_no_longer_exists(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);

@@ -49,12 +49,24 @@ pub fn resolve(command_id: &str, default_binding: &str, keymap: &KeymapConfig) -
 /// command can never end up with a menu item and palette entry but no key - the
 /// failure a hand-maintained list of bindings allowed. An override that doesn't parse
 /// falls back to the default; a command whose default doesn't parse is skipped.
+///
+/// Shorter keys come first. GPUI keeps a chord pending against a complete
+/// shorter binding only when the chord was bound after it, so a key that is a
+/// command on its own and also starts a chord (`cmd-k` against `cmd-k w`)
+/// waits for the next key, as the Shortcut timeout specifies, rather than
+/// running at once and making the chord unreachable.
+///
+/// Within each length, the user's `keymap.toml` overrides come after the
+/// defaults: GPUI's later binding wins, so an override onto a key another
+/// command has by default beats that default, whichever command was
+/// registered first - as a live rebind, appended last, already does. The sort
+/// is stable, so otherwise registration order is kept.
 pub fn bindings(
     registry: &CommandRegistry,
     keymap: &KeymapConfig,
     mapper: &dyn gpui_kit::PlatformKeyboardMapper,
 ) -> Vec<gpui_kit::KeyBinding> {
-    registry
+    let mut bindings = registry
         .iter()
         .filter_map(|command| {
             let load =
@@ -65,12 +77,18 @@ pub fn bindings(
             if chosen.is_empty() {
                 return None;
             }
-            load(&chosen).or_else(|| {
-                log::warn!("keymap.toml: invalid binding {chosen:?} for {}", command.id);
-                load(command.default_binding)
-            })
+            let overridden = keymap.bindings.contains_key(command.id);
+            match load(&chosen) {
+                Some(binding) => Some((binding, overridden)),
+                None => {
+                    log::warn!("keymap.toml: invalid binding {chosen:?} for {}", command.id);
+                    load(command.default_binding).map(|binding| (binding, false))
+                }
+            }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    bindings.sort_by_key(|(binding, overridden)| (binding.keystrokes().len(), *overridden));
+    bindings.into_iter().map(|(binding, _)| binding).collect()
 }
 
 /// `keys` bound to `action` in `command`'s context - the command's own action,
@@ -90,12 +108,14 @@ fn load_binding(
     gpui_kit::KeyBinding::load(keys, action, context, false, None, mapper).ok()
 }
 
+mod completions;
 mod conflicts;
 mod live;
 
+pub use completions::{Completion, completions};
+pub use conflicts::{Conflicts, PrefixKind, conflicts, lacks_modifier};
 #[cfg(test)]
-pub use conflicts::Shadow;
-pub use conflicts::{conflicts, lacks_modifier};
+pub use conflicts::{Prefix, Shadow};
 pub use live::{Edit, LiveKeymap, apply};
 
 #[cfg(test)]

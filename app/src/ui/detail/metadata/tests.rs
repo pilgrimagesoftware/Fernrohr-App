@@ -72,7 +72,7 @@ fn hover(vcx: &mut VisualTestContext, index: usize) -> bool {
 #[gpui_kit::test]
 async fn only_a_shortened_chip_has_a_tooltip(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
     });
     let (_, vcx) = cx.add_window_view(|_, _| Chips);

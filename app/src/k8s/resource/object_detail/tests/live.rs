@@ -41,7 +41,7 @@ struct Harness {
 fn open(cx: &mut TestAppContext, kind: DiscoveredKind, initial: Value) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let (cluster, client) = FakeCluster::start(cx);
@@ -142,6 +142,8 @@ async fn a_polled_kinds_object_updates_on_the_next_list(cx: &mut TestAppContext)
         verbs: KindVerbs {
             list: true,
             watch: false,
+            delete: true,
+            patch: true,
         },
         ..kind("apps", "v1", "Deployment", true)
     };
@@ -203,5 +205,47 @@ async fn a_deleted_object_keeps_its_last_state_until_replaced(cx: &mut TestAppCo
         .apply(APPS, "deployments", deployment("d2", 1, 0));
     harness.wait_for("showed the new object", |panel| {
         shown_uid(panel).as_deref() == Some("d2") && panel.lifecycle == Some(Lifecycle::Replaced)
+    });
+}
+
+/// #162: a fetch sent just before the delete can land after the table's
+/// `DELETED`. What it found is stale - the panel keeps the "deleted" notice
+/// rather than showing the object as current with nothing left to correct it.
+#[gpui_kit::test]
+async fn a_fetch_landing_after_the_delete_keeps_the_object_deleted(cx: &mut TestAppContext) {
+    use crate::k8s::resource::object_detail::fetch::ObjectFetch;
+
+    let mut harness = open(cx, deployments(), deployment("d1", 2, 2));
+    harness.wait_for("showed the object", |panel| {
+        shown_uid(panel).as_deref() == Some("d1")
+    });
+    harness
+        .cluster
+        .delete(APPS, "deployments", "staging", "web");
+    harness.wait_for("showed the object deleted", |panel| {
+        matches!(panel.lifecycle, Some(Lifecycle::Deleted { .. }))
+    });
+
+    // The stale fetch lands: it found the object as it was before the delete.
+    let stale: kube::api::DynamicObject =
+        serde_json::from_value(deployment("d1", 2, 2)).expect("a Deployment");
+    harness.vcx.update(|_, cx| {
+        harness.panel.update(cx, |panel, cx| {
+            panel.land_fetch(Ok(ObjectFetch::Found(Box::new(stale), Ok(Vec::new()))), cx)
+        })
+    });
+    harness.vcx.run_until_parked();
+
+    harness.vcx.update(|_, cx| {
+        let panel = harness.panel.read(cx);
+        assert!(
+            matches!(panel.lifecycle, Some(Lifecycle::Deleted { .. })),
+            "still shown deleted"
+        );
+        assert_eq!(
+            shown_uid(panel).as_deref(),
+            Some("d1"),
+            "its last state stays"
+        );
     });
 }

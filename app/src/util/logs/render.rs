@@ -4,6 +4,10 @@
 use super::*;
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::FocusTrapElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
+
+/// The control bar's Previous toggle.
+pub(super) const PREVIOUS_TOGGLE_ID: &str = "logs-previous";
 
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -92,26 +96,61 @@ impl Render for LogsPanel {
                 cx.theme().muted_foreground,
             )
         });
-        let control_bar =
-            (self.current.is_some() && view.terminal_message().is_none()).then(|| {
-                let line_count = view.lines().len();
-                let this_top = cx.weak_entity();
-                let this_bottom = cx.weak_entity();
-                let this_follow = cx.weak_entity();
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(crate::ui::space::spacing(cx).control_gap)
-                    .px(crate::ui::space::spacing(cx).panel_inset)
-                    .py(crate::ui::space::spacing(cx).control_gap)
-                    .bg(crate::ui::style::surface_raised(cx))
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    // "pod / container" (plus the context in a multi-context window) on
-                    // the left; the controls take the rest of the row on the right.
-                    .child(div().flex_1().min_w_0().children(heading))
-                    .children(container_picker)
-                    .child(
+        // The bar shows once a pod is picked - in a terminal state too, so the
+        // Previous toggle is there to switch back from "no previous instance".
+        let streaming = view.terminal_message().is_none();
+        let previous = self.previous;
+        let this_previous = cx.weak_entity();
+        let previous_key = gpui_kit::component::kbd::Kbd::binding_for_action(
+            &TogglePreviousLogs,
+            Some(PANEL_KEY_CONTEXT),
+            window,
+        )
+        .unwrap_or_else(|| {
+            gpui_kit::component::kbd::Kbd::new(
+                Keystroke::parse(PREVIOUS_KEY).expect("valid keybinding"),
+            )
+        });
+        let control_bar = self.current.is_some().then(|| {
+            let line_count = view.lines().len();
+            let this_top = cx.weak_entity();
+            let this_bottom = cx.weak_entity();
+            let this_follow = cx.weak_entity();
+            div()
+                .flex()
+                .items_center()
+                .gap(crate::ui::space::spacing(cx).control_gap)
+                .px(crate::ui::space::spacing(cx).panel_inset)
+                .py(crate::ui::space::spacing(cx).control_gap)
+                .bg(crate::ui::style::surface_raised(cx))
+                .border_b_1()
+                .border_color(cx.theme().border)
+                // "pod / container" (plus the context in a multi-context window) on
+                // the left; the controls take the rest of the row on the right.
+                .child(div().flex_1().min_w_0().children(heading))
+                .children(container_picker)
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(previous_key)
+                        .child(
+                            Button::new(PREVIOUS_TOGGLE_ID)
+                                .label("Previous")
+                                .xsmall()
+                                .ghost()
+                                .toggled(previous)
+                                .tooltip("The container's previous instance's logs")
+                                .on_click(move |_event, _window, cx| {
+                                    let _ = this_previous.update(cx, |this: &mut Self, cx| {
+                                        this.toggle_previous(cx);
+                                    });
+                                }),
+                        ),
+                )
+                .when(streaming, |this| {
+                    this.child(
                         Button::new("logs-jump-top")
                             .icon(gpui_kit::assets::IconName::ArrowUp)
                             .xsmall()
@@ -163,13 +202,18 @@ impl Render for LogsPanel {
                                 });
                             }),
                     )
-            });
+                })
+        });
 
         div()
             .size_full()
+            .key_context(PANEL_KEY_CONTEXT)
             // Tracked so a click focuses the panel, which is what lights its
             // tab's focus underline.
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &TogglePreviousLogs, _window, cx| {
+                this.toggle_previous(cx);
+            }))
             .flex()
             .flex_col()
             .children(control_bar)

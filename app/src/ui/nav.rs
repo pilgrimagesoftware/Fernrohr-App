@@ -10,6 +10,9 @@ use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
 use gpui_kit::*;
 
+mod open_mode;
+pub use open_mode::{OpenMode, OpenPodInBackground};
+
 // `ShowPodDetail` and `ShowPodDetailYaml` are deliberately not registered
 // commands: unlike the two above them they need a pod already selected
 // (`SelectedPod`), so they are dispatched from within a Pods panel rather than
@@ -59,6 +62,8 @@ pub enum NavTarget {
     /// One object of any other discovered kind - the generic object viewer
     /// (`resource-links` section 5). Pod keeps its own variant and panel.
     Object(ObjectTarget),
+    /// A shell in one container of a pod (`k9s-remaining-keybindings` 3).
+    Exec(crate::k8s::resource::exec::ExecTarget),
 }
 
 /// One object of a discovered kind: the kind as discovery reported it (so the
@@ -111,6 +116,7 @@ impl NavTarget {
             NavTarget::Logs => "Logs".to_string(),
             NavTarget::Pod(_) => Self::pod_kind().label(),
             NavTarget::Object(object) => object.kind.label(),
+            NavTarget::Exec(_) => "Shell".to_string(),
         }
     }
 
@@ -123,7 +129,9 @@ impl NavTarget {
         match self {
             NavTarget::Kind(kind) if self.custom_group().is_some() => kind.plural_name(),
             NavTarget::Kind(kind) => kind.plural_label(),
-            NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => self.label(),
+            NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) | NavTarget::Exec(_) => {
+                self.label()
+            }
         }
     }
 
@@ -139,7 +147,11 @@ impl NavTarget {
             {
                 Some(&kind.gvk.group)
             }
-            NavTarget::Kind(_) | NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) => None,
+            NavTarget::Kind(_)
+            | NavTarget::Logs
+            | NavTarget::Pod(_)
+            | NavTarget::Object(_)
+            | NavTarget::Exec(_) => None,
         }
     }
 
@@ -150,6 +162,7 @@ impl NavTarget {
         match self {
             NavTarget::Pod(pod) => format!("{}: {}", self.label(), pod.name),
             NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
+            NavTarget::Exec(exec) => format!("Shell: {} · {}", exec.pod, exec.container),
             _ => self.list_label(),
         }
     }
@@ -213,6 +226,7 @@ pub enum OpenedPanel {
     Logs(Entity<crate::util::logs::LogsPanel>),
     PodDetail(Entity<crate::k8s::resource::pod_detail::PodDetailPanel>),
     ObjectDetail(Entity<crate::k8s::resource::object_detail::ObjectDetailPanel>),
+    Exec(Entity<crate::k8s::resource::exec::ExecPanel>),
 }
 
 impl OpenedPanel {
@@ -231,7 +245,10 @@ impl OpenedPanel {
             OpenedPanel::Placeholder(panel) => {
                 panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
             }
-            OpenedPanel::Logs(_) | OpenedPanel::PodDetail(_) | OpenedPanel::ObjectDetail(_) => {
+            OpenedPanel::Logs(_)
+            | OpenedPanel::PodDetail(_)
+            | OpenedPanel::ObjectDetail(_)
+            | OpenedPanel::Exec(_) => {
                 return false;
             }
         }
@@ -249,6 +266,7 @@ impl OpenedPanel {
             OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::PodDetail(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::ObjectDetail(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::Exec(panel) => PanelId::from(panel.entity_id()),
         }
     }
 
@@ -264,6 +282,7 @@ impl OpenedPanel {
             OpenedPanel::Logs(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::PodDetail(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::ObjectDetail(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::Exec(panel) => panel.read(cx).focus_handle(cx),
         }
     }
 }
@@ -291,6 +310,7 @@ pub fn opened_panel_for(
         "Resource" => OpenedPanel::Placeholder(Entity::from(view.as_ref())),
         "PodDetail" => OpenedPanel::PodDetail(Entity::from(view.as_ref())),
         "ObjectDetail" => OpenedPanel::ObjectDetail(Entity::from(view.as_ref())),
+        "Exec" => OpenedPanel::Exec(Entity::from(view.as_ref())),
         _ => return None,
     })
 }
@@ -424,133 +444,23 @@ pub fn add_panel(
             );
             (id, OpenedPanel::ObjectDetail(panel))
         }
+        // A shell in one container; its session starts as the panel opens.
+        NavTarget::Exec(exec) => {
+            let panel = cx.new(|cx| {
+                crate::k8s::resource::exec::ExecPanel::new(exec.clone(), scope.clone(), window, cx)
+            });
+            let id = PanelId::from(panel.entity_id());
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
+            (id, OpenedPanel::Exec(panel))
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{NavTarget, SHOW_EVENTS_COMMAND_ID, SHOW_LOGS_COMMAND_ID, SHOW_PODS_COMMAND_ID};
-    use crate::command::{CommandRegistry, build_items};
-    use crate::k8s::cluster::discovery::DiscoveredKind;
-    use gpui_kit::TestAppContext;
-    use kube::core::GroupVersionKind;
-
-    fn kind(group: &str, kind: &str) -> DiscoveredKind {
-        DiscoveredKind {
-            gvk: GroupVersionKind::gvk(group, "v1", kind),
-            plural: format!("{}s", kind.to_lowercase()),
-            namespaced: true,
-            verbs: Default::default(),
-        }
-    }
-
-    /// Section 1.1: a pod's detail panel is keyed on *which* pod, so two
-    /// different pods are two different targets and the same pod is one. The
-    /// equality is what `PanelKey`'s dedup reads - same key focuses, different
-    /// key opens a second panel - so it has to be exactly this.
-    #[test]
-    fn two_pods_are_different_targets_and_one_pod_is_one_target() {
-        let first = NavTarget::pod("default", "web-1");
-        let second = NavTarget::pod("default", "web-2");
-        let same = NavTarget::pod("default", "web-1");
-
-        assert_ne!(first, second, "different pods are different panels");
-        assert_eq!(first, same, "the same pod is the same panel");
-    }
-
-    /// A pod's namespace is part of its identity: the same name in two
-    /// namespaces is two pods, and collapsing them would make a second cluster
-    /// namespace's panel unreachable behind the first one's.
-    #[test]
-    fn a_pods_namespace_is_part_of_its_identity() {
-        assert_ne!(
-            NavTarget::pod("default", "web-1"),
-            NavTarget::pod("staging", "web-1")
-        );
-    }
-
-    /// The list of pods and one pod are not the same panel, whichever way round
-    /// they are compared - a detail request must never focus the Pods table.
-    #[test]
-    fn a_pod_is_not_the_list_of_pods() {
-        assert_ne!(NavTarget::pods(), NavTarget::pod("default", "web-1"));
-        assert_ne!(NavTarget::pod("default", "web-1"), NavTarget::pods());
-    }
-
-    /// Section 2.1/2.2, read off the target itself: a list titles itself
-    /// plural, a single item titles itself with the item's name.
-    #[test]
-    fn a_target_says_which_way_it_should_be_titled() {
-        assert_eq!(NavTarget::pods().list_label(), "Pods");
-        assert_eq!(NavTarget::pods().item_label(), "Pods");
-
-        let pod = NavTarget::pod("default", "api-7d9f-ftg5t");
-        assert_eq!(pod.label(), "Pod");
-        assert_eq!(pod.item_label(), "Pod: api-7d9f-ftg5t");
-    }
-
-    /// Only the core Pod kind keeps the Pods panel; every other kind - a CRD's
-    /// own `Pod` in its group included - gets the generic list.
-    #[test]
-    fn only_the_core_pod_kind_is_the_pods_panel() {
-        assert!(DiscoveredKind::pods().is_core_pod());
-        assert!(!kind("", "Service").is_core_pod());
-        assert!(
-            !kind("example.com", "Pod").is_core_pod(),
-            "a CRD's own Pod kind is not the built-in Pods panel"
-        );
-    }
-
-    /// Selecting Pods and Logs both name a real target, so the palette entries
-    /// read the same as the Resource panel's rows.
-    #[test]
-    fn targets_label_themselves() {
-        assert_eq!(NavTarget::pods().label(), "Pod");
-        assert_eq!(NavTarget::Logs.label(), "Logs");
-        assert_eq!(kind("apps", "Deployment").label(), "Deployment · apps");
-    }
-
-    /// Section 8.3: both panel-opening actions are registered, and both show up
-    /// in the palette items built from the registry.
-    #[test]
-    fn panel_opening_actions_are_registered_commands() {
-        let mut registry = CommandRegistry::new();
-        super::register_commands(&mut registry);
-
-        assert!(registry.get(SHOW_PODS_COMMAND_ID).is_some());
-        assert!(registry.get(SHOW_LOGS_COMMAND_ID).is_some());
-        assert!(registry.get("nav.does_not_exist").is_none());
-
-        let titles: Vec<&str> = [SHOW_PODS_COMMAND_ID, SHOW_LOGS_COMMAND_ID]
-            .iter()
-            .map(|id| registry.get(id).expect("registered above").title)
-            .collect();
-        assert_eq!(titles, vec!["Show Pods", "Show Logs"]);
-        assert!(registry.get(SHOW_EVENTS_COMMAND_ID).is_some());
-        assert_eq!(
-            build_items(&registry, &[]).len(),
-            3,
-            "Pods, Logs and Events reach the palette"
-        );
-    }
-
-    /// Section 8.3: both panel-opening actions dispatch. A dispatched action
-    /// is what either the palette or the keymap ends up producing, so this is
-    /// the path a click and a keystroke share.
-    #[gpui_kit::test]
-    async fn both_panel_opening_actions_dispatch(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::runtime::init(cx);
-        });
-        let mut registry = CommandRegistry::new();
-        super::register_commands(&mut registry);
-
-        let dispatched_pods = cx.update(|cx| registry.dispatch(SHOW_PODS_COMMAND_ID, &[], cx));
-        let dispatched_logs = cx.update(|cx| registry.dispatch(SHOW_LOGS_COMMAND_ID, &[], cx));
-        let dispatched = dispatched_pods && dispatched_logs;
-        assert!(dispatched, "both commands are registered and ungated");
-
-        assert!(!cx.update(|cx| registry.dispatch("nav.nope", &[], cx)));
-    }
-}
+mod tests;

@@ -43,7 +43,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
         for context in ["demo", "other"] {
@@ -65,6 +65,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
             None,
             Some("other".into()),
             Vec::new(),
+            crate::ui::nav::OpenMode::Foreground,
             window,
             cx,
         );
@@ -192,7 +193,8 @@ fn warp_all_is_a_pods_scoped_palette_command() {
     let command = registry.get("pods.warp_all_namespace").expect("registered");
     assert_eq!(
         command.context,
-        Some(crate::k8s::resource::pods::PANEL_KEY_CONTEXT)
+        Some(crate::k8s::resource::pods::LIST_KEY_CONTEXT),
+        "the Pods panel, outside its text fields"
     );
     assert_eq!(
         command.menu, None,

@@ -11,8 +11,7 @@ use crate::k8s::resource::pods::format_age;
 use crate::ui::picker::{ClusterPicker, PickerEvent};
 use crate::util::context_lifecycle;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
-use gpui_kit::component::dialog::DialogFooter;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Icon, Sizable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -161,32 +160,23 @@ impl StatusBarView {
         );
         let title = format!("Disconnect {context_name}?");
         let target = self.main_window.clone();
-
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            let target = target.clone();
-            let context_name = context_name.clone();
-            // A plain `Dialog` draws a footer only when one is set.
-            dialog.title(title.clone()).child(body.clone()).footer(
-                DialogFooter::new()
-                    .child(
-                        Button::new("context-disconnect-cancel")
-                            .label("Cancel")
-                            .on_click(|_event, window, cx| window.close_dialog(cx)),
-                    )
-                    .child(
-                        Button::new("context-disconnect-confirm")
-                            .label("Disconnect")
-                            .with_variant(ButtonVariant::Danger)
-                            .on_click(move |_event, window, cx| {
-                                window.close_dialog(cx);
-                                let context_name = context_name.clone();
-                                let _ = target.update(cx, |main_window, cx| {
-                                    main_window.disconnect_context(context_name, window, cx);
-                                });
-                            }),
-                    ),
-            )
-        });
+        let confirmation = crate::ui::confirm_dialog::Confirmation {
+            title: title.into(),
+            body,
+            confirm: "Disconnect".into(),
+            id_prefix: "context-disconnect",
+        };
+        crate::ui::confirm_dialog::open(
+            confirmation,
+            move |window, cx| {
+                let context_name = context_name.clone();
+                let _ = target.update(cx, |main_window, cx| {
+                    main_window.disconnect_context(context_name, window, cx);
+                });
+            },
+            window,
+            cx,
+        );
     }
 
     /// The add popover: the cluster picker filtered to contexts this window doesn't

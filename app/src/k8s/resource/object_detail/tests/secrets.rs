@@ -38,7 +38,7 @@ fn secret() -> kube::api::DynamicObject {
 #[gpui_kit::test]
 async fn no_secret_value_reaches_either_view(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let secrets = kind("", "v1", "Secret", true);
@@ -100,7 +100,7 @@ async fn a_value_is_revealed_by_keyboard_and_the_yaml_stays_redacted(cx: &mut Te
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = crate::command::CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);

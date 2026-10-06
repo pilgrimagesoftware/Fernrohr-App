@@ -70,6 +70,7 @@ async fn renaming_keeps_bindings_intact(cx: &mut TestAppContext) {
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )
@@ -159,6 +160,7 @@ async fn delete_confirm_names_the_bound_contexts(cx: &mut TestAppContext) {
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )
@@ -177,8 +179,13 @@ async fn delete_confirm_names_the_bound_contexts(cx: &mut TestAppContext) {
                 editor.bound_contexts,
                 vec!["qa-1".to_string(), "qa-2".to_string()]
             );
-            editor.request_delete(_cx);
-            assert!(editor.confirming_delete);
+            let question =
+                crate::ui::tunnels::editor::render::delete_confirm_text(&editor.bound_contexts);
+            assert_eq!(
+                question.name_list(),
+                ["qa-1", "qa-2"],
+                "each bound context is a name of its own"
+            );
         })
         .unwrap();
 

@@ -29,6 +29,9 @@ pub struct PodsPanel {
     pub(super) pod_table: Option<Entity<TableState<PodTableDelegate>>>,
     /// The open quick look over the selected pod, if any (`pod-quick-look`).
     pub(super) quick_look: Option<Entity<super::quick_look::QuickLookPopover>>,
+    /// The last row action the cluster refused, shown above the table until
+    /// dismissed or the next action.
+    pub(super) action_failure: Option<super::actions::PodActionFailure>,
 }
 
 impl PodsPanel {
@@ -63,6 +66,10 @@ impl PodsPanel {
         })
         .detach();
         cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
+        // Redrawn on any forward starting or stopping, from here or elsewhere,
+        // for the Forwards column (`port-forward-indicators` 2.1).
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         cx.on_release({
             let context_name = context_name.clone();
             move |this: &mut Self, cx| {
@@ -83,6 +90,7 @@ impl PodsPanel {
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
             quick_look: None,
+            action_failure: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
@@ -166,6 +174,20 @@ impl PodsPanel {
         );
     }
 
+    /// `JumpToNamespace` (`alt-<n>`): scopes the list to the namespace at that
+    /// position in its namespace list, or to all at 0; past the end, nothing.
+    pub(super) fn on_action_jump_namespace(
+        &mut self,
+        action: &crate::ui::namespace_jump::JumpToNamespace,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let names = self.namespaces.read(cx).names().to_vec();
+        if let Some(namespaces) = crate::ui::namespace_jump::scope_for(&names, action.position) {
+            self.set_namespaces(namespaces, cx);
+        }
+    }
+
     /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
     /// what Warp All to Namespace applies to every namespaced panel in a context.
     pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
@@ -242,6 +264,22 @@ impl PodsPanel {
                     return;
                 }
                 let row_ix = match event {
+                    // A modified click's selection is put back, and nothing
+                    // follows the clicked row (`ui::background_rows`).
+                    TableEvent::SelectRow(_)
+                        if table.update(cx, |table, cx| {
+                            crate::ui::background_rows::undo_select(table, cx)
+                        }) =>
+                    {
+                        return;
+                    }
+                    TableEvent::DoubleClickedRow(_)
+                        if table.update(cx, |table, _| {
+                            crate::ui::background_rows::swallow_double_click(table)
+                        }) =>
+                    {
+                        return;
+                    }
                     TableEvent::SelectRow(row_ix) => *row_ix,
                     // A single click only selects (drives WarpNamespace/
                     // ShowPodLogs, which read SelectedPod); opening the
@@ -346,5 +384,7 @@ impl Panel for PodsPanel {
 
 #[cfg(test)]
 mod list_keys_tests;
+#[cfg(test)]
+mod namespace_jump_tests;
 #[cfg(test)]
 mod tests;

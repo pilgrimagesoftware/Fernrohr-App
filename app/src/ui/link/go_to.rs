@@ -149,6 +149,7 @@ impl GoToPicker {
         let action = FollowReference {
             context_name: self.context_name.clone(),
             target: entry.target.clone(),
+            mode: crate::ui::nav::OpenMode::Foreground,
         };
         if matches!(window.root::<Root>(), Some(Some(_))) {
             window.close_dialog(cx);

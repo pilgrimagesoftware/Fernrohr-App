@@ -84,6 +84,10 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     nav::register_commands(registry);
     tunnels::register_commands(registry);
     crate::k8s::resource::pods::register_commands(registry);
+    crate::util::logs::register_commands(registry);
+    crate::ui::panel::arrange::register_commands(registry);
+    crate::ui::namespace_jump::register_commands(registry);
+    crate::util::key_hints::register_commands(registry);
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::ui::status_bar::register_commands(registry);
@@ -99,6 +103,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::panel::tabs::register_commands(registry);
     crate::ui::settings::register_commands(registry);
     crate::ui::text_size::register_commands(registry);
+    crate::ui::shortcut_timeout::register_commands(registry);
     crate::ui::report_issue::register_commands(registry);
 }
 
@@ -128,6 +133,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
     crate::ui::text_size::register_handlers(cx);
+    crate::ui::shortcut_timeout::register_handlers(cx);
     crate::ui::theme::register_handlers(cx);
     crate::ui::report_issue::register_handler(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
@@ -150,6 +156,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::pod_detail::register_restore(cx);
     crate::k8s::resource::object_detail::register_restore(cx);
     crate::util::logs::register_restore(cx);
+    crate::k8s::resource::exec::register_restore(cx);
     crate::k8s::resource::object_list::register_restore(cx);
     crate::k8s::resource::events_browser::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);

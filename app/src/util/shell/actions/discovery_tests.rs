@@ -27,7 +27,7 @@ fn harness(cx: &mut TestAppContext, api: &MockApi) -> Harness {
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
     let client = {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::runtime::init(cx);
         });
         let handle = cx.update(|cx| crate::runtime::handle(cx));
@@ -193,6 +193,7 @@ fn follow_pod_metrics(h: &mut Harness) -> bool {
             namespace: Some("default".into()),
             name: "web-1".into(),
         },
+        mode: crate::ui::nav::OpenMode::Foreground,
     });
     h.vcx.run_until_parked();
     h.vcx.update(|_, cx| {

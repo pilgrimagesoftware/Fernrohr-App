@@ -6,6 +6,7 @@ use super::{
     CONTEXT, FilterShortcuts, Mode, RecordShortcut, RemoveShortcut, ResetShortcut, ShortcutsSection,
 };
 use crate::command::CommandRegistry;
+use crate::keymap;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -64,9 +65,9 @@ impl ShortcutsSection {
             Mode::Confirming {
                 id: c,
                 keys,
-                others,
+                clashes,
                 ..
-            } if *c == id => Some((keys.clone(), others.clone())),
+            } if *c == id => Some((keys.clone(), clashes.clone())),
             _ => None,
         };
         let key_label: AnyElement = if recording {
@@ -133,26 +134,30 @@ impl ShortcutsSection {
                     .text_color(theme.muted_foreground)
                     .child(note.clone())
             }))
-            .children(confirming.map(|(keys, others)| {
-                let registry = cx.global::<CommandRegistry>();
-                let names: Vec<&str> = others
-                    .iter()
-                    .map(|other| registry.get(other).map_or(*other, |c| c.title))
-                    .collect();
+            .children(confirming.map(|(keys, clashes)| {
+                let summary = clash_summary(cx.global::<CommandRegistry>(), &clashes);
                 let apply = cx.weak_entity();
                 let cancel = cx.weak_entity();
+                // The question can run long - a key that starts many chords
+                // lists them all - so it wraps in whatever width is left, and
+                // the buttons keep theirs, inside the window (#139).
                 div()
+                    .w_full()
+                    .min_w_0()
                     .flex()
                     .items_center()
                     .gap_2()
                     .text_sm()
-                    .child(format!(
-                        "{keys} is also used by {}. Apply anyway? (Enter / Escape)",
-                        names.join(", ")
-                    ))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(format!("{keys} {summary}. Apply anyway?")),
+                    )
                     .child(
                         Button::new(SharedString::from(format!("shortcut-apply-{id}")))
                             .label("Apply")
+                            .child(prompt_key("enter"))
                             .xsmall()
                             .on_click(move |_event, _window, cx| {
                                 let _ = apply.update(cx, |this, cx| this.confirm(cx));
@@ -161,6 +166,7 @@ impl ShortcutsSection {
                     .child(
                         Button::new(SharedString::from(format!("shortcut-cancel-{id}")))
                             .label("Cancel")
+                            .child(prompt_key("escape"))
                             .xsmall()
                             .ghost()
                             .on_click(move |_event, _window, cx| {
@@ -215,6 +221,13 @@ impl ShortcutsSection {
 }
 
 /// A binding as key caps - one per keystroke, so chords show both.
+/// The key that answers the conflict prompt - Enter applies, Escape cancels.
+/// The recorder takes them straight from the keystroke, not from a binding,
+/// so the hint is the literal key, in the hint rows' `Kbd` style.
+fn prompt_key(key: &str) -> Kbd {
+    Kbd::new(Keystroke::parse(key).expect("valid keystroke"))
+}
+
 fn keys_element(keys: &str) -> impl IntoElement {
     div().flex().gap_1().children(
         keys.split_whitespace()
@@ -250,4 +263,71 @@ fn hint_row(window: &mut Window, cx: &mut Context<ShortcutsSection>) -> impl Int
         .child(hint(&ResetShortcut, "Reset"))
         .child(hint(&RemoveShortcut, "Remove"))
         .child(hint(&FilterShortcuts, "Filter"))
+}
+
+/// What a recorded key clashes with, as the prompt's clause after the key:
+/// the commands already on it, the chords it would cut short, and the keys
+/// that would cut it short.
+fn clash_summary(registry: &CommandRegistry, clashes: &keymap::Conflicts) -> String {
+    let titles = |ids: &mut dyn Iterator<Item = &'static str>| {
+        ids.map(|id| registry.get(id).map_or(id, |command| command.title))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let of_kind = |kind| {
+        titles(
+            &mut clashes
+                .prefixes
+                .iter()
+                .filter(move |prefix| prefix.kind == kind)
+                .map(|prefix| prefix.command),
+        )
+    };
+    let mut parts = Vec::new();
+    if !clashes.same_scope.is_empty() {
+        parts.push(format!(
+            "is also used by {}",
+            titles(&mut clashes.same_scope.iter().copied())
+        ));
+    }
+    let starts_theirs = of_kind(keymap::PrefixKind::StartsTheirs);
+    if !starts_theirs.is_empty() {
+        parts.push(format!(
+            "starts the keys of {starts_theirs}, so it waits for your next key, up to \
+             the Shortcut timeout, before it runs"
+        ));
+    }
+    let starts_mine = of_kind(keymap::PrefixKind::StartsMine);
+    if !starts_mine.is_empty() {
+        parts.push(format!(
+            "starts with the key of {starts_mine}, which then waits for your next key, up \
+             to the Shortcut timeout, before it runs"
+        ));
+    }
+    parts.join("; ")
+}
+
+#[cfg(test)]
+mod clash_tests {
+    use super::clash_summary;
+    use crate::command::CommandRegistry;
+    use crate::keymap::{self, KeymapConfig};
+
+    /// #137: a key that starts other commands' chords now makes the shorter
+    /// one wait for the Shortcut timeout, and the warning says so instead of
+    /// claiming the chords stop working.
+    #[test]
+    fn a_prefix_warning_describes_the_wait() {
+        let mut registry = CommandRegistry::new();
+        crate::util::shell::register_commands(&mut registry);
+        let clashes = keymap::conflicts(
+            &registry,
+            &KeymapConfig::default(),
+            "resource.focus",
+            "cmd-k",
+        );
+        let summary = clash_summary(&registry, &clashes);
+        assert!(summary.contains("waits for your next key"), "{summary}");
+        assert!(!summary.contains("stop working"), "{summary}");
+    }
 }

@@ -37,6 +37,7 @@ fn set_context_tunnels_handler_binds_and_unbinds() {
                 bastion_port: 22,
                 jump_hosts: Vec::new(),
                 auth: TunnelAuth::default(),
+                ..Default::default()
             },
             None,
         )

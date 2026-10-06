@@ -17,7 +17,7 @@ fn temp_path() -> std::path::PathBuf {
 
 fn setup(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::ui::theme::init(ThemePreference::Light, cx);
     });
 }

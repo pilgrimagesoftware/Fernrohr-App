@@ -12,7 +12,7 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::DetailView;
-use crate::ui::nav::ObjectTarget;
+use crate::ui::nav::{ObjectTarget, OpenMode};
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState,
@@ -41,6 +41,8 @@ pub struct ObjectListPanel {
     pub(super) filter: Option<Entity<InputState>>,
     /// The column layout to start the table with, once it's built.
     pub(super) initial_layout: ColumnLayout,
+    /// The last delete the cluster refused, shown until dismissed (`delete`).
+    pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
 }
 
 impl ObjectListPanel {
@@ -66,6 +68,10 @@ impl ObjectListPanel {
         })
         .detach();
         cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
+        // A Services list's Forwards column follows every forward starting or
+        // stopping (`port-forward-indicators` 2.1).
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         cx.on_release(|this: &mut Self, cx| {
             if this.subscribed {
                 ClusterRegistry::unsubscribe_kind(cx, &this.scope.context_name, &this.kind);
@@ -84,6 +90,7 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            refusal: None,
         };
         this.subscribe_if_connected(&connection, cx);
         this
@@ -115,6 +122,7 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            refusal: None,
         }
     }
 
@@ -164,7 +172,11 @@ impl ObjectListPanel {
                         .is_some_and(|namespace| namespaces.contains(namespace))
             })
             .filter(|row| row.name.contains(filter.as_str()))
-            .map(|row| ListRow::new(row.clone(), now))
+            .map(|row| {
+                let mut listed = ListRow::new(row.clone(), now);
+                listed.forwards = self.forwards_of(row, cx);
+                listed
+            })
             .collect()
     }
 
@@ -204,6 +216,10 @@ impl ObjectListPanel {
                 delegate.set_on_open(move |row_ix, window, cx| {
                     let _ = this.update(cx, |this, cx| this.open_row(row_ix, window, cx));
                 });
+                let open = self.background_opener();
+                delegate.set_on_open_in_background(move |row, window, cx| {
+                    window.dispatch_action(Box::new(open(row)), cx);
+                });
                 TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
@@ -216,11 +232,20 @@ impl ObjectListPanel {
                 window,
                 |this, table, event, window, cx| match event {
                     TableEvent::SelectRow(row_ix) => {
-                        table.update(cx, |table, _| {
-                            table.delegate_mut().remember_selection(*row_ix)
+                        table.update(cx, |table, cx| {
+                            if !crate::ui::background_rows::undo_select(table, cx) {
+                                table.delegate_mut().remember_selection(*row_ix)
+                            }
                         });
                     }
-                    TableEvent::DoubleClickedRow(row_ix) => this.open_row(*row_ix, window, cx),
+                    TableEvent::DoubleClickedRow(row_ix) => {
+                        let background = table.update(cx, |table, _| {
+                            crate::ui::background_rows::swallow_double_click(table)
+                        });
+                        if !background {
+                            this.open_row(*row_ix, window, cx);
+                        }
+                    }
                     TableEvent::ColumnWidthsChanged(widths) => {
                         table.update(cx, |table, _| table.delegate_mut().set_widths(widths));
                     }
@@ -253,28 +278,32 @@ impl ObjectListPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(table) = &self.table else {
+        let Some(target) = self.row_target(row_ix, cx) else {
             return;
-        };
-        let Some(row) = table.read(cx).delegate().rows().get(row_ix).cloned() else {
-            return;
-        };
-        table.update(cx, |table, _| {
-            table.delegate_mut().remember_selection(row_ix)
-        });
-        let target = ObjectTarget {
-            kind: self.kind.clone(),
-            namespace: row.object.namespace.clone(),
-            name: row.object.name.clone(),
         };
         window.dispatch_action(
             Box::new(OpenListedObject {
                 context_name: self.scope.context_name.clone(),
                 target,
                 view,
+                mode: OpenMode::Foreground,
             }),
             cx,
         );
+    }
+
+    /// The object on row `row_ix`, remembering it as the selection.
+    pub(super) fn row_target(&self, row_ix: usize, cx: &mut Context<Self>) -> Option<ObjectTarget> {
+        let table = self.table.as_ref()?;
+        let row = table.read(cx).delegate().rows().get(row_ix).cloned()?;
+        table.update(cx, |table, _| {
+            table.delegate_mut().remember_selection(row_ix)
+        });
+        Some(ObjectTarget {
+            kind: self.kind.clone(),
+            namespace: row.object.namespace.clone(),
+            name: row.object.name.clone(),
+        })
     }
 
     /// The table's selected row, if any.
@@ -352,6 +381,23 @@ impl ObjectListPanel {
             return;
         };
         self.set_namespaces(vec![namespace], cx);
+    }
+
+    /// `JumpToNamespace` (`alt-<n>`): scopes a namespaced list to the namespace at
+    /// that position in its namespace list, or to all at 0; past the end, nothing.
+    pub(super) fn on_action_jump_namespace(
+        &mut self,
+        action: &crate::ui::namespace_jump::JumpToNamespace,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.kind.namespaced {
+            return;
+        }
+        let names = self.namespaces.read(cx).names().to_vec();
+        if let Some(namespaces) = crate::ui::namespace_jump::scope_for(&names, action.position) {
+            self.set_namespaces(namespaces, cx);
+        }
     }
 
     /// Scopes this panel to `namespaces` (empty for all), as its own picker does -

@@ -1,7 +1,8 @@
 //! Owns the Tunnels window's singleton lifecycle (open-or-focus, design.md decision
 //! 5's single-instance rule) and `TunnelsWindow`'s state: construction, re-reading
-//! `tunnels.toml`/the kubeconfig, the running-state watch, and opening/closing the
-//! embedded editor pane. `render.rs` owns turning that state into a layout.
+//! `tunnels.toml`/the kubeconfig, the running-state watch, and which editor is open.
+//! `editor_dialog.rs` owns the editor's dialog; `render.rs` turns the rest into a
+//! layout.
 
 use super::*;
 
@@ -29,6 +30,7 @@ pub fn open_or_focus(cx: &mut App) {
 
     let (window, _) = gpui_kit::open_window(
         WindowOptions {
+            app_id: Some(crate::consts::APP_ID.into()),
             // An explicit, centered starting size: with only a minimum, the
             // platform default opened this small list-and-editor window huge.
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
@@ -72,7 +74,14 @@ pub struct TunnelsWindow {
     pub(super) usage: BTreeMap<String, usize>,
     pub(super) stale: Vec<(String, String)>,
     pub(super) running: BTreeSet<ForwardKey>,
+    /// The editor whose dialog is open, if one is.
     pub(super) editor: Option<Entity<TunnelEditor>>,
+    /// Each tunnel row's focus, by id: an edit focuses its row before the dialog
+    /// opens, so closing it returns focus there - a mouse click on Edit focuses
+    /// nothing of its own.
+    pub(super) row_focus: BTreeMap<String, FocusHandle>,
+    /// The app's row-started port-forwards, listed under the tunnels.
+    pub(super) forwards: Entity<crate::k8s::cluster::port_forwards::PortForwards>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -81,13 +90,16 @@ impl TunnelsWindow {
     /// `~/.kube/config`, the same default every other kubeconfig read uses) and
     /// `Some(fixture)` in tests, so the stale-bindings check never depends on this
     /// machine's real kubeconfig.
-    fn new(
+    pub(super) fn new(
         tunnels_path: PathBuf,
         kubeconfig_path: Option<PathBuf>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
+            forwards,
             tunnels_path,
             kubeconfig_path,
             tunnels: Vec::new(),
@@ -95,6 +107,7 @@ impl TunnelsWindow {
             stale: Vec::new(),
             running: BTreeSet::new(),
             editor: None,
+            row_focus: BTreeMap::new(),
             focus_handle: cx.focus_handle(),
         };
         this.refresh(cx);
@@ -110,10 +123,17 @@ impl TunnelsWindow {
     /// Re-reads `tunnels.toml` and the kubeconfig's context list - the only I/O this
     /// view performs, and only right after construction or a write (create/edit/
     /// delete/remove-stale), never from `render` itself.
-    fn refresh(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn refresh(&mut self, cx: &mut Context<Self>) {
         let store = TunnelStore::new(self.tunnels_path.clone());
         let mut tunnels = store.list();
         tunnels.sort_by(|a, b| a.1.name.cmp(&b.1.name).then_with(|| a.0.cmp(&b.0)));
+        self.row_focus
+            .retain(|id, _| tunnels.iter().any(|(tunnel_id, _)| tunnel_id == id));
+        for (id, _) in &tunnels {
+            self.row_focus
+                .entry(id.clone())
+                .or_insert_with(|| cx.focus_handle());
+        }
         self.tunnels = tunnels;
         self.usage = store.usage_counts();
         // An unreadable kubeconfig means the context list is unknown, not empty: treating
@@ -146,37 +166,22 @@ impl TunnelsWindow {
     }
 
     pub(super) fn is_running(&self, tunnel_id: &str) -> bool {
-        self.running.iter().any(|key| key.tunnel_id == tunnel_id)
-    }
-
-    fn watch_editor(&mut self, editor: &Entity<TunnelEditor>, cx: &mut Context<Self>) {
-        cx.subscribe(editor, |this, _editor, event, cx| match event {
-            TunnelEditorEvent::Saved | TunnelEditorEvent::Deleted => {
-                this.editor = None;
-                this.refresh(cx);
-            }
-            TunnelEditorEvent::Cancelled => {
-                this.editor = None;
-                cx.notify();
-            }
-        })
-        .detach();
+        self.running.iter().any(|key| key.tunnel_id() == tunnel_id)
     }
 
     pub(super) fn open_create(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let tunnels_path = self.tunnels_path.clone();
         let editor = cx.new(|cx| TunnelEditor::create(tunnels_path, window, cx));
-        self.watch_editor(&editor, cx);
-        self.editor = Some(editor);
-        cx.notify();
+        self.open_editor(editor, window, cx);
     }
 
     pub(super) fn open_edit(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(row) = self.row_focus.get(&id) {
+            row.focus(window, cx);
+        }
         let tunnels_path = self.tunnels_path.clone();
         let editor = cx.new(|cx| TunnelEditor::edit(tunnels_path, id, window, cx));
-        self.watch_editor(&editor, cx);
-        self.editor = Some(editor);
-        cx.notify();
+        self.open_editor(editor, window, cx);
     }
 
     /// Tasks.md 4.1: a stale binding's Remove - `unbind` the context and refresh, so

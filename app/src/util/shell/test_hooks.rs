@@ -79,4 +79,17 @@ impl MainWindow {
             WindowMode::Picker(_) => None,
         }
     }
+
+    /// Test-only: what each open panel shows, for tests outside the shell that
+    /// check a key opened the panel it should.
+    #[cfg(test)]
+    pub(crate) fn test_open_targets(&self) -> Vec<crate::ui::nav::NavTarget> {
+        match &self.mode {
+            WindowMode::Workspace { open_panels, .. } => open_panels
+                .iter()
+                .map(|open| open.key.target.clone())
+                .collect(),
+            WindowMode::Picker(_) => Vec::new(),
+        }
+    }
 }

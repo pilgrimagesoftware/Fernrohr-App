@@ -24,6 +24,9 @@ pub struct PodRow {
     pub status_tone: Tone,
     /// Whether its containers are ready, for the Ready cell's dot.
     pub ready_tone: Tone,
+    /// How many port-forwards reach it (`port-forward-indicators` 2.1) - not the
+    /// Pod's own, so `pod_row` leaves it 0 and the panel fills it in.
+    pub forwards: usize,
 }
 
 /// Container waiting reasons that mean the pod won't run as it is - `kubectl`
@@ -130,6 +133,7 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
         age_secs,
         status_tone: status_tone(status),
         ready_tone: ready_tone(ready_count, total),
+        forwards: 0,
     }
 }
 

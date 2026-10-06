@@ -26,7 +26,7 @@ fn rebuilt_menus_show_the_new_key_and_fire_once(cx: &mut gpui_kit::TestAppContex
     );
     let _ = std::fs::remove_file(&keymap);
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::util::shell::init(cx, workspace.clone(), &keymap);
 
@@ -286,11 +286,13 @@ fn no_menu_item_is_scoped_to_a_panel() {
 }
 
 /// 1.3: the commands that left the menu are still in the palette, offered
-/// while their panel has focus.
+/// while their panel has focus - given the focused contexts' *names*, as the
+/// palette reads them, even for commands bound outside the panel's filter
+/// (`ObjectListPanel && !Input`).
 #[test]
 fn panel_commands_left_the_menu_but_not_the_palette() {
-    use crate::k8s::resource::object_list::LIST_KEY_CONTEXT;
     use crate::k8s::resource::pods::PANEL_KEY_CONTEXT as PODS;
+    const LIST_KEY_CONTEXT: &str = "ObjectListPanel";
     let mut registry = CommandRegistry::new();
     crate::util::shell::register_commands(&mut registry);
     let cases: [(&str, &str); 10] = [

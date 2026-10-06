@@ -8,25 +8,30 @@
 //! cluster's pods into a panel that shows one.
 //!
 //! The module is split by concern: [`commands`] owns the panel's actions and
-//! keybindings, [`model`] the view model the projection produces, [`fields`]
-//! and [`format`] the `Pod` -> field-list projection itself,
-//! [`container_detail`] a container card's expanded fields, [`references`]
-//! the objects that projection points at, [`fetch`] the
-//! one-shot read, and [`panel`], [`field_view`], [`container_view`] and [`render`] the dock panel
+//! keybindings, [`actions`] what it does to its pod (delete, kill, shell,
+//! forward), [`model`] the view model the projection produces, [`fields`] and
+//! [`format`] the `Pod` -> field-list projection itself, [`container_detail`] a
+//! container card's expanded fields, [`references`] the objects that projection
+//! points at, [`fetch`] the one-shot read, [`logs`] its View Logs action, and
+//! [`panel`], [`field_view`], [`container_view`] and [`render`] the dock panel
 //! that draws it.
 
+pub(super) mod actions;
 mod commands;
 mod configuration;
 mod container_detail;
 pub(super) mod container_view;
+mod edit;
 pub(super) mod events_tab;
 mod fetch;
 mod field_view;
 mod fields;
 mod format;
+mod forwards;
 pub(crate) mod glance;
 mod live;
 pub(super) mod live_events;
+mod logs;
 pub(super) mod managed_fields_view;
 mod model;
 mod panel;

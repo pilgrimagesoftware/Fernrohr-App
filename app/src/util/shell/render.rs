@@ -29,7 +29,13 @@ impl MainWindow {
         let dock = if dock_area.read(cx).is_empty(DockPlacement::Center, cx) {
             empty_dock_hint(window, cx)
         } else {
-            dock_area.clone().into_any_element()
+            // The arrange commands' context: on the focus path while a panel in
+            // the dock has focus, not while a dialog or the Resource panel does.
+            div()
+                .size_full()
+                .key_context(crate::ui::panel::arrange::DOCK_KEY_CONTEXT)
+                .child(dock_area.clone())
+                .into_any_element()
         };
         if collapsed {
             let strip = collapsed_strip(side, cx).into_any_element();
@@ -116,14 +122,18 @@ impl Render for MainWindow {
             .flex()
             .flex_col()
             .track_focus(&self.focus_handle);
-        Self::with_tab_actions(root, cx)
+        Self::with_arrange_actions(Self::with_tab_actions(root, cx), cx)
             .on_action(|_: &ToggleCommandPalette, window, cx| {
                 open_command_palette(window, cx);
+            })
+            .on_action(|_: &crate::util::key_hints::ShowKeyHints, window, cx| {
+                crate::util::key_hints::open(window, cx);
             })
             .on_action(cx.listener(Self::on_action_show_pods))
             .on_action(cx.listener(Self::on_action_show_events))
             .on_action(cx.listener(Self::on_action_focus_resources))
             .on_action(cx.listener(Self::on_action_warp_context))
+            .on_action(cx.listener(Self::on_action_open_exec))
             .on_action(cx.listener(Self::on_action_switch_namespace_set))
             .on_action(cx.listener(Self::on_action_switch_context_namespace_set))
             .on_action(cx.listener(Self::on_action_create_namespace_set))
@@ -139,6 +149,8 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_set_tunnel))
             .on_action(cx.listener(Self::on_action_follow_reference))
             .on_action(cx.listener(Self::on_action_open_listed_object))
+            .on_action(cx.listener(Self::on_action_open_pod_in_background))
+            .on_action(cx.listener(Self::on_action_edit_listed_object))
             .on_action(cx.listener(Self::on_action_toggle_resource_panel))
             .on_action(cx.listener(Self::on_action_move_resource_panel))
             .on_action(cx.listener(Self::on_action_add_context))

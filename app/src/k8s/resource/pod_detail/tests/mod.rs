@@ -6,6 +6,7 @@
 //! `gpui_kit::*` re-exports its own `test` macro, which would shadow
 //! `core::prelude::v1::test` for the plain synchronous tests.
 
+mod acting;
 mod collapse;
 mod config_fixture;
 mod configuration;
@@ -16,9 +17,11 @@ mod events_window;
 mod events_window_keys;
 mod fetch;
 mod fixtures;
+mod forwards;
 mod links;
 mod live;
 mod live_events;
+mod logs;
 mod managed_fields;
 mod metadata_chips;
 mod overview_warnings;

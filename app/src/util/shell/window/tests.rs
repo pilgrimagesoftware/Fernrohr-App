@@ -18,7 +18,7 @@ async fn closing_the_last_panel_keeps_the_window_connected(cx: &mut TestAppConte
     // connect whose completion wakes GPUI from a tokio thread.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -68,7 +68,7 @@ async fn closing_the_last_panel_keeps_the_window_connected(cx: &mut TestAppConte
 async fn open_window_restores_every_context_even_one_with_no_panels(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -164,7 +164,7 @@ async fn second_window_connecting_to_an_already_connected_context_shows_workspac
     }
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -259,7 +259,7 @@ async fn second_window_connecting_to_a_fresh_context_shows_workspace(cx: &mut Te
     }
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -308,7 +308,7 @@ async fn a_saved_window_with_contexts_but_no_panels_restores_its_workspace(
     use crate::util::shell::SavedDockLayouts;
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.set_global(SavedDockLayouts(
             crate::config::dock_layouts::DockLayouts::default(),

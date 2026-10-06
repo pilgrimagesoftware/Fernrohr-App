@@ -71,13 +71,8 @@ struct Harness {
 
 fn harness(cx: &mut TestAppContext) -> Harness {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
-        // The picker's dialog slides in over 250ms of wall-clock time; with
-        // motion reduced it settles on its first frame, so a click or hover
-        // lands on the row it targets rather than where that row is mid-slide
-        // (which made `clicking_an_entry_follows_it` miss on a slow runner).
-        cx.set_reduce_motion(true);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
         let bindings = keymap::bindings(
@@ -185,6 +180,7 @@ async fn typing_a_filter_then_enter_follows_the_match(cx: &mut TestAppContext) {
         vec![FollowReference {
             context_name: "kind-dev".into(),
             target: ObjectRef::core("Pod", "prod", "web-1"),
+            mode: crate::ui::nav::OpenMode::Foreground,
         }]
     );
     assert!(

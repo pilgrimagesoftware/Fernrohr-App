@@ -33,10 +33,15 @@ pub fn open(window: &mut Window, cx: &mut App) {
         return;
     }
     let previous_focus = window.focused(cx);
+    // Every identifier on the path, not only each element's primary: a panel
+    // adds conditional contexts beside its own (`PodDetailShellable`,
+    // `DeletableObject`), and their commands belong in the palette too.
     let contexts: Vec<SharedString> = window
         .context_stack()
         .iter()
-        .filter_map(|context| context.primary().map(|entry| entry.key.clone()))
+        .flat_map(|context| context.primary().into_iter().chain(context.secondary()))
+        .filter(|entry| entry.value.is_none())
+        .map(|entry| entry.key.clone())
         .collect();
     let context_names: Vec<&str> = contexts.iter().map(|name| name.as_ref()).collect();
 
@@ -165,8 +170,92 @@ mod tests {
     impl Render for Host {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             use gpui_kit::InteractiveElement as _;
-            div().track_focus(&self.focus)
+            // A panel's own context, and a conditional one beside it.
+            let mut context = gpui_kit::KeyContext::default();
+            context.add("TestPanel");
+            context.add("TestCondition");
+            div().key_context(context).track_focus(&self.focus)
         }
+    }
+
+    /// A command gated to a context nothing on the focus path adds is not
+    /// offered: the palette is empty, and Enter runs nothing.
+    #[gpui_kit::test]
+    async fn an_absent_contexts_command_is_not_offered(cx: &mut TestAppContext) {
+        let ran = Rc::new(Cell::new(false));
+        cx.update(|cx| {
+            crate::util::test_ui::init(cx);
+            let mut registry = CommandRegistry::new();
+            registry.register(Command {
+                id: "test.absent",
+                title: "Absent Test Command",
+                default_binding: "",
+                context: Some("NotPushed && !Input"),
+                action: Box::new(First),
+                menu: None,
+            });
+            cx.set_global(registry);
+            let flag = ran.clone();
+            cx.on_action(move |_: &First, _cx| flag.set(true));
+        });
+        let window = cx.add_window(|window, cx| {
+            let host = cx.new(|cx| Host {
+                focus: cx.focus_handle(),
+            });
+            let focus = host.read(cx).focus.clone();
+            window.focus(&focus, cx);
+            Root::new(host, window, cx)
+        });
+        let mut vcx = VisualTestContext::from_window(window.into(), cx);
+        vcx.run_until_parked();
+        vcx.update(open);
+        vcx.run_until_parked();
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert!(
+            !ran.get(),
+            "a command whose context isn't pushed isn't offered"
+        );
+    }
+
+    /// A command gated to a context an element adds beside its primary one -
+    /// `PodDetailShellable` beside `PodDetailPanel` - is offered, and runs.
+    #[gpui_kit::test]
+    async fn a_secondary_contexts_command_is_offered(cx: &mut TestAppContext) {
+        let ran = Rc::new(Cell::new(false));
+        cx.update(|cx| {
+            crate::util::test_ui::init(cx);
+            let mut registry = CommandRegistry::new();
+            registry.register(Command {
+                id: "test.conditional",
+                title: "Conditional Test Command",
+                default_binding: "",
+                context: Some("TestCondition && !Input"),
+                action: Box::new(First),
+                menu: None,
+            });
+            cx.set_global(registry);
+            let flag = ran.clone();
+            cx.on_action(move |_: &First, _cx| flag.set(true));
+        });
+        let window = cx.add_window(|window, cx| {
+            let host = cx.new(|cx| Host {
+                focus: cx.focus_handle(),
+            });
+            let focus = host.read(cx).focus.clone();
+            window.focus(&focus, cx);
+            Root::new(host, window, cx)
+        });
+        let mut vcx = VisualTestContext::from_window(window.into(), cx);
+        vcx.run_until_parked();
+        vcx.update(open);
+        vcx.run_until_parked();
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert!(
+            ran.get(),
+            "the secondary context's command was offered and ran"
+        );
     }
 
     /// Down moves through the filtered list and Enter runs the selected command.
@@ -174,7 +263,7 @@ mod tests {
     async fn arrows_select_and_enter_runs(cx: &mut TestAppContext) {
         let ran_second = Rc::new(Cell::new(false));
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let mut registry = CommandRegistry::new();
             for (id, title, action) in [
                 (
@@ -222,7 +311,7 @@ mod tests {
     async fn typing_selects_the_first_match_and_enter_runs_it(cx: &mut TestAppContext) {
         let ran_second = Rc::new(Cell::new(false));
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let mut registry = CommandRegistry::new();
             for (id, title, action) in [
                 (

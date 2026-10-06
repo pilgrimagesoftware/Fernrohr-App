@@ -141,7 +141,7 @@ fn subgroup_states(
 #[gpui_kit::test]
 async fn a_fresh_panel_starts_every_subgroup_collapsed(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -192,7 +192,7 @@ fn loaded_panel(
     gpui_kit::VisualTestContext,
 ) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -367,7 +367,7 @@ fn a_filter_shows_only_subgroups_with_a_match() {
 #[gpui_kit::test]
 async fn a_filter_opens_a_collapsed_subgroup_until_cleared(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);

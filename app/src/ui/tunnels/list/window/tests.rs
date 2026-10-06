@@ -23,6 +23,7 @@ fn sample_tunnel(name: &str) -> TunnelConfig {
         bastion_port: 22,
         jump_hosts: Vec::new(),
         auth: TunnelAuth::default(),
+        ..Default::default()
     }
 }
 
@@ -40,7 +41,7 @@ async fn a_second_construction_over_the_same_files_reads_the_same_state(cx: &mut
     // `cluster::session`'s and `cluster::connection`'s own tests allow-park for.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -84,7 +85,7 @@ async fn a_second_construction_over_the_same_files_reads_the_same_state(cx: &mut
 async fn a_running_state_follows_acquire_and_release(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -102,7 +103,7 @@ async fn a_running_state_follows_acquire_and_release(cx: &mut TestAppContext) {
     window
         .update(cx, |this, _window, _cx| {
             assert!(!this.is_running("qa-bastion"));
-            this.running = std::collections::BTreeSet::from([ForwardKey {
+            this.running = std::collections::BTreeSet::from([ForwardKey::Ssh {
                 tunnel_id: "qa-bastion".to_string(),
                 host: "10.0.0.1".to_string(),
                 port: 6443,
@@ -122,7 +123,7 @@ async fn a_running_state_follows_acquire_and_release(cx: &mut TestAppContext) {
 async fn remove_deletes_a_stale_binding(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -183,7 +184,7 @@ async fn remove_deletes_a_stale_binding(cx: &mut TestAppContext) {
 async fn an_unreadable_kubeconfig_flags_nothing_stale(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -219,7 +220,7 @@ async fn the_tunnels_windows_content_is_inset_from_its_edges(cx: &mut TestAppCon
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         TextScale::new(1.5).expect("a valid scale").set(cx);
     });
@@ -255,4 +256,136 @@ async fn the_tunnels_windows_content_is_inset_from_its_edges(cx: &mut TestAppCon
         "the button is {:?} from the right, under {inset:?}",
         width - button.right()
     );
+}
+
+/// `k9s-remaining-keybindings` 4.3, end to end over a fake cluster's Running pod:
+/// a forward started from a row is listed in the Tunnels window in its current
+/// state, and its Stop - once confirmed (`port-forward-indicators` 5.2) - releases
+/// it through the registry, gone from the list and from the live set.
+#[gpui_kit::test]
+async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppContext) {
+    use crate::forward::managed::ForwardState;
+    use crate::k8s::cluster::port_forwards::{PortForwardRequest, PortForwards};
+    use crate::ui::tunnels::list::port_forwards::stop_button_id;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{Modifiers, VisualTestContext};
+
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let (cluster, client) = crate::k8s::test_cluster::FakeCluster::start(cx);
+    cluster.apply(
+        "/api/v1",
+        "pods",
+        serde_json::json!({ "apiVersion": "v1", "kind": "Pod",
+            "metadata": { "name": "web-1", "namespace": "shop", "uid": "u1" },
+            "spec": { "containers": [{ "name": "app", "image": "nginx" }] },
+            "status": { "phase": "Running" } }),
+    );
+    let request = PortForwardRequest {
+        context_name: "demo".into(),
+        namespace: "shop".into(),
+        pod: "web-1".into(),
+        remote_port: 18_084,
+    };
+    let forwards = cx.update(PortForwards::entity);
+    forwards
+        .update(cx, |forwards, cx| {
+            forwards.start(
+                request.clone(),
+                crate::k8s::cluster::port_forwards::ForwardObject::pod("demo", "shop", "web-1"),
+                client,
+                cx,
+            )
+        })
+        .expect("started");
+
+    let window = cx.add_window(|window, cx| {
+        use gpui_kit::AppContext as _;
+        let view = cx.new(|cx| {
+            TunnelsWindow::new(
+                temp_tunnels_path(),
+                Some(missing_kubeconfig_path()),
+                window,
+                cx,
+            )
+        });
+        gpui_kit::component::Root::new(view, window, cx)
+    });
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    for _ in 0..400 {
+        vcx.run_until_parked();
+        let up = forwards.read_with(&vcx, |forwards, _| {
+            forwards.list().first().map(|(_, _, state)| *state) == Some(ForwardState::Up)
+        });
+        if up {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let stop_id: &'static str = Box::leak(stop_button_id(0).to_string().into_boxed_str());
+    let stop = vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(stop_id)
+            .expect("the forward is listed, with its Stop")
+            .bounds()
+    });
+
+    vcx.simulate_click(stop.center(), Modifiers::none());
+    vcx.run_until_parked();
+    vcx.simulate_keystrokes("enter");
+    vcx.run_until_parked();
+
+    forwards.read_with(&vcx, |forwards, _| {
+        assert!(forwards.list().is_empty(), "gone from the list");
+        assert!(forwards.live_requests().is_empty(), "and released");
+    });
+    let listed = vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window.try_find(stop_id).is_some()
+    });
+    assert!(!listed, "and from the window");
+}
+
+/// `command-tunnels` 4.2: every row carries its kind badge.
+#[gpui_kit::test]
+async fn each_row_draws_its_kind_badge(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let tunnels_path = crate::util::test_paths::temp_path("tunnels-kind-badge");
+    let store = TunnelStore::new(tunnels_path.clone());
+    store
+        .create("qa-bastion", sample_tunnel("QA bastion"), None)
+        .unwrap();
+    store
+        .create(
+            "qa-iap",
+            TunnelConfig {
+                name: "QA IAP".into(),
+                kind: crate::config::tunnels::TunnelKind::Command,
+                command: crate::config::tunnels::CommandTunnelConfig {
+                    command_line: "ssh -N -L{port}:127.0.0.1:8888 b".into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    let kubeconfig = std::env::temp_dir().join("fernrohr-kind-badge-no-such-kubeconfig.yaml");
+    let window = cx.add_window({
+        let tunnels_path = tunnels_path.clone();
+        move |window, cx| TunnelsWindow::new(tunnels_path, Some(kubeconfig), window, cx)
+    });
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+    assert!(vcx.debug_bounds("tunnel-kind-qa-bastion").is_some());
+    assert!(vcx.debug_bounds("tunnel-kind-qa-iap").is_some());
+    let _ = std::fs::remove_file(&tunnels_path);
 }

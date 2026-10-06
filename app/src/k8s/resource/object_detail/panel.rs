@@ -45,15 +45,29 @@ pub struct ObjectDetailPanel {
     /// That the object was deleted (its last state kept, stale) or replaced
     /// by a new one of the same name.
     pub(super) lifecycle: Option<crate::ui::detail::lifecycle::Lifecycle>,
+    /// The YAML edit in progress (`edit`), if any.
+    pub(super) edit: Option<super::edit::YamlEdit>,
+    /// Why Edit did nothing - a Secret, say - until the next edit.
+    pub(super) edit_notice: Option<String>,
+    /// An edit asked for before the object loaded (`request_edit`).
+    pub(super) pending_edit: bool,
     /// Revealed Secret values, by key - only while shown, and never saved.
     pub(super) revealed:
         std::collections::HashMap<String, crate::k8s::resource::secret_value::Reveal>,
     /// The YAML view's folds and scroll position.
     pub(super) yaml_view: crate::ui::yaml_view::YamlViewState,
+    /// The last delete the cluster refused, shown until dismissed (`delete`).
+    pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
     pub(super) focus_handle: FocusHandle,
 }
 
 impl ObjectDetailPanel {
+    /// Test-only: whether an edit is open, and why Edit last did nothing.
+    #[cfg(test)]
+    pub(crate) fn test_edit_state(&self) -> (bool, Option<String>) {
+        (self.edit.is_some(), self.edit_notice.clone())
+    }
+
     pub fn new(target: ObjectTarget, scope: PanelScope, cx: &mut Context<Self>) -> Self {
         use crate::k8s::cluster::session::ClusterRegistry;
 
@@ -106,8 +120,12 @@ impl ObjectDetailPanel {
             live,
             followed: None,
             lifecycle: None,
+            edit: None,
+            edit_notice: None,
+            pending_edit: false,
             revealed: Default::default(),
             yaml_view: Default::default(),
+            refusal: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.sync(cx);
@@ -147,26 +165,45 @@ impl ObjectDetailPanel {
         });
         cx.spawn(async move |this, cx| {
             crate::runtime::drain(rx, |result| {
-                let _ = this.update(cx, |this, cx| {
-                    this.fetching = false;
-                    match result {
-                        Ok(ObjectFetch::Found(object, events)) => this.show_fetched(object, events),
-                        Ok(ObjectFetch::NotFound) => {
-                            this.show_absent();
-                        }
-                        Err((message, detail)) => {
-                            this.state = ObjectDetailState::Failed { message, detail };
-                        }
-                    }
-                    if std::mem::take(&mut this.refetch) {
-                        this.fetch(cx);
-                    }
-                    cx.notify();
-                });
+                let _ = this.update(cx, |this, cx| this.land_fetch(result, cx));
             })
             .await;
         })
         .detach();
+    }
+
+    /// Shows what a fetch returned, then sends the refetch a change during it
+    /// asked for.
+    ///
+    /// A found object is shown only if the followed table hasn't since seen it
+    /// go: a fetch sent just before a delete can land after the table's
+    /// `DELETED`, and showing it would clear the "deleted" notice with nothing
+    /// left to restore it (pilgrimagesoftware/Fernrohr#162).
+    pub(super) fn land_fetch(
+        &mut self,
+        result: Result<ObjectFetch, (String, String)>,
+        cx: &mut Context<Self>,
+    ) {
+        self.fetching = false;
+        match result {
+            Ok(ObjectFetch::Found(object, events)) => {
+                if self.known_absent(cx) {
+                    self.show_absent();
+                } else {
+                    self.show_fetched(object, events);
+                }
+            }
+            Ok(ObjectFetch::NotFound) => {
+                self.show_absent();
+            }
+            Err((message, detail)) => {
+                self.state = ObjectDetailState::Failed { message, detail };
+            }
+        }
+        if std::mem::take(&mut self.refetch) {
+            self.fetch(cx);
+        }
+        cx.notify();
     }
 
     /// Lands `object` as if a fetch had returned it (after redaction, as the

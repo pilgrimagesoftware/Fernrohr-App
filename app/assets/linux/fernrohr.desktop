@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Fernrohr
+GenericName=Kubernetes Cluster Monitor
+Comment=Desktop UI for Kubernetes cluster monitoring
+Exec=fernrohr
+Icon=fernrohr
+Terminal=false
+Categories=Development;Utility;
+StartupWMClass=fernrohr

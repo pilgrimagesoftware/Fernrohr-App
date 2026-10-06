@@ -6,13 +6,13 @@
 //! module moves focus and dispatches, since the window owns the dock.
 
 use super::*;
+use crate::ui::confirm_dialog::{self, Confirmation};
+use crate::ui::confirm_text::ConfirmText;
 use crate::ui::menu::CloseWindow;
 use crate::ui::panel::tabs::{
     self, NextTab, PreviousTab, SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5,
     SelectTab6, SelectTab7, SelectTab8, SelectTab9, TabTarget,
 };
-use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::dialog::DialogFooter;
 use gpui_kit::component::dock::{ClosePanel, DockLayout, Panel};
 
 impl MainWindow {
@@ -101,7 +101,10 @@ impl MainWindow {
         }
         let tunneled = self.contexts_losing_a_tunnel(cx);
         if tunneled.is_empty() {
-            close_window(window, cx);
+            // Deferred: closing records the window's layout, which reads this
+            // `MainWindow` - still mid-update here, so reading it now panics
+            // (#135). Once this handler returns, the read is free.
+            window.defer(cx, close_window);
         } else {
             open_close_window_dialog(tunneled, window, cx);
         }
@@ -151,34 +154,24 @@ pub(super) fn losing_a_tunnel(
 /// "Close Window?" naming the contexts whose tunnel will disconnect - the
 /// context bar's Disconnect dialog, with Close Window as the confirm.
 fn open_close_window_dialog(tunneled: Vec<String>, window: &mut Window, cx: &mut App) {
-    let body = close_window_confirmation_body(&tunneled);
-    window.open_dialog(cx, move |dialog, _window, _cx| {
-        dialog.title("Close Window?").child(body.clone()).footer(
-            DialogFooter::new()
-                .child(Button::new("close-window-cancel").label("Cancel").on_click(
-                    |_event, window, cx| {
-                        window.close_dialog(cx);
-                    },
-                ))
-                .child(
-                    Button::new("close-window-confirm")
-                        .label("Close Window")
-                        .with_variant(gpui_kit::component::button::ButtonVariant::Danger)
-                        .on_click(|_event, window, cx| {
-                            window.close_dialog(cx);
-                            close_window(window, cx);
-                        }),
-                ),
-        )
-    });
+    let confirmation = Confirmation {
+        title: "Close Window?".into(),
+        body: close_window_confirmation_body(&tunneled),
+        confirm: "Close Window".into(),
+        id_prefix: "close-window",
+    };
+    confirm_dialog::open(confirmation, close_window, window, cx);
 }
 
 /// The confirmation's body: which contexts' tunnels will disconnect.
-pub(super) fn close_window_confirmation_body(tunneled: &[String]) -> String {
-    match tunneled {
-        [context_name] => format!("The tunnel for {context_name} will disconnect."),
-        names => format!("The tunnels for {} will disconnect.", names.join(", ")),
-    }
+pub(super) fn close_window_confirmation_body(tunneled: &[String]) -> ConfirmText {
+    let lead = match tunneled {
+        [_] => "The tunnel for ",
+        _ => "The tunnels for ",
+    };
+    ConfirmText::from(lead)
+        .names(tunneled)
+        .text(" will disconnect.")
 }
 
 /// Closes `panel` in the window `window` belongs to: the title bar close

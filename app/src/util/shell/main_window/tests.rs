@@ -23,8 +23,8 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
     let window = connected_window(cx, "kind-dev").await;
     cx.run_until_parked();
 
-    let expected = 5;
-    let cases: [NavTarget; 5] = [
+    let expected = 6;
+    let cases: [NavTarget; 6] = [
         NavTarget::pods(),
         NavTarget::Logs,
         NavTarget::Kind(crd_kind()),
@@ -33,6 +33,11 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
             kind: crd_kind(),
             namespace: Some("staging".into()),
             name: "fronds".into(),
+        }),
+        NavTarget::Exec(crate::k8s::resource::exec::ExecTarget {
+            namespace: "staging".into(),
+            pod: "web-1".into(),
+            container: "app".into(),
         }),
     ];
 
@@ -55,6 +60,7 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                     nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::ObjectDetail(panel) => title_bar_of(&panel, window, cx),
+                    nav::OpenedPanel::Exec(panel) => title_bar_of(&panel, window, cx),
                 };
                 // No plain tab name, so the dock draws the tab from the panel's
                 // title element and its "Context:" tooltip.
@@ -208,7 +214,7 @@ async fn the_status_bar_renders_only_in_workspace_mode(cx: &mut TestAppContext) 
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -264,7 +270,7 @@ async fn the_resource_panel_width_round_trips(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     let path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let layout = WindowLayout {

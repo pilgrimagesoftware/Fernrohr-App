@@ -22,6 +22,8 @@ use gpui_kit::*;
 pub struct FollowReference {
     pub context_name: String,
     pub target: ObjectRef,
+    /// Whether the followed object opens in the background (`open-in-background`).
+    pub mode: crate::ui::nav::OpenMode,
 }
 
 /// `target`, shown as its kind's icon then `text`: a link when it can be
@@ -56,10 +58,16 @@ fn reference(
             .test_support()
             .into_any_element();
     }
-    let action = FollowReference {
-        context_name: context_name.to_string(),
-        target: target.clone(),
+    let follow = {
+        let context_name = context_name.to_string();
+        let target = target.clone();
+        move |mode| FollowReference {
+            context_name: context_name.clone(),
+            target: target.clone(),
+            mode,
+        }
     };
+    let aux_follow = follow.clone();
     // Accent-coloured and underlined at rest, so a link reads as one before the
     // pointer finds it. `primary` isn't a hue in the default themes - it's the
     // body text colour - which left links indistinguishable from plain text.
@@ -82,8 +90,17 @@ fn reference(
             style.text_style().underline = Some(hovered);
             style
         })
-        .on_click(move |_event, window, cx| {
-            window.dispatch_action(Box::new(action.clone()), cx);
+        // A `cmd`-click follows in the background (`open-in-background` 3.1); a
+        // middle-click, an aux click, too.
+        .on_click(move |event, window, cx| {
+            let mode = crate::ui::nav::OpenMode::of_click(event);
+            window.dispatch_action(Box::new(follow(mode)), cx);
+        })
+        .on_aux_click(move |event, window, cx| {
+            if event.is_middle_click() {
+                let follow = aux_follow(crate::ui::nav::OpenMode::Background);
+                window.dispatch_action(Box::new(follow), cx);
+            }
         })
         .child(content)
         .test_support()

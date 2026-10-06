@@ -55,7 +55,7 @@ fn height(vcx: &mut VisualTestContext, selector: String) -> Pixels {
 #[gpui_kit::test]
 async fn an_inline_icon_takes_its_texts_role_at_every_text_size(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::ui::theme::init(ThemePreference::Light, cx);
     });
     let window: AnyWindowHandle = cx

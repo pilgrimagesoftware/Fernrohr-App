@@ -37,7 +37,7 @@ fn panel_with(
     events: Vec<K8sEvent>,
 ) -> (VisualTestContext, Entity<PodDetailPanel>) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let mut built = None;

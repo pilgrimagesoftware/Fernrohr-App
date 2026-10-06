@@ -68,6 +68,7 @@ fn about_window_options(cx: &App) -> WindowOptions {
     });
     let bounds = Bounds::centered(None, size(gpui_kit::px(360.), gpui_kit::px(420.)), cx);
     WindowOptions {
+        app_id: Some(crate::consts::APP_ID.into()),
         titlebar,
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         is_resizable: false,
@@ -104,7 +105,7 @@ mod tests {
     #[gpui_kit::test]
     fn about_opens_rooted_in_a_root(cx: &mut gpui_kit::TestAppContext) {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             super::register_about_action(cx);
         });
         cx.update(|cx| cx.dispatch_action(&About));
@@ -138,7 +139,7 @@ mod tests {
         cx: &mut gpui_kit::TestAppContext,
     ) {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             super::register_about_action(cx);
         });
 
@@ -168,7 +169,7 @@ mod tests {
         assert!(KUBERNETES_ICONS_CREDIT.contains("Apache License 2.0"));
         with_recorded_text(|cx, recorded| {
             cx.update(|cx| {
-                gpui_kit::init(cx);
+                crate::util::test_ui::init(cx);
                 super::register_about_action(cx);
             });
             cx.update(|cx| cx.dispatch_action(&About));
@@ -185,7 +186,7 @@ mod tests {
     /// icon's background resample lands and the window fits its content.
     fn open_about(cx: &mut gpui_kit::TestAppContext) -> gpui_kit::VisualTestContext {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             super::register_about_action(cx);
         });
         cx.update(|cx| cx.dispatch_action(&About));

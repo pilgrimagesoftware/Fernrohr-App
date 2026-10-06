@@ -5,7 +5,7 @@ use super::commands::{
     CONFIGURATION_TAB_KEY, CONTAINERS_TAB_KEY, EVENTS_TAB_KEY, MANAGED_FIELDS_TAB_KEY,
     OVERVIEW_TAB_KEY, PANEL_KEY_CONTEXT, SelectConfigurationTab, SelectContainersTab,
     SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab, SelectVolumesTab, TOGGLE_VIEW_KEY,
-    ToggleDetailView, VOLUMES_TAB_KEY,
+    ToggleDetailView, VIEW_LOGS_KEY, VOLUMES_TAB_KEY, ViewLogs,
 };
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
@@ -73,6 +73,7 @@ impl PodDetailPanel {
         div()
             .flex()
             .flex_col()
+            .children(self.render_forward_strip(cx))
             .child(tabs)
             .child(
                 div()
@@ -193,6 +194,21 @@ impl Render for PodDetailPanel {
                 .unwrap_or_else(|| {
                     Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
                 });
+        let logs_key = Kbd::binding_for_action(&ViewLogs, Some(PANEL_KEY_CONTEXT), window)
+            .unwrap_or_else(|| {
+                Kbd::new(Keystroke::parse(VIEW_LOGS_KEY).expect("valid keybinding"))
+            });
+        let logs_hint = div()
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap_1()
+            .whitespace_nowrap()
+            .child(logs_key)
+            .child("Logs");
+        let shellable = !self.running().is_empty();
+        let deletable = self.deletable(cx);
+        let acting_hints = self.acting_hints(shellable, window, cx);
         let toggle_hint = div()
             .flex()
             .items_center()
@@ -285,12 +301,14 @@ impl Render for PodDetailPanel {
                                 .test_support(),
                         )
                     })
+                    .child(logs_hint)
+                    .children(acting_hints)
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
 
         Self::with_window_actions(div(), cx)
             .size_full()
-            .key_context(key_context())
+            .key_context(key_context(shellable, deletable))
             .on_action(cx.listener(Self::on_action_go_to))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
@@ -304,9 +322,17 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_select_volumes_tab))
             .on_action(cx.listener(Self::on_action_select_events_tab))
             .on_action(cx.listener(Self::on_action_select_managed_fields_tab))
+            .on_action(cx.listener(Self::on_action_view_logs))
+            .on_action(cx.listener(Self::on_action_edit_pod_yaml))
+            .on_action(cx.listener(Self::on_action_delete_pod))
+            .on_action(cx.listener(Self::on_action_kill_pod))
+            .on_action(cx.listener(Self::on_action_shell_pod))
+            .on_action(cx.listener(Self::on_action_port_forward_pod))
+            .on_action(cx.listener(Self::on_action_stop_port_forward))
             .flex()
             .flex_col()
             .child(header)
+            .children(self.render_action_report(cx))
             .child(crate::ui::detail::lifecycle::body(
                 content,
                 self.lifecycle().as_ref(),
@@ -319,10 +345,18 @@ impl Render for PodDetailPanel {
 }
 
 /// The panel's own key context plus the shared one `links.go_to` is gated to,
-/// so `g` reaches this panel without the link module knowing it exists.
-fn key_context() -> KeyContext {
+/// so `g` reaches this panel without the link module knowing it exists - and,
+/// while the pod has a running container, Shell's; while it can be deleted,
+/// Delete's and Kill's.
+fn key_context(shellable: bool, deletable: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
+    if shellable {
+        context.add(super::actions::SHELLABLE_KEY_CONTEXT);
+    }
+    if deletable {
+        context.add(super::actions::DELETABLE_KEY_CONTEXT);
+    }
     context.add(crate::ui::link::LINKS_KEY_CONTEXT);
     context
 }

@@ -278,3 +278,84 @@ fn a_non_ssh_pid_is_never_killed_by_either_predicate() {
     let _ = child.wait();
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// `command-tunnels` 2.4: the recorded program is what a command tunnel's pidfile is
+/// checked against - directly, through an interpreter, or re-exec'd as a script of
+/// the same stem - and nothing else running at a recycled pid matches.
+#[test]
+fn a_command_tunnel_matches_its_recorded_program_only() {
+    use super::command::is_command_for;
+    assert!(is_command_for(
+        "gcloud compute ssh host -- -N -L1:x:2",
+        "gcloud"
+    ));
+    assert!(is_command_for(
+        "/bin/sh /opt/sdk/bin/gcloud compute ssh host",
+        "gcloud"
+    ));
+    assert!(is_command_for(
+        "python3 -S /opt/sdk/lib/gcloud.py compute ssh",
+        "gcloud"
+    ));
+    assert!(!is_command_for("sleep 30", "gcloud"));
+    assert!(
+        !is_command_for("/usr/bin/vim notes/gcloud.txt", "gcloud"),
+        "beyond the program slots"
+    );
+}
+
+/// A live command-tunnel stand-in - renamed `gcloud`, a direct child of this
+/// process - is swept and its pidfile removed; the same pidfile naming a recycled,
+/// unrelated `sleep` leaves that process alone.
+#[test]
+fn the_command_sweep_kills_a_matching_child_and_spares_a_recycled_pid() {
+    use std::os::unix::process::CommandExt as _;
+    let dir = scratch_dir("cmd-sweep");
+    let mut matching = Command::new("bash")
+        .args([
+            "-c",
+            &format!("exec -a gcloud bash -c '{SSH_STAND_IN_SCRIPT}'"),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .expect("bash should spawn");
+    let pid = matching.id();
+    assert!(
+        eventually(|| super::command::looks_like_live(pid, "gcloud")),
+        "the stand-in never looked like a live gcloud: {:?}",
+        process_command(pid)
+    );
+    let path = super::command::write_in(&dir, pid, "/opt/sdk/bin/gcloud").expect("pidfile");
+    std::mem::forget(path);
+    assert_eq!(
+        super::command::sweep_dir(&dir, super::command::looks_like_live),
+        1
+    );
+    assert!(
+        eventually(|| !process_group_alive(pid)) || matching.try_wait().is_ok_and(|s| s.is_some())
+    );
+    let _ = matching.wait();
+
+    let mut unrelated = spawn_sleep_in_its_own_group();
+    let pid = unrelated.id();
+    let path = super::command::write_in(&dir, pid, "gcloud").expect("pidfile");
+    std::mem::forget(path);
+    assert_eq!(
+        super::command::sweep_dir(&dir, super::command::looks_like_live),
+        1
+    );
+    assert!(
+        process_group_alive(pid),
+        "a recycled pid running something else lives"
+    );
+    assert!(
+        fs::read_dir(&dir).unwrap().next().is_none(),
+        "both pidfiles removed"
+    );
+    kill_process_group(pid);
+    let _ = unrelated.wait();
+    let _ = fs::remove_dir_all(&dir);
+}

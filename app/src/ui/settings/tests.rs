@@ -11,6 +11,8 @@ use gpui_kit::{
     Action, App, Entity, KeyContext, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
 };
 
+mod layout;
+
 fn temp_path(name: &str) -> std::path::PathBuf {
     crate::util::test_paths::temp_path(&format!("settings-{name}"))
 }
@@ -20,7 +22,7 @@ fn app(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_path("workspace"), temp_path("keymap"));
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::util::shell::init(cx, workspace, &keymap);
     });
@@ -131,6 +133,65 @@ async fn every_registered_command_has_a_row(cx: &mut TestAppContext) {
     });
 }
 
+/// `k9s-remaining-keybindings` 8.2, the editor half: each command the change
+/// added has a row to rebind it, with no editor code of its own - the rows are
+/// the registry's.
+#[gpui_kit::test]
+async fn every_new_k9s_command_has_an_editor_row(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (_handle, section) = open(main, cx);
+    cx.update(|cx| {
+        let ids: Vec<&str> = section
+            .read(cx)
+            .visible_rows(cx)
+            .iter()
+            .map(|row| row.id)
+            .collect();
+        for id in [
+            "pods.delete",
+            "pods.kill",
+            "pods.shell",
+            "pods.port_forward",
+            "services.port_forward",
+            "object_detail.edit",
+            "object_detail.save_edit",
+            "object_detail.cancel_edit",
+            "logs.toggle_previous",
+            "namespaces.jump_all",
+            "namespaces.jump_9",
+            "global.show_key_hints",
+        ] {
+            assert!(
+                ids.contains(&id),
+                "{id} has a row in the keybindings editor"
+            );
+        }
+    });
+}
+
+/// `panel-move-keybindings` 6.1, automated half: each arrange command has a row
+/// in the keybindings editor - the registry's rows, no editor code of its own.
+#[gpui_kit::test]
+async fn every_arrange_command_has_an_editor_row(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (_handle, section) = open(main, cx);
+    cx.update(|cx| {
+        let ids: Vec<&str> = section
+            .read(cx)
+            .visible_rows(cx)
+            .iter()
+            .map(|row| row.id)
+            .collect();
+        for direction in ["left", "right", "up", "down"] {
+            for verb in ["split", "move", "merge"] {
+                let id = format!("panel.{verb}_{direction}");
+                assert!(ids.contains(&id.as_str()), "{id} has a row");
+            }
+        }
+        assert!(ids.contains(&"panel.close_group"));
+    });
+}
+
 /// Recording Close Window's key records it (and asks, since Close Window has
 /// it) instead of closing the window; Escape cancels.
 #[gpui_kit::test]
@@ -220,6 +281,30 @@ async fn confirming_a_conflict_applies_the_key(cx: &mut TestAppContext) {
     cx.update(|cx| {
         assert_eq!(section.read(cx).test_mode(), "browsing");
         assert_eq!(override_of(cx, "panel.focus_next"), Some(spelled("cmd-n")));
+    });
+}
+
+/// Recording a bare `cmd-k` would cut the arrange chords (`cmd-k right`...)
+/// short, so the editor asks before applying it, as for a taken key.
+#[gpui_kit::test]
+async fn a_key_that_starts_a_chord_asks_first(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (handle, section) = open(main, cx);
+    cx.update(|cx| section.update(cx, |s, cx| s.select("panel.focus_next", cx)));
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    let before = cx.update(|cx| override_of(cx, "panel.focus_next"));
+
+    press(&mut vcx, "enter");
+    press(&mut vcx, "cmd-k");
+    assert_eq!(cx.update(|cx| section.read(cx).test_mode()), "confirming");
+    press(&mut vcx, "escape");
+    cx.update(|cx| {
+        assert_eq!(section.read(cx).test_mode(), "browsing");
+        assert_eq!(
+            override_of(cx, "panel.focus_next"),
+            before,
+            "nothing applied"
+        );
     });
 }
 

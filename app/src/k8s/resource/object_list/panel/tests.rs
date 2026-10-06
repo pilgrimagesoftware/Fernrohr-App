@@ -16,7 +16,7 @@ use kube::api::{DynamicObject, ObjectMeta};
 use kube::core::GroupVersionKind;
 use kube_runtime::watcher;
 
-fn deployments() -> DiscoveredKind {
+pub(super) fn deployments() -> DiscoveredKind {
     DiscoveredKind {
         gvk: GroupVersionKind::gvk("apps", "v1", "Deployment"),
         plural: "deployments".into(),
@@ -34,7 +34,7 @@ fn nodes() -> DiscoveredKind {
     }
 }
 
-fn object(name: &str, namespace: Option<&str>) -> DynamicObject {
+pub(super) fn object(name: &str, namespace: Option<&str>) -> DynamicObject {
     DynamicObject {
         types: None,
         metadata: ObjectMeta {
@@ -47,14 +47,18 @@ fn object(name: &str, namespace: Option<&str>) -> DynamicObject {
     }
 }
 
-struct Harness {
-    vcx: VisualTestContext,
-    panel: Entity<ObjectListPanel>,
+pub(super) struct Harness {
+    pub(super) vcx: VisualTestContext,
+    pub(super) panel: Entity<ObjectListPanel>,
 }
 
 /// A connected list panel of `kind` in a `Root`, with the registry's real bindings,
 /// over a table holding `objects` - no watch, no cluster.
-fn harness(cx: &mut TestAppContext, kind: DiscoveredKind, objects: Vec<DynamicObject>) -> Harness {
+pub(super) fn harness(
+    cx: &mut TestAppContext,
+    kind: DiscoveredKind,
+    objects: Vec<DynamicObject>,
+) -> Harness {
     harness_with(cx, kind, objects, None)
 }
 
@@ -67,7 +71,7 @@ fn harness_with(
 ) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_list::register_commands(&mut registry);
@@ -108,7 +112,7 @@ fn harness_with(
     Harness { vcx, panel }
 }
 
-fn press(vcx: &mut VisualTestContext, keys: &str) {
+pub(super) fn press(vcx: &mut VisualTestContext, keys: &str) {
     for key in keys.split(' ') {
         let key = Keystroke::parse(key).expect("valid").unparse();
         vcx.simulate_keystrokes(&key);
@@ -142,7 +146,7 @@ fn row_names(h: &mut Harness) -> Vec<String> {
     })
 }
 
-fn focus_table(h: &mut Harness) {
+pub(super) fn focus_table(h: &mut Harness) {
     let panel = h.panel.clone();
     h.vcx.update(|window, cx| {
         let table = panel.read(cx).table.clone().expect("the table is drawn");
@@ -286,7 +290,7 @@ async fn a_refused_kind_shows_the_refusal_instead_of_a_table(cx: &mut TestAppCon
 
 /// Every `OpenListedObject` a panel dispatches, in order - caught at the app, where
 /// the window's handler would be.
-fn record_opens(
+pub(super) fn record_opens(
     cx: &mut TestAppContext,
 ) -> std::rc::Rc<std::cell::RefCell<Vec<crate::k8s::resource::object_list::OpenListedObject>>> {
     let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -429,4 +433,5 @@ async fn double_clicking_a_header_divider_fits_its_column(cx: &mut TestAppContex
     assert_eq!(after[1..], before[1..], "and only Name");
 }
 
+mod background;
 mod poll;

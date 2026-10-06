@@ -11,7 +11,7 @@ use gpui_kit::{AppContext as _, ElementId, TestAppContext, WindowHandle};
 use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
-fn follow(
+pub(super) fn follow(
     cx: &mut TestAppContext,
     window: &WindowHandle<MainWindow>,
     context: &str,
@@ -24,6 +24,7 @@ fn follow(
                 Box::new(FollowReference {
                     context_name: context.into(),
                     target,
+                    mode: crate::ui::nav::OpenMode::Foreground,
                 }),
                 cx,
             );
@@ -33,7 +34,7 @@ fn follow(
 }
 
 /// The panels this window has open whose key matches `predicate`.
-fn open_matching(
+pub(super) fn open_matching(
     cx: &mut TestAppContext,
     window: &WindowHandle<MainWindow>,
     predicate: impl Fn(&OpenPanel) -> bool,
@@ -60,7 +61,11 @@ fn open_matching(
 
 /// Whether `id` is the showing tab of its tab group - what "focused" means for
 /// a panel that was already open.
-fn is_showing(cx: &mut TestAppContext, window: &WindowHandle<MainWindow>, id: PanelId) -> bool {
+pub(super) fn is_showing(
+    cx: &mut TestAppContext,
+    window: &WindowHandle<MainWindow>,
+    id: PanelId,
+) -> bool {
     window
         .update(cx, |main_window, _window, cx| {
             let WindowMode::Workspace { dock_area, .. } = &main_window.mode else {
@@ -77,7 +82,7 @@ fn is_showing(cx: &mut TestAppContext, window: &WindowHandle<MainWindow>, id: Pa
         .unwrap()
 }
 
-fn is_pod(open: &OpenPanel, namespace: &str, name: &str) -> bool {
+pub(super) fn is_pod(open: &OpenPanel, namespace: &str, name: &str) -> bool {
     open.key.target == NavTarget::pod(namespace, name)
 }
 
@@ -303,6 +308,7 @@ fn open_listed(
                     context_name: context.into(),
                     target,
                     view: None,
+                    mode: crate::ui::nav::OpenMode::Foreground,
                 }),
                 cx,
             );

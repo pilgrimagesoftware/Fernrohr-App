@@ -1,4 +1,102 @@
 
+## 0.4.0 - 2026-10-06
+
+### <!-- 0 -->🚀 Features
+- Delete a pod with confirmation, or kill it at once
+- Edit a resource's YAML and save it as an apply
+- Shell into a pod's running container from the Pods panel
+- Port-forward a pod or service from its row
+- Toggle a container's previous logs
+- Jump to a namespace by its position
+- A key hints overlay on `?`
+- Find the group beside another from the pane tree
+- Split the focused group from the keyboard
+- Move the focused panel into the group beside it
+- Close the focused group, asking once for what would be lost
+- Merge the focused group into the one beside it
+- Register View Logs on l
+- Open the pod's logs from its detail panel
+- Show the View Logs key in the header
+- List the keys that complete a pending chord
+- Show a pending chord and the keys that complete it
+- An adjustable Shortcut timeout for ambiguous chords
+- Add command tunnels to the tunnel schema
+- Run and supervise a command tunnel's command
+- Route contexts through command tunnels
+- Edit, test and list command tunnels
+- Open a panel in the background
+- Open a row in the background
+- Follow a link in the background
+- An Appearance section with Text Size and the theme
+- Edit YAML from any list row and a pod's detail panel
+- A checked-in desktop entry and the deb's real dependencies
+- Build an rpm beside the deb and AppImage
+- Package Linux on arm64 too
+- Publish SHA256SUMS and document installing on Linux
+- Install hicolor icon sizes
+- One confirmation dialog with styled names and key hints
+- Ctrl-d deletes the selected object
+- Ctrl-d deletes the shown object
+- Delete, kill, shell and port-forward the panel's pod
+- Offer Edit only for kinds the server lets a client patch
+- The refusal banner's Dismiss is an icon button with a tooltip
+- Look up an object's port-forwards
+- Show forwards on Pods and Services rows
+- Divide Manage Tunnels and confirm a forward's stop
+- Show and control forwards in the pod detail panel
+- Stop a port-forward from the keyboard
+- A real terminal for pod shells
+- Edit a tunnel in a scrollable modal dialog
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Bind panel keys outside text fields
+- Warn when a key starts another command's chord
+- List Shell and Port forward in the hint row, and test s / shift-f in a real window
+- Keep the chord popover inside the window
+- A key that also starts chords waits for the Shortcut timeout
+- Cmd-W closes an empty window without a re-entrancy panic
+- Kill a stopping command's leader on every platform
+- Move and merge default to cmd-k chords, clear of window managers
+- Wrap a long conflict prompt inside the window
+- A delete's outcome never reports inside the send
+- Offer commands of every context on the focus path
+- No Delete under an open edit; pod detail gates on the verb
+- A keymap.toml override beats another command's default key
+- A fetch landing after the delete keeps it deleted
+- Name the Service in stop confirmations, align Enter with the button
+- Bound the wait for a shell's exit, and show refused input
+- Pin gpui-terminal v0.2.1 so shell lines aren't squished
+- Sidebar buttons fill the sidebar with whole, left-aligned titles
+
+
+### <!-- 2 -->🚜 Refactor
+- Pass close_window to defer directly
+- Reusable delete flow and the discovered delete verb
+- Ask to stop a forward through the shared confirmation
+
+
+### <!-- 3 -->📚 Documentation
+- The keyboard, two-step shortcuts and the Shortcut timeout
+
+
+### <!-- 6 -->🧪 Testing
+- Pin every k9s command in the keymap, palette and editor
+- Check the keybindings editor lists every arrange command
+- Check View Logs' l clashes with no registered key
+- Compare the pending cmd-k as the platform writes it
+- Confirm a delete by keyboard, not a click
+- A focus change mid-extension cancels the wait
+- Draw dialogs without their slide-in so clicks land
+- Start every test app with motion reduced
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.3.0
+- Retrigger
+
+
+
 ## 0.3.0 - 2026-10-03
 
 ### <!-- 0 -->🚀 Features

@@ -52,9 +52,15 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
     assert_eq!(
         in_pods,
         [
+            "pods.edit",
             "pods.quick_look",
+            "pods.port_forward",
+            "pods.stop_port_forward",
+            "pods.delete",
+            "pods.kill",
             "pods.warp_namespace",
             "pods.warp_all_namespace",
+            "pods.open_in_background",
             "pods.describe",
             "pods.logs",
             "pods.yaml",
@@ -64,7 +70,7 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
     );
     assert_eq!(
         crate::command::build_items(&registry, &[PANEL_KEY_CONTEXT]).len(),
-        8,
+        14,
         "each is a palette item"
     );
 

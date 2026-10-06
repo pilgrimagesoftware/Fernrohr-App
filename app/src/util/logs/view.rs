@@ -20,7 +20,14 @@ pub enum LogEvent {
         message: String,
         detail: String,
     },
+    /// Previous logs were asked for, and the container has no previous instance -
+    /// it hasn't restarted (`k9s-remaining-keybindings` 5.2).
+    NoPreviousInstance,
 }
+
+/// What the panel says when previous logs were asked for and there are none.
+pub const NO_PREVIOUS_INSTANCE: &str =
+    "This container hasn't restarted, so there is no previous instance to show logs for.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FollowState {
@@ -131,6 +138,10 @@ impl LogsView {
             LogEvent::RequestFailed { message, detail } => {
                 self.terminal_message = Some(format!("Couldn't start log stream: {message}"));
                 self.terminal_detail = Some(detail);
+            }
+            LogEvent::NoPreviousInstance => {
+                self.terminal_message = Some(NO_PREVIOUS_INSTANCE.into());
+                self.terminal_detail = None;
             }
         }
     }

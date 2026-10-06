@@ -19,7 +19,7 @@ use crate::k8s::resource::pods::SelectedPod;
 use crate::keymap;
 use crate::tunnel::store::TunnelStore;
 use crate::ui::nav::{
-    self, NavTarget, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
+    self, NavTarget, OpenMode, OpenedPanel, ShowLogs, ShowPodDetail, ShowPodDetailYaml, ShowPods,
 };
 use crate::ui::panel_title::{self, PanelScope};
 use crate::ui::picker_tunnel;
@@ -39,19 +39,30 @@ use std::rc::Rc;
 
 mod actions;
 mod app;
+mod arrange;
 mod contexts;
 mod empty_dock;
+mod exec;
 mod follow;
 mod layout;
 mod main_window;
 mod namespace_defaults;
 mod namespace_sets;
 mod warp;
+pub(crate) use exec::OpenExecSession;
 pub(crate) use warp::WarpContextToNamespace;
+#[cfg(test)]
+mod chord_precedence_tests;
+#[cfg(test)]
+mod edit_yaml_tests;
 mod open;
 mod panel_focus;
 mod panels;
+#[cfg(test)]
+mod pending_chord_tests;
 mod persist;
+#[cfg(test)]
+mod pod_detail_logs_tests;
 #[cfg(test)]
 mod quick_look_window_tests;
 mod render;
@@ -72,6 +83,7 @@ mod window_title;
 #[cfg(test)]
 pub(crate) use app::register_commands;
 pub use app::{SetContextTunnel, default_workspace_path, init};
+pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
 pub(crate) use layout::{close_window, window_context_count};
 pub use main_window::MainWindow;
 pub use persist::open_saved_or_default;
