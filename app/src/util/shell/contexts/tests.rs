@@ -319,7 +319,7 @@ async fn set_active_context_to_an_unused_context_is_a_no_op(cx: &mut TestAppCont
 async fn a_restored_multi_context_window_is_titled_from_its_first_frame(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let layout = WindowLayout {

@@ -52,7 +52,7 @@ fn each_name_is_its_own_run_in_the_code_font_and_accent() {
     use gpui_kit::test::TestWindowExt as _;
     with_recorded_text(|cx, recorded| {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
             // The test text system has no fonts installed, so the theme's code
             // family falls back to the UI font; name one that can't be confused.

@@ -26,7 +26,7 @@ async fn launch_activates_the_first_saved_window(cx: &mut TestAppContext) {
     .unwrap();
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         open_saved_or_default(cx, &path);
     });

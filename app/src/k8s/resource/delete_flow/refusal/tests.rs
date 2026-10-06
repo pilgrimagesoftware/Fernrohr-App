@@ -32,7 +32,7 @@ impl Render for Sample {
 fn dismiss_is_an_icon_button_with_a_tooltip() {
     with_recorded_text(|cx, recorded| {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
         });
         // Buttons' tooltips are managed by the window's `Root`.

@@ -46,7 +46,7 @@ pub(super) async fn connected_window(
 ) -> gpui_kit::WindowHandle<MainWindow> {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     cx.add_window(|window, cx| {
@@ -123,7 +123,7 @@ pub(super) fn workspace(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
     let path = temp_workspace_path();
     let keymap_path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, path, &keymap_path);
         ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);

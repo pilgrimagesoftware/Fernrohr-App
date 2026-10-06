@@ -8,7 +8,7 @@ use gpui_kit::{TestAppContext, VisualTestContext};
 async fn the_header_leads_with_a_header_size_icon_of_the_objects_kind(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let (window, panel) = stub_panel(

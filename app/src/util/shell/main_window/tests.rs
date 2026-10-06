@@ -214,7 +214,7 @@ async fn the_status_bar_renders_only_in_workspace_mode(cx: &mut TestAppContext) 
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -270,7 +270,7 @@ async fn the_resource_panel_width_round_trips(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     let path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let layout = WindowLayout {

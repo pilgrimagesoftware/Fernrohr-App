@@ -44,7 +44,7 @@ fn workloads_and_network_kinds() -> Vec<DiscoveredKind> {
 async fn down_twice_then_enter_opens_the_second_visible_kind(cx: &mut TestAppContext) {
     bind_panel_keys(cx);
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -93,7 +93,7 @@ async fn down_twice_then_enter_opens_the_second_visible_kind(cx: &mut TestAppCon
 async fn left_and_right_collapse_and_expand_the_highlighted_section(cx: &mut TestAppContext) {
     bind_panel_keys(cx);
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -142,7 +142,7 @@ async fn left_and_right_collapse_and_expand_the_highlighted_section(cx: &mut Tes
 #[gpui_kit::test]
 async fn rendering_never_moves_the_highlight(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -171,7 +171,7 @@ async fn rendering_never_moves_the_highlight(cx: &mut TestAppContext) {
 async fn slash_focuses_filter_typing_narrows_and_escape_clears_it(cx: &mut TestAppContext) {
     bind_panel_keys(cx);
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -225,7 +225,7 @@ async fn slash_focuses_filter_typing_narrows_and_escape_clears_it(cx: &mut TestA
 async fn every_hinted_action_resolves_in_the_live_keymap(cx: &mut TestAppContext) {
     bind_panel_keys(cx);
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);

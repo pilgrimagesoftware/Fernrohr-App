@@ -106,7 +106,7 @@ fn icon_height(cx: &mut TestAppContext, selector: &'static str) -> Pixels {
 #[gpui_kit::test]
 fn the_icon_follows_the_text_size(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
     });
     let text = cx.update(|cx| IconSize::Small.logical(cx));

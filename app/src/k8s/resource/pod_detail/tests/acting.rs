@@ -69,13 +69,8 @@ fn open_with(
 ) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
-        // A dialog slides in on the wall clock, not the test executor's, so on
-        // a slow runner a button found in one frame has moved by the next and
-        // a click misses it. Drawing every animation at its end keeps a found
-        // button where it was found.
-        cx.set_reduce_motion(true);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
         let bindings = crate::keymap::bindings(

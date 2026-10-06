@@ -25,7 +25,7 @@ fn panel_window(
     cx.executor().allow_parking();
     let stored: UiConfig = crate::config::load(ui);
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::util::shell::init(cx, temp_path(), &temp_path());
         window_preference::init(stored.pod_events_window, ui.to_path_buf(), cx);

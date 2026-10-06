@@ -36,7 +36,7 @@ fn test_client(cx: &mut TestAppContext) -> kube::Client {
 async fn a_list_panel_round_trips_kind_namespaces_and_columns(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let client = test_client(cx);
@@ -128,7 +128,7 @@ fn only_a_kind_discovery_no_longer_reports_restores_as_a_placeholder() {
 async fn a_restored_layout_is_the_tables_starting_layout(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let client = test_client(cx);

@@ -19,11 +19,8 @@ use std::rc::Rc;
 /// `links.go_to`, and records every `FollowReference` that reaches the app.
 fn init(cx: &mut TestAppContext) -> Rc<RefCell<Vec<FollowReference>>> {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
-        // Settle the picker dialog's entrance on its first frame - see
-        // `ui::link::tests::harness`.
-        cx.set_reduce_motion(true);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);
         crate::ui::link::register_commands(&mut registry);

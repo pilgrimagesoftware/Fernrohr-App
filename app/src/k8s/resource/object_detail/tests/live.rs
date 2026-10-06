@@ -41,7 +41,7 @@ struct Harness {
 fn open(cx: &mut TestAppContext, kind: DiscoveredKind, initial: Value) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let (cluster, client) = FakeCluster::start(cx);

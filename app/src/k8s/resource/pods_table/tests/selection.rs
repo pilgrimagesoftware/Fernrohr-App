@@ -17,7 +17,7 @@ async fn column_reports_the_active_sort_on_the_active_column_only(
     use gpui_kit::component::table::{ColumnSort, TableDelegate as _};
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         let mut delegate = PodTableDelegate::default();
         delegate.resort(2, ColumnSort::Descending);
 

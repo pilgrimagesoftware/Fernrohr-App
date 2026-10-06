@@ -23,7 +23,7 @@ fn loaded(
     manifest: Value,
 ) -> (WindowHandle<Root>, VisualTestContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let found = kind(group, "v1", kind_name, true);

@@ -12,7 +12,7 @@ use gpui_kit::{AppContext as _, Keystroke, TestAppContext, VisualTestContext};
 async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
@@ -71,7 +71,7 @@ fn a_windows_frame_is_drawn_in_the_frame_family() {
     with_recorded_text(|cx, recorded| {
         cx.executor().allow_parking();
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::runtime::init(cx);
             crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
         });
@@ -131,7 +131,7 @@ async fn the_bars_items_are_inset_from_the_window_edge(cx: &mut TestAppContext) 
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         TextScale::new(1.5).expect("a valid scale").set(cx);
         open_window(
@@ -187,7 +187,7 @@ async fn the_bars_items_are_inset_from_the_window_edge(cx: &mut TestAppContext) 
 async fn the_palette_opens_from_the_keyboard_in_every_picker_state(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);

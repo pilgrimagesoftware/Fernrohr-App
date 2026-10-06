@@ -24,7 +24,7 @@ impl Render for TableView {
 #[gpui_kit::test]
 fn rows_are_the_scales_row_height(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         TextScale::new(1.5).expect("a valid scale").set(cx);
     });
     let window: AnyWindowHandle = cx

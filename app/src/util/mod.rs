@@ -11,3 +11,5 @@ pub(crate) mod resource_index;
 pub(crate) mod shell;
 #[cfg(test)]
 pub(crate) mod test_paths;
+#[cfg(test)]
+pub(crate) mod test_ui;

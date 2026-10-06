@@ -53,7 +53,7 @@ async fn pod_shortcut_dispatches_only_to_the_focused_panel(cx: &mut gpui_kit::Te
 
     let dispatches = Rc::new(RefCell::new(Vec::new()));
     let (first, second) = cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.set_global(SelectedPod(Some(PodSelection {
             namespace: "default".into(),
@@ -139,7 +139,7 @@ async fn typed_pod_shortcuts_reach_the_focused_panel(cx: &mut gpui_kit::TestAppC
     let dispatches = Rc::new(RefCell::new(Vec::new()));
     let logs_requests = Rc::new(RefCell::new(0));
     let first = cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = crate::command::CommandRegistry::new();
         super::register_commands(&mut registry);
@@ -213,7 +213,7 @@ async fn a_paused_context_still_shows_rows_and_the_bar_reports_the_pause(
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -309,7 +309,7 @@ async fn a_paused_context_still_shows_rows_and_the_bar_reports_the_pause(
 #[gpui_kit::test]
 async fn n_opens_the_namespace_picker(cx: &mut gpui_kit::TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = crate::command::CommandRegistry::new();
         super::register_commands(&mut registry);

@@ -61,7 +61,7 @@ fn stub_panel_viewing(
 #[gpui_kit::test]
 async fn a_panel_can_be_built_opening_on_the_yaml(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel_viewing(cx, ConnectionState::Connecting, DetailView::Yaml);
@@ -86,7 +86,7 @@ async fn a_panel_can_be_built_opening_on_the_yaml(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
@@ -138,7 +138,7 @@ async fn the_panel_renders_the_structured_field_list_by_default(cx: &mut TestApp
 #[gpui_kit::test]
 async fn the_toolbar_toggles_between_fields_and_yaml(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
@@ -165,7 +165,7 @@ async fn the_toolbar_toggles_between_fields_and_yaml(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn switching_tabs_shows_only_that_tabs_fields(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);
@@ -209,7 +209,7 @@ async fn switching_tabs_shows_only_that_tabs_fields(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn the_tab_keys_switch_tabs_from_the_keyboard(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.bind_keys(registered_bindings(&KeymapConfig::default(), cx));
     });
@@ -315,7 +315,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         .bindings
         .insert("pod_detail.tab_events".into(), "v".into());
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.bind_keys(registered_bindings(&keymap, cx));
     });
@@ -346,7 +346,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
 #[gpui_kit::test]
 async fn a_missing_pod_shows_that_it_no_longer_exists(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);

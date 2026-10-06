@@ -30,7 +30,7 @@ use std::sync::atomic::AtomicUsize;
 /// connection is a stub that never connects.
 fn harness(cx: &mut TestAppContext) -> Harness {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);

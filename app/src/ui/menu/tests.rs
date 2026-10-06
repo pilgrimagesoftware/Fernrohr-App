@@ -26,7 +26,7 @@ fn rebuilt_menus_show_the_new_key_and_fire_once(cx: &mut gpui_kit::TestAppContex
     );
     let _ = std::fs::remove_file(&keymap);
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::util::shell::init(cx, workspace.clone(), &keymap);
 

@@ -270,7 +270,7 @@ mod tests {
     #[gpui_kit::test]
     async fn placeholder_remembers_the_kind_it_was_opened_for(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::runtime::init(cx);
         });
         let window = cx.add_window(|_window, cx| {
@@ -300,7 +300,7 @@ mod tests {
     #[gpui_kit::test]
     async fn a_click_focuses_the_placeholder(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::runtime::init(cx);
         });
         let (panel, cx) = cx.add_window_view(|_window, cx| {
@@ -352,7 +352,7 @@ mod tests {
     #[gpui_kit::test]
     async fn the_focused_panels_tab_is_the_one_underlined(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::runtime::init(cx);
         });
         let (host, cx) = cx.add_window_view(|window, cx| {

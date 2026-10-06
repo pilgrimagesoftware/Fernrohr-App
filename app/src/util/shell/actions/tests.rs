@@ -158,7 +158,7 @@ async fn show_logs_and_pod_detail_use_the_selected_pods_context_not_the_active_o
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         ClusterRegistry::insert_test_session(cx, "northbay", ConnectionState::Connecting);
         ClusterRegistry::insert_test_session(cx, "other-context", ConnectionState::Connecting);
@@ -240,7 +240,7 @@ async fn show_logs_no_ops_when_the_selected_pods_context_is_not_open_here(cx: &m
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);
     });
@@ -292,7 +292,7 @@ async fn the_focus_resources_key_focuses_the_resource_panel(cx: &mut TestAppCont
     let path = temp_workspace_path();
     let keymap_path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, path.clone(), &keymap_path);
         ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);

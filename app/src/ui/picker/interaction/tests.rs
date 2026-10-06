@@ -26,7 +26,7 @@ fn stub_connecting(
 #[gpui_kit::test]
 async fn a_single_click_selects_without_connecting(cx: &mut gpui_kit::TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);
@@ -58,7 +58,7 @@ async fn a_single_click_selects_without_connecting(cx: &mut gpui_kit::TestAppCon
 #[gpui_kit::test]
 async fn a_double_click_connects(cx: &mut gpui_kit::TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);
@@ -98,7 +98,7 @@ async fn connect_selected_connects_and_is_a_no_op_without_a_selection(
     cx: &mut gpui_kit::TestAppContext,
 ) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);
@@ -155,7 +155,7 @@ async fn connect_selected_connects_and_is_a_no_op_without_a_selection(
 #[gpui_kit::test]
 async fn confirm_row_connects_the_highlighted_context(cx: &mut gpui_kit::TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);
@@ -193,7 +193,7 @@ async fn hover_highlight_never_changes_the_selection(cx: &mut gpui_kit::TestAppC
     use gpui_kit::component::IndexPath;
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);

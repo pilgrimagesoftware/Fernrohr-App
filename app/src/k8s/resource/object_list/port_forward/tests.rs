@@ -69,7 +69,7 @@ fn press_dialog_button(vcx: &mut VisualTestContext, n: usize) {
 async fn a_service_forwards_its_chosen_port_to_a_running_pod(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_list::register_commands(&mut registry);

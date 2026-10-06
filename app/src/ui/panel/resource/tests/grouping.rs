@@ -13,7 +13,7 @@ use gpui_kit::TestAppContext;
 #[gpui_kit::test]
 async fn collapsing_a_section_keeps_reporting_its_count(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -52,7 +52,7 @@ async fn collapsing_a_section_keeps_reporting_its_count(cx: &mut TestAppContext)
 #[gpui_kit::test]
 async fn a_freshly_constructed_panel_starts_fully_expanded(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let collapsed_elsewhere = stub_panel(cx);
@@ -78,7 +78,7 @@ async fn a_freshly_constructed_panel_starts_fully_expanded(cx: &mut TestAppConte
 #[gpui_kit::test]
 async fn rows_name_the_kind_and_keep_the_group_only_for_shared_names(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
