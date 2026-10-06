@@ -76,6 +76,7 @@ pub(crate) fn confirm_delete(
         body: target.question(),
         confirm: "Delete".into(),
         id_prefix: DELETE_ID_PREFIX,
+        severity: crate::ui::confirm_dialog::Severity::Irreversible,
     };
     confirm_dialog::open(
         confirmation,

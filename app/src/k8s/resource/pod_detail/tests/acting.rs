@@ -171,9 +171,9 @@ fn deleted(panel: &PodDetailPanel) -> bool {
     matches!(panel.notice, Some(Lifecycle::Deleted { .. }))
 }
 
-/// `ctrl-d` asks first; Escape sends nothing; `ctrl-d` then Enter deletes the
-/// pod with its own grace period, and the panel shows it deleted - offering
-/// no second delete.
+/// `ctrl-d` asks first; Escape sends nothing, nor Enter - the confirmation
+/// opens on Cancel; Tab to Delete then Enter deletes the pod with its own
+/// grace period, and the panel shows it deleted - offering no second delete.
 #[gpui_kit::test]
 async fn ctrl_d_asks_then_deletes_and_the_panel_shows_the_pod_gone(cx: &mut TestAppContext) {
     let mut harness = open(cx, pod(true, 18_091));
@@ -185,7 +185,17 @@ async fn ctrl_d_asks_then_deletes_and_the_panel_shows_the_pod_gone(cx: &mut Test
     assert!(harness.cluster.deletes().is_empty(), "Escape sends nothing");
 
     harness.press("ctrl-d");
+    crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
     harness.press("enter");
+    assert!(!harness.dialog_open(), "Enter closes it");
+    assert!(
+        harness.cluster.deletes().is_empty(),
+        "on Cancel, sending nothing"
+    );
+
+    harness.press("ctrl-d");
+    crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
+    harness.press("tab enter");
     let deletes = harness.wait_for_delete();
     assert_eq!(deletes.len(), 1);
     assert_eq!(deletes[0].0, "web-1");

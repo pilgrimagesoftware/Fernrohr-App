@@ -58,6 +58,7 @@ fn open(cx: &mut TestAppContext, delete: bool) -> Harness {
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_list::register_commands(&mut registry);
+        crate::ui::confirm_dialog::register_commands(&mut registry);
         let bindings = keymap::bindings(
             &registry,
             &KeymapConfig::default(),
@@ -146,8 +147,9 @@ impl Harness {
     }
 }
 
-/// The user's case: `ctrl-d` on a Secret asks first; Escape sends nothing;
-/// `ctrl-d` then Enter deletes it with a plain delete, and its row goes.
+/// The user's case: `ctrl-d` on a Secret asks first; Escape sends nothing, nor
+/// does Enter - an irreversible confirmation opens on Cancel; Tab to Delete
+/// then Enter deletes it with a plain delete, and its row goes.
 #[gpui_kit::test]
 async fn ctrl_d_deletes_a_secret_from_the_secrets_list(cx: &mut TestAppContext) {
     let mut harness = open(cx, true);
@@ -163,8 +165,21 @@ async fn ctrl_d_deletes_a_secret_from_the_secrets_list(cx: &mut TestAppContext) 
     assert!(harness.cluster.deletes().is_empty(), "and sends nothing");
 
     harness.press("ctrl-d");
+    crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
     harness.press("enter");
-    assert!(!harness.dialog_open(), "Enter confirms and closes it");
+    assert!(!harness.dialog_open(), "Enter closes it");
+    assert!(
+        harness.cluster.deletes().is_empty(),
+        "and, on Cancel, sends nothing"
+    );
+
+    harness.press("ctrl-d");
+    crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
+    harness.press("tab enter");
+    assert!(
+        !harness.dialog_open(),
+        "Tab then Enter confirms and closes it"
+    );
     harness.wait_for("dropped the deleted Secret's row", |harness| {
         harness.rows() == ["tls-cert"]
     });
@@ -178,8 +193,8 @@ async fn ctrl_d_deletes_a_secret_from_the_secrets_list(cx: &mut TestAppContext) 
     );
 }
 
-/// A refused delete shows the server's reason above the table, and the row
-/// stays.
+/// A refused delete - confirmed with the deliberate shortcut - shows the
+/// server's reason above the table, and the row stays.
 #[gpui_kit::test]
 async fn a_refused_delete_shows_why_and_keeps_the_row(cx: &mut TestAppContext) {
     let mut harness = open(cx, true);
@@ -191,7 +206,8 @@ async fn a_refused_delete_shows_why_and_keeps_the_row(cx: &mut TestAppContext) {
     );
 
     harness.press("ctrl-d");
-    harness.press("enter");
+    crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
+    harness.press("secondary-backspace");
     let panel = harness.panel.clone();
     harness.wait_for("showed the refusal", |harness| {
         harness.vcx.update(|_, cx| panel.read(cx).refusal.is_some())

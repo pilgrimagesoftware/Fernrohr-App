@@ -99,6 +99,9 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
 
             let window_id = window.window_handle().window_id();
             window.on_window_should_close(cx, move |window, cx| {
+                if !super::tabs::close_requested(window, cx) {
+                    return false;
+                }
                 save_window_dock_layout(window, cx);
                 record_closing_layout(window_id, window, cx);
                 true
