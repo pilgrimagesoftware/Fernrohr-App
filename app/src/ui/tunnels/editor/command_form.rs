@@ -3,10 +3,11 @@
 //! testing it, and drawing it.
 //!
 //! The switches are buttons, so they are tab stops that Space or Enter press, like
-//! the rest of the pane. Switching kind only changes which form shows and which kind
+//! the rest of the pane. Tab leaves the multi-line command rather than indenting it. Switching kind only changes which form shows and which kind
 //! Save writes; both forms keep what was typed.
 
 use super::*;
+use gpui_kit::component::input::{IndentInline, OutdentInline};
 
 /// One line on what each mode means, under the mode switch.
 fn mode_help(mode: CommandTunnelMode) -> &'static str {
@@ -25,6 +26,9 @@ fn mode_help(mode: CommandTunnelMode) -> &'static str {
 const PLAIN_TEXT_HINT: &str = "Stored in plain text in tunnels.toml, so leave credentials to the \
      tool's own login. Runs without a shell (no pipes or $VARS); {port} becomes the local port. \
      Run it once in a terminal first, so it never stops to ask anything.";
+
+/// The startup timeout field's debug selector, for tests to find where it draws.
+pub(in crate::ui::tunnels) const TIMEOUT_FIELD_SELECTOR: &str = "tunnel-timeout-field";
 
 impl TunnelEditor {
     pub(super) fn set_kind(&mut self, kind: TunnelKind, cx: &mut Context<Self>) {
@@ -109,9 +113,10 @@ impl TunnelEditor {
             ))
     }
 
-    /// The command form: the command, its mode with a line of help, the optional
-    /// fixed port and the startup timeout, each with its validation message.
-    pub(super) fn render_command_form(&self, cx: &Context<Self>) -> impl IntoElement {
+    /// The command form's sections, in order: the command, its mode with a line of
+    /// help, the optional fixed port and the startup timeout, each with its
+    /// validation message. Separate, so the editor can scroll each into view.
+    pub(super) fn render_command_form(&self, cx: &Context<Self>) -> Vec<AnyElement> {
         let theme = cx.theme().clone();
         let error = |field: TunnelFieldError, message: &'static str| {
             self.field_errors
@@ -136,88 +141,97 @@ impl TunnelEditor {
                 let _ = weak.update(cx, |editor, cx| editor.set_mode(mode, cx));
             })
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap(crate::ui::space::spacing(cx).section_gap)
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(label("Command"))
-                    .child(Textarea::new(&self.command_line).w_full().h(px(88.)))
-                    .children(error(
-                        TunnelFieldError::EmptyCommand,
-                        "Enter the command to run.",
-                    ))
-                    .children(error(
-                        TunnelFieldError::UnbalancedQuotes,
-                        "The command has an unclosed quote.",
-                    ))
-                    .children(error(
-                        TunnelFieldError::NoPortPlaceholder,
-                        "Add {port} to the command, or set a fixed local port.",
-                    ))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(PLAIN_TEXT_HINT),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(label("Mode"))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_1()
-                            .child(mode_choice(
-                                "tunnel-mode-proxy",
-                                "Proxy",
-                                CommandTunnelMode::Proxy,
-                            ))
-                            .child(mode_choice(
-                                "tunnel-mode-forward",
-                                "Forward",
-                                CommandTunnelMode::Forward,
-                            )),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(mode_help(self.mode)),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(label("Local port (optional; the command must then use it)"))
-                    .child(Input::new(&self.local_port))
-                    .children(error(
-                        TunnelFieldError::InvalidLocalPort,
-                        "Local port must be between 1 and 65535.",
-                    )),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(label("Startup timeout (seconds)"))
-                    .child(Input::new(&self.startup_timeout))
-                    .children(error(
-                        TunnelFieldError::InvalidTimeout,
-                        "Startup timeout must be a positive number of seconds.",
-                    )),
-            )
+        vec![
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(label("Command"))
+                // A multi-line input takes Tab to indent; a command line never
+                // wants a tab, so Tab and Shift-Tab move focus on instead, and
+                // the fields after it stay reachable from the keyboard.
+                .child(
+                    div()
+                        .capture_action(|_: &IndentInline, window, cx| {
+                            window.focus_next(cx);
+                            cx.stop_propagation();
+                        })
+                        .capture_action(|_: &OutdentInline, window, cx| {
+                            window.focus_prev(cx);
+                            cx.stop_propagation();
+                        })
+                        .child(Textarea::new(&self.command_line).w_full().h(px(88.))),
+                )
+                .children(error(
+                    TunnelFieldError::EmptyCommand,
+                    "Enter the command to run.",
+                ))
+                .children(error(
+                    TunnelFieldError::UnbalancedQuotes,
+                    "The command has an unclosed quote.",
+                ))
+                .children(error(
+                    TunnelFieldError::NoPortPlaceholder,
+                    "Add {port} to the command, or set a fixed local port.",
+                ))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(PLAIN_TEXT_HINT),
+                )
+                .into_any_element(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(label("Mode"))
+                .child(
+                    div()
+                        .flex()
+                        .gap_1()
+                        .child(mode_choice(
+                            "tunnel-mode-proxy",
+                            "Proxy",
+                            CommandTunnelMode::Proxy,
+                        ))
+                        .child(mode_choice(
+                            "tunnel-mode-forward",
+                            "Forward",
+                            CommandTunnelMode::Forward,
+                        )),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(mode_help(self.mode)),
+                )
+                .into_any_element(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(label("Local port (optional; the command must then use it)"))
+                .child(Input::new(&self.local_port))
+                .children(error(
+                    TunnelFieldError::InvalidLocalPort,
+                    "Local port must be between 1 and 65535.",
+                ))
+                .into_any_element(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .debug_selector(|| TIMEOUT_FIELD_SELECTOR.into())
+                .child(label("Startup timeout (seconds)"))
+                .child(Input::new(&self.startup_timeout))
+                .children(error(
+                    TunnelFieldError::InvalidTimeout,
+                    "Startup timeout must be a positive number of seconds.",
+                ))
+                .into_any_element(),
+        ]
     }
 }
 

@@ -1,6 +1,6 @@
 //! Owns the Tunnels window's rendered layout: the header and New Tunnel control,
 //! each tunnel's row (name, usage, running state, Edit), the stale-bindings section
-//! with its per-row Remove, and the embedded editor pane.
+//! with its per-row Remove. The editor is a dialog over it (`editor_dialog`).
 
 use super::*;
 
@@ -51,7 +51,7 @@ fn usage_label(count: usize) -> String {
 }
 
 impl Render for TunnelsWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
 
         let weak_new = cx.weak_entity();
@@ -76,12 +76,18 @@ impl Render for TunnelsWindow {
             let running = self.is_running(id);
             let weak_edit = cx.weak_entity();
             let id_for_edit = id.clone();
+            let focus = self.row_focus.get(id);
+            let focused = focus.is_some_and(|focus| focus.is_focused(window));
             div()
+                .when_some(focus, |row, focus| row.track_focus(focus))
                 .flex()
                 .items_center()
                 .justify_between()
                 .gap_2()
                 .py_1()
+                .px_1()
+                .rounded_sm()
+                .when(focused, |row| row.bg(theme.accent))
                 .child(
                     div()
                         .flex()
@@ -205,13 +211,6 @@ impl Render for TunnelsWindow {
             .child(div().flex().flex_col().gap_1().children(rows))
             .child(self.port_forwards_section(cx))
             .children(stale_section)
-            .children(self.editor.clone().map(|editor| {
-                div()
-                    .border_t_1()
-                    .border_color(theme.border)
-                    .pt(crate::ui::space::spacing(cx).section_gap)
-                    .child(editor)
-            }))
     }
 }
 

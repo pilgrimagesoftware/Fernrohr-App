@@ -3,8 +3,8 @@
 
 use super::*;
 
-/// What the pane reports to `TunnelsWindow` so it can refresh its list and clear the
-/// pane.
+/// What the editor reports to `TunnelsWindow`, which closes its dialog and, after a
+/// save or delete, refreshes the list.
 pub enum TunnelEditorEvent {
     Saved,
     Deleted,
@@ -56,8 +56,51 @@ pub struct TunnelEditor {
     /// Contexts bound to this tunnel, read at open and after every save - what the
     /// delete confirmation names as falling back to Direct.
     pub(super) bound_contexts: Vec<String>,
-    pub(super) confirming_delete: bool,
     pub(super) testing: bool,
     pub(super) test_result: Option<Result<(), String>>,
     pub(super) focus_handle: FocusHandle,
+    /// The body's scroll, and a focus handle per section of it - grown as a form
+    /// with more sections first shows - to tell which section holds focus.
+    pub(super) scroll: ScrollHandle,
+    pub(super) sections: Vec<FocusHandle>,
+    /// The section last scrolled into view, so it is scrolled to only once.
+    pub(super) revealed: Option<usize>,
+}
+
+impl TunnelEditor {
+    /// Which form is showing. Test-only.
+    #[cfg(test)]
+    pub(in crate::ui::tunnels) fn kind(&self) -> TunnelKind {
+        self.kind
+    }
+
+    /// The field holding focus, by label, if one does. Test-only.
+    #[cfg(test)]
+    pub(in crate::ui::tunnels) fn focused_field(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> Option<&'static str> {
+        let inputs = [
+            ("Name", &self.name),
+            ("Host", &self.host),
+            ("User", &self.user),
+            ("Port", &self.port),
+            ("Jump hosts", &self.jump_hosts),
+            ("Private key", &self.key_material),
+            ("Local port", &self.local_port),
+            ("Startup timeout", &self.startup_timeout),
+        ];
+        inputs
+            .into_iter()
+            .find(|(_, input)| input.read(cx).focus_handle(cx).is_focused(window))
+            .map(|(label, _)| label)
+            .or_else(|| {
+                self.command_line
+                    .read(cx)
+                    .focus_handle(cx)
+                    .is_focused(window)
+                    .then_some("Command")
+            })
+    }
 }
