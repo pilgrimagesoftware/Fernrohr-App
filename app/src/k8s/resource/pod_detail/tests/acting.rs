@@ -26,10 +26,10 @@ use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const CONTEXT: &str = "kind-dev";
+pub(super) const CONTEXT: &str = "kind-dev";
 
 /// `shop/web-1`, its one container `app` declaring `port` - running, or not.
-fn pod(running: bool, port: u16) -> Value {
+pub(super) fn pod(running: bool, port: u16) -> Value {
     let state = if running {
         json!({ "running": { "startedAt": "2026-01-01T00:00:00Z" } })
     } else {
@@ -48,16 +48,16 @@ fn pod(running: bool, port: u16) -> Value {
     })
 }
 
-struct Harness {
-    cluster: FakeCluster,
-    panel: Entity<PodDetailPanel>,
-    vcx: VisualTestContext,
+pub(super) struct Harness {
+    pub(super) cluster: FakeCluster,
+    pub(super) panel: Entity<PodDetailPanel>,
+    pub(super) vcx: VisualTestContext,
 }
 
 /// The panel on `shop/web-1`, held by the fake cluster as `initial`, in a
 /// window with a `Root` (for its dialogs), its keys bound and focus in it,
 /// once it shows the pod.
-fn open(cx: &mut TestAppContext, initial: Value) -> Harness {
+pub(super) fn open(cx: &mut TestAppContext, initial: Value) -> Harness {
     open_with(cx, initial, None)
 }
 
@@ -122,16 +122,20 @@ fn open_with(
 }
 
 impl Harness {
-    fn press(&mut self, keys: &str) {
+    pub(super) fn press(&mut self, keys: &str) {
         self.vcx.simulate_keystrokes(keys);
         self.vcx.run_until_parked();
     }
 
-    fn dialog_open(&mut self) -> bool {
+    pub(super) fn dialog_open(&mut self) -> bool {
         self.vcx.update(|window, cx| window.has_active_dialog(cx))
     }
 
-    fn wait_for(&mut self, what: &str, done: impl Fn(&PodDetailPanel, &gpui_kit::App) -> bool) {
+    pub(super) fn wait_for(
+        &mut self,
+        what: &str,
+        done: impl Fn(&PodDetailPanel, &gpui_kit::App) -> bool,
+    ) {
         for _ in 0..400 {
             self.vcx.run_until_parked();
             if self.vcx.update(|_, cx| done(self.panel.read(cx), cx)) {
@@ -154,7 +158,7 @@ impl Harness {
     }
 
     /// Whether the hint labelled `label` is drawn.
-    fn hint_shown(&mut self, label: &str) -> bool {
+    pub(super) fn hint_shown(&mut self, label: &str) -> bool {
         self.vcx.update(|window, cx| window.render_frame(cx));
         // `debug_bounds` takes a `'static` selector; a test's few leak nothing
         // that matters.

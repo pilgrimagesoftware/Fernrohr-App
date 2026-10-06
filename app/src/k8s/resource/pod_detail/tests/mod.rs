@@ -17,6 +17,7 @@ mod events_window;
 mod events_window_keys;
 mod fetch;
 mod fixtures;
+mod forwards;
 mod links;
 mod live;
 mod live_events;

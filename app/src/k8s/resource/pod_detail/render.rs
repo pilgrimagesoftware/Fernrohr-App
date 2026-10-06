@@ -73,6 +73,7 @@ impl PodDetailPanel {
         div()
             .flex()
             .flex_col()
+            .children(self.render_forward_strip(cx))
             .child(tabs)
             .child(
                 div()

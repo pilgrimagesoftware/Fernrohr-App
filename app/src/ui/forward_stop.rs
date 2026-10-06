@@ -3,7 +3,10 @@
 //! (`ui::confirm_dialog`), naming the pod or Service, where the forward listens
 //! and the port it reaches, and stopping it only once confirmed. Enter or Stop
 //! Forward stops it; Escape or Cancel keeps it.
+//!
+//! [`stop_forward`] is that whole path for one forward.
 
+use crate::k8s::cluster::port_forwards::{ForwardSummary, PortForwards};
 use crate::ui::confirm_dialog::{self, Confirmation};
 use crate::ui::confirm_text::ConfirmText;
 use gpui_kit::*;
@@ -55,6 +58,33 @@ pub fn confirm_stop(
         id_prefix: ID_PREFIX,
     };
     confirm_dialog::open(confirmation, stop, window, cx);
+}
+
+/// Asks, then stops `forward` - one of `kind` `name`'s.
+pub fn stop_forward(
+    kind: &'static str,
+    name: &str,
+    forward: &ForwardSummary,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let target = StopTarget {
+        kind,
+        name: name.to_string(),
+        local_addr: forward.local_addr,
+        target_port: forward.target_port,
+    };
+    let request = forward.request.clone();
+    confirm_stop(
+        target,
+        move |_window, cx| {
+            PortForwards::entity(cx).update(cx, |forwards, cx| {
+                forwards.stop(&request, cx);
+            });
+        },
+        window,
+        cx,
+    );
 }
 
 #[cfg(test)]

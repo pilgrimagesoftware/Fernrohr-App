@@ -53,7 +53,7 @@ mod test_window;
 mod watch;
 
 pub use panel::{PodsPanel, register_restore};
-pub(crate) use port_forward::forward_pod;
+pub(crate) use port_forward::{forward_pod, forward_port};
 pub(crate) use rows::BAD_WAITING_REASONS;
 pub(crate) use rows::format_age;
 pub use rows::{PodRow, matches_namespaces, pod_row};

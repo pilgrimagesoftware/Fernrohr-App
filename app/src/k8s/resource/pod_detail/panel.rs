@@ -101,6 +101,10 @@ impl PodDetailPanel {
             .detach();
         let discovery = DiscoveryRegistry::kinds(cx, &scope.context_name);
         cx.observe(&discovery, |_, _, cx| cx.notify()).detach();
+        // The forward strip and container ports follow every forward starting or
+        // stopping, here or anywhere (`port-forward-indicators` 3).
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
 
         let mut this = Self {
             pod,
@@ -140,6 +144,8 @@ impl PodDetailPanel {
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
         let discovery = cx.new(|_| DiscoveredKinds::loaded(Vec::new()));
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             pod,
             scope,

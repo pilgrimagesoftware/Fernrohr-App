@@ -67,7 +67,7 @@ impl PodDetailPanel {
     }
 
     /// The pod as the Pods list's actions address it.
-    fn selection(&self) -> PodSelection {
+    pub(super) fn selection(&self) -> PodSelection {
         let containers = self
             .live_pod()
             .and_then(|pod| pod.spec.as_ref())
