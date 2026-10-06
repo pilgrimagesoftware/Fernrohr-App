@@ -34,6 +34,9 @@ actions!(
 /// The window's key context: where the section commands are bound.
 pub(crate) const KEY_CONTEXT: &str = "SettingsWindow";
 
+/// The sections sidebar, for layout tests.
+pub(crate) const SIDEBAR: &str = "settings-sidebar";
+
 /// Which section the window shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Section {
@@ -55,6 +58,14 @@ impl Section {
         match self {
             Section::KeyboardShortcuts => "settings-section-shortcuts",
             Section::Appearance => "settings-section-appearance",
+        }
+    }
+
+    /// The debug selector of the sidebar button's title, for layout tests.
+    pub(crate) fn label_selector(self) -> &'static str {
+        match self {
+            Section::KeyboardShortcuts => "settings-section-shortcuts-label",
+            Section::Appearance => "settings-section-appearance-label",
         }
     }
 }
@@ -199,13 +210,26 @@ impl SettingsWindow {
     }
 
     /// A sidebar entry: a button that shows `section`, marked while shown.
+    ///
+    /// The button fills the sidebar's width, so its selected background does,
+    /// and its title starts at the left like a list's. The title is the
+    /// button's own content rather than its `label`: a `Button` centres its
+    /// label and ellipsizes it to its natural width.
     fn sidebar_button(&self, section: Section, cx: &mut Context<Self>) -> impl IntoElement {
         use gpui_kit::component::Selectable as _;
         use gpui_kit::component::button::{Button, ButtonVariants as _};
         use gpui_kit::prelude::FluentBuilder as _;
         let shown = self.section == section;
+        let label = section.label_selector();
         Button::new(section.button_id())
-            .label(section.title())
+            .accessibility_label(section.title())
+            .child(
+                div()
+                    .debug_selector(move || label.into())
+                    .w_full()
+                    .whitespace_nowrap()
+                    .child(section.title()),
+            )
             .w_full()
             .ghost()
             .when(shown, |button| button.selected(true))
@@ -223,8 +247,12 @@ impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let space = crate::ui::space::spacing(cx);
+        // At least 180px, wider when a title needs it - at a larger text
+        // size, say - so a section's name is never cut short.
         let sidebar = div()
-            .w(px(180.))
+            .debug_selector(|| SIDEBAR.into())
+            .flex_none()
+            .min_w(px(180.))
             .h_full()
             .p(space.control_gap)
             .flex()
