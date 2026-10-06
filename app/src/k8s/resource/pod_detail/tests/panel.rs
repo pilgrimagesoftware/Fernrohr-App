@@ -276,10 +276,10 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     let commands: Vec<_> = registry.iter().collect();
     assert_eq!(
         commands.len(),
-        24,
+        25,
         "the view toggle, six tabs, Hide Secret Values, the Events tab's seven window \
          commands, Fold/Unfold All YAML, Copy Resource Name, View Logs, Edit YAML, and \
-         Delete, Kill, Shell and Port Forward on the panel's pod"
+         Delete, Kill, Shell, Port Forward and Stop Port Forward on the panel's pod"
     );
     assert!(
         commands.iter().all(|command| {
@@ -298,7 +298,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
     assert!(registry.available(&[]).is_empty());
     assert_eq!(
         registry.available(&[PANEL_KEY_CONTEXT]).len(),
-        21,
+        22,
         "all but Shell, which needs a running container, and Delete and Kill, \
          which need a pod that can be deleted"
     );
@@ -306,7 +306,7 @@ async fn the_panel_shortcuts_are_context_gated_commands(cx: &mut TestAppContext)
         registry
             .available(&[PANEL_KEY_CONTEXT, "PodDetailShellable", "DeletablePod"])
             .len(),
-        24
+        25
     );
 
     let mut keymap = KeymapConfig::default();

@@ -26,10 +26,11 @@ mod edit;
 mod hints;
 #[cfg(test)]
 pub(crate) use commands::LIST_KEY_CONTEXT;
+pub(crate) use commands::STOP_PORT_FORWARD_KEY;
 pub use commands::{
     CloseQuickLook, DeletePod, DescribePod, EditPod, KillPod, OpenQuickLookDetails,
     PANEL_KEY_CONTEXT, PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs,
-    ShowPodYaml, WarpAllToNamespace, WarpNamespace, register_commands,
+    ShowPodYaml, StopPortForward, WarpAllToNamespace, WarpNamespace, register_commands,
 };
 use commands::{
     DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OpenInBackground,
@@ -53,7 +54,7 @@ mod test_window;
 mod watch;
 
 pub use panel::{PodsPanel, register_restore};
-pub(crate) use port_forward::{ForwardReport, forward_pod};
+pub(crate) use port_forward::{forward_pod, forward_port};
 pub(crate) use rows::BAD_WAITING_REASONS;
 pub(crate) use rows::format_age;
 pub use rows::{PodRow, matches_namespaces, pod_row};

@@ -20,6 +20,8 @@ pub(super) use columns::{PodColumn, compare};
 pub(super) struct PodTableRow {
     pub(super) row: PodRow,
     pub(super) selection: PodSelection,
+    /// The forwards reaching the pod, for the Forwards cell's tooltip.
+    pub(super) forwards: Vec<crate::k8s::cluster::port_forwards::ForwardSummary>,
 }
 
 /// The Pods panel's table over `state`: striped, bordered, scrollable both
@@ -307,6 +309,10 @@ impl TableDelegate for PodTableDelegate {
             PodColumn::Restarts if row.restarts > 0 => cell
                 .text_color(style::status(Tone::Warning, cx))
                 .child(text),
+            PodColumn::Forwards => cell.children(crate::ui::forward_indicator::indicator(
+                &row.name,
+                &self.rows[row_ix].forwards,
+            )),
             _ => cell.child(text),
         };
         // An open quick look hangs below the selected row's first cell, in an

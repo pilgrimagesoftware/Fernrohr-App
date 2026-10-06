@@ -9,29 +9,68 @@
 use super::commands::PortForwardService;
 use super::panel::ObjectListPanel;
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::k8s::cluster::port_forwards::PortForwardRequest;
+use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwardRequest};
 use crate::k8s::resource::port_forwarding::{self, PortChoice};
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::*;
 use k8s_openapi::api::core::v1::Service;
 use kube::Api;
 
 /// The context the Services port-forward command lives in.
 pub const SERVICES_KEY_CONTEXT: &str = "ServicesList";
-/// The line a forward leaves above the table: where it listens, or why not.
-pub(super) const FORWARD_MESSAGE_ID: &str = "object-list-forward-message";
-
-/// How the last forward went.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ForwardMessage {
-    Started(String),
-    Failed(String),
-}
-
 impl ObjectListPanel {
     /// Whether this panel lists core Services.
     pub(super) fn lists_services(&self) -> bool {
         self.kind.gvk.group.is_empty() && self.kind.gvk.kind == "Service"
+    }
+
+    /// The selected Service's forwards; none in any other list.
+    pub(super) fn selected_forwards(
+        &self,
+        cx: &App,
+    ) -> Vec<crate::k8s::cluster::port_forwards::ForwardSummary> {
+        let Some(row_ix) = self.selected_row(cx) else {
+            return Vec::new();
+        };
+        let Some(row) = self
+            .table
+            .as_ref()
+            .and_then(|table| table.read(cx).delegate().rows().get(row_ix).cloned())
+        else {
+            return Vec::new();
+        };
+        self.forwards_of(&row.object, cx)
+    }
+
+    /// `StopPortForward` in a Services list: stops one of the selected Service's
+    /// forwards - asking which when it has several - once confirmed.
+    pub(super) fn on_action_stop_port_forward(
+        &mut self,
+        _: &crate::k8s::resource::pods::StopPortForward,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((_, name)) = self.selected_object(cx) else {
+            return;
+        };
+        let forwards = self.selected_forwards(cx);
+        crate::ui::forward_stop::stop_one_of("service", name, forwards, window, cx);
+    }
+
+    /// The forwards started from `row`'s Service; none in any other list.
+    pub(super) fn forwards_of(
+        &self,
+        row: &super::row::ObjectRow,
+        cx: &App,
+    ) -> Vec<crate::k8s::cluster::port_forwards::ForwardSummary> {
+        let (true, Some(namespace), Some(forwards)) = (
+            self.lists_services(),
+            row.namespace.as_deref(),
+            crate::k8s::cluster::port_forwards::PortForwards::existing(cx),
+        ) else {
+            return Vec::new();
+        };
+        let service = ForwardObject::service(&self.scope.context_name, namespace, &row.name);
+        forwards.read(cx).for_object(&service)
     }
 
     /// The selected row's namespace and name.
@@ -102,22 +141,27 @@ impl ObjectListPanel {
     ) {
         let ports = match ports {
             Ok(ports) => ports,
-            Err(reason) => return self.report(Err(reason), cx),
+            Err(reason) => {
+                return port_forwarding::notify_failure(&name, None, &reason, window, cx);
+            }
         };
         match ports.as_slice() {
-            [] => self.report(Err(format!("Service {name} has no ports.")), cx),
+            [] => {
+                let reason = format!("Service {name} has no ports.");
+                port_forwarding::notify_failure(&name, None, &reason, window, cx);
+            }
             [only] => {
                 let port = only.port;
-                self.forward_service(namespace, name, port, cx);
+                self.forward_service(namespace, name, port, window, cx);
             }
             _ => {
                 let panel = cx.weak_entity();
                 port_forwarding::ask_port(
                     "Forward Which Port?",
                     ports,
-                    move |port, _window, cx| {
+                    move |port, window, cx| {
                         let _ = panel.update(cx, |panel, cx| {
-                            panel.forward_service(namespace.clone(), name.clone(), port, cx)
+                            panel.forward_service(namespace.clone(), name.clone(), port, window, cx)
                         });
                     },
                     window,
@@ -128,11 +172,13 @@ impl ObjectListPanel {
     }
 
     /// Resolves `port` of Service `name` to a Running Pod's port, and forwards it.
+    /// Success shows in the Service's Forwards cell; a failure is a notification.
     fn forward_service(
         &mut self,
         namespace: String,
         name: String,
         port: u16,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let ConnectionState::Connected(client) = &self.connection.read(cx).state else {
@@ -148,9 +194,10 @@ impl ObjectListPanel {
                     .await;
             }
         });
-        cx.spawn(async move |this, cx| {
+        let window_handle = window.window_handle();
+        cx.spawn(async move |_this, cx| {
             crate::runtime::drain(rx, |resolved| {
-                let _ = this.update(cx, |this, cx| {
+                let _ = window_handle.update(cx, |_, window, cx| {
                     let result = resolved.and_then(|(pod, pod_port)| {
                         let request = PortForwardRequest {
                             context_name: context_name.clone(),
@@ -158,42 +205,17 @@ impl ObjectListPanel {
                             pod,
                             remote_port: pod_port,
                         };
-                        port_forwarding::start(request, cx)
-                            .map(|addr| port_forwarding::started_notice(addr, &name, port))
+                        let origin = ForwardObject::service(&context_name, &namespace, &name);
+                        port_forwarding::start(request, origin, cx)
                     });
-                    this.report(result, cx);
+                    if let Err(reason) = result {
+                        port_forwarding::notify_failure(&name, Some(port), &reason, window, cx);
+                    }
                 });
             })
             .await;
         })
         .detach();
-    }
-
-    fn report(&mut self, result: Result<String, String>, cx: &mut Context<Self>) {
-        self.forward_message = Some(match result {
-            Ok(notice) => ForwardMessage::Started(notice),
-            Err(reason) => ForwardMessage::Failed(format!("Port-forward failed: {reason}")),
-        });
-        cx.notify();
-    }
-
-    /// The last forward's line, above the table.
-    pub(super) fn render_forward_message(&self, cx: &App) -> Option<AnyElement> {
-        let (text, color) = match self.forward_message.as_ref()? {
-            ForwardMessage::Started(text) => (text.clone(), cx.theme().muted_foreground),
-            ForwardMessage::Failed(text) => (
-                text.clone(),
-                crate::ui::style::status(crate::ui::style::Tone::Bad, cx),
-            ),
-        };
-        Some(
-            div()
-                .debug_selector(|| FORWARD_MESSAGE_ID.into())
-                .text_sm()
-                .text_color(color)
-                .child(text)
-                .into_any_element(),
-        )
     }
 }
 

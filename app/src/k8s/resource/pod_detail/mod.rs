@@ -27,6 +27,7 @@ mod fetch;
 mod field_view;
 mod fields;
 mod format;
+mod forwards;
 pub(crate) mod glance;
 mod live;
 pub(super) mod live_events;

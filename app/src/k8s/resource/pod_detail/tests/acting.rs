@@ -9,7 +9,7 @@ use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::port_forwards::{PortForwardRequest, PortForwards};
 use crate::k8s::cluster::session::ClusterRegistry;
-use crate::k8s::resource::pod_detail::actions::{NOTICE_ID, hint_selector};
+use crate::k8s::resource::pod_detail::actions::hint_selector;
 use crate::k8s::resource::pod_detail::model::DetailView;
 use crate::k8s::resource::pod_detail::panel::PodDetailPanel;
 use crate::k8s::resource::pod_detail::register_commands;
@@ -26,10 +26,10 @@ use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const CONTEXT: &str = "kind-dev";
+pub(super) const CONTEXT: &str = "kind-dev";
 
 /// `shop/web-1`, its one container `app` declaring `port` - running, or not.
-fn pod(running: bool, port: u16) -> Value {
+pub(super) fn pod(running: bool, port: u16) -> Value {
     let state = if running {
         json!({ "running": { "startedAt": "2026-01-01T00:00:00Z" } })
     } else {
@@ -48,16 +48,16 @@ fn pod(running: bool, port: u16) -> Value {
     })
 }
 
-struct Harness {
-    cluster: FakeCluster,
-    panel: Entity<PodDetailPanel>,
-    vcx: VisualTestContext,
+pub(super) struct Harness {
+    pub(super) cluster: FakeCluster,
+    pub(super) panel: Entity<PodDetailPanel>,
+    pub(super) vcx: VisualTestContext,
 }
 
 /// The panel on `shop/web-1`, held by the fake cluster as `initial`, in a
 /// window with a `Root` (for its dialogs), its keys bound and focus in it,
 /// once it shows the pod.
-fn open(cx: &mut TestAppContext, initial: Value) -> Harness {
+pub(super) fn open(cx: &mut TestAppContext, initial: Value) -> Harness {
     open_with(cx, initial, None)
 }
 
@@ -71,6 +71,11 @@ fn open_with(
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::runtime::init(cx);
+        // A dialog slides in on the wall clock, not the test executor's, so on
+        // a slow runner a button found in one frame has moved by the next and
+        // a click misses it. Drawing every animation at its end keeps a found
+        // button where it was found.
+        cx.set_reduce_motion(true);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
         let bindings = crate::keymap::bindings(
@@ -122,16 +127,20 @@ fn open_with(
 }
 
 impl Harness {
-    fn press(&mut self, keys: &str) {
+    pub(super) fn press(&mut self, keys: &str) {
         self.vcx.simulate_keystrokes(keys);
         self.vcx.run_until_parked();
     }
 
-    fn dialog_open(&mut self) -> bool {
+    pub(super) fn dialog_open(&mut self) -> bool {
         self.vcx.update(|window, cx| window.has_active_dialog(cx))
     }
 
-    fn wait_for(&mut self, what: &str, done: impl Fn(&PodDetailPanel, &gpui_kit::App) -> bool) {
+    pub(super) fn wait_for(
+        &mut self,
+        what: &str,
+        done: impl Fn(&PodDetailPanel, &gpui_kit::App) -> bool,
+    ) {
         for _ in 0..400 {
             self.vcx.run_until_parked();
             if self.vcx.update(|_, cx| done(self.panel.read(cx), cx)) {
@@ -154,7 +163,7 @@ impl Harness {
     }
 
     /// Whether the hint labelled `label` is drawn.
-    fn hint_shown(&mut self, label: &str) -> bool {
+    pub(super) fn hint_shown(&mut self, label: &str) -> bool {
         self.vcx.update(|window, cx| window.render_frame(cx));
         // `debug_bounds` takes a `'static` selector; a test's few leak nothing
         // that matters.
@@ -275,11 +284,6 @@ async fn shift_f_forwards_the_pods_port(cx: &mut TestAppContext) {
             pod: "web-1".into(),
             remote_port: 18_094,
         }]
-    );
-    harness.vcx.update(|window, cx| window.render_frame(cx));
-    assert!(
-        harness.vcx.debug_bounds(NOTICE_ID).is_some(),
-        "it says where it listens"
     );
 }
 

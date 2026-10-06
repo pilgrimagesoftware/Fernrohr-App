@@ -86,10 +86,9 @@ pub struct PodDetailPanel {
     /// values live only here, and only until hidden, the tab is left, or the
     /// panel closes.
     pub(super) configuration: super::configuration::ConfigurationState,
-    /// The last action the cluster refused, or what the last action did
-    /// (`actions`), shown above the content until the next one.
+    /// The last action the cluster refused (`actions`), shown above the
+    /// content until the next one.
     pub(super) action_refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
-    pub(super) action_notice: Option<String>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -102,6 +101,10 @@ impl PodDetailPanel {
             .detach();
         let discovery = DiscoveryRegistry::kinds(cx, &scope.context_name);
         cx.observe(&discovery, |_, _, cx| cx.notify()).detach();
+        // The forward strip and container ports follow every forward starting or
+        // stopping, here or anywhere (`port-forward-indicators` 3).
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
 
         let mut this = Self {
             pod,
@@ -111,7 +114,6 @@ impl PodDetailPanel {
             state: PodDetailState::Loading,
             configuration: Default::default(),
             action_refusal: None,
-            action_notice: None,
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),
@@ -142,6 +144,8 @@ impl PodDetailPanel {
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
         let discovery = cx.new(|_| DiscoveredKinds::loaded(Vec::new()));
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             pod,
             scope,
@@ -150,7 +154,6 @@ impl PodDetailPanel {
             state: PodDetailState::Loading,
             configuration: Default::default(),
             action_refusal: None,
-            action_notice: None,
             viewing: view,
             active_tab: DetailSection::Overview,
             open_sections: std::collections::HashSet::new(),

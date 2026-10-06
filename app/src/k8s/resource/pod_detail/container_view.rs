@@ -170,7 +170,7 @@ impl PodDetailPanel {
                 )
             })
             .when(!container.ports.is_empty(), |this| {
-                this.child(muted_line(format!("Ports: {}", container.ports.join(", "))))
+                this.child(self.render_ports(&container.name, &container.ports, cx))
             })
             .when(!container.requests.is_empty(), |this| {
                 this.child(muted_line(format!(

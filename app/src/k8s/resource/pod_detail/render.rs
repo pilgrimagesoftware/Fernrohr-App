@@ -73,6 +73,7 @@ impl PodDetailPanel {
         div()
             .flex()
             .flex_col()
+            .children(self.render_forward_strip(cx))
             .child(tabs)
             .child(
                 div()
@@ -327,6 +328,7 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_kill_pod))
             .on_action(cx.listener(Self::on_action_shell_pod))
             .on_action(cx.listener(Self::on_action_port_forward_pod))
+            .on_action(cx.listener(Self::on_action_stop_port_forward))
             .flex()
             .flex_col()
             .child(header)

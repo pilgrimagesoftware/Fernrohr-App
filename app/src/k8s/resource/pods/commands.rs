@@ -25,6 +25,7 @@ actions!(
         KillPod,
         ShellPod,
         PortForwardPod,
+        StopPortForward,
         OpenInBackground,
         EditPod
     ]
@@ -67,6 +68,9 @@ pub(super) const KILL_KEY: &str = "ctrl-k";
 pub(super) const SHELL_KEY: &str = "s";
 /// k9s's port-forward key.
 pub(super) const PORT_FORWARD_KEY: &str = "shift-f";
+/// Stop Port Forward (`port-forward-indicators` 4.1), here, in a Services list
+/// and in the pod detail panel.
+pub(crate) const STOP_PORT_FORWARD_KEY: &str = "ctrl-shift-f";
 /// k9s's edit key, as every list's (#140).
 pub(super) const EDIT_KEY: &str = "e";
 pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
@@ -144,6 +148,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Port-Forward Selected Pod",
         PORT_FORWARD_KEY,
         Box::new(PortForwardPod),
+        None,
+    );
+    register(
+        "pods.stop_port_forward",
+        "Pods: Stop Port-Forward of Selected Pod",
+        STOP_PORT_FORWARD_KEY,
+        Box::new(StopPortForward),
         None,
     );
     register(

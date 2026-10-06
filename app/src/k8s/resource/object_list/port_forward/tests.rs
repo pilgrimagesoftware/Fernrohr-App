@@ -168,4 +168,47 @@ async fn a_service_forwards_its_chosen_port_to_a_running_pod(cx: &mut TestAppCon
         [expected],
         "port 80's `http` target is the pod's 18083"
     );
+
+    // `port-forward-indicators` 2.1: the Service's own row shows it.
+    let indicator_drawn = |vcx: &mut VisualTestContext| {
+        vcx.update(|window, cx| {
+            use gpui_kit::test::TestWindowExt as _;
+            window.render_frame(cx)
+        });
+        let selector: &'static str = crate::ui::forward_indicator::selector("web").leak();
+        vcx.debug_bounds(selector).is_some()
+    };
+    assert!(
+        indicator_drawn(&mut vcx),
+        "the Service's row shows its forward"
+    );
+
+    // `port-forward-indicators` 4.1 from the Services list, by keystroke: Stop
+    // Port Forward on the selected Service asks first - Escape keeps the forward -
+    // then Enter stops it, and its Forwards cell clears.
+    let settle = |vcx: &mut VisualTestContext| {
+        vcx.run_until_parked();
+        vcx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        vcx.run_until_parked();
+    };
+    let listed = |vcx: &mut VisualTestContext| {
+        vcx.update(|_, cx| PortForwards::entity(cx).read(cx).list().len())
+    };
+    press(&mut vcx, "ctrl-shift-f");
+    settle(&mut vcx);
+    assert!(
+        vcx.update(|window, cx| window.has_active_dialog(cx)),
+        "it asks"
+    );
+    press(&mut vcx, "escape");
+    settle(&mut vcx);
+    assert_eq!(listed(&mut vcx), 1, "Escape keeps the forward");
+
+    press(&mut vcx, "ctrl-shift-f");
+    settle(&mut vcx);
+    press(&mut vcx, "enter");
+    settle(&mut vcx);
+    assert_eq!(listed(&mut vcx), 0, "Enter stops it");
+    assert!(!indicator_drawn(&mut vcx), "and the Forwards cell clears");
 }

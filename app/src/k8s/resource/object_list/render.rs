@@ -96,6 +96,15 @@ impl ObjectListPanel {
                 window,
             ))
             .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window));
+        // A Service with a forward running can stop it (`port-forward-indicators` 4.1).
+        if !self.selected_forwards(cx).is_empty() {
+            hints = hints.child(Self::hint(
+                &crate::k8s::resource::pods::StopPortForward,
+                crate::k8s::resource::pods::STOP_PORT_FORWARD_KEY,
+                "Stop forward",
+                window,
+            ));
+        }
         if self.kind.verbs.patch {
             let key = Kbd::binding_for_action(
                 &super::commands::EditSelected,
@@ -148,7 +157,6 @@ impl ObjectListPanel {
                     .on_action(cx.listener(Self::on_action_clear_filter))
                     .child(Input::new(&filter)),
             )
-            .children(self.render_forward_message(cx))
             .children(self.render_refusal(cx))
             .child({
                 let context = self.table_key_context();
@@ -296,6 +304,7 @@ impl Render for ObjectListPanel {
             .on_action(cx.listener(Self::on_action_fit_columns))
             .on_action(cx.listener(Self::on_action_refresh))
             .on_action(cx.listener(Self::on_action_port_forward_service))
+            .on_action(cx.listener(Self::on_action_stop_port_forward))
             .child(
                 div()
                     .size_full()

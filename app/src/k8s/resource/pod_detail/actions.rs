@@ -16,12 +16,10 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::delete_flow::refusal::{self, Refusal};
 use crate::k8s::resource::delete_flow::{self, DeleteTarget};
 use crate::k8s::resource::pods::{
-    DeletePod, ForwardReport, KillPod, PodSelection, PortForwardPod, ShellPod, forward_pod,
-    running_containers, shell_into,
+    DeletePod, KillPod, PodSelection, PortForwardPod, ShellPod, forward_pod, running_containers,
+    shell_into,
 };
-use crate::k8s::resource::resource_actions::ActionFailure;
 use crate::ui::detail::lifecycle::Lifecycle;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
 use std::rc::Rc;
@@ -39,7 +37,6 @@ pub(super) fn hint_selector(label: &str) -> String {
 /// The refusal banner, its Dismiss button, and a forward's notice.
 pub(super) const REFUSAL_ID: &str = "pod-detail-refusal";
 pub(super) const DISMISS_REFUSAL_ID: &str = "pod-detail-refusal-dismiss";
-pub(super) const NOTICE_ID: &str = "pod-detail-action-notice";
 
 impl PodDetailPanel {
     /// The pod, while there is one to act on: loaded and not known gone.
@@ -70,7 +67,7 @@ impl PodDetailPanel {
     }
 
     /// The pod as the Pods list's actions address it.
-    fn selection(&self) -> PodSelection {
+    pub(super) fn selection(&self) -> PodSelection {
         let containers = self
             .live_pod()
             .and_then(|pod| pod.spec.as_ref())
@@ -95,7 +92,6 @@ impl PodDetailPanel {
 
     fn clear_action_report(&mut self, cx: &mut Context<Self>) {
         self.action_refusal = None;
-        self.action_notice = None;
         cx.notify();
     }
 
@@ -162,7 +158,8 @@ impl PodDetailPanel {
     }
 
     /// `PortForwardPod`: forwards the pod's port, asking which when it
-    /// declares several, and says where it listens.
+    /// declares several. The panel's forward strip shows it started; a failure
+    /// is a notification.
     pub(super) fn on_action_port_forward_pod(
         &mut self,
         _: &PortForwardPod,
@@ -173,28 +170,7 @@ impl PodDetailPanel {
             return;
         };
         self.clear_action_report(cx);
-        let panel = cx.weak_entity();
-        let action = format!("Port-forward pod {}", self.pod.name);
-        let report: ForwardReport = Rc::new(move |result, cx| {
-            let _ = panel.update(cx, |panel, cx| {
-                panel.action_refusal = None;
-                panel.action_notice = None;
-                match result {
-                    Ok(notice) => panel.action_notice = Some(notice),
-                    Err(message) => {
-                        panel.action_refusal = Some(Refusal {
-                            action: action.clone(),
-                            failure: ActionFailure {
-                                message,
-                                detail: String::new(),
-                            },
-                        });
-                    }
-                }
-                cx.notify();
-            });
-        });
-        forward_pod(self.selection(), Some(&pod), report, window, cx);
+        forward_pod(self.selection(), Some(&pod), window, cx);
     }
 
     /// The acting keys' hints, after Logs: Shell while `shellable`, Port
@@ -228,6 +204,14 @@ impl PodDetailPanel {
                 "Port forward",
             ));
         }
+        if !self.pod_forwards(cx).is_empty() {
+            hints.push(hint(
+                &crate::k8s::resource::pods::StopPortForward,
+                PANEL_KEY_CONTEXT,
+                crate::k8s::resource::pods::STOP_PORT_FORWARD_KEY,
+                "Stop forward",
+            ));
+        }
         if deletable {
             hints.push(hint(
                 &DeletePod,
@@ -249,29 +233,19 @@ impl PodDetailPanel {
                 .child(element)
                 .into_any_element()
         };
-        if let Some(refused) = self.action_refusal.clone() {
-            let this = cx.weak_entity();
-            return Some(wrap(refusal::render(
-                refused,
-                REFUSAL_ID,
-                DISMISS_REFUSAL_ID,
-                move |cx| {
-                    let _ = this.update(cx, |this, cx| {
-                        this.action_refusal = None;
-                        cx.notify();
-                    });
-                },
-                cx,
-            )));
-        }
-        let notice = self.action_notice.clone()?;
-        Some(wrap(
-            div()
-                .debug_selector(|| NOTICE_ID.into())
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(notice)
-                .into_any_element(),
-        ))
+        let refused = self.action_refusal.clone()?;
+        let this = cx.weak_entity();
+        Some(wrap(refusal::render(
+            refused,
+            REFUSAL_ID,
+            DISMISS_REFUSAL_ID,
+            move |cx| {
+                let _ = this.update(cx, |this, cx| {
+                    this.action_refusal = None;
+                    cx.notify();
+                });
+            },
+            cx,
+        )))
     }
 }

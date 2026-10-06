@@ -54,6 +54,7 @@ pub(super) fn pod_table_rows_fixture() -> Vec<crate::k8s::resource::pods_table::
                 pod_ip: ip.into(),
                 node: node.into(),
                 age_secs,
+                forwards: 0,
             },
             selection: PodSelection {
                 namespace: namespace.into(),
@@ -61,6 +62,7 @@ pub(super) fn pod_table_rows_fixture() -> Vec<crate::k8s::resource::pods_table::
                 containers: Vec::new(),
                 context_name: "ctx".into(),
             },
+            forwards: Vec::new(),
         },
     )
     .collect()

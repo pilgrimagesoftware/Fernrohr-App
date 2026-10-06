@@ -19,15 +19,18 @@ pub(in crate::k8s::resource) enum PodColumn {
     Age,
     Ip,
     Node,
+    /// `port-forward-indicators` 2.1: the forwards reaching the pod.
+    Forwards,
 }
 
 impl PodColumn {
     /// Left-to-right order a freshly created table starts with.
-    pub(in crate::k8s::resource) const DEFAULT_ORDER: [PodColumn; 8] = [
+    pub(in crate::k8s::resource) const DEFAULT_ORDER: [PodColumn; 9] = [
         PodColumn::Name,
         PodColumn::Namespace,
         PodColumn::Ready,
         PodColumn::Status,
+        PodColumn::Forwards,
         PodColumn::Restarts,
         PodColumn::Age,
         PodColumn::Ip,
@@ -46,6 +49,7 @@ impl PodColumn {
             PodColumn::Age => "age",
             PodColumn::Ip => "ip",
             PodColumn::Node => "node",
+            PodColumn::Forwards => "forwards",
         }
     }
 
@@ -59,6 +63,7 @@ impl PodColumn {
             PodColumn::Age => "Age",
             PodColumn::Ip => "IP",
             PodColumn::Node => "Node",
+            PodColumn::Forwards => "Forwards",
         }
     }
 
@@ -74,6 +79,7 @@ impl PodColumn {
             PodColumn::Age => 70.,
             PodColumn::Ip => 150.,
             PodColumn::Node => 180.,
+            PodColumn::Forwards => 90.,
         }
     }
 
@@ -103,6 +109,7 @@ pub(in crate::k8s::resource) fn compare(a: &PodRow, b: &PodRow, col: PodColumn) 
         PodColumn::Restarts => a.restarts.cmp(&b.restarts),
         PodColumn::Ip => a.pod_ip.cmp(&b.pod_ip),
         PodColumn::Node => a.node.cmp(&b.node),
+        PodColumn::Forwards => a.forwards.cmp(&b.forwards),
     }
 }
 
@@ -117,5 +124,7 @@ pub(super) fn cell_text(row: &PodRow, col: PodColumn) -> String {
         PodColumn::Age => row.age.clone(),
         PodColumn::Ip => row.pod_ip.clone(),
         PodColumn::Node => row.node.clone(),
+        PodColumn::Forwards if row.forwards == 0 => String::new(),
+        PodColumn::Forwards => row.forwards.to_string(),
     }
 }

@@ -100,6 +100,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(PortForwardService),
         menu: None,
     });
+    registry.register(Command {
+        id: "services.stop_port_forward",
+        title: "Services: Stop Port-Forward of Selected Service",
+        default_binding: crate::k8s::resource::pods::STOP_PORT_FORWARD_KEY,
+        context: Some("ServicesList && !Input"),
+        action: Box::new(crate::k8s::resource::pods::StopPortForward),
+        menu: None,
+    });
     // Only in a list of a kind discovery says can be patched.
     registry.register(Command {
         id: "object_list.edit",

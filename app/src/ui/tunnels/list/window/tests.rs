@@ -260,8 +260,8 @@ async fn the_tunnels_windows_content_is_inset_from_its_edges(cx: &mut TestAppCon
 
 /// `k9s-remaining-keybindings` 4.3, end to end over a fake cluster's Running pod:
 /// a forward started from a row is listed in the Tunnels window in its current
-/// state, and its Stop releases it through the registry - gone from the list
-/// and from the live set.
+/// state, and its Stop - once confirmed (`port-forward-indicators` 5.2) - releases
+/// it through the registry, gone from the list and from the live set.
 #[gpui_kit::test]
 async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppContext) {
     use crate::forward::managed::ForwardState;
@@ -293,17 +293,26 @@ async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppCo
     let forwards = cx.update(PortForwards::entity);
     forwards
         .update(cx, |forwards, cx| {
-            forwards.start(request.clone(), client, cx)
+            forwards.start(
+                request.clone(),
+                crate::k8s::cluster::port_forwards::ForwardObject::pod("demo", "shop", "web-1"),
+                client,
+                cx,
+            )
         })
         .expect("started");
 
     let window = cx.add_window(|window, cx| {
-        TunnelsWindow::new(
-            temp_tunnels_path(),
-            Some(missing_kubeconfig_path()),
-            window,
-            cx,
-        )
+        use gpui_kit::AppContext as _;
+        let view = cx.new(|cx| {
+            TunnelsWindow::new(
+                temp_tunnels_path(),
+                Some(missing_kubeconfig_path()),
+                window,
+                cx,
+            )
+        });
+        gpui_kit::component::Root::new(view, window, cx)
     });
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
     for _ in 0..400 {
@@ -326,6 +335,8 @@ async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppCo
     });
 
     vcx.simulate_click(stop.center(), Modifiers::none());
+    vcx.run_until_parked();
+    vcx.simulate_keystrokes("enter");
     vcx.run_until_parked();
 
     forwards.read_with(&vcx, |forwards, _| {

@@ -168,7 +168,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     });
     // The Pods list's own actions, bound here for the panel's pod - outside
     // text fields, like View Logs.
-    use crate::k8s::resource::pods::{DeletePod, KillPod, PortForwardPod, ShellPod};
+    use crate::k8s::resource::pods::{
+        DeletePod, KillPod, PortForwardPod, STOP_PORT_FORWARD_KEY, ShellPod, StopPortForward,
+    };
     let mut acting = |id, title, default_binding, context, action: Box<dyn Action>| {
         registry.register(Command {
             id,
@@ -206,6 +208,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         PORT_FORWARD_KEY,
         VIEW_LOGS_CONTEXT,
         Box::new(PortForwardPod),
+    );
+    acting(
+        "pod_detail.stop_port_forward",
+        "Pod Detail: Stop Port-Forward",
+        STOP_PORT_FORWARD_KEY,
+        VIEW_LOGS_CONTEXT,
+        Box::new(StopPortForward),
     );
     super::window_commands::register_commands(registry);
 }

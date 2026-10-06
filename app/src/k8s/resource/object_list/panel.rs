@@ -41,8 +41,6 @@ pub struct ObjectListPanel {
     pub(super) filter: Option<Entity<InputState>>,
     /// The column layout to start the table with, once it's built.
     pub(super) initial_layout: ColumnLayout,
-    /// How the last port-forward went, in a Services list (`port_forward`).
-    pub(super) forward_message: Option<super::port_forward::ForwardMessage>,
     /// The last delete the cluster refused, shown until dismissed (`delete`).
     pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
 }
@@ -70,6 +68,10 @@ impl ObjectListPanel {
         })
         .detach();
         cx.observe(&namespaces, |_, _, cx| cx.notify()).detach();
+        // A Services list's Forwards column follows every forward starting or
+        // stopping (`port-forward-indicators` 2.1).
+        let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
+        cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         cx.on_release(|this: &mut Self, cx| {
             if this.subscribed {
                 ClusterRegistry::unsubscribe_kind(cx, &this.scope.context_name, &this.kind);
@@ -88,7 +90,6 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
-            forward_message: None,
             refusal: None,
         };
         this.subscribe_if_connected(&connection, cx);
@@ -121,7 +122,6 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
-            forward_message: None,
             refusal: None,
         }
     }
@@ -172,7 +172,11 @@ impl ObjectListPanel {
                         .is_some_and(|namespace| namespaces.contains(namespace))
             })
             .filter(|row| row.name.contains(filter.as_str()))
-            .map(|row| ListRow::new(row.clone(), now))
+            .map(|row| {
+                let mut listed = ListRow::new(row.clone(), now);
+                listed.forwards = self.forwards_of(row, cx);
+                listed
+            })
             .collect()
     }
 

@@ -15,8 +15,6 @@ use crate::k8s::resource::delete_flow::{self, DeleteTarget};
 /// The failure banner, and its Dismiss button.
 pub(super) const FAILURE_ID: &str = "pods-action-failure";
 pub(super) const DISMISS_FAILURE_ID: &str = "pods-action-failure-dismiss";
-/// The notice an action leaves, like where a port-forward listens.
-pub(super) const NOTICE_ID: &str = "pods-action-notice";
 
 /// An action the cluster refused, as the banner above the table shows it.
 pub(super) type PodActionFailure = Refusal;
@@ -68,7 +66,6 @@ impl PodsPanel {
 
     fn clear_action_report(&mut self, cx: &mut Context<Self>) {
         self.action_failure = None;
-        self.action_notice = None;
         cx.notify();
     }
 
@@ -91,21 +88,6 @@ impl PodsPanel {
                 cx.notify();
             });
         })
-    }
-
-    /// What the last action did, when it says something, above the table.
-    pub(super) fn render_action_notice(&self, cx: &Context<Self>) -> Option<AnyElement> {
-        let notice = self.action_notice.clone()?;
-        let space = crate::ui::space::spacing(cx);
-        Some(
-            div()
-                .debug_selector(|| NOTICE_ID.into())
-                .mb(space.control_gap)
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(notice)
-                .into_any_element(),
-        )
     }
 
     /// The banner for a refused action, above the table.
