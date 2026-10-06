@@ -67,7 +67,7 @@ async fn failed_attempt_shows_the_reason_and_stays_interactive(cx: &mut gpui_kit
     }
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);
@@ -133,7 +133,7 @@ async fn set_tunnel_binds_and_unbinds_through_the_store(cx: &mut gpui_kit::TestA
     use crate::tunnel::store::TunnelStore;
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -215,7 +215,7 @@ async fn a_tunnel_created_elsewhere_appears_in_an_open_picker(cx: &mut gpui_kit:
     use crate::tunnel::store::TunnelStore;
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = std::env::temp_dir().join(format!(
@@ -274,7 +274,7 @@ async fn a_tunnel_created_elsewhere_appears_in_an_open_picker(cx: &mut gpui_kit:
 #[gpui_kit::test]
 async fn exclude_removes_used_contexts_and_leaves_the_rest(cx: &mut gpui_kit::TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);
@@ -310,7 +310,7 @@ async fn exclude_removes_used_contexts_and_leaves_the_rest(cx: &mut gpui_kit::Te
 #[gpui_kit::test]
 async fn excluding_an_unlisted_context_changes_nothing(cx: &mut gpui_kit::TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);
@@ -341,7 +341,7 @@ async fn excluding_an_unlisted_context_changes_nothing(cx: &mut gpui_kit::TestAp
 #[gpui_kit::test]
 async fn excluding_from_a_failed_picker_leaves_the_error_alone(cx: &mut gpui_kit::TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);

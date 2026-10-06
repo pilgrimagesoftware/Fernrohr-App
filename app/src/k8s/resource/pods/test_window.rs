@@ -97,7 +97,7 @@ pub(in crate::k8s::resource::pods) fn open(cx: &mut TestAppContext) -> Harness {
     cx.executor().allow_parking();
     let details_opened = Rc::new(Cell::new(0));
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::util::shell::init(cx, temp_path(), &temp_path());
         let opened = details_opened.clone();

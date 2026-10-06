@@ -40,7 +40,7 @@ fn settings(cx: &mut TestAppContext, ui_path: &std::path::Path) -> VisualTestCon
     std::fs::write(ui_path, "theme = \"dark\"\ntext_size = 120\n").unwrap();
     let path = ui_path.to_path_buf();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         crate::ui::theme::init(ThemePreference::Light, cx);
         crate::util::shell::init(cx, workspace, &keymap);

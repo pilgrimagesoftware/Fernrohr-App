@@ -23,7 +23,7 @@ struct Harness {
 fn open(cx: &mut TestAppContext) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let (stdin_tx, stdin) = mpsc::channel(8);

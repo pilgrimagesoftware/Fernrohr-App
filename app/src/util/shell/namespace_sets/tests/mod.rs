@@ -66,7 +66,7 @@ pub(super) fn harness_with(
         std::fs::write(&keymap_path, keymap).unwrap();
     }
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap_path);
         for context in ["demo", "other"] {

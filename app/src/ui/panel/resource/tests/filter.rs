@@ -14,7 +14,7 @@ use gpui_kit::TestAppContext;
 #[gpui_kit::test]
 async fn setting_the_filter_narrows_visible_sections(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -66,7 +66,7 @@ async fn setting_the_filter_narrows_visible_sections(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn filtering_to_a_substring_no_kind_contains_shows_no_sections(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);

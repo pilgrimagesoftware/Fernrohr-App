@@ -71,7 +71,7 @@ fn weight_class(font: &[u8]) -> u16 {
 fn init_registers_the_bundled_files_the_roles_resolve_to() {
     with_recorded_text(|cx, recorded| {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::ui::theme::init(ThemePreference::Light, cx);
         });
         let added = recorded.added_fonts();
@@ -178,7 +178,7 @@ fn every_data_weight_has_its_own_manrope_face() {
 fn each_role_draws_its_text_in_its_family() {
     with_recorded_text(|cx, recorded| {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::ui::theme::init(ThemePreference::Light, cx);
         });
         let mono = cx.update(|cx| cx.theme().mono_font_family.clone());

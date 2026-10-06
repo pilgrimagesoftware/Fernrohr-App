@@ -58,7 +58,7 @@ fn meet_moves_a_colour_until_it_passes() {
 }
 
 fn in_mode(mode: ThemeMode, cx: &mut App) {
-    gpui_kit::init(cx);
+    crate::util::test_ui::init(cx);
     Theme::change(mode, None, cx);
     crate::ui::accent::refresh(cx);
 }

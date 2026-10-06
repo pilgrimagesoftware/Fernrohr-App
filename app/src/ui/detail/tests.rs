@@ -120,7 +120,7 @@ fn chips_and_rows_are_data_text_and_headings_and_buttons_frame_text() {
 
     with_recorded_text(|cx, recorded| {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
         });
         let window: gpui_kit::AnyWindowHandle = cx.add_window(|_, _| FontSample).into();

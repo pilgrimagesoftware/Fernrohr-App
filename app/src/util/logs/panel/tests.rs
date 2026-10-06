@@ -25,7 +25,7 @@ mod previous;
 #[gpui_kit::test]
 async fn a_logs_panel_ignores_a_selection_from_a_different_context(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         ClusterRegistry::insert_test_session(cx, "a", ConnectionState::Connecting);
     });
@@ -58,7 +58,7 @@ async fn a_logs_panel_ignores_a_selection_from_a_different_context(cx: &mut Test
 #[gpui_kit::test]
 async fn a_click_focuses_the_logs_panel(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         ClusterRegistry::insert_test_session(cx, "a", ConnectionState::Connecting);
     });

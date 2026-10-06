@@ -27,7 +27,7 @@ async fn a_pods_panel_shortcut_key_reaches_the_window(cx: &mut TestAppContext) {
     // connect whose completion wakes GPUI from a tokio thread.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace.clone(), &keymap);
     });

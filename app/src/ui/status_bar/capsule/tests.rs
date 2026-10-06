@@ -40,7 +40,7 @@ fn init(cx: &mut TestAppContext) {
     // `k8s::cluster::session`'s and `ui/status_bar.rs`'s own tests use for this reason.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 }

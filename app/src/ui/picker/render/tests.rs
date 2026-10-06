@@ -11,7 +11,7 @@ async fn arrow_keys_move_the_selection(cx: &mut gpui_kit::TestAppContext) {
     use gpui_kit::VisualTestContext;
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = cx.add_window(ClusterPicker::new);

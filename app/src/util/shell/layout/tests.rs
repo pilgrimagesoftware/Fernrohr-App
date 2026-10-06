@@ -91,7 +91,7 @@ async fn closing_a_window_releases_only_its_own_hold(cx: &mut TestAppContext) {
     // connect whose completion wakes GPUI from a tokio thread.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         // `init` registers the `on_window_closed` hook that releases a closed
         // window's holds - the thing under test.
@@ -154,7 +154,7 @@ async fn closing_a_window_while_others_stay_open_forgets_it(cx: &mut TestAppCont
     let path = temp_workspace_path();
     let keymap_path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, path.clone(), &keymap_path);
         open_window(cx, WindowLayout::default());

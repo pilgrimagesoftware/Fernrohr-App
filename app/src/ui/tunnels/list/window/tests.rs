@@ -41,7 +41,7 @@ async fn a_second_construction_over_the_same_files_reads_the_same_state(cx: &mut
     // `cluster::session`'s and `cluster::connection`'s own tests allow-park for.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -85,7 +85,7 @@ async fn a_second_construction_over_the_same_files_reads_the_same_state(cx: &mut
 async fn a_running_state_follows_acquire_and_release(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -123,7 +123,7 @@ async fn a_running_state_follows_acquire_and_release(cx: &mut TestAppContext) {
 async fn remove_deletes_a_stale_binding(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -184,7 +184,7 @@ async fn remove_deletes_a_stale_binding(cx: &mut TestAppContext) {
 async fn an_unreadable_kubeconfig_flags_nothing_stale(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = temp_tunnels_path();
@@ -220,7 +220,7 @@ async fn the_tunnels_windows_content_is_inset_from_its_edges(cx: &mut TestAppCon
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         TextScale::new(1.5).expect("a valid scale").set(cx);
     });
@@ -272,7 +272,7 @@ async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppCo
 
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let (cluster, client) = crate::k8s::test_cluster::FakeCluster::start(cx);
@@ -355,7 +355,7 @@ async fn a_row_started_forward_is_listed_and_stop_releases_it(cx: &mut TestAppCo
 async fn each_row_draws_its_kind_badge(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let tunnels_path = crate::util::test_paths::temp_path("tunnels-kind-badge");

@@ -184,7 +184,7 @@ mod tests {
     async fn an_absent_contexts_command_is_not_offered(cx: &mut TestAppContext) {
         let ran = Rc::new(Cell::new(false));
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let mut registry = CommandRegistry::new();
             registry.register(Command {
                 id: "test.absent",
@@ -224,7 +224,7 @@ mod tests {
     async fn a_secondary_contexts_command_is_offered(cx: &mut TestAppContext) {
         let ran = Rc::new(Cell::new(false));
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let mut registry = CommandRegistry::new();
             registry.register(Command {
                 id: "test.conditional",
@@ -263,7 +263,7 @@ mod tests {
     async fn arrows_select_and_enter_runs(cx: &mut TestAppContext) {
         let ran_second = Rc::new(Cell::new(false));
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let mut registry = CommandRegistry::new();
             for (id, title, action) in [
                 (
@@ -311,7 +311,7 @@ mod tests {
     async fn typing_selects_the_first_match_and_enter_runs_it(cx: &mut TestAppContext) {
         let ran_second = Rc::new(Cell::new(false));
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let mut registry = CommandRegistry::new();
             for (id, title, action) in [
                 (

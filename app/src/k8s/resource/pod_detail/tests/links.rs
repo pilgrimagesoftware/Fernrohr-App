@@ -37,7 +37,7 @@ async fn a_namespace_reference_is_a_link_and_an_owner_with_no_viewer_is_not(
     cx: &mut TestAppContext,
 ) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let followed = record_follows(cx);
@@ -90,7 +90,7 @@ async fn an_owner_becomes_a_link_once_its_kind_is_discovered(cx: &mut TestAppCon
     use kube::core::GroupVersionKind;
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let followed = record_follows(cx);
@@ -159,11 +159,8 @@ async fn g_opens_the_picker_on_a_pod_and_enter_follows_its_namespace(cx: &mut Te
     use gpui_kit::VisualTestContext;
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
-        // Settle the picker dialog's entrance on its first frame - see
-        // `ui::link::tests::harness`.
-        cx.set_reduce_motion(true);
         let mut registry = CommandRegistry::new();
         crate::ui::link::register_commands(&mut registry);
         let bindings = keymap::bindings(
@@ -234,7 +231,7 @@ async fn g_opens_the_picker_on_a_pod_and_enter_follows_its_namespace(cx: &mut Te
 #[gpui_kit::test]
 async fn every_reference_leads_with_its_kinds_icon(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx, ConnectionState::Connecting);

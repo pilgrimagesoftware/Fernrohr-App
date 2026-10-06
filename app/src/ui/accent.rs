@@ -96,7 +96,7 @@ mod tests {
     #[gpui_kit::test]
     fn without_a_system_accent_the_theme_blue_is_used(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             cx.set_global(SystemAccent(None));
             assert_eq!(focus_accent(cx), cx.theme().blue);
         });
@@ -107,7 +107,7 @@ mod tests {
     fn a_system_accent_wins_over_the_theme(cx: &mut TestAppContext) {
         let accent = hsla(0.8, 0.7, 0.5, 1.);
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             cx.set_global(SystemAccent(Some(accent)));
             assert_eq!(focus_accent(cx), accent);
             cx.update_global::<SystemAccent, _>(|stored, _| stored.0 = None);

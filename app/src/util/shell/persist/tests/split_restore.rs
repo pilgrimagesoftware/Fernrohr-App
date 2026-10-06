@@ -22,7 +22,7 @@ async fn a_nested_split_round_trips_its_sizes(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     let path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.set_global(SavedDockLayouts(
             crate::config::dock_layouts::DockLayouts::default(),

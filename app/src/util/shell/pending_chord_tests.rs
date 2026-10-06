@@ -61,7 +61,7 @@ fn harness_with_keymap(cx: &mut TestAppContext, keymap_text: &str) -> Harness {
         std::fs::write(&keymap, keymap_text).unwrap();
     }
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
         ClusterRegistry::insert_test_session(cx, "demo", ConnectionState::Connecting);
@@ -298,7 +298,7 @@ impl Render for DockStandIn {
 /// many times Close Group ran, and whether the bar saw the chord pending.
 fn close_group_by_chord(cx: &mut TestAppContext, with_bar: bool) -> (usize, bool) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         let mut registry = CommandRegistry::new();
         crate::ui::panel::arrange::register_commands(&mut registry);
         cx.bind_keys(crate::keymap::bindings(

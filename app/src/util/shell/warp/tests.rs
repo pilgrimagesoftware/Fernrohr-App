@@ -43,7 +43,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
         for context in ["demo", "other"] {

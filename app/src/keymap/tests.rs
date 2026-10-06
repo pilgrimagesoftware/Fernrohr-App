@@ -207,7 +207,7 @@ mod live {
         let path = super::temp_path();
         let _ = std::fs::remove_file(&path);
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let registry = registry();
             let config = load(&path, &registry);
             cx.bind_keys(bindings(&registry, &config, &gpui_kit::DummyKeyboardMapper));
@@ -360,7 +360,7 @@ mod override_precedence {
         let path = super::temp_path();
         std::fs::write(&path, keymap_text).expect("written");
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             let registry = registry();
             let config = crate::keymap::load(&path, &registry);
             cx.bind_keys(bindings(&registry, &config, &gpui_kit::DummyKeyboardMapper));

@@ -109,7 +109,7 @@ fn panel_opening_actions_are_registered_commands() {
 #[gpui_kit::test]
 async fn both_panel_opening_actions_dispatch(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let mut registry = CommandRegistry::new();

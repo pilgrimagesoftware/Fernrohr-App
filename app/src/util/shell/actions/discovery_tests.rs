@@ -27,7 +27,7 @@ fn harness(cx: &mut TestAppContext, api: &MockApi) -> Harness {
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
     let client = {
         cx.update(|cx| {
-            gpui_kit::init(cx);
+            crate::util::test_ui::init(cx);
             crate::runtime::init(cx);
         });
         let handle = cx.update(|cx| crate::runtime::handle(cx));

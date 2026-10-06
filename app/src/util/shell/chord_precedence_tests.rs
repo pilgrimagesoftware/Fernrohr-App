@@ -27,7 +27,7 @@ fn harness(cx: &mut TestAppContext, keymap_text: &str) -> Harness {
         std::fs::write(&keymap, keymap_text).unwrap();
     }
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
         ClusterRegistry::insert_test_session(cx, "demo", ConnectionState::Connecting);

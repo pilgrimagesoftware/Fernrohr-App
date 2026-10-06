@@ -30,7 +30,7 @@ fn window_with_pods(cx: &mut TestAppContext, overrides: &[(&str, &str)]) -> Visu
         crate::config::save(&keymap, &config).expect("wrote keymap.toml");
     }
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
         ClusterRegistry::insert_test_session(cx, "demo", ConnectionState::Connecting);

@@ -36,7 +36,7 @@ fn count_show_logs(cx: &mut TestAppContext) -> Arc<AtomicUsize> {
     let count = Arc::new(AtomicUsize::new(0));
     let seen = count.clone();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.bind_keys(registered_bindings(&KeymapConfig::default(), cx));
         cx.on_action(move |_: &ShowLogs, _| {
@@ -124,7 +124,7 @@ async fn l_does_not_fire_inside_a_text_field(cx: &mut TestAppContext) {
     let fired = Arc::new(AtomicUsize::new(0));
     let seen = fired.clone();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         cx.bind_keys(registered_bindings(&KeymapConfig::default(), cx));
         cx.on_action(move |_: &ViewLogs, _| {
             seen.fetch_add(1, Ordering::SeqCst);

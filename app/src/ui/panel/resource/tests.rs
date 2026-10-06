@@ -53,7 +53,7 @@ fn stub_panel(cx: &mut TestAppContext) -> WindowHandle<ResourcePanel> {
 #[gpui_kit::test]
 async fn cluster_dropdown_requires_multiple_connections(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let connection =
@@ -82,7 +82,7 @@ async fn cluster_dropdown_requires_multiple_connections(cx: &mut TestAppContext)
 #[gpui_kit::test]
 async fn a_loaded_panel_lists_every_discovered_kind_including_crds(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -122,7 +122,7 @@ async fn a_loaded_panel_lists_every_discovered_kind_including_crds(cx: &mut Test
 #[gpui_kit::test]
 async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -190,7 +190,7 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
 #[gpui_kit::test]
 async fn the_open_panels_row_is_the_only_one_marked(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -229,7 +229,7 @@ async fn the_open_panels_row_is_the_only_one_marked(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn opening_a_row_emits_one_request_for_that_rows_kind(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -276,7 +276,7 @@ async fn opening_a_row_emits_one_request_for_that_rows_kind(cx: &mut TestAppCont
 #[gpui_kit::test]
 async fn an_empty_discovery_still_leaves_a_panel(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -301,7 +301,7 @@ async fn an_empty_discovery_still_leaves_a_panel(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 async fn a_failed_discovery_is_reported_and_lists_nothing(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let window = stub_panel(cx);
@@ -347,7 +347,7 @@ async fn set_active_context_to_a_different_context_reloads_from_its_connection(
     // drives a real connect or discovery.
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let kind_dev =
@@ -420,7 +420,7 @@ async fn set_active_context_to_a_different_context_reloads_from_its_connection(
 #[gpui_kit::test]
 async fn set_active_context_to_the_current_context_does_not_reload(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
     let connection =

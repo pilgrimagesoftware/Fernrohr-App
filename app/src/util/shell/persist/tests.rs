@@ -77,7 +77,7 @@ async fn quitting_persists_open_window_geometry(cx: &mut TestAppContext) {
     let path = temp_workspace_path();
     let keymap_path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, path.clone(), &keymap_path);
         open_window(
@@ -116,7 +116,7 @@ async fn save_persists_geometry_of_a_window_already_closed(cx: &mut TestAppConte
     // `ClosedWindowLayouts` before the window disappeared.
     let path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         cx.set_global(ClosedWindowLayouts(HashMap::from([(
             WindowId::from(1),
             WindowLayout {
@@ -147,7 +147,7 @@ async fn corrupt_workspace_file_yields_one_default_window(cx: &mut TestAppContex
     std::fs::write(&path, "not valid toml {{{").unwrap();
 
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         open_saved_or_default(cx, &path);
     });
@@ -171,7 +171,7 @@ async fn saving_persists_a_live_workspaces_contexts(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     let path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
     });
 
@@ -203,7 +203,7 @@ async fn saving_a_picker_mode_window_persists_no_contexts(cx: &mut TestAppContex
     cx.executor().allow_parking();
     let path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         open_window(cx, WindowLayout::default());
     });
@@ -226,7 +226,7 @@ async fn saving_a_picker_mode_window_persists_no_contexts(cx: &mut TestAppContex
 async fn multi_context_dock_arrangement_round_trips_order_insensitively(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.set_global(SavedDockLayouts(
             crate::config::dock_layouts::DockLayouts::default(),
@@ -301,7 +301,7 @@ async fn saving_skips_windows_that_are_not_main_windows(cx: &mut TestAppContext)
     let path = temp_workspace_path();
     let keymap_path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, path.clone(), &keymap_path);
         open_window(cx, WindowLayout::default());
@@ -331,7 +331,7 @@ async fn resizing_saves_the_layout_once_the_window_settles(cx: &mut TestAppConte
     let path = temp_workspace_path();
     let keymap_path = temp_workspace_path();
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, path.clone(), &keymap_path);
         open_window(cx, WindowLayout::default());

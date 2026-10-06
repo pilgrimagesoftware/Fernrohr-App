@@ -76,7 +76,7 @@ struct Harness {
 
 fn harness(cx: &mut TestAppContext, timeout: Option<u8>) -> Harness {
     cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         let mut registry = CommandRegistry::new();
         crate::ui::panel::arrange::register_commands(&mut registry);
         cx.bind_keys(crate::keymap::bindings(

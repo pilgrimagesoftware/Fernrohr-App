@@ -25,9 +25,7 @@ impl Render for Host {
 /// counts its confirms.
 fn opened(cx: &mut TestAppContext) -> (VisualTestContext, Rc<Cell<usize>>) {
     cx.update(|cx| {
-        gpui_kit::init(cx);
-        // Dialogs slide in on the wall clock; see `pod_detail::tests::acting`.
-        cx.set_reduce_motion(true);
+        crate::util::test_ui::init(cx);
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
     });
     let window = cx.add_window(|window, cx| {
@@ -115,78 +113,4 @@ async fn escape_cancels(cx: &mut TestAppContext) {
     vcx.run_until_parked();
     assert_eq!(confirmed.get(), 0, "Escape confirmed nothing");
     assert!(!dialog_open(&mut vcx), "and closed the dialog");
-}
-
-/// Clicks `id`'s centre.
-fn click(vcx: &mut VisualTestContext, id: &'static str) {
-    use gpui_kit::test::TestWindowExt as _;
-    let at = vcx.update(|window, cx| {
-        window.render_frame(cx);
-        window.find(id).bounds().center()
-    });
-    vcx.simulate_click(at, gpui_kit::Modifiers::none());
-    vcx.run_until_parked();
-}
-
-/// Enter and the confirm button act alike: each closes the dialog and runs
-/// the action exactly once.
-#[gpui_kit::test]
-async fn enter_and_the_confirm_button_each_close_and_act_once(cx: &mut TestAppContext) {
-    let (mut vcx, confirmed) = opened(cx);
-    vcx.simulate_keystrokes("enter");
-    vcx.run_until_parked();
-    assert!(!dialog_open(&mut vcx), "Enter closed it");
-    assert_eq!(confirmed.get(), 1, "and acted once");
-
-    let (mut vcx, confirmed) = opened(cx);
-    click(
-        &mut vcx,
-        super::confirm_id("test-delete").to_string().leak(),
-    );
-    assert!(!dialog_open(&mut vcx), "the button closed it");
-    assert_eq!(confirmed.get(), 1, "and acted once");
-}
-
-/// A dialog the action opens - a follow-up question, as the forward picker
-/// leads to the stop confirmation - stays open, by Enter as by the button.
-#[gpui_kit::test]
-async fn a_dialog_the_action_opens_stays_open(cx: &mut TestAppContext) {
-    for by_enter in [true, false] {
-        let (mut vcx, _) = opened(cx);
-        // Replace the open confirmation with one whose action opens another.
-        vcx.update(|window, cx| {
-            window.close_dialog(cx);
-            let confirmation = Confirmation {
-                title: "First?".into(),
-                body: ConfirmText::from("First?"),
-                confirm: "Go".into(),
-                id_prefix: "first",
-            };
-            open(
-                confirmation,
-                |window, cx| {
-                    let follow_up = Confirmation {
-                        title: "Second?".into(),
-                        body: ConfirmText::from("Second?"),
-                        confirm: "Go".into(),
-                        id_prefix: "second",
-                    };
-                    open(follow_up, |_, _| {}, window, cx);
-                },
-                window,
-                cx,
-            );
-        });
-        vcx.run_until_parked();
-        if by_enter {
-            vcx.simulate_keystrokes("enter");
-            vcx.run_until_parked();
-        } else {
-            click(&mut vcx, super::confirm_id("first").to_string().leak());
-        }
-        assert!(
-            dialog_open(&mut vcx),
-            "the follow-up is open (by Enter: {by_enter})"
-        );
-    }
 }

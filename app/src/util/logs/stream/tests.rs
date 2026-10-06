@@ -9,7 +9,7 @@ use gpui_kit::{AppContext as _, TestAppContext};
 async fn mock_stream_populates_history_line_by_line(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
     let view = cx.update(|cx| {
-        gpui_kit::init(cx);
+        crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         cx.new(|_| LogsView::new(vec!["app".into()]))
     });
