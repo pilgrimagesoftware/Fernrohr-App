@@ -109,6 +109,18 @@ impl ObjectDetailPanel {
         }
     }
 
+    /// Whether the followed table has seen the object go: it has listed the
+    /// kind, and has no row for the object. A fetch that lands after that was
+    /// sent before the delete, so what it found is stale.
+    pub(super) fn known_absent(&self, cx: &App) -> bool {
+        match &self.live {
+            LiveSource::Following(table) => table.read(cx).synced() && self.followed.is_none(),
+            #[cfg(test)]
+            LiveSource::Off => false,
+            LiveSource::Pending => false,
+        }
+    }
+
     /// The object is gone: keep its last state under a "deleted" notice, or say
     /// it doesn't exist if the panel never had it. Whether anything changed.
     pub(super) fn show_absent(&mut self) -> bool {
