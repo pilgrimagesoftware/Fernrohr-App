@@ -179,8 +179,6 @@ async fn delete_confirm_names_the_bound_contexts(cx: &mut TestAppContext) {
                 editor.bound_contexts,
                 vec!["qa-1".to_string(), "qa-2".to_string()]
             );
-            editor.request_delete(_cx);
-            assert!(editor.confirming_delete);
             let question =
                 crate::ui::tunnels::editor::render::delete_confirm_text(&editor.bound_contexts);
             assert_eq!(

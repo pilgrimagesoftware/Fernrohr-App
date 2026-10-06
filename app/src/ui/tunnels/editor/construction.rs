@@ -125,10 +125,12 @@ impl TunnelEditor {
             field_errors: Vec::new(),
             general_error: None,
             bound_contexts,
-            confirming_delete: false,
             testing: false,
             test_result: None,
             focus_handle: cx.focus_handle(),
+            scroll: ScrollHandle::new(),
+            sections: Vec::new(),
+            revealed: None,
         }
     }
 }

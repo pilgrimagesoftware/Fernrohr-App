@@ -98,6 +98,15 @@ pub(crate) fn open(
     });
 }
 
+/// Enter's and Escape's keys in a dialog, for another dialog's own confirm and
+/// cancel buttons to show as these do.
+pub(crate) fn confirm_key(window: &Window) -> Kbd {
+    button_key(&Confirm { secondary: false }, CONFIRM_KEY, window)
+}
+pub(crate) fn cancel_key(window: &Window) -> Kbd {
+    button_key(&Cancel, CANCEL_KEY, window)
+}
+
 /// The key that triggers `action` in a dialog, as the keymap binds it -
 /// `fallback` if it binds none - drawn as the hint rows draw keys.
 fn button_key(action: &dyn Action, fallback: &str, window: &Window) -> Kbd {

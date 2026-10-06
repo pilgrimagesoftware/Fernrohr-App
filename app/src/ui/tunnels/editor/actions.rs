@@ -1,38 +1,69 @@
-//! Owns the pane's mutations: the auth choice, cancel, the delete confirmation
-//! flow, save (section 1.2/4.2's validation), and section 4.3's connectivity test.
+//! Owns the editor's mutations: the auth choice, cancel, delete (asking through the
+//! app's shared confirmation), save (section 1.2/4.2's validation), and section
+//! 4.3's connectivity test.
 //! The kind and mode switches, and the command form's values and test, are
 //! `command_form`'s.
 
 use super::*;
 
+/// The delete confirmation's id prefix: its buttons are `tunnel-delete-cancel` and
+/// `tunnel-delete-confirm`.
+pub(in crate::ui::tunnels) const DELETE_ID_PREFIX: &str = "tunnel-delete";
+
 impl TunnelEditor {
+    /// Whether this is a tunnel not yet saved.
+    pub(in crate::ui::tunnels) fn is_new(&self) -> bool {
+        self.editing_id.is_none()
+    }
+
+    /// Focuses the first field, Name - where the dialog starts.
+    pub(in crate::ui::tunnels) fn focus_first_field(&self, window: &mut Window, cx: &mut App) {
+        self.name.update(cx, |name, cx| name.focus(window, cx));
+    }
+
     pub(super) fn set_auth(&mut self, auth: TunnelAuth, cx: &mut Context<Self>) {
         self.auth = auth;
         cx.notify();
     }
 
-    pub(super) fn cancel(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::ui::tunnels) fn cancel(&mut self, cx: &mut Context<Self>) {
         cx.emit(TunnelEditorEvent::Cancelled);
     }
 
-    pub(super) fn request_delete(&mut self, cx: &mut Context<Self>) {
-        self.confirming_delete = true;
-        cx.notify();
+    /// Asks, naming the contexts that fall back to Direct, then deletes - over the
+    /// editor's own dialog, which closes once the delete lands.
+    pub(in crate::ui::tunnels) fn request_delete(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing_id.is_none() {
+            return;
+        }
+        let editor = cx.weak_entity();
+        let confirmation = crate::ui::confirm_dialog::Confirmation {
+            title: "Delete Tunnel?".into(),
+            body: render::delete_confirm_text(&self.bound_contexts),
+            confirm: "Delete".into(),
+            id_prefix: DELETE_ID_PREFIX,
+        };
+        crate::ui::confirm_dialog::open(
+            confirmation,
+            move |_window, cx| {
+                let _ = editor.update(cx, |editor, cx| editor.confirm_delete(cx));
+            },
+            window,
+            cx,
+        );
     }
 
-    pub(super) fn cancel_delete(&mut self, cx: &mut Context<Self>) {
-        self.confirming_delete = false;
-        cx.notify();
-    }
-
-    pub(super) fn confirm_delete(&mut self, cx: &mut Context<Self>) {
+    fn confirm_delete(&mut self, cx: &mut Context<Self>) {
         let Some(id) = self.editing_id.clone() else {
             return;
         };
         let store = TunnelStore::new(self.tunnels_path.clone());
         match store.delete(&id) {
             Ok(_unbound) => {
-                self.confirming_delete = false;
                 notify_tunnels_changed(cx);
                 cx.emit(TunnelEditorEvent::Deleted);
             }
@@ -46,7 +77,7 @@ impl TunnelEditor {
     /// Section 1.2/4.2: validates and writes the tunnel through `TunnelStore`,
     /// generating a fresh id on first save. `TunnelStoreError::Invalid` is shown
     /// inline per field; every other error is shown once, generically.
-    pub(super) fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::ui::tunnels) fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let store = TunnelStore::new(self.tunnels_path.clone());
         let name = self.name.read(cx).value().to_string();
         let host = self.host.read(cx).value().to_string();

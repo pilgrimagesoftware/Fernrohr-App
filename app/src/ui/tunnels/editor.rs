@@ -18,12 +18,10 @@ use crate::config::tunnels::{
 use crate::tunnel::ssh::{SshTunnelConfig, TransientIdentityFile, test_connection};
 use crate::tunnel::store::{TunnelFieldError, TunnelStore, TunnelStoreError};
 use gpui_kit::assets::IconName;
-use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use std::path::PathBuf;
 
@@ -36,4 +34,6 @@ mod traits;
 
 use model::*;
 
+#[cfg(test)]
+pub(super) use command_form::TIMEOUT_FIELD_SELECTOR;
 pub use model::{TunnelEditor, TunnelEditorEvent};
