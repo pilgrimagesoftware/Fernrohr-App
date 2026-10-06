@@ -302,3 +302,43 @@ async fn input_refused_by_a_full_queue_is_shown(cx: &mut TestAppContext) {
     );
     assert!(h.drawn(INPUT_NOTICE));
 }
+
+/// The rows the shell is told it has, each as tall as the font's whole line
+/// (ascent plus descent), fit the terminal's pane - at the default text size
+/// and at twice it. Rows shorter than their text squash lines together, and
+/// claim more rows than the pane really shows.
+#[gpui_kit::test]
+async fn the_shells_rows_fit_the_pane_at_full_line_height(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    for scale in [1., 2.] {
+        let line = h.vcx.update(|window, cx| {
+            let theme = cx.global_mut::<gpui_kit::component::Theme>();
+            if scale > 1. {
+                theme.mono_font_size *= scale;
+            }
+            let (family, size) = (theme.mono_font_family.clone(), theme.mono_font_size);
+            window.refresh();
+            let text_system = cx.text_system();
+            let font_id = text_system.resolve_font(&gpui_kit::font(family));
+            f32::from(text_system.ascent(font_id, size))
+                + f32::from(text_system.descent(font_id, size)).abs()
+        });
+        h.vcx.run_until_parked();
+        h.vcx.update(|window, cx| window.render_frame(cx));
+        h.vcx.run_until_parked();
+
+        let rows = (*h.resize.borrow_and_update())
+            .expect("the shell was sized")
+            .rows;
+        let pane = h
+            .vcx
+            .debug_bounds(TERMINAL)
+            .expect("the terminal is drawn")
+            .size
+            .height;
+        assert!(
+            rows as f32 * line <= f32::from(pane) + 1.,
+            "at {scale}x: {rows} rows of a {line:.1}px line must fit the {pane:?} pane"
+        );
+    }
+}
