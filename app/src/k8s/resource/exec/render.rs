@@ -21,6 +21,7 @@ pub const KEY_CONTEXT: &str = "ExecTerminal";
 pub(crate) const TERMINAL: &str = "exec-terminal";
 pub(crate) const HINTS: &str = "exec-hints";
 pub(crate) const ENDED: &str = "exec-ended";
+pub(crate) const INPUT_NOTICE: &str = "exec-input-notice";
 
 impl ExecPanel {
     /// Keeps the terminal in the theme's font, size and colours - a no-op
@@ -117,6 +118,16 @@ impl Render for ExecPanel {
                     .border_color(cx.theme().border)
                     .children(self.terminal.clone()),
             )
+            .children(self.input_notice.clone().map(|notice| {
+                div()
+                    .debug_selector(|| INPUT_NOTICE.into())
+                    .text_sm()
+                    .text_color(crate::ui::style::status(
+                        crate::ui::style::Tone::Warning,
+                        cx,
+                    ))
+                    .child(format!("Input didn't reach the shell: {notice}"))
+            }))
             .child(footer)
             // Tab goes to the shell, not around the panel: the terminal is a
             // tab stop of its own and reads Tab as a key.

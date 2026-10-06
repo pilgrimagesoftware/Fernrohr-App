@@ -167,6 +167,12 @@ pub(crate) const EXEC_INPUT_QUEUE: usize = 256;
 /// container (`embedded-exec-terminal` decision 1): a drag that resizes the
 /// panel many times sends only the size it ends at.
 pub(crate) const EXEC_RESIZE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(120);
+/// How long a shell's exit status may take to arrive once its output has
+/// ended. A connection that drops uncleanly may never deliver one; past this
+/// the session ends as a lost connection rather than staying "running".
+pub(crate) const EXEC_STATUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// How long a note about refused input stays under the shell.
+pub(crate) const EXEC_INPUT_NOTICE: std::time::Duration = std::time::Duration::from_secs(4);
 
 /// A port-forward started from a resource row (`k9s-remaining-keybindings` 4):
 /// how often its Pod is checked to still be Running, and how a failed check

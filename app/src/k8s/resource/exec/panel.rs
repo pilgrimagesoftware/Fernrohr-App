@@ -14,7 +14,7 @@ use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
 use gpui_kit::*;
-use gpui_terminal::{Terminal, TerminalBuilder, TerminalView};
+use gpui_terminal::{Terminal, TerminalBuilder, TerminalEvent, TerminalView};
 use tokio::sync::mpsc;
 
 /// Which container a shell is in.
@@ -65,6 +65,11 @@ pub struct ExecPanel {
     /// The session's terminal, once it has started. Dropping it drops the
     /// transport, which ends the session.
     pub(crate) terminal: Option<ExecTerminal>,
+    /// Why input just failed to reach the shell - its queue full, say -
+    /// shown under the terminal for a moment.
+    pub(crate) input_notice: Option<String>,
+    /// Clears `input_notice`; replaced by the next one.
+    input_notice_timer: Option<Task<()>>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -113,6 +118,8 @@ impl ExecPanel {
             connection,
             state,
             terminal: None,
+            input_notice: None,
+            input_notice_timer: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         }
     }
@@ -150,7 +157,14 @@ impl ExecPanel {
         cx: &mut Context<Self>,
     ) {
         let style = super::theme::terminal_style(cx);
-        self.terminal = Some(cx.new(|cx| TerminalView::new(terminal, style, cx)));
+        let view = cx.new(|cx| TerminalView::new(terminal, style, cx));
+        cx.subscribe(&view, |this, _, event: &TerminalEvent, cx| {
+            if let TerminalEvent::TransportFailed(error) = event {
+                this.show_input_failure(error.to_string(), cx);
+            }
+        })
+        .detach();
+        self.terminal = Some(view);
         self.state = SessionState::Running;
         cx.spawn(async move |this, cx| {
             crate::runtime::drain(ended, |end| {
@@ -162,6 +176,26 @@ impl ExecPanel {
             .await;
         })
         .detach();
+        cx.notify();
+    }
+
+    /// Shows - and logs - why input didn't reach the shell, for a moment.
+    fn show_input_failure(&mut self, message: String, cx: &mut Context<Self>) {
+        log::warn!(
+            "shell input for {}/{}: {message}",
+            self.target.pod,
+            self.target.container
+        );
+        self.input_notice = Some(message);
+        self.input_notice_timer = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(crate::consts::EXEC_INPUT_NOTICE)
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.input_notice = None;
+                cx.notify();
+            });
+        }));
         cx.notify();
     }
 

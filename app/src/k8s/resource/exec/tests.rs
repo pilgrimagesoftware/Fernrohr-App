@@ -5,7 +5,7 @@
 //! it ended and takes no more input.
 
 use super::panel::{ExecPanel, ExecTarget, SessionState};
-use super::render::{ENDED, HINTS, TERMINAL, ended_notice};
+use super::render::{ENDED, HINTS, INPUT_NOTICE, TERMINAL, ended_notice};
 use super::transport::{ExecEnd, ExecTransport};
 use crate::command::CommandRegistry;
 use crate::keymap::{self, KeymapConfig};
@@ -34,6 +34,11 @@ struct Harness {
 
 /// A shell panel in a window with every app command bound, focused.
 fn open(cx: &mut TestAppContext) -> Harness {
+    open_with_queue(cx, 64)
+}
+
+/// [`open`], with room for `queue` chunks of input before the shell reads.
+fn open_with_queue(cx: &mut TestAppContext, queue: usize) -> Harness {
     cx.executor().allow_parking();
     let palette_opened = Rc::new(Cell::new(0));
     cx.update(|cx| {
@@ -54,7 +59,7 @@ fn open(cx: &mut TestAppContext) -> Harness {
             opened.set(opened.get() + 1)
         });
     });
-    let (input_tx, input) = mpsc::channel(64);
+    let (input_tx, input) = mpsc::channel(queue);
     let (resize_tx, resize) = watch::channel(None);
     let (ended, ended_rx) = mpsc::channel(1);
     let runtime = cx.update(|cx| crate::runtime::handle(cx));
@@ -258,4 +263,42 @@ fn the_ended_notice_gives_the_status_or_the_reason() {
         "Session ended: container not found"
     );
     assert_eq!(ended_notice(None, None), "Session ended.");
+}
+
+/// Escape alone goes to the shell - vi's way back to normal mode - and no
+/// app handler of it fires: the panel carries `Input`, where gpui-kit binds
+/// Escape to its own input action, which the Resource panel's filter and
+/// text fields handle.
+#[gpui_kit::test]
+async fn escape_reaches_the_shell_and_no_app_handler(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    let escaped = Rc::new(Cell::new(0));
+    h.vcx.update(|_, cx| {
+        let escaped = escaped.clone();
+        cx.on_action(move |_: &gpui_kit::component::input::Escape, _| {
+            escaped.set(escaped.get() + 1)
+        });
+    });
+
+    h.press("i escape");
+
+    assert_eq!(h.sent(), b"i\x1b");
+    assert_eq!(escaped.get(), 0, "no app Escape handler ran");
+}
+
+/// Input the shell isn't reading - its queue full - isn't lost silently:
+/// the panel says so under the terminal.
+#[gpui_kit::test]
+async fn input_refused_by_a_full_queue_is_shown(cx: &mut TestAppContext) {
+    let mut h = open_with_queue(cx, 1);
+
+    h.press("a b");
+
+    assert_eq!(h.sent(), b"a", "the queue held one");
+    let notice = h.vcx.update(|_, cx| h.panel.read(cx).input_notice.clone());
+    assert!(
+        notice.is_some_and(|notice| notice.contains("isn't reading")),
+        "the refusal is shown"
+    );
+    assert!(h.drawn(INPUT_NOTICE));
 }

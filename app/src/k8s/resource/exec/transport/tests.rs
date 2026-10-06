@@ -229,3 +229,50 @@ async fn a_busy_program_still_gets_its_new_size() {
         .collect();
     assert_eq!(sizes, [(132, 40)]);
 }
+
+/// Output ended but the status never comes - an unclean drop: past the limit
+/// the session ends as a lost connection, the terminal stops taking input,
+/// and the panel hears it, rather than staying "running" forever.
+#[tokio::test]
+async fn a_status_that_never_arrives_ends_as_a_lost_connection() {
+    let (terminal, sink) = terminal();
+    let (ended, mut ended_rx) = mpsc::channel(1);
+    let never = std::future::pending::<Option<Status>>();
+
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        super::finish_session(Some(never), Duration::from_millis(50), &sink, &ended),
+    )
+    .await
+    .expect("the wait for a status is bounded");
+
+    let end = ended_rx.try_recv().expect("the panel was told");
+    assert_eq!(end.code, None);
+    assert!(
+        end.reason
+            .is_some_and(|reason| reason.contains("connection")),
+        "a lost connection"
+    );
+    assert!(
+        terminal.exit_report().is_some(),
+        "the terminal heard the exit"
+    );
+}
+
+/// A status that does arrive in time is the exit reported.
+#[tokio::test]
+async fn a_status_in_time_is_the_exit() {
+    let (_terminal, sink) = terminal();
+    let (ended, mut ended_rx) = mpsc::channel(1);
+    let success = status(serde_json::json!({ "status": "Success" }));
+
+    super::finish_session(
+        Some(async move { Some(success) }),
+        Duration::from_secs(5),
+        &sink,
+        &ended,
+    )
+    .await;
+
+    assert_eq!(ended_rx.try_recv().map(|end| end.code).ok(), Some(Some(0)));
+}

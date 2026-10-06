@@ -161,12 +161,31 @@ async fn run(
         &sink,
     )
     .await;
+    finish_session(status, crate::consts::EXEC_STATUS_TIMEOUT, &sink, &ended).await;
+}
+
+/// Ends the session once its output has: waits up to `limit` for the exit
+/// status, then reports the exit - or, with no status in time, a lost
+/// connection - to the terminal and the panel. Unbounded, a connection that
+/// dropped without a status would leave the panel "running" over a frozen
+/// screen.
+pub(super) async fn finish_session(
+    status: Option<impl std::future::Future<Output = Option<Status>>>,
+    limit: std::time::Duration,
+    sink: &TerminalSink,
+    ended: &mpsc::Sender<ExecEnd>,
+) {
     let status = match status {
-        Some(status) => status.await,
+        Some(status) => tokio::time::timeout(limit, status)
+            .await
+            .unwrap_or_else(|_| {
+                log::warn!("the shell's exit status didn't arrive; treating it as lost");
+                None
+            }),
         None => None,
     };
     let (code, reason) = exit_of(status.as_ref());
-    finish(&sink, &ended, code, reason).await;
+    finish(sink, ended, code, reason).await;
 }
 
 /// Tells the terminal and the panel the session is over.
