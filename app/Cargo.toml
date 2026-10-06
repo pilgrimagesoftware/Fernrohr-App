@@ -8,7 +8,7 @@ gpui-kit = "=0.7.0"
 # The shell panel's terminal: emulation, rendering and key/mouse/paste encoding
 # (`k8s::resource::exec`). The user's own crate, extracted from Knot; its `pty`
 # feature is off, since the session is a remote kube exec, not a local process.
-gpui-terminal = { git = "https://github.com/pilgrimagesoftware/gpui-terminal", tag = "v0.2.0", default-features = false }
+gpui-terminal = { git = "https://github.com/pilgrimagesoftware/gpui-terminal", tag = "v0.2.1", default-features = false }
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time"] }
 kube = { version = "=4.2.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws", "http-proxy"] }
 kube-runtime = "=4.2.0"
