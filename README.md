@@ -106,6 +106,20 @@ for the next key before it runs the shorter shortcut. Set how long in Settings �
 from 1 to 10 seconds (3 by default), or as `shortcut_timeout_secs` in `ui.toml`. A first key that
 isn't a shortcut on its own, like `⌘K`, waits for its next key however long you take.
 
+## Shells
+
+`s` on a running pod, in the Pods panel or a pod's detail panel, opens a shell in its container,
+asking which when it runs more than one. The shell is a real terminal (a Kubernetes exec with a
+TTY), so full-screen programs like `top` and `vi`, Tab completion and Ctrl-C work as they would
+locally, and the shell is resized with its panel. It uses the app's code font, text size and
+colours.
+
+While the terminal has focus it takes every key except the app's `⌘` shortcuts: copy (`⌘C`) and
+paste (`⌘V`) - `Ctrl-Shift-C` and `Ctrl-Shift-V` on Linux - the command palette (`⌘⇧P`), and panel
+and tab navigation. Scroll back through earlier output with the mouse wheel, and select it with
+the mouse to copy it. When the shell exits, the panel says how it ended, and its screen and
+scrollback stay to read and copy.
+
 ## Tunnels
 
 A kube context can be bound to a tunnel, so Fernrohr reaches its cluster through it. Manage

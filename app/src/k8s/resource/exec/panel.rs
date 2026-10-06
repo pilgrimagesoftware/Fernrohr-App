@@ -1,20 +1,20 @@
 //! The shell's dock panel: its session (started on open, ended when the panel
-//! closes), its transcript, and its input line. What it draws is `render`'s.
+//! closes) and the terminal it runs in. What it draws is `render`'s.
 //!
 //! A session that ends - the shell exits, the container stops or is deleted -
-//! leaves the panel open with its transcript, marked ended. A panel restored
+//! leaves the panel open with its screen and scrollback, marked ended. A panel restored
 //! from a saved layout starts no session: the one it showed ended when the app
 //! quit, and opening a shell is the user's call.
 
-use super::bridge::{self, ExecEvent};
+use super::transport::{ExecEnd, ExecTransport};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::{self, PanelScope};
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
-use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
+use gpui_terminal::{Terminal, TerminalBuilder, TerminalView};
 use tokio::sync::mpsc;
 
 /// Which container a shell is in.
@@ -49,9 +49,12 @@ pub(crate) enum SessionState {
     /// Waiting for the cluster connection before it can start.
     Waiting,
     Running,
-    /// Over, with the reason when there is one.
-    Ended(Option<String>),
+    /// Over: how, when the cluster said.
+    Ended(ExecEnd),
 }
+
+/// The terminal a shell runs in.
+pub(crate) type ExecTerminal = Entity<TerminalView<ExecTransport>>;
 
 /// A shell in one container.
 pub struct ExecPanel {
@@ -59,15 +62,9 @@ pub struct ExecPanel {
     pub(super) scope: PanelScope,
     connection: Option<Entity<ClusterConnection>>,
     pub(crate) state: SessionState,
-    /// Everything the session showed, input lines included, capped at
-    /// `consts::EXEC_TRANSCRIPT_LIMIT` bytes from the end.
-    pub(crate) transcript: String,
-    pub(super) input: Entity<InputState>,
-    /// The user's lines, on their way to the shell's stdin.
-    stdin: Option<mpsc::Sender<Vec<u8>>>,
-    /// The session's task, aborted when the panel goes.
-    session: Option<tokio::task::JoinHandle<()>>,
-    pub(super) scroll: ScrollHandle,
+    /// The session's terminal, once it has started. Dropping it drops the
+    /// transport, which ends the session.
+    pub(crate) terminal: Option<ExecTerminal>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -75,21 +72,14 @@ impl ExecPanel {
     pub fn new(
         target: ExecTarget,
         scope: PanelScope,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         use crate::k8s::cluster::session::ClusterRegistry;
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.start(cx))
             .detach();
-        let mut this = Self::build(
-            target,
-            scope,
-            Some(connection),
-            SessionState::Waiting,
-            window,
-            cx,
-        );
+        let mut this = Self::build(target, scope, Some(connection), SessionState::Waiting, cx);
         this.start(cx);
         this
     }
@@ -98,13 +88,16 @@ impl ExecPanel {
     fn ended(
         target: ExecTarget,
         scope: PanelScope,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let ended = SessionState::Ended(Some(
-            "This shell ended when Fernrohr closed. Open a new one from the Pods panel.".into(),
-        ));
-        Self::build(target, scope, None, ended, window, cx)
+        let ended = SessionState::Ended(ExecEnd {
+            code: None,
+            reason: Some(
+                "This shell ended when Fernrohr closed. Open a new one from the Pods panel.".into(),
+            ),
+        });
+        Self::build(target, scope, None, ended, cx)
     }
 
     fn build(
@@ -112,38 +105,14 @@ impl ExecPanel {
         scope: PanelScope,
         connection: Option<Entity<ClusterConnection>>,
         state: SessionState,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("Command, then Enter"));
-        cx.subscribe_in(
-            &input,
-            window,
-            |this: &mut Self, input, event, window, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    let line = input.read(cx).value().to_string();
-                    this.send_line(&line, cx);
-                    input.update(cx, |input, cx| input.set_value("", window, cx));
-                }
-            },
-        )
-        .detach();
-        cx.on_release(|this: &mut Self, _| {
-            if let Some(session) = this.session.take() {
-                session.abort();
-            }
-        })
-        .detach();
         Self {
             target,
             scope,
             connection,
             state,
-            transcript: String::new(),
-            input,
-            stdin: None,
-            session: None,
-            scroll: ScrollHandle::new(),
+            terminal: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         }
     }
@@ -160,87 +129,54 @@ impl ExecPanel {
             return;
         };
         let client = client.clone();
-        let (input_tx, input_rx) = mpsc::channel(crate::consts::EXEC_INPUT_QUEUE);
-        let (events_tx, events_rx) = mpsc::channel(crate::consts::EXEC_OUTPUT_QUEUE);
-        let ExecTarget {
-            namespace,
-            pod,
-            container,
-        } = self.target.clone();
-        self.session = Some(crate::runtime::handle(cx).spawn(bridge::run(
-            client, namespace, pod, container, input_rx, events_tx,
-        )));
-        self.stdin = Some(input_tx);
-        self.state = SessionState::Running;
-        self.follow(events_rx, cx);
-        cx.notify();
+        let (ended_tx, ended) = mpsc::channel(1);
+        let runtime = crate::runtime::handle(cx);
+        let target = self.target.clone();
+        let terminal = TerminalBuilder::new()
+            .connect(|sink| {
+                Ok::<_, std::convert::Infallible>(ExecTransport::spawn(
+                    &runtime, client, target, sink, ended_tx,
+                ))
+            })
+            .unwrap_or_else(|never| match never {});
+        self.attach(terminal, ended, cx);
     }
 
-    /// Applies the session's events to the panel as they arrive.
-    pub(crate) fn follow(&mut self, events: mpsc::Receiver<ExecEvent>, cx: &mut Context<Self>) {
+    /// Shows `terminal` and follows the session's end.
+    pub(crate) fn attach(
+        &mut self,
+        terminal: Terminal<ExecTransport>,
+        ended: mpsc::Receiver<ExecEnd>,
+        cx: &mut Context<Self>,
+    ) {
+        let style = super::theme::terminal_style(cx);
+        self.terminal = Some(cx.new(|cx| TerminalView::new(terminal, style, cx)));
+        self.state = SessionState::Running;
         cx.spawn(async move |this, cx| {
-            crate::runtime::drain(events, |event| {
-                let _ = this.update(cx, |this, cx| this.apply(event, cx));
+            crate::runtime::drain(ended, |end| {
+                let _ = this.update(cx, |this, cx| {
+                    this.state = SessionState::Ended(end);
+                    cx.notify();
+                });
             })
             .await;
         })
         .detach();
-    }
-
-    fn apply(&mut self, event: ExecEvent, cx: &mut Context<Self>) {
-        match event {
-            ExecEvent::Output(text) => self.append(&text),
-            ExecEvent::Ended(reason) => {
-                self.state = SessionState::Ended(reason);
-                self.stdin = None;
-            }
-        }
-        self.scroll.scroll_to_bottom();
         cx.notify();
     }
 
-    /// Sends `line` to the shell and echoes it into the transcript - the shell
-    /// has no TTY to echo it.
-    fn send_line(&mut self, line: &str, cx: &mut Context<Self>) {
-        if self.state != SessionState::Running {
-            return;
-        }
-        let Some(stdin) = &self.stdin else {
-            return;
-        };
-        if stdin.try_send(format!("{line}\n").into_bytes()).is_ok() {
-            self.append(&format!("$ {line}\n"));
-            self.scroll.scroll_to_bottom();
-            cx.notify();
-        }
-    }
-
-    fn append(&mut self, text: &str) {
-        self.transcript.push_str(text);
-        let limit = crate::consts::EXEC_TRANSCRIPT_LIMIT;
-        if self.transcript.len() > limit {
-            let mut cut = self.transcript.len() - limit;
-            while !self.transcript.is_char_boundary(cut) {
-                cut += 1;
-            }
-            self.transcript.drain(..cut);
-        }
-    }
-
-    /// A panel whose session is `events` - a test's stand-in for an exec - and
-    /// whose input goes to `stdin`.
+    /// A panel over `terminal` - a test's stand-in session - whose end is
+    /// `ended`.
     #[cfg(test)]
     pub(crate) fn with_session(
         target: ExecTarget,
         scope: PanelScope,
-        stdin: mpsc::Sender<Vec<u8>>,
-        events: mpsc::Receiver<ExecEvent>,
-        window: &mut Window,
+        terminal: Terminal<ExecTransport>,
+        ended: mpsc::Receiver<ExecEnd>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut this = Self::build(target, scope, None, SessionState::Running, window, cx);
-        this.stdin = Some(stdin);
-        this.follow(events, cx);
+        let mut this = Self::build(target, scope, None, SessionState::Waiting, cx);
+        this.attach(terminal, ended, cx);
         this
     }
 
@@ -254,12 +190,6 @@ impl ExecPanel {
                 .name(&self.target.container)
                 .text(" ends.")
         })
-    }
-
-    /// The input line, for tests to type into.
-    #[cfg(test)]
-    pub(crate) fn input(&self) -> Entity<InputState> {
-        self.input.clone()
     }
 }
 

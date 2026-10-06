@@ -160,13 +160,13 @@ pub(crate) const TERMINATING_COUNTDOWN_TICK: Duration = Duration::from_secs(1);
 /// on screen below its "deleted at" banner (`live-detail-panels`).
 pub(crate) const STALE_OPACITY: f32 = 0.6;
 
-/// A shell panel's transcript, kept to this many bytes from its end, so a
-/// chatty session can't grow without bound (`k9s-remaining-keybindings` 3).
-pub(crate) const EXEC_TRANSCRIPT_LIMIT: usize = 1024 * 1024;
-/// How many typed lines may wait for the shell's stdin, and how many output
-/// chunks for the panel, before the sender waits - room for a burst, not a log.
-pub(crate) const EXEC_INPUT_QUEUE: usize = 64;
-pub(crate) const EXEC_OUTPUT_QUEUE: usize = 256;
+/// How many chunks of typed input may wait for the shell's stdin before the
+/// terminal refuses more - room for a paste or a burst of keys, not a log.
+pub(crate) const EXEC_INPUT_QUEUE: usize = 256;
+/// How long a shell's terminal size must hold before it is sent to the
+/// container (`embedded-exec-terminal` decision 1): a drag that resizes the
+/// panel many times sends only the size it ends at.
+pub(crate) const EXEC_RESIZE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// A port-forward started from a resource row (`k9s-remaining-keybindings` 4):
 /// how often its Pod is checked to still be Running, and how a failed check

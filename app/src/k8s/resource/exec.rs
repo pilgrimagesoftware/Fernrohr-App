@@ -1,14 +1,15 @@
-//! A shell in a running container (`k9s-remaining-keybindings` section 3):
-//! [`bridge`] pumps an exec's streams to and from the app, and [`panel`] is the
-//! dock panel that shows its transcript and takes the user's input.
+//! A shell in a running container (`embedded-exec-terminal`): a real terminal
+//! over a kube exec with a TTY, so full-screen programs, Tab completion and
+//! Ctrl-C work as they do in a local terminal.
 //!
-//! One panel, one session: no terminal emulation and no PTY on this side. The
-//! exec runs without a TTY, so the container's shell reads whole lines from
-//! stdin; the panel sends a line on Enter and echoes it into the transcript.
+//! [`transport`] bridges the exec to `gpui-terminal`, which emulates, draws
+//! and encodes input; [`theme`] gives the terminal the app's font and colours;
+//! [`panel`] is the dock panel around it, and [`render`] what it draws.
 
-mod bridge;
 mod panel;
 mod render;
+mod theme;
+mod transport;
 
 pub use panel::{ExecPanel, ExecTarget, register_restore};
 
