@@ -7,7 +7,7 @@
 // `#[gpui_kit::test]` shadows the builtin `#[test]` and blows the macro-expansion budget.
 use super::{DIVIDER_ID, STOP_TOOLTIP, stop_button_id};
 use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwardRequest, PortForwards};
-use crate::ui::forward_stop::{CANCEL_ID, CONFIRM_ID};
+use crate::ui::forward_stop::{cancel_id, confirm_id};
 use crate::ui::tunnels::list::TunnelsWindow;
 use gpui_kit::component::{Root, WindowExt as _};
 use gpui_kit::test::TestWindowExt as _;
@@ -130,7 +130,7 @@ async fn cancel_and_escape_keep_the_forward(cx: &mut TestAppContext) {
     let mut h = harness(cx, &[18_087]);
 
     h.click_stop();
-    h.click(CANCEL_ID);
+    h.click(cancel_id().to_string().leak());
     assert!(!h.dialog_open());
     assert_eq!(h.listed(), 1, "Cancel keeps it");
 
@@ -158,6 +158,6 @@ async fn enter_or_the_confirm_button_stops_it(cx: &mut TestAppContext) {
     assert_eq!(h.listed(), 1, "Enter stopped one");
 
     h.click_stop();
-    h.click(CONFIRM_ID);
+    h.click(confirm_id().to_string().leak());
     assert_eq!(h.listed(), 0, "the confirm button stopped the other");
 }

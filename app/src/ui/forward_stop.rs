@@ -1,27 +1,26 @@
 //! The one confirmation every way of stopping a port-forward goes through
-//! (`port-forward-indicators` 5.2): it names the pod or Service, where the forward
-//! listens and the port it reaches - the names set apart from the sentence - and
-//! stops it only once confirmed.
-//!
-//! Keyboard-first: Enter confirms and Escape cancels (the dialog's own keys),
-//! Tab moves between the buttons, and each button shows its key as a `Kbd`, read
-//! from the live keymap like a hint row's, as Knot's permission prompt does.
+//! (`port-forward-indicators` 5.2): the app's shared confirmation
+//! (`ui::confirm_dialog`), naming the pod or Service, where the forward listens
+//! and the port it reaches, and stopping it only once confirmed. Enter or Stop
+//! Forward stops it; Escape or Cancel keeps it.
 
-use gpui_kit::base::StyledExt as _;
-use gpui_kit::base::actions::{Cancel, Confirm};
-use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
-use gpui_kit::component::dialog::DialogFooter;
-use gpui_kit::component::kbd::Kbd;
+use crate::ui::confirm_dialog::{self, Confirmation};
+use crate::ui::confirm_text::ConfirmText;
 use gpui_kit::*;
 use std::net::SocketAddr;
-use std::rc::Rc;
 
-/// The dialog's key context, where Enter and Escape are bound.
-const DIALOG_CONTEXT: &str = "Dialog";
-/// The confirmation's buttons, for tests.
-pub const CANCEL_ID: &str = "forward-stop-cancel";
-pub const CONFIRM_ID: &str = "forward-stop-confirm";
+/// The confirmation's id prefix: its buttons are [`cancel_id`] and [`confirm_id`].
+const ID_PREFIX: &str = "forward-stop";
+
+#[cfg(test)]
+pub fn cancel_id() -> SharedString {
+    confirm_dialog::cancel_id(ID_PREFIX)
+}
+
+#[cfg(test)]
+pub fn confirm_id() -> SharedString {
+    confirm_dialog::confirm_id(ID_PREFIX)
+}
 
 /// What is being stopped: `kind` and `name` of the object it forwards to, where
 /// it listens, and the port it reaches.
@@ -32,6 +31,16 @@ pub struct StopTarget {
     pub target_port: u16,
 }
 
+/// The question, the names set apart.
+fn body(target: &StopTarget) -> ConfirmText {
+    ConfirmText::new()
+        .text("Stop forwarding ")
+        .name(&target.local_addr.to_string())
+        .text(&format!(" to {} ", target.kind))
+        .name(&format!("{}:{}", target.name, target.target_port))
+        .text("? Anything connected through it is disconnected.")
+}
+
 /// Asks before stopping `target`'s forward; `stop` runs only on confirmation.
 pub fn confirm_stop(
     target: StopTarget,
@@ -39,47 +48,28 @@ pub fn confirm_stop(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let stop = Rc::new(stop);
-    window.open_dialog(cx, move |dialog, window, _cx| {
-        let (on_ok, on_click) = (stop.clone(), stop.clone());
-        let name = |text: String| div().font_semibold().child(text);
-        let body = div()
-            .flex()
-            .flex_wrap()
-            .gap_x_1()
-            .child("Stop forwarding")
-            .child(name(target.local_addr.to_string()))
-            .child(format!("to {}", target.kind))
-            .child(name(format!("{}:{}", target.name, target.target_port)))
-            .child("? Anything connected through it is disconnected.");
-        let cancel_key = Kbd::binding_for_action(&Cancel, Some(DIALOG_CONTEXT), window);
-        let confirm_key =
-            Kbd::binding_for_action(&Confirm { secondary: false }, Some(DIALOG_CONTEXT), window);
-        dialog
-            .title("Stop Port Forward?")
-            .child(body)
-            .on_ok(move |_, window, cx| {
-                on_ok(window, cx);
-                true
-            })
-            .footer(
-                DialogFooter::new()
-                    .child(
-                        Button::new(CANCEL_ID)
-                            .label("Cancel")
-                            .children(cancel_key)
-                            .on_click(|_, window, cx| window.close_dialog(cx)),
-                    )
-                    .child(
-                        Button::new(CONFIRM_ID)
-                            .label("Stop Forward")
-                            .with_variant(ButtonVariant::Danger)
-                            .children(confirm_key)
-                            .on_click(move |_, window, cx| {
-                                window.close_dialog(cx);
-                                on_click(window, cx);
-                            }),
-                    ),
-            )
-    });
+    let confirmation = Confirmation {
+        title: "Stop Port Forward?".into(),
+        body: body(&target),
+        confirm: "Stop Forward".into(),
+        id_prefix: ID_PREFIX,
+    };
+    confirm_dialog::open(confirmation, stop, window, cx);
+}
+
+#[cfg(test)]
+mod tests {
+    // Named imports: `super::*` would bring in `gpui_kit::*`'s `test` macro.
+    use super::{StopTarget, body};
+
+    #[test]
+    fn the_question_names_the_address_and_the_target() {
+        let text = body(&StopTarget {
+            kind: "pod",
+            name: "web-1".into(),
+            local_addr: "127.0.0.1:18080".parse().unwrap(),
+            target_port: 8080,
+        });
+        assert_eq!(text.name_list(), ["127.0.0.1:18080", "web-1:8080"]);
+    }
 }
