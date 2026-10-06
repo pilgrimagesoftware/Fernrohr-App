@@ -33,6 +33,8 @@ fn harness(cx: &mut TestAppContext, ports: &[u16]) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
         gpui_kit::init(cx);
+        // Dialogs slide in on the wall clock; see `pod_detail::tests::acting`.
+        cx.set_reduce_motion(true);
         crate::runtime::init(cx);
     });
     let (cluster, client) = crate::k8s::test_cluster::FakeCluster::start(cx);

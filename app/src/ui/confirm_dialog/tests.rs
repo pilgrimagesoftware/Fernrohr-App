@@ -26,6 +26,8 @@ impl Render for Host {
 fn opened(cx: &mut TestAppContext) -> (VisualTestContext, Rc<Cell<usize>>) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        // Dialogs slide in on the wall clock; see `pod_detail::tests::acting`.
+        cx.set_reduce_motion(true);
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
     });
     let window = cx.add_window(|window, cx| {

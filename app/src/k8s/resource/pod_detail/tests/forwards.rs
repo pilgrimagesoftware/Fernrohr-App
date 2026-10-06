@@ -43,29 +43,19 @@ impl Harness {
         self.vcx.debug_bounds(selector).is_some()
     }
 
-    /// Clicks `id` once it is drawn - waiting for it a little, as a dialog
-    /// opening under a loaded test run may take a few frames to appear.
+    /// Clicks `id` where the current frame draws it.
     fn click(&mut self, id: impl Into<gpui_kit::SharedString>) {
         let id: &'static str = id.into().to_string().leak();
-        let mut at = None;
-        for _ in 0..100 {
-            at = self.vcx.update(|window, cx| {
-                window.render_frame(cx);
-                window.try_find(id).map(|found| found.bounds().center())
-            });
-            if at.is_some() {
-                break;
-            }
-            self.settle();
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        let at = at.unwrap_or_else(|| panic!("{id} never drawn"));
+        let at = self.vcx.update(|window, cx| {
+            window.render_frame(cx);
+            window.find(id).bounds().center()
+        });
         self.vcx.simulate_click(at, Modifiers::none());
         self.settle();
     }
 
-    /// Lets a dialog finish opening or closing before the next input, so a
-    /// click can't land on one that is still animating away.
+    /// Runs what the last input started, and the test clock past a dialog's
+    /// deferred close, before the next input.
     fn settle(&mut self) {
         self.vcx.run_until_parked();
         self.vcx
