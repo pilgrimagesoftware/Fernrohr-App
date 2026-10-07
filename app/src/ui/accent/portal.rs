@@ -10,6 +10,8 @@ use gpui_kit::*;
 #[derive(Default)]
 struct PortalAccent {
     last: Option<Hsla>,
+    // A test build never reads the portal (`request`), so never sets this.
+    #[cfg_attr(test, allow(dead_code))]
     reading: bool,
 }
 
