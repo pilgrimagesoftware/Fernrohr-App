@@ -26,16 +26,15 @@ impl MainWindow {
         cx: &mut Context<Self>,
     ) {
         let discovery = DiscoveryRegistry::kinds(cx, &action.context_name);
-        let destination = viewer_for(&action.target, discovery.read(cx).kinds());
-        let Some(destination) = destination else {
+        let Some(target) = viewer_for(&action.target, discovery.read(cx).kinds()) else {
             log::debug!("no viewer for followed reference {:?}", action.target);
             return;
         };
         self.open_target_in(
-            destination.target,
+            target,
             None,
             Some(action.context_name.clone()),
-            destination.namespaces,
+            Vec::new(),
             action.mode,
             window,
             cx,
@@ -47,8 +46,7 @@ impl MainWindow {
     /// Opens (or focuses) the detail panel of an object a list panel's row was
     /// activated on, in the list's own context (`standard-resource-panels` D5). The
     /// object's kind came from discovery already, so unlike a followed reference
-    /// there's nothing to look up; and a Namespace row opens that Namespace's detail,
-    /// where `viewer_for` would send a reference to it to the Pods list.
+    /// there's nothing to look up.
     pub(super) fn on_action_open_listed_object(
         &mut self,
         action: &OpenListedObject,
