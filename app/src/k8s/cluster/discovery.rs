@@ -128,10 +128,27 @@ impl DiscoveredKind {
         }
     }
 
-    /// The capitalized plural alone (`"Certificates"`), with no group
-    /// qualifier - what a custom resource's list tab reads, its group going
-    /// to the tab's tooltip instead.
+    /// The plural alone (`"Certificates"`), with no group qualifier - what a
+    /// custom resource's list tab reads, its group going to the tab's tooltip
+    /// instead.
+    ///
+    /// The API plural is all lowercase (`replicasets`), so the casing comes
+    /// from the Kind the Resource list shows: the stretch of the plural that
+    /// spells the Kind keeps the Kind's letters, and only the plural's own
+    /// ending is taken as is - `ReplicaSet` gives `"ReplicaSets"`,
+    /// `NetworkPolicy` gives `"NetworkPolicies"`. A plural that shares nothing
+    /// with its Kind just has its first letter capitalized.
     pub fn plural_name(&self) -> String {
+        let kind = &self.gvk.kind;
+        let shared = kind
+            .char_indices()
+            .zip(self.plural.char_indices())
+            .take_while(|((_, k), (_, p))| k.to_lowercase().eq(p.to_lowercase()))
+            .last()
+            .map(|((k, kc), (p, pc))| (k + kc.len_utf8(), p + pc.len_utf8()));
+        if let Some((kind_end, plural_end)) = shared {
+            return format!("{}{}", &kind[..kind_end], &self.plural[plural_end..]);
+        }
         let mut chars = self.plural.chars();
         match chars.next() {
             Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),

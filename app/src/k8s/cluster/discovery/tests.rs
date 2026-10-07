@@ -311,6 +311,51 @@ fn plural_label_capitalizes_the_plural_and_keeps_the_group_qualifier() {
     assert_eq!(widget.plural_name(), "Widgets");
 }
 
+fn kind(group: &str, kind: &str, plural: &str) -> DiscoveredKind {
+    DiscoveredKind {
+        gvk: GroupVersionKind::gvk(group, "v1", kind),
+        plural: plural.into(),
+        namespaced: true,
+        verbs: Default::default(),
+    }
+}
+
+/// #155: a list tab's title is cased like the Kind the Resource list shows,
+/// not like the lowercase API plural.
+#[test]
+fn plural_name_keeps_the_kinds_casing() {
+    assert_eq!(
+        kind("apps", "ReplicaSet", "replicasets").plural_name(),
+        "ReplicaSets"
+    );
+    assert_eq!(
+        kind("apps", "StatefulSet", "statefulsets").plural_label(),
+        "StatefulSets · apps"
+    );
+    assert_eq!(
+        kind("networking.k8s.io", "NetworkPolicy", "networkpolicies").plural_name(),
+        "NetworkPolicies"
+    );
+    assert_eq!(
+        kind("", "Endpoints", "endpoints").plural_name(),
+        "Endpoints"
+    );
+    assert_eq!(
+        kind("", "PersistentVolumeClaim", "persistentvolumeclaims").plural_name(),
+        "PersistentVolumeClaims"
+    );
+}
+
+/// A plural that doesn't spell its Kind falls back to a capitalized plural.
+#[test]
+fn plural_name_of_an_unrelated_plural_capitalizes_it() {
+    assert_eq!(
+        kind("example.com", "Widget", "gadgets").plural_name(),
+        "Gadgets"
+    );
+    assert_eq!(kind("example.com", "Widget", "").plural_name(), "");
+}
+
 use crate::k8s::cluster::mock_api::{cluster_with_a_failing_aggregated_group, recover_metrics};
 
 /// One failing group costs only its own kinds: the core and `apps` kinds still

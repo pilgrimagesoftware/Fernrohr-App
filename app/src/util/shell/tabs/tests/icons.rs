@@ -84,7 +84,7 @@ async fn the_pods_and_configmaps_tabs_each_lead_with_their_icon(cx: &mut TestApp
     window
         .update(&mut vcx, |_, window, cx| window.render_frame(cx))
         .unwrap();
-    for (tab, icon) in [("Pods", "Pod"), ("Configmaps", "ConfigMap")] {
+    for (tab, icon) in [("Pods", "Pod"), ("ConfigMaps", "ConfigMap")] {
         let title = title(&mut vcx, tab);
         let selector: &'static str = format!("kind-icon-{icon}").leak();
         let icon_bounds = vcx

@@ -53,7 +53,7 @@ async fn a_tab_dropped_on_a_lone_groups_tab_joins_that_group(cx: &mut TestAppCon
 
     let (from, to) = (
         tab(&mut h, "Pods").center(),
-        tab(&mut h, "Rolebindings").center(),
+        tab(&mut h, "RoleBindings").center(),
     );
     drag(&mut h, from, to);
 
@@ -69,7 +69,7 @@ async fn a_tab_dropped_on_a_two_tab_strip_joins_that_group(cx: &mut TestAppConte
     let mut h = Harness::new(cx);
     let (pods, bindings) = stacked(&mut h);
     h.focus(bindings);
-    let services = h.open_list("services");
+    let services = h.open_list("Service", "services");
     assert!(
         same_group(&mut h, services, bindings),
         "Services opened beside RoleBindings"

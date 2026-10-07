@@ -67,11 +67,11 @@ impl Harness {
         })
     }
 
-    /// Opens a list panel over the core kind `plural` the way the app does
+    /// Opens a list panel over the core `kind` (API plural `plural`) the way the app does
     /// (`open_target`), so the window records it among its open panels.
-    pub(super) fn open_list(&mut self, plural: &str) -> PanelId {
+    pub(super) fn open_list(&mut self, kind: &str, plural: &str) -> PanelId {
         let target = NavTarget::Kind(DiscoveredKind {
-            gvk: kube::core::GroupVersionKind::gvk("", "v1", plural),
+            gvk: kube::core::GroupVersionKind::gvk("", "v1", kind),
             plural: plural.into(),
             namespaced: true,
             verbs: Default::default(),
@@ -230,7 +230,7 @@ impl Harness {
 async fn a_background_tabs_close_control_closes_that_tab(cx: &mut TestAppContext) {
     let mut h = Harness::new(cx);
     let pods = h.pods();
-    let services = h.open_list("services");
+    let services = h.open_list("Service", "services");
     let dock = h.dock();
     h.vcx
         .update(|window, cx| dock.update(cx, |area, cx| area.select_panel(pods, window, cx)));
@@ -251,7 +251,7 @@ async fn a_background_tabs_close_control_closes_that_tab(cx: &mut TestAppContext
 /// lower one.
 pub(super) fn stacked(h: &mut Harness) -> (PanelId, PanelId) {
     let pods = h.pods();
-    let bindings = h.open_list("rolebindings");
+    let bindings = h.open_list("RoleBinding", "rolebindings");
     let dock = h.dock();
     h.vcx.update(|window, cx| {
         dock.update(cx, |area, cx| {
@@ -356,7 +356,7 @@ async fn a_lone_panels_close_sits_beside_its_title(cx: &mut TestAppContext) {
 async fn closing_down_to_one_tab_keeps_the_close_beside_the_title(cx: &mut TestAppContext) {
     let mut h = Harness::new(cx);
     let pods = h.pods();
-    let services = h.open_list("services");
+    let services = h.open_list("Service", "services");
     h.assert_close_beside_title(services, "Services");
 
     h.click_title_close(services);
@@ -371,7 +371,7 @@ async fn closing_down_to_one_tab_keeps_the_close_beside_the_title(cx: &mut TestA
 async fn pressing_a_tabs_close_control_starts_no_drag(cx: &mut TestAppContext) {
     let mut h = Harness::new(cx);
     let _pods = h.pods();
-    let services = h.open_list("services");
+    let services = h.open_list("Service", "services");
     let close = h
         .vcx
         .debug_bounds(Harness::close_selector(services))
