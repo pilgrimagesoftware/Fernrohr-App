@@ -109,6 +109,15 @@ fn an_ingress_shows_rules_and_tls_and_references_backends_and_secrets() {
         "each backend Service once, the default backend's included"
     );
     assert_eq!(
+        field(&sections, "Open").value,
+        FieldValue::Urls(vec![
+            "https://app.example.com/".into(),
+            "https://app.example.com/api".into(),
+            "https://app.example.com/static".into(),
+        ]),
+        "a TLS host's paths open over https"
+    );
+    assert_eq!(
         field(&sections, "TLS Hosts").value.text(),
         "app.example.com"
     );
@@ -263,5 +272,37 @@ fn an_empty_pod_selector_reads_as_every_pod() {
     assert_eq!(
         field(&sections, "Pod Selector").value.text(),
         "all pods in the namespace"
+    );
+}
+
+/// #157: a host without TLS opens over http, a rule with no paths at its root,
+/// and a wildcard host - no one address - not at all.
+#[test]
+fn an_ingresss_hosts_open_over_their_scheme_and_a_wildcard_does_not() {
+    let ingress = object(json!({
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "Ingress",
+        "metadata": { "name": "web", "namespace": "staging" },
+        "spec": {
+            "rules": [
+                { "host": "plain.example.com", "http": { "paths": [
+                    { "path": "/app", "pathType": "Prefix",
+                      "backend": { "service": { "name": "web", "port": { "number": 80 } } } },
+                ] } },
+                { "host": "bare.example.com" },
+                { "host": "*.example.com" },
+                { "http": { "paths": [] } },
+            ],
+        },
+    }));
+
+    let sections = sections_for(&kind("networking.k8s.io", "v1", "Ingress", true), &ingress);
+
+    assert_eq!(
+        field(&sections, "Open").value,
+        FieldValue::Urls(vec![
+            "http://plain.example.com/app".into(),
+            "http://bare.example.com/".into(),
+        ])
     );
 }

@@ -189,6 +189,10 @@ pub(super) fn ingress(ingress: &Ingress, namespace: &str) -> Vec<ObjectSection> 
         }
     }
     lines(&mut fields, "Rules", rule_lines);
+    let urls = host_urls(ingress);
+    if !urls.is_empty() {
+        fields.push(ObjectField::new("Open", FieldValue::Urls(urls)));
+    }
     references(&mut fields, "Backends", unique(backends), false);
     let tls = spec
         .and_then(|spec| spec.tls.as_ref())
@@ -206,6 +210,46 @@ pub(super) fn ingress(ingress: &Ingress, namespace: &str) -> Vec<ObjectSection> 
     references(&mut fields, "TLS Secrets", unique(tls_secrets), false);
 
     vec![ObjectSection::new("Ingress", fields)]
+}
+
+/// The web address of each of an Ingress's rules with a host (#157): `https`
+/// when a TLS entry covers the host, else `http`, and the rule's path - each
+/// once. A wildcard host (`*.example.com`) is no one address, so it has none.
+fn host_urls(ingress: &Ingress) -> Vec<String> {
+    let Some(spec) = ingress.spec.as_ref() else {
+        return Vec::new();
+    };
+    let tls_hosts: Vec<&str> = spec
+        .tls
+        .iter()
+        .flatten()
+        .flat_map(|tls| tls.hosts.iter().flatten())
+        .map(String::as_str)
+        .collect();
+    let urls = spec.rules.iter().flatten().flat_map(|rule| {
+        let host = non_empty(rule.host.as_deref()).filter(|host| !host.contains('*'));
+        let scheme = if host.is_some_and(|host| tls_hosts.contains(&host)) {
+            "https"
+        } else {
+            "http"
+        };
+        let paths: Vec<&str> = rule
+            .http
+            .iter()
+            .flat_map(|http| &http.paths)
+            .map(|path| non_empty(path.path.as_deref()).unwrap_or("/"))
+            .collect();
+        let paths = if paths.is_empty() { vec!["/"] } else { paths };
+        host.into_iter()
+            .flat_map(move |host| {
+                paths
+                    .clone()
+                    .into_iter()
+                    .map(move |path| format!("{scheme}://{host}{path}"))
+            })
+            .collect::<Vec<_>>()
+    });
+    unique(urls)
 }
 
 fn endpoint_ports(ports: Option<&Vec<EndpointPort>>) -> Vec<String> {

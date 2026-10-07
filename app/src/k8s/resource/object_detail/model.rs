@@ -63,6 +63,9 @@ pub enum FieldValue {
     Badges(Vec<(String, BadgeTone)>),
     /// One line each.
     Lines(Vec<String>),
+    /// Web addresses, each a link that opens in the browser - an Ingress's
+    /// hosts (#157).
+    Urls(Vec<String>),
     /// Key/value pairs with room for a long value - a ConfigMap's data.
     KeyValues(Vec<(String, String)>),
     /// A Secret's keys with their sizes, each revealable one at a time - the
@@ -91,7 +94,9 @@ impl FieldValue {
                 })
                 .collect::<Vec<_>>()
                 .join(", "),
-            FieldValue::Chips(items) | FieldValue::Lines(items) => items.join(", "),
+            FieldValue::Chips(items) | FieldValue::Lines(items) | FieldValue::Urls(items) => {
+                items.join(", ")
+            }
             FieldValue::Badges(badges) => badges
                 .iter()
                 .map(|(text, _)| text.clone())
@@ -127,6 +132,7 @@ pub fn go_to_entries(sections: &[ObjectSection]) -> Vec<GoToEntry> {
             | FieldValue::Metadata(_)
             | FieldValue::Badges(_)
             | FieldValue::Lines(_)
+            | FieldValue::Urls(_)
             | FieldValue::KeyValues(_)
             | FieldValue::SecretKeys { .. } => Vec::new(),
         })
