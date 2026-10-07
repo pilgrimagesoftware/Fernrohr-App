@@ -24,6 +24,11 @@ impl ObjectDetailPanel {
     fn render_field(&self, section: &str, field: &ObjectField, cx: &Context<Self>) -> AnyElement {
         let value = match &field.value {
             FieldValue::Text(text) => div().child(text.clone()).into_any_element(),
+            FieldValue::Status { text, tone } => div()
+                .debug_selector(|| format!("object-status-{section}/{}", field.label))
+                .text_color(crate::ui::style::status(*tone, cx))
+                .child(text.clone())
+                .into_any_element(),
             FieldValue::References { targets, qualified } => {
                 let qualified = *qualified;
                 link::references(

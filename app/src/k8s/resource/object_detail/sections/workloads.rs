@@ -6,6 +6,7 @@
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
 use super::common::{condition_badges, non_empty, selector_chips};
 use crate::k8s::object_ref::ObjectRef;
+use crate::k8s::resource::status_tone::{self, JobStatus};
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
@@ -31,19 +32,41 @@ fn counts(parts: &[(&str, Option<i32>)]) -> String {
         .join(" · ")
 }
 
+/// The replica counts in their readiness tone: `ready` (unset reading as 0)
+/// of `desired`.
+fn replicas(
+    label: &str,
+    parts: &[(&str, Option<i32>)],
+    ready: Option<i32>,
+    desired: i32,
+) -> ObjectField {
+    ObjectField::status(
+        label,
+        counts(parts),
+        status_tone::readiness(i64::from(ready.unwrap_or(0)), i64::from(desired)),
+    )
+}
+
+/// An unset `replicas` is the API's default of 1.
+const DEFAULT_REPLICAS: i32 = 1;
+
 pub(super) fn replica_set(set: &ReplicaSet) -> Vec<ObjectSection> {
     let status = set.status.as_ref();
-    let mut fields = vec![ObjectField::text(
+    let desired = set.spec.as_ref().and_then(|spec| spec.replicas);
+    let ready = status.and_then(|status| status.ready_replicas);
+    let mut fields = vec![replicas(
         "Replicas",
-        counts(&[
-            ("desired", set.spec.as_ref().and_then(|spec| spec.replicas)),
+        &[
+            ("desired", desired),
             ("current", status.map(|status| status.replicas)),
-            ("ready", status.and_then(|status| status.ready_replicas)),
+            ("ready", ready),
             (
                 "available",
                 status.and_then(|status| status.available_replicas),
             ),
-        ]),
+        ],
+        ready,
+        desired.unwrap_or(DEFAULT_REPLICAS),
     )];
     selector(&mut fields, set.spec.as_ref().map(|spec| &spec.selector));
     let conditions = status
@@ -59,17 +82,21 @@ pub(super) fn replica_set(set: &ReplicaSet) -> Vec<ObjectSection> {
 pub(super) fn deployment(deployment: &Deployment) -> Vec<ObjectSection> {
     let spec = deployment.spec.as_ref();
     let status = deployment.status.as_ref();
-    let mut fields = vec![ObjectField::text(
+    let desired = spec.and_then(|spec| spec.replicas);
+    let ready = status.and_then(|status| status.ready_replicas);
+    let mut fields = vec![replicas(
         "Replicas",
-        counts(&[
-            ("desired", spec.and_then(|spec| spec.replicas)),
+        &[
+            ("desired", desired),
             ("updated", status.and_then(|status| status.updated_replicas)),
-            ("ready", status.and_then(|status| status.ready_replicas)),
+            ("ready", ready),
             (
                 "available",
                 status.and_then(|status| status.available_replicas),
             ),
-        ]),
+        ],
+        ready,
+        desired.unwrap_or(DEFAULT_REPLICAS),
     )];
     if let Some(strategy) = non_empty(
         spec.and_then(|spec| spec.strategy.as_ref())
@@ -93,17 +120,21 @@ pub(super) fn deployment(deployment: &Deployment) -> Vec<ObjectSection> {
 pub(super) fn stateful_set(set: &StatefulSet, namespace: &str) -> Vec<ObjectSection> {
     let spec = set.spec.as_ref();
     let status = set.status.as_ref();
-    let mut fields = vec![ObjectField::text(
+    let desired = spec.and_then(|spec| spec.replicas);
+    let ready = status.and_then(|status| status.ready_replicas);
+    let mut fields = vec![replicas(
         "Replicas",
-        counts(&[
-            ("desired", spec.and_then(|spec| spec.replicas)),
+        &[
+            ("desired", desired),
             ("current", status.and_then(|status| status.current_replicas)),
-            ("ready", status.and_then(|status| status.ready_replicas)),
+            ("ready", ready),
             (
                 "available",
                 status.and_then(|status| status.available_replicas),
             ),
-        ]),
+        ],
+        ready,
+        desired.unwrap_or(DEFAULT_REPLICAS),
     )];
     if let Some(service) = non_empty(spec.and_then(|spec| spec.service_name.as_deref())) {
         fields.push(ObjectField::references(
@@ -118,23 +149,25 @@ pub(super) fn stateful_set(set: &StatefulSet, namespace: &str) -> Vec<ObjectSect
 
 pub(super) fn daemon_set(set: &DaemonSet) -> Vec<ObjectSection> {
     let status = set.status.as_ref();
-    let mut fields = vec![ObjectField::text(
+    let desired = status.map(|status| status.desired_number_scheduled);
+    let ready = status.map(|status| status.number_ready);
+    let mut fields = vec![replicas(
         "Scheduled",
-        counts(&[
-            (
-                "desired",
-                status.map(|status| status.desired_number_scheduled),
-            ),
+        &[
+            ("desired", desired),
             (
                 "current",
                 status.map(|status| status.current_number_scheduled),
             ),
-            ("ready", status.map(|status| status.number_ready)),
+            ("ready", ready),
             (
                 "available",
                 status.and_then(|status| status.number_available),
             ),
-        ]),
+        ],
+        ready,
+        // A DaemonSet with no status yet has scheduled nothing to want.
+        desired.unwrap_or(0),
     )];
     if let Some(misscheduled) = status
         .map(|status| status.number_misscheduled)
@@ -149,7 +182,13 @@ pub(super) fn daemon_set(set: &DaemonSet) -> Vec<ObjectSection> {
 pub(super) fn job(job: &Job) -> Vec<ObjectSection> {
     let spec = job.spec.as_ref();
     let status = job.status.as_ref();
-    let mut fields = vec![ObjectField::text(
+    let job_status = JobStatus::of(job);
+    let mut fields = vec![ObjectField::status(
+        "Status",
+        job_status.to_string(),
+        job_status.tone(),
+    )];
+    fields.push(ObjectField::text(
         "Completions",
         counts(&[
             ("wanted", spec.and_then(|spec| spec.completions)),
@@ -157,7 +196,7 @@ pub(super) fn job(job: &Job) -> Vec<ObjectSection> {
             ("active", status.and_then(|status| status.active)),
             ("failed", status.and_then(|status| status.failed)),
         ]),
-    )];
+    ));
     if let Some(parallelism) = spec.and_then(|spec| spec.parallelism) {
         fields.push(ObjectField::text("Parallelism", parallelism.to_string()));
     }

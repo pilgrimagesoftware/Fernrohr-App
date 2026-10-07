@@ -6,6 +6,7 @@ use super::{
     ROLE_BINDING, SERVICE_ACCOUNT, STORAGE_CLASS_COLUMNS,
 };
 use crate::k8s::resource::object_list::columns::{Cell, KindColumns};
+use crate::ui::style::Tone;
 use kube::api::DynamicObject;
 use serde_json::json;
 
@@ -32,7 +33,7 @@ fn a_bound_claim_shows_status_volume_capacity_modes_and_class() {
     assert_eq!(
         cells,
         vec![
-            Cell::text("Bound"),
+            Cell::status("Bound", Tone::Good),
             Cell::text("pvc-0f3a"),
             Cell::text("10Gi"),
             Cell::text("RWO,ROX"),
@@ -53,7 +54,7 @@ fn a_pending_claim_leaves_volume_and_capacity_empty() {
             "status": { "phase": "Pending" },
         }),
     );
-    assert_eq!(cells[0], Cell::text("Pending"));
+    assert_eq!(cells[0], Cell::status("Pending", Tone::Info));
     assert_eq!(cells[1], Cell::Empty);
     assert_eq!(cells[2], Cell::Empty);
 }
@@ -81,7 +82,7 @@ fn a_volume_shows_capacity_modes_policy_status_claim_and_class() {
             Cell::text("10Gi"),
             Cell::text("RWOP"),
             Cell::text("Retain"),
-            Cell::text("Bound"),
+            Cell::status("Bound", Tone::Good),
             Cell::text("staging/data"),
             Cell::text("fast-ssd"),
         ]
@@ -140,7 +141,7 @@ fn a_node_shows_status_roles_version_and_internal_ip() {
     assert_eq!(
         cells,
         vec![
-            Cell::text("Ready,SchedulingDisabled"),
+            Cell::status("Ready,SchedulingDisabled", Tone::Warning),
             Cell::text("control-plane,worker"),
             Cell::text("v1.33.1"),
             Cell::text("10.0.0.1"),
@@ -160,7 +161,7 @@ fn a_not_ready_node_without_roles() {
             "status": { "conditions": [{ "type": "Ready", "status": "False" }] },
         }),
     );
-    assert_eq!(cells[0], Cell::text("NotReady"));
+    assert_eq!(cells[0], Cell::status("NotReady", Tone::Bad));
     assert_eq!(cells[1], Cell::text("<none>"));
 }
 
@@ -174,7 +175,7 @@ fn a_namespace_shows_its_status() {
             "status": { "phase": "Active" },
         }),
     );
-    assert_eq!(cells, vec![Cell::text("Active")]);
+    assert_eq!(cells, vec![Cell::status("Active", Tone::Good)]);
 }
 
 #[test]

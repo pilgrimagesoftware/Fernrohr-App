@@ -5,6 +5,7 @@
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::detail::BadgeTone;
 use crate::ui::link::GoToEntry;
+use crate::ui::style::Tone;
 
 /// One titled group of fields - Overview, then the kind's own.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,6 +41,17 @@ impl ObjectField {
         Self::new(label, FieldValue::Text(text.into()))
     }
 
+    /// A status in its tone's colour, still reading as text without it.
+    pub fn status(label: impl Into<String>, text: impl Into<String>, tone: Tone) -> Self {
+        Self::new(
+            label,
+            FieldValue::Status {
+                text: text.into(),
+                tone,
+            },
+        )
+    }
+
     /// References to other objects; `qualified` as in pod detail - `Kind/name`
     /// for a row of mixed kinds, the bare name when the label names the kind.
     pub fn references(label: impl Into<String>, targets: Vec<ObjectRef>, qualified: bool) -> Self {
@@ -50,6 +62,12 @@ impl ObjectField {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldValue {
     Text(String),
+    /// A status in its severity's colour - a Job's status, a claim's phase,
+    /// a workload's replicas by readiness (`status_tone`) - its text kept.
+    Status {
+        text: String,
+        tone: Tone,
+    },
     References {
         targets: Vec<ObjectRef>,
         qualified: bool,
@@ -82,7 +100,7 @@ impl FieldValue {
     #[cfg(test)]
     pub fn text(&self) -> String {
         match self {
-            FieldValue::Text(text) => text.clone(),
+            FieldValue::Text(text) | FieldValue::Status { text, .. } => text.clone(),
             FieldValue::References { targets, qualified } => targets
                 .iter()
                 .map(|target| {
@@ -128,6 +146,7 @@ pub fn go_to_entries(sections: &[ObjectSection]) -> Vec<GoToEntry> {
                 .map(|target| GoToEntry::new(target.clone(), field.label.clone()))
                 .collect(),
             FieldValue::Text(_)
+            | FieldValue::Status { .. }
             | FieldValue::Chips(_)
             | FieldValue::Metadata(_)
             | FieldValue::Badges(_)

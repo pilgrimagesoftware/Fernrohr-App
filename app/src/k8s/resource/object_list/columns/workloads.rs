@@ -3,6 +3,7 @@
 //! Job and CronJob.
 
 use super::{Cell, ColumnDef, KindColumns, typed_cells};
+use crate::k8s::resource::status_tone::JobStatus;
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 
@@ -32,6 +33,15 @@ fn ready_of(ready: Option<i32>, desired: Option<i32>) -> Cell {
     )
 }
 
+/// Ready replicas of desired, in their readiness tone - unset desired reading
+/// as 1, as in [`ready_of`].
+fn readiness_of(ready: Option<i32>, desired: Option<i32>) -> Cell {
+    Cell::Readiness(
+        i64::from(ready.unwrap_or(0)),
+        i64::from(desired.unwrap_or(1)),
+    )
+}
+
 pub(super) static DEPLOYMENT: KindColumns = KindColumns {
     columns: &[READY, UP_TO_DATE, AVAILABLE],
     cells: |object| {
@@ -39,7 +49,7 @@ pub(super) static DEPLOYMENT: KindColumns = KindColumns {
             let desired = deployment.spec.as_ref().and_then(|spec| spec.replicas);
             let status = deployment.status.as_ref();
             vec![
-                ready_of(status.and_then(|status| status.ready_replicas), desired),
+                readiness_of(status.and_then(|status| status.ready_replicas), desired),
                 count(status.and_then(|status| status.updated_replicas)),
                 count(status.and_then(|status| status.available_replicas)),
             ]
@@ -70,7 +80,7 @@ pub(super) static STATEFUL_SET: KindColumns = KindColumns {
     columns: &[READY],
     cells: |object| {
         typed_cells::<StatefulSet>(object, |set| {
-            vec![ready_of(
+            vec![readiness_of(
                 set.status.as_ref().and_then(|status| status.ready_replicas),
                 set.spec.as_ref().and_then(|spec| spec.replicas),
             )]
@@ -94,26 +104,6 @@ pub(super) static DAEMON_SET: KindColumns = KindColumns {
     },
 };
 
-/// What `kubectl get jobs` shows as a Job's status: `Complete` or `Failed`
-/// once a condition says so, `Suspended` while suspended, else `Running`.
-fn job_status(job: &Job) -> &'static str {
-    let holds = |kind: &str| {
-        job.status
-            .iter()
-            .flat_map(|status| status.conditions.iter().flatten())
-            .any(|condition| condition.type_ == kind && condition.status == "True")
-    };
-    if holds("Complete") {
-        "Complete"
-    } else if holds("Failed") {
-        "Failed"
-    } else if job.spec.as_ref().and_then(|spec| spec.suspend) == Some(true) {
-        "Suspended"
-    } else {
-        "Running"
-    }
-}
-
 pub(super) static JOB: KindColumns = KindColumns {
     columns: &[
         column("status", "Status", 90.),
@@ -122,6 +112,7 @@ pub(super) static JOB: KindColumns = KindColumns {
     ],
     cells: |object| {
         typed_cells::<Job>(object, |job| {
+            let job_status = JobStatus::of(job);
             let status = job.status.as_ref();
             let started = status.and_then(|status| status.start_time.as_ref());
             let completed = status.and_then(|status| status.completion_time.as_ref());
@@ -135,7 +126,7 @@ pub(super) static JOB: KindColumns = KindColumns {
                 (None, _) => Cell::Empty,
             };
             vec![
-                Cell::text(job_status(job)),
+                Cell::status(job_status.to_string(), job_status.tone()),
                 ready_of(
                     status.and_then(|status| status.succeeded),
                     job.spec.as_ref().and_then(|spec| spec.completions),

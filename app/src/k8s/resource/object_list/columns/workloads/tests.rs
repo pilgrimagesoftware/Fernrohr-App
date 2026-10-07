@@ -2,6 +2,7 @@
 
 use super::{CRON_JOB, DAEMON_SET, DEPLOYMENT, JOB, REPLICA_SET, STATEFUL_SET};
 use crate::k8s::resource::object_list::columns::{Cell, KindColumns};
+use crate::ui::style::Tone;
 use jiff::Timestamp;
 use kube::api::DynamicObject;
 use serde_json::json;
@@ -29,7 +30,7 @@ fn a_deployment_shows_ready_up_to_date_and_available() {
     );
     assert_eq!(
         cells,
-        vec![Cell::Ratio(2, 3), Cell::Number(3), Cell::Number(2)]
+        vec![Cell::Readiness(2, 3), Cell::Number(3), Cell::Number(2)]
     );
 }
 
@@ -48,7 +49,7 @@ fn a_scaled_down_deployment_reads_as_zero() {
     );
     assert_eq!(
         cells,
-        vec![Cell::Ratio(0, 0), Cell::Number(0), Cell::Number(0)]
+        vec![Cell::Readiness(0, 0), Cell::Number(0), Cell::Number(0)]
     );
 }
 
@@ -80,7 +81,8 @@ fn a_stateful_set_shows_ready_of_desired() {
             "status": { "replicas": 3, "readyReplicas": 3 },
         }),
     );
-    assert_eq!(cells, vec![Cell::Ratio(3, 3)]);
+    assert_eq!(cells, vec![Cell::Readiness(3, 3)]);
+    assert_eq!(cells[0].tone(), Some(Tone::Good));
 }
 
 #[test]
@@ -130,7 +132,7 @@ fn a_finished_job_shows_its_status_completions_and_run_time() {
     assert_eq!(
         cells,
         vec![
-            Cell::text("Complete"),
+            Cell::status("Complete", Tone::Good),
             Cell::Ratio(1, 1),
             Cell::Duration(90),
         ]
@@ -152,7 +154,7 @@ fn a_running_job_measures_its_duration_live() {
     assert_eq!(
         cells,
         vec![
-            Cell::text("Running"),
+            Cell::status("Running", Tone::Info),
             Cell::Ratio(2, 5),
             Cell::Age(at("2026-10-02T11:00:00Z")),
         ]
@@ -178,8 +180,8 @@ fn a_failed_or_suspended_job_says_so() {
             "spec": { "suspend": true, "template": {} },
         }),
     );
-    assert_eq!(failed[0], Cell::text("Failed"));
-    assert_eq!(suspended[0], Cell::text("Suspended"));
+    assert_eq!(failed[0], Cell::status("Failed", Tone::Bad));
+    assert_eq!(suspended[0], Cell::status("Suspended", Tone::Neutral));
     assert_eq!(
         suspended[2],
         Cell::Empty,
