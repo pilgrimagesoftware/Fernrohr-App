@@ -14,6 +14,13 @@ impl BasePanel for LogsPanel {
             "context_name": self.scope.context_name,
             "namespaces": self.scope.namespaces,
         });
+        // A label-following panel comes back following the same pods (#150).
+        if let Some(following) = &self.labels {
+            info["label_logs"] = serde_json::to_value(&following.source).unwrap_or_default();
+            if let Some((selector, _)) = &following.selector {
+                info["selector"] = selector.clone().into();
+            }
+        }
         // A pod's own panel comes back pinned to its pod, on the container
         // it showed (`register_restore`).
         if let Some(pinned) = &self.pinned {
@@ -47,6 +54,16 @@ fn streaming_title(
 
 impl LogsPanel {
     fn streaming_title(&self) -> String {
+        // A typed label panel is named by what it follows; a workload's by
+        // the workload, as its target says.
+        if let Some(super::labels::Following {
+            source: super::labels::LabelLogs::Typed,
+            selector: Some((selector, _)),
+            ..
+        }) = &self.labels
+        {
+            return format!("Logs: {selector}");
+        }
         let title = streaming_title(self.current.as_ref(), || panel_title::title(&self.scope));
         if self.previous && self.current.is_some() {
             format!("{title} (previous)")

@@ -5,7 +5,8 @@
 //! reference leads to when its kind has no dedicated panel - which, today, is
 //! every kind but Pod.
 //!
-//! [`commands`] owns the panel's actions, [`delete`] its Delete, [`model`] the field model, [`fetch`]
+//! [`commands`] owns the panel's actions, [`delete`] its Delete, [`logs`] its
+//! pods' logs, [`model`] the field model, [`fetch`]
 //! the one-shot read, [`redact`] keeping Secret values out of everything the
 //! panel stores, [`metadata`] the Overview section every kind gets,
 //! [`sections`] the kind-specific ones, and [`panel`], [`render`] and
@@ -17,6 +18,7 @@ mod edit;
 mod edit_view;
 mod fetch;
 mod live;
+mod logs;
 mod metadata;
 mod model;
 mod panel;

@@ -73,5 +73,71 @@ impl MainWindow {
     }
 }
 
+impl MainWindow {
+    /// `ShowLabelLogs` (#150): the Logs panel a label selector is typed into,
+    /// opened - or, already open, focused with its field focused to type
+    /// another.
+    pub(super) fn on_action_show_label_logs(
+        &mut self,
+        _: &crate::util::logs::ShowLabelLogs,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let target = NavTarget::LabelLogs(crate::util::logs::LabelLogs::Typed);
+        let existing = self.open_logs_panel(&target, cx);
+        self.open_target(target, window, cx);
+        if let Some(panel) = existing {
+            panel.update(cx, |panel, cx| panel.focus_selector(window, cx));
+        }
+    }
+
+    /// `OpenWorkloadLogs` (#150): the Logs panel following a workload's pods,
+    /// in the workload's own context.
+    pub(super) fn on_action_open_workload_logs(
+        &mut self,
+        action: &crate::util::logs::OpenWorkloadLogs,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_target_in(
+            NavTarget::LabelLogs(crate::util::logs::LabelLogs::Workload(
+                action.workload.clone(),
+            )),
+            None,
+            Some(action.context_name.clone()),
+            Vec::new(),
+            crate::ui::nav::OpenMode::Foreground,
+            window,
+            cx,
+        );
+    }
+
+    /// The Logs panel this window has open on `target`, in the context a new
+    /// one would open in.
+    fn open_logs_panel(
+        &self,
+        target: &NavTarget,
+        cx: &App,
+    ) -> Option<Entity<crate::util::logs::LogsPanel>> {
+        let WindowMode::Workspace {
+            open_panels,
+            contexts,
+            active,
+            ..
+        } = &self.mode
+        else {
+            return None;
+        };
+        let context_name = super::panels::pod_scoped_context(target, contexts, *active, cx)?;
+        open_panels
+            .iter()
+            .find(|open| &open.key.target == target && open.key.context_name == context_name)
+            .and_then(|open| match &open.panel {
+                Some(crate::ui::nav::OpenedPanel::Logs(panel)) => Some(panel.clone()),
+                _ => None,
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests;

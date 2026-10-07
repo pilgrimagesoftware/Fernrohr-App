@@ -12,7 +12,8 @@ actions!(
         EditObject,
         SaveObjectEdit,
         CancelObjectEdit,
-        DeleteObject
+        DeleteObject,
+        ShowObjectLogs
     ]
 );
 
@@ -37,6 +38,11 @@ pub const EDIT_KEY_CONTEXT: &str = "ObjectYamlEdit";
 pub(super) const EDIT_KEY: &str = "e";
 pub(super) const SAVE_EDIT_KEY: &str = "cmd-s";
 pub(super) const CANCEL_EDIT_KEY: &str = "escape";
+/// Added beside [`PANEL_KEY_CONTEXT`] while the object's spec selects pods - a
+/// workload's or a Service's - so Logs is offered only then (#150).
+pub const POD_SELECTING_KEY_CONTEXT: &str = "PodSelectingObject";
+/// The Pods list's logs key, so a workload's pods' logs open as a pod's do.
+pub(super) const POD_LOGS_KEY: &str = "l";
 /// The lists' delete key, so an object deletes alike wherever it is shown.
 pub(super) const DELETE_KEY: &str = "ctrl-d";
 
@@ -85,6 +91,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: DELETE_KEY,
         context: Some("DeletableObject && !Input"),
         action: Box::new(DeleteObject),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "object_detail.logs",
+        title: "Object Detail: Logs of Its Pods",
+        default_binding: POD_LOGS_KEY,
+        context: Some("PodSelectingObject && !Input"),
+        action: Box::new(ShowObjectLogs),
         menu: None,
     });
     registry.register(Command {

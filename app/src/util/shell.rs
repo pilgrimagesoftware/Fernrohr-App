@@ -56,6 +56,8 @@ pub(crate) use warp::WarpContextToNamespace;
 mod chord_precedence_tests;
 #[cfg(test)]
 mod edit_yaml_tests;
+#[cfg(test)]
+mod label_logs_tests;
 mod open;
 mod panel_focus;
 mod panels;
