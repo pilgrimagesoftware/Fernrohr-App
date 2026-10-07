@@ -43,7 +43,7 @@ impl ObjectDetailPanel {
             }
             FieldValue::Chips(chips) => detail::chips(chips, cx),
             FieldValue::Metadata(pairs) => {
-                detail::metadata_chips(&format!("{section}/{}", field.label), pairs, cx)
+                detail::metadata_chips(&format!("{section}/{}", field.label), pairs)
             }
             FieldValue::Badges(badges) => {
                 detail::badges(badges.iter().map(|(text, tone)| (text.as_str(), *tone)), cx)
