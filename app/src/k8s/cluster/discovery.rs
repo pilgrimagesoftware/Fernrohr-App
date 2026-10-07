@@ -156,9 +156,6 @@ impl DiscoveredKind {
         }
     }
 
-    /// The core `v1` `Pod` kind, for the callers that mean "Pods" without
-    /// having run discovery: the `nav.show_pods` command, and the panel a
-    /// freshly connected window lands on.
     /// Whether this is the built-in core `Pod` kind - the one kind that keeps its
     /// own typed list (the Pods panel) rather than the generic one. A CRD named
     /// `Pod` in its own group is not.
@@ -166,11 +163,26 @@ impl DiscoveredKind {
         self.gvk.group.is_empty() && self.gvk.kind == "Pod"
     }
 
+    /// The core `v1` `Pod` kind, for the callers that mean "Pods" without
+    /// having run discovery: the `nav.show_pods` command, and the panel a
+    /// freshly connected window lands on.
     pub fn pods() -> Self {
         Self {
             gvk: GroupVersionKind::gvk("", "v1", "Pod"),
             plural: "pods".to_string(),
             namespaced: true,
+            verbs: Default::default(),
+        }
+    }
+
+    /// The core `v1` `Namespace` kind, for a followed Namespace reference
+    /// before the context's discovery has loaded: every cluster serves it, so
+    /// its detail panel is reachable without waiting for discovery.
+    pub fn namespaces() -> Self {
+        Self {
+            gvk: GroupVersionKind::gvk("", "v1", "Namespace"),
+            plural: "namespaces".to_string(),
+            namespaced: false,
             verbs: Default::default(),
         }
     }

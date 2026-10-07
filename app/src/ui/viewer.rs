@@ -10,72 +10,49 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::object_ref::ObjectRef;
 use crate::ui::nav::{NavTarget, ObjectTarget};
 
-/// Where following a reference lands: the panel target, and the namespace
-/// scope to give it - the Pods list opened from a Namespace reference is scoped
-/// to that namespace, everything else to none.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Destination {
-    pub target: NavTarget,
-    pub namespaces: Vec<String>,
-}
-
-impl Destination {
-    fn unscoped(target: NavTarget) -> Self {
-        Self {
-            target,
-            namespaces: Vec::new(),
-        }
-    }
-}
-
 /// The panel `target` opens, or `None` when the application has no panel for
 /// its kind - in which case the reference is plain text, never a link that
 /// leads nowhere.
 ///
 /// - a core `Pod` opens its detail panel;
-/// - a core `Namespace` opens the Pods list scoped to that namespace;
-/// - any other kind the context's discovery reports (`kinds`) opens the
-///   generic object viewer - with the namespace dropped for a cluster-scoped
-///   kind, and required for a namespaced one;
+/// - any kind the context's discovery reports (`kinds`) opens the generic
+///   object viewer - with the namespace dropped for a cluster-scoped kind, and
+///   required for a namespaced one;
+/// - a core `Namespace` opens its detail there too, over the built-in kind
+///   while discovery hasn't loaded (#158: not the Pods list);
 /// - anything else, including every other kind while discovery hasn't loaded
 ///   (`kinds` is `None`), is `None`.
-pub fn viewer_for(target: &ObjectRef, kinds: Option<&[DiscoveredKind]>) -> Option<Destination> {
-    if target.group.is_empty() {
-        match target.kind.as_str() {
-            "Pod" => {
-                let namespace = target.namespace.as_ref()?;
-                return Some(Destination::unscoped(NavTarget::pod(
-                    namespace.clone(),
-                    target.name.clone(),
-                )));
-            }
-            "Namespace" => {
-                return Some(Destination {
-                    target: NavTarget::pods(),
-                    namespaces: vec![target.name.clone()],
-                });
-            }
-            _ => {}
-        }
+pub fn viewer_for(target: &ObjectRef, kinds: Option<&[DiscoveredKind]>) -> Option<NavTarget> {
+    let core = target.group.is_empty();
+    if core && target.kind == "Pod" {
+        let namespace = target.namespace.as_ref()?;
+        return Some(NavTarget::pod(namespace.clone(), target.name.clone()));
     }
-    let kind = kinds?
-        .iter()
-        .find(|kind| kind.gvk.group == target.group && kind.gvk.kind == target.kind)?;
+    let discovered = kinds.and_then(|kinds| {
+        kinds
+            .iter()
+            .find(|kind| kind.gvk.group == target.group && kind.gvk.kind == target.kind)
+    });
+    let kind = match discovered {
+        Some(kind) => kind.clone(),
+        None if core && target.kind == "Namespace" => DiscoveredKind::namespaces(),
+        None => return None,
+    };
     let namespace = if kind.namespaced {
         Some(target.namespace.clone()?)
     } else {
         None
     };
-    Some(Destination::unscoped(NavTarget::Object(ObjectTarget {
-        kind: kind.clone(),
+    Some(NavTarget::Object(ObjectTarget {
+        kind,
         namespace,
         name: target.name.clone(),
-    })))
+    }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Destination, viewer_for};
+    use super::viewer_for;
     use crate::k8s::cluster::discovery::DiscoveredKind;
     use crate::k8s::object_ref::ObjectRef;
     use crate::ui::nav::{NavTarget, ObjectTarget};
@@ -108,14 +85,11 @@ mod tests {
                 &ObjectRef::namespaced("apps", "ReplicaSet", "staging", "web"),
                 Some(&kinds)
             ),
-            Some(Destination {
-                target: NavTarget::Object(ObjectTarget {
-                    kind: kinds[0].clone(),
-                    namespace: Some("staging".into()),
-                    name: "web".into(),
-                }),
-                namespaces: Vec::new(),
-            })
+            Some(NavTarget::Object(ObjectTarget {
+                kind: kinds[0].clone(),
+                namespace: Some("staging".into()),
+                name: "web".into(),
+            }))
         );
     }
 
@@ -125,10 +99,8 @@ mod tests {
     #[test]
     fn a_cluster_scoped_kind_drops_an_inherited_namespace() {
         let kinds = cluster_kinds();
-        let Some(Destination {
-            target: NavTarget::Object(object),
-            ..
-        }) = viewer_for(&ObjectRef::core("Node", "staging", "node-a"), Some(&kinds))
+        let Some(NavTarget::Object(object)) =
+            viewer_for(&ObjectRef::core("Node", "staging", "node-a"), Some(&kinds))
         else {
             panic!("a discovered Node is viewable");
         };
@@ -161,21 +133,44 @@ mod tests {
     fn a_pod_reference_opens_that_pods_detail() {
         assert_eq!(
             viewer_for(&ObjectRef::core("Pod", "staging", "web-1"), None),
-            Some(Destination {
-                target: NavTarget::pod("staging", "web-1"),
-                namespaces: Vec::new(),
-            })
+            Some(NavTarget::pod("staging", "web-1"))
         );
     }
 
+    /// #158: a Namespace reference opens that Namespace's own detail, not the
+    /// Pods list scoped to it - over the built-in kind before discovery loads.
     #[test]
-    fn a_namespace_reference_opens_the_pods_list_scoped_to_it() {
+    fn a_namespace_reference_opens_its_detail() {
         assert_eq!(
             viewer_for(&ObjectRef::cluster_scoped("", "Namespace", "staging"), None),
-            Some(Destination {
-                target: NavTarget::pods(),
-                namespaces: vec!["staging".into()],
-            })
+            Some(NavTarget::Object(ObjectTarget {
+                kind: DiscoveredKind::namespaces(),
+                namespace: None,
+                name: "staging".into(),
+            }))
+        );
+    }
+
+    /// Once discovery reports Namespaces, the followed reference opens the
+    /// panel over the discovered kind - verbs included, so the detail offers
+    /// what the cluster allows - and drops any inherited namespace.
+    #[test]
+    fn a_namespace_reference_uses_the_discovered_kind() {
+        let mut namespaces = discovered("", "Namespace", false);
+        namespaces.plural = "namespaces".into();
+        namespaces.verbs.delete = false;
+        let kinds = vec![namespaces];
+        let Some(NavTarget::Object(object)) = viewer_for(
+            &ObjectRef::core("Namespace", "staging", "staging"),
+            Some(&kinds),
+        ) else {
+            panic!("a Namespace is viewable");
+        };
+        assert_eq!(object.namespace, None);
+        assert_eq!(object.name, "staging");
+        assert!(
+            !object.kind.verbs.delete,
+            "the discovered verbs, not the built-in kind's"
         );
     }
 

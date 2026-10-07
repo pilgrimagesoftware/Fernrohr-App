@@ -86,8 +86,15 @@ pub(super) fn is_pod(open: &OpenPanel, namespace: &str, name: &str) -> bool {
     open.key.target == NavTarget::pod(namespace, name)
 }
 
-fn is_scoped_pods_list(open: &OpenPanel, namespace: &str) -> bool {
-    open.key.target == NavTarget::pods() && open.key.namespaces == [namespace.to_string()]
+/// Whether `open` is the detail panel of the Namespace `name`.
+fn is_namespace_detail(open: &OpenPanel, name: &str) -> bool {
+    matches!(
+        &open.key.target,
+        NavTarget::Object(object)
+            if object.kind.gvk.group.is_empty()
+                && object.kind.gvk.kind == "Namespace"
+                && object.name == name
+    )
 }
 
 /// 3.1: following a Pod reference opens its detail panel; following it again,
@@ -173,11 +180,10 @@ async fn following_uses_the_source_panels_context(cx: &mut TestAppContext) {
     );
 }
 
-/// 3.3: a Namespace reference opens the Pods list scoped to that namespace -
-/// a panel of its own, beside the unscoped list - and following it again
-/// focuses that scoped list.
+/// #158: a Namespace reference opens that Namespace's detail panel - not the
+/// Pods list scoped to it - and following it again focuses that one panel.
 #[gpui_kit::test]
-async fn following_a_namespace_opens_the_pods_list_scoped_to_it(cx: &mut TestAppContext) {
+async fn following_a_namespace_opens_its_detail(cx: &mut TestAppContext) {
     let window = connected_window(cx, "kind-dev").await;
     cx.run_until_parked();
     let namespace = ObjectRef::cluster_scoped("", "Namespace", "staging");
@@ -185,10 +191,24 @@ async fn following_a_namespace_opens_the_pods_list_scoped_to_it(cx: &mut TestApp
     follow(cx, &window, "kind-dev", namespace.clone());
     follow(cx, &window, "kind-dev", namespace);
 
-    let scoped = open_matching(cx, &window, |open| is_scoped_pods_list(open, "staging"));
-    assert_eq!(scoped.len(), 1, "one Pods list scoped to staging");
-    assert_eq!(scoped[0].2, vec!["staging".to_string()]);
-    assert!(is_showing(cx, &window, scoped[0].0));
+    let detail = open_matching(cx, &window, |open| is_namespace_detail(open, "staging"));
+    assert_eq!(
+        detail.len(),
+        1,
+        "one detail panel for the staging Namespace"
+    );
+    assert!(
+        detail[0].2.is_empty(),
+        "a detail panel has no namespace scope"
+    );
+    assert!(is_showing(cx, &window, detail[0].0));
+    assert!(
+        open_matching(cx, &window, |open| {
+            open.key.target == NavTarget::pods() && !open.key.namespaces.is_empty()
+        })
+        .is_empty(),
+        "no Pods list scoped to the namespace"
+    );
 }
 
 /// 3.2: clicking a reference in a pod's detail panel opens (and focuses) its
@@ -236,9 +256,9 @@ async fn clicking_a_reference_in_a_pod_panel_opens_its_target(cx: &mut TestAppCo
     .unwrap();
     cx.run_until_parked();
 
-    let scoped = open_matching(cx, &window, |open| is_scoped_pods_list(open, "staging"));
-    assert_eq!(scoped.len(), 1, "the namespace's Pods list opened");
-    assert!(is_showing(cx, &window, scoped[0].0), "and took focus");
+    let detail = open_matching(cx, &window, |open| is_namespace_detail(open, "staging"));
+    assert_eq!(detail.len(), 1, "the Namespace's detail opened");
+    assert!(is_showing(cx, &window, detail[0].0), "and took focus");
 }
 
 /// 5.4: once the context's discovery reports ReplicaSets, following a
@@ -371,8 +391,8 @@ async fn activating_a_listed_object_again_focuses_its_panel(cx: &mut TestAppCont
     );
 }
 
-/// A row of a Namespaces list opens that Namespace's detail panel - unlike a
-/// followed reference to it, which opens the Pods list scoped to it.
+/// A row of a Namespaces list opens that Namespace's detail panel - the same
+/// one a followed reference to it lands on (#158), not a second.
 #[gpui_kit::test]
 async fn activating_a_namespace_row_opens_its_detail_not_the_pods_list(cx: &mut TestAppContext) {
     use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -395,4 +415,14 @@ async fn activating_a_namespace_row_opens_its_detail_not_the_pods_list(cx: &mut 
         open.key.target == NavTarget::Object(target.clone())
     });
     assert_eq!(opened.len(), 1, "the Namespace's own detail panel");
+
+    follow(
+        cx,
+        &window,
+        "kind-dev",
+        ObjectRef::cluster_scoped("", "Namespace", "staging"),
+    );
+    let detail = open_matching(cx, &window, |open| is_namespace_detail(open, "staging"));
+    assert_eq!(detail.len(), 1, "following it reuses the row's panel");
+    assert!(is_showing(cx, &window, detail[0].0));
 }
