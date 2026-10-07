@@ -38,8 +38,16 @@ impl ObjectListPanel {
             ConnectionState::WaitingForTunnel => {
                 return status("Waiting for tunnel...".into()).into_any_element();
             }
+            // Selectable, with Report… beside it (#177).
             ConnectionState::Failed(reason) => {
-                return status(format!("Connection failed: {reason}")).into_any_element();
+                return panel_title::error_content(
+                    // Not the context's name: it's in the panel's title already, and a
+                    // report filed from here goes to a public issue (#177).
+                    "Couldn't connect to the cluster".to_string(),
+                    Some(reason.clone()),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::Connected(_) => {}
         }

@@ -3,6 +3,7 @@ use super::{
     fields_filled, issue_body, register_commands, register_handler,
 };
 
+mod prefill;
 mod route;
 use crate::command::CommandRegistry;
 use gpui_kit::AppContext as _;
