@@ -2,6 +2,8 @@ pub mod connection;
 pub mod context_health;
 pub mod discovery;
 pub mod discovery_registry;
+#[cfg(unix)]
+pub(crate) mod exec_path;
 pub mod health;
 pub mod kubeconfig;
 #[cfg(test)]
