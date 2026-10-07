@@ -1,6 +1,7 @@
 //! `MainWindow`'s tab commands and `Cmd-W`: switching the focused tab group's
-//! tab (`tab-keyboard-navigation`), and closing its displayed tab - or, with
-//! no tab to close, the window (`per-tab-close-button`).
+//! tab (`tab-keyboard-navigation`), and closing its displayed tab - asking
+//! first when that would end a shell or discard an edit (Fernrohr#129) - or,
+//! with no tab to close, the window (`per-tab-close-button`).
 //!
 //! Which group and tab are meant is [`crate::ui::panel::tabs`]'s call; this
 //! module moves focus and dispatches, since the window owns the dock.
@@ -81,6 +82,14 @@ impl MainWindow {
     ) {
         if let WindowMode::Workspace { dock_area, .. } = &self.mode {
             let dock_area = dock_area.clone();
+            let shown = tabs::focused_group(dock_area.read(cx), window, cx)
+                .map(|group| group.panels[group.active_ix]);
+            // A running shell or an unsaved edit asks first (Fernrohr#129).
+            if let Some(id) = shown
+                && super::arrange::ask_before_closing(&dock_area, id, window, cx)
+            {
+                return;
+            }
             let area = dock_area.read(cx);
             if let Some(group) = tabs::focused_group(area, window, cx)
                 && let Some(panel) = area.panel(group.panels[group.active_ix])
@@ -258,6 +267,11 @@ pub(crate) fn close_panel<P: Panel>(panel: Entity<P>, window: &mut Window, cx: &
         WindowMode::Workspace { dock_area, .. } => dock_area.clone(),
         WindowMode::Picker(_) => return,
     };
+    // A running shell or an unsaved edit asks first (Fernrohr#129).
+    let id = gpui_kit::component::dock::PanelId::from(panel.entity_id());
+    if super::arrange::ask_before_closing(&dock_area, id, window, cx) {
+        return;
+    }
     dock_area.update(cx, |area, cx| area.remove_panel(panel, window, cx));
 }
 
