@@ -9,12 +9,17 @@
 //! `state_dir()` itself, so tests exercise it against a temp directory with
 //! no interaction between runs.
 //!
+//! `save` and `load_all` are wired for real by the Save Panel Layout command
+//! (`util::shell::saved_layouts`, tasks section 2): `save` writes a new or
+//! overwritten layout, and `load_all` is how its naming dialog checks a typed
+//! name against what's already saved.
+//!
 //! # UNWIRED(#176)
-//! Nothing outside this module's own tests calls `save`, `load_all`,
-//! `rename`, or `remove` yet: the Save Panel Layout command, the saved
-//! layouts picker, and the Settings Layouts section (`saved-panel-layouts`
-//! tasks sections 2-6) are the first real callers. A test that exercises
-//! this file-store behaviour is not coverage of those later sections.
+//! Nothing outside this module's own tests calls `rename` or `remove` yet:
+//! the saved layouts picker and the Settings Layouts section
+//! (`saved-panel-layouts` tasks sections 3 and 6) are their first real
+//! callers. A test that exercises this file-store behaviour is not coverage
+//! of those later sections.
 
 use gpui_kit::component::dock::DockAreaState;
 use serde::{Deserialize, Serialize};
@@ -98,8 +103,6 @@ impl From<io::Error> for RenameError {
 /// name that collapses to nothing (all punctuation, or non-ASCII with no
 /// ASCII fallback) uses [`crate::consts::SAVED_LAYOUT_PLACEHOLDER_STEM`]
 /// instead (design.md D2).
-// UNWIRED(#176): see the module doc comment - `save` is its only caller so far.
-#[allow(dead_code)]
 pub fn slugify(name: &str) -> String {
     let mut slug = String::with_capacity(name.len());
     let mut last_was_dash = false;
@@ -185,9 +188,6 @@ fn write_atomic(path: &Path, layout: &SavedLayout) -> io::Result<()> {
 /// *different* saved name gets a numeric suffix (`-2`, `-3`, ...); a
 /// collision with the *same* name (compared case-insensitively) overwrites
 /// that file in place (design.md D2).
-// UNWIRED(#176): see the module doc comment - the Save Panel Layout command
-// (tasks section 2) is the first real caller.
-#[allow(dead_code)]
 pub fn save(dir: &Path, layout: &SavedLayout) -> io::Result<PathBuf> {
     fs::create_dir_all(dir)?;
     let stem = slugify(&layout.name);
@@ -220,10 +220,6 @@ fn entries(dir: &Path) -> Vec<(PathBuf, Option<SavedLayout>)> {
 /// stable listing, alongside every file that failed to read or parse -
 /// reported by filename, left unmodified on disk (design.md D2's "reading
 /// the collection"). A missing `dir` yields two empty lists, not an error.
-// UNWIRED(#176): see the module doc comment - the saved layouts picker and
-// the Settings Layouts section (tasks sections 3 and 6) are the first real
-// callers.
-#[allow(dead_code)]
 pub fn load_all(dir: &Path) -> (Vec<SavedLayout>, Vec<UnreadableLayout>) {
     let mut layouts = Vec::new();
     let mut unreadable = Vec::new();

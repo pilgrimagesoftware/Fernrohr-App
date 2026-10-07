@@ -70,6 +70,7 @@ mod pod_detail_logs_tests;
 mod quick_look_window_tests;
 mod render;
 mod resource_edge;
+mod saved_layouts;
 mod tab_focus;
 mod tabs;
 mod test_hooks;

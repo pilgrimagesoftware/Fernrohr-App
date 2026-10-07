@@ -103,6 +103,9 @@ impl Render for MainWindow {
                 .size_full()
                 .flex()
                 .flex_col()
+                // `layouts.save`'s context: active whenever the window shows a
+                // connected workspace, never from the cluster picker.
+                .key_context(WORKSPACE_KEY_CONTEXT)
                 .child(div().flex_1().min_h_0().child(Self::workspace_row(
                     dock_area,
                     resource_panel,
@@ -159,6 +162,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_add_context))
             .on_action(cx.listener(Self::on_action_disconnect_active_context))
             .on_action(cx.listener(Self::on_action_save_resource_side))
+            .on_action(cx.listener(Self::on_action_save_layout))
             .child(toolbar)
             .child(div().flex_1().min_h_0().child(body))
     }

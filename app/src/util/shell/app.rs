@@ -2,7 +2,15 @@
 
 use super::*;
 
-actions!(shell, [NewWindow, ToggleCommandPalette, SetContextTunnel]);
+actions!(
+    shell,
+    [
+        NewWindow,
+        ToggleCommandPalette,
+        SetContextTunnel,
+        SaveLayout
+    ]
+);
 
 /// Last known geometry of every window that has closed this run, keyed by
 /// `WindowId`. Populated from each window's `on_window_should_close` hook,
@@ -33,12 +41,36 @@ pub(super) struct SavedDockLayouts(pub(super) crate::config::dock_layouts::DockL
 
 impl Global for SavedDockLayouts {}
 
+/// Where saved layouts are read from and written to
+/// (`saved_layouts::layouts_dir`): `state_dir()/layouts/` in production,
+/// overridden with a temp directory in tests (mirroring [`WorkspacePath`])
+/// so no test ever touches the real state directory.
+pub(super) struct SavedLayoutsDir(pub(super) PathBuf);
+
+impl Global for SavedLayoutsDir {}
+
 pub const NEW_WINDOW_COMMAND_ID: &str = "shell.new_window";
 pub const NEW_WINDOW_DEFAULT_BINDING: &str = "cmd-n";
 pub const TOGGLE_PALETTE_COMMAND_ID: &str = "shell.toggle_command_palette";
 pub const TOGGLE_PALETTE_DEFAULT_BINDING: &str = "cmd-shift-p";
 pub const SET_CONTEXT_TUNNEL_COMMAND_ID: &str = "context.set_tunnel";
 pub const SET_CONTEXT_TUNNEL_DEFAULT_BINDING: &str = "cmd-shift-b";
+/// `saved-panel-layouts` design.md D4's table says `cmd-shift-s`; this
+/// codebase spells a cross-platform modified key as `secondary-...`
+/// (`secondary-enter`, `secondary-backspace`) rather than the macOS-only
+/// `cmd-`, so the registered default is `secondary-shift-s` instead. No
+/// other registered command uses `secondary-shift-s` at all (checked by
+/// reading every `default_binding` in the registry), so it collides with
+/// nothing regardless of scope; `keymap::conflicts` is still the
+/// authoritative, context-aware check `tasks.md` 7.1 runs over the full
+/// registry.
+pub const SAVE_LAYOUT_COMMAND_ID: &str = "layouts.save";
+pub const SAVE_LAYOUT_DEFAULT_BINDING: &str = "secondary-shift-s";
+/// The key context active while a window shows a connected workspace (its
+/// dock, Resource panel and status bar) rather than the cluster picker -
+/// `render.rs` tags the workspace body with it, so a command scoped here
+/// (like `layouts.save`) is unavailable from an unconnected window.
+pub(super) const WORKSPACE_KEY_CONTEXT: &str = "Workspace";
 
 pub fn default_workspace_path() -> PathBuf {
     paths::state_dir().join("workspace.toml")
@@ -46,6 +78,12 @@ pub fn default_workspace_path() -> PathBuf {
 
 pub fn default_dock_layouts_path() -> PathBuf {
     paths::state_dir().join("dock-layouts.json")
+}
+
+/// Where saved layouts live absent a test override (`saved_layouts::
+/// layouts_dir`): `state_dir()/layouts/` (`saved-panel-layouts` design.md D2).
+pub fn default_saved_layouts_dir() -> PathBuf {
+    paths::state_dir().join("layouts")
 }
 
 /// The commands this module contributes to the app-wide [`CommandRegistry`].
@@ -79,6 +117,23 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         menu: Some(crate::command::MenuSlot::Context(
             crate::command::ContextGroup::Tunnels,
         )),
+    });
+    registry.register(Command {
+        id: SAVE_LAYOUT_COMMAND_ID,
+        title: "Save Panel Layout…",
+        default_binding: SAVE_LAYOUT_DEFAULT_BINDING,
+        context: Some(WORKSPACE_KEY_CONTEXT),
+        action: Box::new(SaveLayout),
+        // design.md D4's table gives this a Window-menu entry too, but
+        // `ui::menu::tests::no_menu_item_is_scoped_to_a_panel` is an existing,
+        // crate-wide invariant that no context-gated command sits in the menu
+        // bar (the bar is built once and never rebuilt on a focus or mode
+        // change). `Workspace` is a window-*mode* context, not a per-panel
+        // one, but loosening that invariant to say so is section 7's own
+        // task (7.2 "both top-level commands appear under MenuSlot::Window"),
+        // not this section's - so this stays palette/keymap-only for now
+        // rather than silently weakening a test section 2 doesn't own.
+        menu: None,
     });
     crate::ui::menu::register_commands(registry);
     nav::register_commands(registry);
@@ -168,6 +223,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
         &dock_layouts_path,
     )));
 
+    cx.set_global(SavedLayoutsDir(default_saved_layouts_dir()));
     cx.set_global(WorkspacePath(workspace_path.clone()));
     cx.on_app_quit(move |cx| {
         save(cx, &workspace_path);
