@@ -11,6 +11,7 @@ use gpui_kit::{AppContext as _, TestAppContext};
 
 mod previous;
 mod restore;
+mod selection;
 
 /// `1-window-context-bar` bug 1's third root cause: `LogsPanel::sync` used to
 /// re-sync to *any* `SelectedPod`, from any context - streaming whichever pod's

@@ -8,6 +8,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 
 /// The control bar's Previous toggle.
 pub(super) const PREVIOUS_TOGGLE_ID: &str = "logs-previous";
+/// The log lines' list, for tests.
+pub(super) const LINES: &str = "logs-lines";
 
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -27,6 +29,7 @@ impl Render for LogsPanel {
             let lines = Rc::new(view.lines().to_vec());
             let line_count = lines.len();
             div()
+                .debug_selector(|| LINES.into())
                 .size_full()
                 .p(crate::ui::space::spacing(cx).panel_inset)
                 .code_font(cx)
@@ -38,9 +41,21 @@ impl Render for LogsPanel {
                         move |range, _window, _cx| {
                             range
                                 .map(|ix| {
+                                    // Each line is selectable text in the
+                                    // window's selection, ordered by its line
+                                    // number, so a drag across lines selects
+                                    // and copies them in reading order (#151).
+                                    // One participant per line: runs sharing
+                                    // a handle keep only the last one drawn.
                                     div()
                                         .whitespace_nowrap()
-                                        .child(lines[ix].clone())
+                                        .child(
+                                            gpui_kit::base::SelectableText::new(
+                                                ("logs-line", ix),
+                                                lines[ix].clone(),
+                                            )
+                                            .document_order(ix as u64),
+                                        )
                                         .into_any_element()
                                 })
                                 .collect()
