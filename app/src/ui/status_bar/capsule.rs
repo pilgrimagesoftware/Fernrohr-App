@@ -165,6 +165,7 @@ impl StatusBarView {
             body,
             confirm: "Disconnect".into(),
             id_prefix: "context-disconnect",
+            severity: crate::ui::confirm_dialog::Severity::Recoverable,
         };
         crate::ui::confirm_dialog::open(
             confirmation,

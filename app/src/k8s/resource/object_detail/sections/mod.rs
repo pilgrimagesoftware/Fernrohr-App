@@ -5,6 +5,7 @@
 //! This dispatch is where a kind gains a structured viewer; nothing that shows
 //! a reference to it needs to change.
 
+mod autoscaling;
 mod cluster;
 mod common;
 mod config;
@@ -72,6 +73,7 @@ pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec
             typed(object).map(|binding| rbac::cluster_role_binding(&binding))
         }
         ("", "Event") => typed(object).map(|event| event::event(&event)),
+        ("autoscaling", "HorizontalPodAutoscaler") => autoscaling::hpa(object, namespace),
         _ => None,
     }
     .unwrap_or_default()

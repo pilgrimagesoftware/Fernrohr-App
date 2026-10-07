@@ -49,6 +49,30 @@ fn ratios_sort_by_their_first_number_then_their_second() {
 
 /// An empty cell - a field the object doesn't set - sorts before any value,
 /// so unset rows gather at one end rather than scattering.
+/// #101: a status cell reads and sorts as its text, a readiness cell as its
+/// ratio; both carry the tone they are drawn in, and plain cells none.
+#[test]
+fn status_and_readiness_cells_read_as_plain_ones_with_a_tone() {
+    use crate::ui::style::Tone;
+    let failed = Cell::status("Failed", Tone::Bad);
+    assert_eq!(failed.display(now()), "Failed");
+    assert_eq!(failed.tone(), Some(Tone::Bad));
+    assert_eq!(Cell::status("", Tone::Bad), Cell::Empty);
+    assert_eq!(
+        sorted(vec![failed.clone(), Cell::status("Complete", Tone::Good)]),
+        vec![Cell::status("Complete", Tone::Good), failed]
+    );
+
+    assert_eq!(Cell::Readiness(1, 4).display(now()), "1/4");
+    assert_eq!(Cell::Readiness(1, 4).tone(), Some(Tone::Serious));
+    assert_eq!(
+        sorted(vec![Cell::Readiness(3, 3), Cell::Readiness(1, 4)]),
+        vec![Cell::Readiness(1, 4), Cell::Readiness(3, 3)]
+    );
+    assert_eq!(Cell::Ratio(1, 4).tone(), None);
+    assert_eq!(Cell::text("Bound").tone(), None);
+}
+
 #[test]
 fn an_empty_cell_sorts_first() {
     assert_eq!(
@@ -150,6 +174,11 @@ fn every_kind_in_the_spec_has_its_columns() {
             "CronJob",
             &["Schedule", "Suspend", "Active", "Last schedule"],
         ),
+        (
+            "autoscaling",
+            "HorizontalPodAutoscaler",
+            &["Reference", "Targets", "Min", "Max", "Replicas"],
+        ),
         ("", "ConfigMap", &["Data"]),
         ("", "Secret", &["Type", "Data"]),
         (
@@ -231,5 +260,38 @@ fn a_kind_outside_the_table_has_no_columns_of_its_own() {
     assert!(
         super::for_kind("", "Pod").is_none(),
         "Pods keep their own table"
+    );
+}
+
+/// #156: an HPA's row - what it scales, its metrics against their targets,
+/// its bounds, and its replicas as current/desired.
+#[test]
+fn an_hpas_row_reads_like_kubectl_get_hpa() {
+    let hpa: DynamicObject = serde_json::from_value(serde_json::json!({
+        "apiVersion": "autoscaling/v2", "kind": "HorizontalPodAutoscaler",
+        "metadata": { "name": "web", "namespace": "shop" },
+        "spec": {
+            "scaleTargetRef": { "apiVersion": "apps/v1", "kind": "Deployment", "name": "web" },
+            "minReplicas": 2, "maxReplicas": 10,
+            "metrics": [{ "type": "Resource", "resource": { "name": "cpu",
+                "target": { "type": "Utilization", "averageUtilization": 80 } } }],
+        },
+        "status": {
+            "currentReplicas": 3, "desiredReplicas": 4,
+            "currentMetrics": [{ "type": "Resource", "resource": { "name": "cpu",
+                "current": { "averageUtilization": 45 } } }],
+        },
+    }))
+    .unwrap();
+    let columns = super::for_kind("autoscaling", "HorizontalPodAutoscaler").unwrap();
+    assert_eq!(
+        columns.cells_for(&hpa),
+        [
+            Cell::Text("Deployment/web".into()),
+            Cell::Text("cpu: 45%/80%".into()),
+            Cell::Number(2),
+            Cell::Number(10),
+            Cell::Ratio(3, 4),
+        ]
     );
 }

@@ -3,9 +3,11 @@
 //! ([`view::LogsView`], its events and follow state), [`stream`] drives a
 //! `kube` log stream onto that view-model, [`panel`] is the dock panel's
 //! state and lifecycle, [`render`] draws it, and [`title`] is its dock
-//! identity (saved-layout dump, title/tab/toolbar/zoom).
+//! identity (saved-layout dump, title/tab/toolbar/zoom). [`labels`] is the
+//! panel following every pod a label selector picks (#150).
 
 mod commands;
+mod labels;
 mod panel;
 mod render;
 mod stream;
@@ -30,5 +32,11 @@ use stream::*;
 use view::*;
 
 use commands::PREVIOUS_KEY;
-pub use commands::{PANEL_KEY_CONTEXT, TogglePreviousLogs, register_commands};
+pub use commands::{
+    FocusLabelSelector, OpenWorkloadLogs, PANEL_KEY_CONTEXT, ShowLabelLogs, TogglePreviousLogs,
+    register_commands,
+};
+pub(crate) use labels::labels_from_state;
+pub use labels::{LabelLogs, WorkloadRef};
+pub(crate) use panel::pinned_from_state;
 pub use panel::{LogsPanel, register_restore};

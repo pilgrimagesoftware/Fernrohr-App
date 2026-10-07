@@ -12,20 +12,72 @@ pub fn register_restore(cx: &mut App) {
                 crate::ui::unrestored::required_str(state, "context_name")?.to_string();
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
-            let scope = PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
-            Ok(panel_handle(cx.new(|cx| LogsPanel::new(scope, cx))))
+            // A label-following panel saves what it follows (#150).
+            if let Some((source, selector)) = super::labels::labels_from_state(state) {
+                let scope = PanelScope::new(NavTarget::LabelLogs(source.clone()), context_name)
+                    .scoped_to(namespaces);
+                let following = super::labels::Following::new(source, selector.as_deref());
+                return Ok(panel_handle(
+                    cx.new(|cx| LogsPanel::build(scope, None, Some(following), cx)),
+                ));
+            }
+            // A pod's own panel saves its pod and container, and comes back
+            // pinned to them; the one shared panel saves neither.
+            match pinned_from_state(state, &context_name) {
+                Some(pinned) => {
+                    let pod = crate::ui::nav::PodRef {
+                        namespace: pinned.namespace.clone(),
+                        name: pinned.name.clone(),
+                    };
+                    let scope = PanelScope::new(NavTarget::PodLogs(pod), context_name)
+                        .scoped_to(namespaces);
+                    Ok(panel_handle(
+                        cx.new(|cx| LogsPanel::build(scope, Some(pinned), None, cx)),
+                    ))
+                }
+                None => {
+                    let scope =
+                        PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
+                    Ok(panel_handle(cx.new(|cx| LogsPanel::new(scope, cx))))
+                }
+            }
         })
     });
 }
 
-/// A dock panel streaming the container logs of whichever pod was last
-/// clicked in a Pods panel (see [`SelectedPod`]).
+/// The pod (and the container it showed) a pod's own Logs panel saved, or
+/// `None` for the shared panel.
+pub(crate) fn pinned_from_state(
+    state: &serde_json::Value,
+    context_name: &str,
+) -> Option<PodSelection> {
+    Some(PodSelection {
+        namespace: state["pod_namespace"].as_str()?.to_string(),
+        name: state["pod_name"].as_str()?.to_string(),
+        containers: state["container"]
+            .as_str()
+            .map(|container| vec![container.to_string()])
+            .unwrap_or_default(),
+        context_name: context_name.to_string(),
+    })
+}
+
+/// A dock panel streaming container logs: of whichever pod was last clicked
+/// in a Pods panel (see [`SelectedPod`]), or - a pod's own panel
+/// (`NavTarget::PodLogs`) - of that one pod, whatever is selected since.
 pub struct LogsPanel {
     pub(super) scope: PanelScope,
-    connection: Entity<crate::k8s::cluster::connection::ClusterConnection>,
+    /// The pod a pod's own panel is pinned to, and its containers in the
+    /// order the selection gave them (the first is the one shown); `None`
+    /// for the shared panel, which follows [`SelectedPod`].
+    pub(super) pinned: Option<PodSelection>,
+    pub(super) connection: Entity<crate::k8s::cluster::connection::ClusterConnection>,
     pub(super) view: Entity<LogsView>,
     stream: Option<Task<()>>,
     pub(super) current: Option<(String, String, String)>,
+    /// A label-following panel's selector and streams (#150); `None` for a
+    /// pod's logs.
+    pub(super) labels: Option<super::labels::Following>,
     /// Whether the panel shows the container's previous instance's logs
     /// rather than its current one's (`k9s-remaining-keybindings` 5).
     pub(super) previous: bool,
@@ -34,21 +86,62 @@ pub struct LogsPanel {
 }
 
 impl LogsPanel {
+    /// The panel for `scope`: a pod's own, pinned to that pod as the selection
+    /// names it now, for `NavTarget::PodLogs`; one following a label selector
+    /// for `NavTarget::LabelLogs`; else the shared one.
     pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
+        if let NavTarget::LabelLogs(source) = &scope.target {
+            let following = super::labels::Following::new(source.clone(), None);
+            return Self::build(scope, None, Some(following), cx);
+        }
+        let pinned = match &scope.target {
+            NavTarget::PodLogs(pod) => Some(
+                cx.try_global::<SelectedPod>()
+                    .and_then(|selected| selected.0.clone())
+                    .filter(|selection| {
+                        selection.context_name == scope.context_name
+                            && selection.namespace == pod.namespace
+                            && selection.name == pod.name
+                    })
+                    .unwrap_or_else(|| PodSelection {
+                        namespace: pod.namespace.clone(),
+                        name: pod.name.clone(),
+                        containers: Vec::new(),
+                        context_name: scope.context_name.clone(),
+                    }),
+            ),
+            _ => None,
+        };
+        Self::build(scope, pinned, None, cx)
+    }
+
+    /// The panel over `scope`, pinned to `pinned` when it is a pod's own, or
+    /// following `labels`' selector. Only the shared panel observes
+    /// [`SelectedPod`].
+    pub(super) fn build(
+        scope: PanelScope,
+        pinned: Option<PodSelection>,
+        labels: Option<super::labels::Following>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         use crate::k8s::cluster::session::ClusterRegistry;
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
-        cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
-            .detach();
+        if pinned.is_none() && labels.is_none() {
+            cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
+                .detach();
+        }
 
         let mut this = Self {
             scope,
+            pinned,
             connection,
             view: cx.new(|_| LogsView::new(vec![String::new()])),
             stream: None,
             current: None,
+            labels,
             previous: false,
             scroll_handle: UniformListScrollHandle::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -62,7 +155,15 @@ impl LogsPanel {
     /// isn't connected yet - [`Self::new`]'s observers call this again once
     /// either changes.
     fn sync(&mut self, cx: &mut Context<Self>) {
-        let Some(selection) = cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()) else {
+        if self.labels.is_some() {
+            self.sync_labels(cx);
+            return;
+        }
+        let selection = match &self.pinned {
+            Some(pinned) => Some(pinned.clone()),
+            None => cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()),
+        };
+        let Some(selection) = selection else {
             return;
         };
         // A selection published by a *different* context's Pods panel is not
@@ -95,6 +196,85 @@ impl LogsPanel {
         self.previous = false;
         let client = client.clone();
         self.restart(client, containers, cx);
+    }
+
+    /// Points a pod's own panel at `selection` again - reopened for its pod,
+    /// perhaps naming another container, which it then switches to. Ignored
+    /// by the shared panel, and for any other pod.
+    pub fn pin_to(&mut self, selection: PodSelection, cx: &mut Context<Self>) {
+        let Some(pinned) = &self.pinned else {
+            return;
+        };
+        if selection.context_name != pinned.context_name
+            || selection.namespace != pinned.namespace
+            || selection.name != pinned.name
+        {
+            return;
+        }
+        self.pinned = Some(selection);
+        self.sync(cx);
+        cx.notify();
+    }
+
+    /// Test-only: the pod a pod's own panel is pinned to, and the container
+    /// it shows first; `None` for the shared panel.
+    #[cfg(test)]
+    pub(crate) fn test_pinned(&self) -> Option<(String, Option<String>)> {
+        self.pinned
+            .as_ref()
+            .map(|pinned| (pinned.name.clone(), pinned.containers.first().cloned()))
+    }
+
+    /// Test-only: shows `lines` as `pod`'s `container` logs, with no stream.
+    #[cfg(test)]
+    pub(crate) fn test_show_lines(
+        &mut self,
+        pod: &str,
+        container: &str,
+        lines: &[&str],
+        cx: &mut Context<Self>,
+    ) {
+        self.current = Some(("shop".into(), pod.into(), container.into()));
+        let mut view = LogsView::new(vec![container.to_string()]);
+        for line in lines {
+            view.append_line(line.to_string());
+        }
+        let view = cx.new(|_| view);
+        self.follow(&view, cx);
+        self.view = view;
+        cx.notify();
+    }
+
+    /// The wheel or a trackpad over the lines (#149): scrolling up to read
+    /// history stops following, so new lines no longer pull the view back
+    /// down; scrolling back down to the end follows again. The list moves
+    /// itself first - this only decides whether following continues.
+    pub(super) fn on_lines_scrolled(
+        &mut self,
+        event: &gpui_kit::ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let upward = match event.delta {
+            gpui_kit::ScrollDelta::Lines(delta) => delta.y > 0.,
+            gpui_kit::ScrollDelta::Pixels(delta) => delta.y > gpui_kit::px(0.),
+        };
+        if upward {
+            if self.view.read(cx).follow_state() == FollowState::Following {
+                self.view.update(cx, |view, _| view.scroll_up());
+                cx.notify();
+            }
+            return;
+        }
+        // Whether this scroll reached the end is known once the list has
+        // applied it.
+        cx.defer_in(window, |this, _window, cx| {
+            let at_end = this.scroll_handle.is_scrolled_to_end() != Some(false);
+            if at_end && this.view.read(cx).follow_state() == FollowState::Paused {
+                this.view.update(cx, |view, _| view.scroll_to_bottom());
+                cx.notify();
+            }
+        });
     }
 
     /// Restarts the stream on `container`, reusing the current pod/namespace -
@@ -146,7 +326,23 @@ impl LogsPanel {
         let mut view_model = LogsView::new(containers);
         view_model.select_container(&container);
         let view = cx.new(|_| view_model);
-        cx.observe(&view, |this: &mut Self, view, cx| {
+        self.follow(&view, cx);
+        let target = LogTarget {
+            namespace,
+            pod_name,
+            container,
+            context_name: self.scope.context_name.clone(),
+            previous: self.previous,
+            tail_lines: None,
+        };
+        self.stream = Some(stream_container_logs(client, target, view.clone(), cx));
+        self.view = view;
+    }
+
+    /// Keeps the list at the newest line as `view` grows, while it follows;
+    /// paused, new lines arrive without moving what's on screen.
+    pub(super) fn follow(&self, view: &Entity<LogsView>, cx: &mut Context<Self>) {
+        cx.observe(view, |this: &mut Self, view, cx| {
             if view.read(cx).follow_state() == FollowState::Following {
                 let last = view.read(cx).lines().len().saturating_sub(1);
                 this.scroll_handle
@@ -155,15 +351,15 @@ impl LogsPanel {
             cx.notify();
         })
         .detach();
-        let target = LogTarget {
-            namespace,
-            pod_name,
-            container,
-            context_name: self.scope.context_name.clone(),
-            previous: self.previous,
-        };
-        self.stream = Some(stream_container_logs(client, target, view.clone(), cx));
-        self.view = view;
+    }
+
+    /// Test-only: appends `line` as the stream would.
+    #[cfg(test)]
+    pub(crate) fn test_append_line(&mut self, line: &str, cx: &mut Context<Self>) {
+        self.view.update(cx, |view, cx| {
+            view.append_line(line.to_string());
+            cx.notify();
+        });
     }
 }
 

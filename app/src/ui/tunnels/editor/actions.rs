@@ -46,6 +46,7 @@ impl TunnelEditor {
             body: render::delete_confirm_text(&self.bound_contexts),
             confirm: "Delete".into(),
             id_prefix: DELETE_ID_PREFIX,
+            severity: crate::ui::confirm_dialog::Severity::Irreversible,
         };
         crate::ui::confirm_dialog::open(
             confirmation,

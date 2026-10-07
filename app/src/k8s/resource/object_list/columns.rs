@@ -9,10 +9,12 @@
 //! frame. An object that doesn't deserialize as its kind gets empty cells, and
 //! a kind with no table gets the base columns only.
 
+mod autoscaling;
 mod config_network;
 mod storage_cluster;
 mod workloads;
 
+use crate::ui::style::Tone;
 use jiff::Timestamp;
 use kube::api::DynamicObject;
 use serde::de::DeserializeOwned;
@@ -28,6 +30,12 @@ pub enum Cell {
     Number(i64),
     /// `ready/desired` - sorts by `ready`, then `desired`.
     Ratio(i64, i64),
+    /// Ready replicas of desired, as `Ratio` but drawn beside a dot in their
+    /// readiness tone (`status_tone::readiness`) - a Deployment's Ready.
+    Readiness(i64, i64),
+    /// Text in its status's tone - a Job's or Node's status, a claim's phase.
+    /// Sorts by text.
+    Status(String, Tone),
     /// Time since a moment (a last schedule), shown like Age.
     Age(Timestamp),
     /// A fixed span in seconds (a finished Job's duration), shown like Age.
@@ -46,13 +54,39 @@ impl Cell {
         }
     }
 
+    /// `Status`, or `Empty` for an empty string, as [`Cell::text`].
+    pub fn status(text: impl Into<String>, tone: Tone) -> Self {
+        let text = text.into();
+        if text.is_empty() {
+            Self::Empty
+        } else {
+            Self::Status(text, tone)
+        }
+    }
+
+    /// The tone the cell is drawn in, `None` for a plain one.
+    pub fn tone(&self) -> Option<Tone> {
+        match self {
+            Self::Readiness(ready, desired) => Some(crate::k8s::resource::status_tone::readiness(
+                *ready, *desired,
+            )),
+            Self::Status(_, tone) => Some(*tone),
+            Self::Empty
+            | Self::Text(_)
+            | Self::Number(_)
+            | Self::Ratio(..)
+            | Self::Age(_)
+            | Self::Duration(_) => None,
+        }
+    }
+
     /// What the cell reads as, `now` being when the table last refreshed.
     pub fn display(&self, now: Timestamp) -> String {
         match self {
             Self::Empty => String::new(),
-            Self::Text(text) => text.clone(),
+            Self::Text(text) | Self::Status(text, _) => text.clone(),
             Self::Number(number) => number.to_string(),
-            Self::Ratio(have, want) => format!("{have}/{want}"),
+            Self::Ratio(have, want) | Self::Readiness(have, want) => format!("{have}/{want}"),
             Self::Age(since) => crate::k8s::resource::pods::format_age(seconds_since(*since, now)),
             Self::Duration(secs) => crate::k8s::resource::pods::format_age(*secs),
         }
@@ -66,9 +100,10 @@ impl Cell {
             (Self::Empty, Self::Empty) => Ordering::Equal,
             (Self::Empty, _) => Ordering::Less,
             (_, Self::Empty) => Ordering::Greater,
-            (Self::Text(a), Self::Text(b)) => a.cmp(b),
+            (Self::Text(a), Self::Text(b)) | (Self::Status(a, _), Self::Status(b, _)) => a.cmp(b),
             (Self::Number(a), Self::Number(b)) => a.cmp(b),
-            (Self::Ratio(a_have, a_want), Self::Ratio(b_have, b_want)) => {
+            (Self::Ratio(a_have, a_want), Self::Ratio(b_have, b_want))
+            | (Self::Readiness(a_have, a_want), Self::Readiness(b_have, b_want)) => {
                 a_have.cmp(b_have).then(a_want.cmp(b_want))
             }
             (Self::Age(a), Self::Age(b)) => seconds_since(*a, now).cmp(&seconds_since(*b, now)),
@@ -85,7 +120,12 @@ impl Cell {
         match self {
             Self::Age(since) => Some(seconds_since(*since, now)),
             Self::Duration(secs) => Some(*secs),
-            Self::Empty | Self::Text(_) | Self::Number(_) | Self::Ratio(..) => None,
+            Self::Empty
+            | Self::Text(_)
+            | Self::Number(_)
+            | Self::Ratio(..)
+            | Self::Readiness(..)
+            | Self::Status(..) => None,
         }
     }
 }
@@ -132,6 +172,7 @@ pub fn for_kind(group: &str, kind: &str) -> Option<&'static KindColumns> {
         ("apps", "DaemonSet") => &workloads::DAEMON_SET,
         ("batch", "Job") => &workloads::JOB,
         ("batch", "CronJob") => &workloads::CRON_JOB,
+        ("autoscaling", "HorizontalPodAutoscaler") => &autoscaling::HORIZONTAL_POD_AUTOSCALER,
         ("", "ConfigMap") => &config_network::CONFIG_MAP,
         ("", "Secret") => &config_network::SECRET,
         ("", "Service") => &config_network::SERVICE,

@@ -186,6 +186,11 @@ pub fn is_only_panel(area: &DockArea, panel: PanelId) -> bool {
     panels.next() == Some(panel) && panels.next().is_none()
 }
 
+/// Every panel in the dock, in every region.
+pub fn all_panels(area: &DockArea) -> Vec<PanelId> {
+    regions(area).flat_map(|tree| tree.panels()).collect()
+}
+
 fn regions(area: &DockArea) -> impl Iterator<Item = &PaneTree> {
     [
         DockPlacement::Left,

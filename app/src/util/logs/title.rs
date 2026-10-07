@@ -10,13 +10,30 @@ impl BasePanel for LogsPanel {
     }
 
     fn dump(&self, _cx: &App) -> PanelState {
+        let mut info = serde_json::json!({
+            "context_name": self.scope.context_name,
+            "namespaces": self.scope.namespaces,
+        });
+        // A label-following panel comes back following the same pods (#150).
+        if let Some(following) = &self.labels {
+            info["label_logs"] = serde_json::to_value(&following.source).unwrap_or_default();
+            if let Some((selector, _)) = &following.selector {
+                info["selector"] = selector.clone().into();
+            }
+        }
+        // A pod's own panel comes back pinned to its pod, on the container
+        // it showed (`register_restore`).
+        if let Some(pinned) = &self.pinned {
+            info["pod_namespace"] = pinned.namespace.clone().into();
+            info["pod_name"] = pinned.name.clone().into();
+            if let Some((_, _, container)) = &self.current {
+                info["container"] = container.clone().into();
+            }
+        }
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(serde_json::json!({
-                "context_name": self.scope.context_name,
-                "namespaces": self.scope.namespaces,
-            })),
+            info: PanelInfo::Panel(info),
         }
     }
 }
@@ -37,6 +54,16 @@ fn streaming_title(
 
 impl LogsPanel {
     fn streaming_title(&self) -> String {
+        // A typed label panel is named by what it follows; a workload's by
+        // the workload, as its target says.
+        if let Some(super::labels::Following {
+            source: super::labels::LabelLogs::Typed,
+            selector: Some((selector, _)),
+            ..
+        }) = &self.labels
+        {
+            return format!("Logs: {selector}");
+        }
         let title = streaming_title(self.current.as_ref(), || panel_title::title(&self.scope));
         if self.previous && self.current.is_some() {
             format!("{title} (previous)")

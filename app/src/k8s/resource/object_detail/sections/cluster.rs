@@ -5,6 +5,7 @@
 
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
 use super::common::{condition_badges, non_empty, quantities};
+use crate::k8s::resource::status_tone;
 use k8s_openapi::api::core::v1::{Namespace, Node};
 
 pub(super) fn node(node: &Node) -> Vec<ObjectSection> {
@@ -73,7 +74,11 @@ pub(super) fn namespace(namespace: &Namespace) -> Vec<ObjectSection> {
     let status = namespace.status.as_ref();
 
     if let Some(phase) = non_empty(status.and_then(|status| status.phase.as_deref())) {
-        fields.push(ObjectField::text("Phase", phase));
+        fields.push(ObjectField::status(
+            "Phase",
+            phase,
+            status_tone::namespace_phase(phase),
+        ));
     }
     // Every namespace condition reports something stalling its deletion
     // (`NamespaceContentRemaining`, `NamespaceFinalizersRemaining`, ...), so

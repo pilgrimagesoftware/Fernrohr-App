@@ -6,6 +6,7 @@ use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::object_detail::model::{FieldValue, ObjectField, ObjectSection};
 use crate::k8s::resource::object_detail::sections::sections_for;
 use crate::ui::detail::BadgeTone;
+use crate::ui::style::Tone;
 use serde_json::json;
 
 pub(super) fn field<'a>(sections: &'a [ObjectSection], label: &str) -> &'a ObjectField {
@@ -122,7 +123,13 @@ fn a_bound_claim_references_its_volume_and_storage_class() {
 
     let sections = sections_for(&kind("", "v1", "PersistentVolumeClaim", true), &claim);
 
-    assert_eq!(field(&sections, "Status").value.text(), "Bound");
+    assert_eq!(
+        field(&sections, "Status").value,
+        FieldValue::Status {
+            text: "Bound".into(),
+            tone: Tone::Good,
+        }
+    );
     assert_eq!(
         field(&sections, "Volume").value,
         FieldValue::References {

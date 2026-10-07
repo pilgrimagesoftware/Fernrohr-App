@@ -7,6 +7,12 @@
 //! them. Each foldable line has a gutter chevron that is a tab stop - Tab
 //! reaches it, Enter or Space folds it, as a click does - and the panels
 //! register Fold All and Unfold All as commands.
+//!
+//! The lines are selectable text in the window's selection (#154), ordered by
+//! line, so a drag across them selects them in reading order and the copy
+//! key copies them, as in the Logs panel. Copy YAML - a command, and the
+//! view's copy button - puts the whole manifest on the clipboard, folded
+//! blocks included.
 
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::assets::IconName;
@@ -133,11 +139,16 @@ impl YamlFolds {
     }
 }
 
-actions!(yaml_view, [FoldAll, UnfoldAll]);
+actions!(yaml_view, [FoldAll, UnfoldAll, CopyYaml]);
 
-/// The default keys for [`FoldAll`] and [`UnfoldAll`] in each detail panel.
+/// The default keys for [`FoldAll`], [`UnfoldAll`] and [`CopyYaml`] in each
+/// detail panel. Copy YAML is Copy Resource Name's `c`, shifted.
 pub const FOLD_ALL_KEY: &str = "z";
 pub const UNFOLD_ALL_KEY: &str = "shift-z";
+pub const COPY_YAML_KEY: &str = "shift-c";
+
+/// The view's Copy YAML button.
+pub const COPY_YAML_BUTTON: &str = "yaml-copy";
 
 /// A detail panel's YAML view state: its folds and its scroll position.
 #[derive(Default)]
@@ -152,7 +163,7 @@ impl YamlViewState {
     pub fn element(&mut self, yaml: &str, on_toggle: OnToggle, cx: &App) -> AnyElement {
         self.folds.sync(yaml);
         let lines = YamlLines::parse(yaml);
-        render(&lines, &self.folds, &self.scroll, on_toggle, cx)
+        render(yaml, &lines, &self.folds, &self.scroll, on_toggle, cx)
     }
 
     pub fn toggle(&mut self, line: usize) {
@@ -205,8 +216,10 @@ pub fn line_selector(line: usize) -> String {
 pub type OnToggle = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
 /// Draws `lines` under `folds` in a scroll container on `scroll`, both ways,
-/// with a toggle in the gutter of every line that opens a block.
+/// with a toggle in the gutter of every line that opens a block, and a button
+/// copying `yaml` - the whole manifest - in its corner.
 pub fn render(
+    yaml: &str,
     lines: &YamlLines,
     folds: &YamlFolds,
     scroll: &ScrollHandle,
@@ -242,17 +255,39 @@ pub fn render(
                     div()
                         .debug_selector(move || selector.clone())
                         .whitespace_nowrap()
-                        .child(line.text.clone()),
+                        // One selection participant per line, in line order,
+                        // so a drag across lines copies them in reading order.
+                        .child(
+                            gpui_kit::base::SelectableText::new(
+                                ("yaml-line", index),
+                                line.text.clone(),
+                            )
+                            .document_order(index as u64),
+                        ),
                 )
                 .children(folded.then(|| div().pl_2().text_color(muted).child("…")))
         });
+    let yaml = yaml.to_string();
+    let copy = Button::new(COPY_YAML_BUTTON)
+        .icon(IconName::Copy)
+        .xsmall()
+        .ghost()
+        .tooltip_with_action("Copy YAML", &CopyYaml, None)
+        .on_click(move |_event, _window, cx| crate::ui::copy::copy_text(&yaml, cx));
     div()
-        .id("yaml-view")
         .size_full()
-        .overflow_scroll()
-        .track_scroll(scroll)
-        .code_font(cx)
-        .child(div().flex().flex_col().children(rows))
+        .relative()
+        .child(
+            div()
+                .id("yaml-view")
+                .size_full()
+                .overflow_scroll()
+                .track_scroll(scroll)
+                .code_font(cx)
+                .child(div().flex().flex_col().children(rows)),
+        )
+        // Over the view's corner, outside its scrolling, so it stays put.
+        .child(div().absolute().top_0().right_0().child(copy))
         .into_any_element()
 }
 

@@ -5,7 +5,7 @@
 //! forward while the selected pod has one (`port-forward-indicators` 4.1).
 
 use super::*;
-use commands::{PORT_FORWARD_KEY, SHELL_KEY};
+use commands::{LOGS_FLIPPED_KEY, PORT_FORWARD_KEY, SHELL_KEY};
 use gpui_kit::prelude::FluentBuilder as _;
 
 /// The debug selector of the hint labelled `label`.
@@ -60,6 +60,12 @@ impl PodsPanel {
                 window,
             ))
             .child(hint(&ShowPodLogs, LOGS_KEY, "Logs", window))
+            .child(hint(
+                &ShowPodLogsFlipped,
+                LOGS_FLIPPED_KEY,
+                crate::ui::logs_panels::flipped_label(cx),
+                window,
+            ))
             .child(hint(&ShowPodYaml, YAML_KEY, "YAML", window))
             .when(shellable, |row| {
                 row.child(hint(&ShellPod, SHELL_KEY, "Shell", window))

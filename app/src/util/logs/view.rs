@@ -29,6 +29,9 @@ pub enum LogEvent {
 pub const NO_PREVIOUS_INSTANCE: &str =
     "This container hasn't restarted, so there is no previous instance to show logs for.";
 
+/// Between a tagged line's source and its text (#150).
+pub const SOURCE_SEPARATOR: &str = "\u{2502}";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FollowState {
     Following,
@@ -126,6 +129,24 @@ impl LogsView {
         self.terminal_message = None;
         self.terminal_detail = None;
         true
+    }
+
+    /// Applies `event` from one of several containers streaming into this view
+    /// (#150): its line tagged with `source`, and its end or failure a line of
+    /// its own rather than the view's terminal state - the other containers
+    /// keep streaming.
+    pub fn apply_from(&mut self, source: &str, event: LogEvent) {
+        let line = match event {
+            LogEvent::Line(line) => line,
+            LogEvent::Ended => "\u{2014} log stream ended".to_string(),
+            LogEvent::RequestFailed { message, .. } => {
+                format!("\u{2014} couldn't stream logs: {message}")
+            }
+            // Only a previous-instance request gets this, and a tagged stream
+            // never makes one.
+            LogEvent::NoPreviousInstance => return,
+        };
+        self.append_line(format!("{source} {SOURCE_SEPARATOR} {line}"));
     }
 
     pub fn apply(&mut self, event: LogEvent) {

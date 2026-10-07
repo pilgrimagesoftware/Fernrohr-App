@@ -44,14 +44,13 @@ const LONG: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 struct Chips;
 
 impl Render for Chips {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div().w(px(800.)).child(metadata_chips(
             "Annotations",
             &[
                 ("app".to_string(), "web".to_string()),
                 ("blob".to_string(), LONG.to_string()),
             ],
-            cx,
         ))
     }
 }
@@ -82,4 +81,27 @@ async fn only_a_shortened_chip_has_a_tooltip(cx: &mut TestAppContext) {
         hover(vcx, 1),
         "a shortened chip shows its full value on hover"
     );
+}
+
+fn clipboard(vcx: &mut VisualTestContext) -> Option<String> {
+    vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+}
+
+/// #153: clicking a chip copies its `key=value` - a shortened one's in full.
+#[gpui_kit::test]
+async fn clicking_a_chip_copies_it(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
+    });
+    let (_, vcx) = cx.add_window_view(|_, _| Chips);
+
+    for (index, expected) in [(0, "app=web".to_string()), (1, format!("blob={LONG}"))] {
+        let chip = vcx
+            .debug_bounds(metadata_chip_selector("Annotations", index).leak())
+            .expect("the chip is drawn");
+        vcx.simulate_click(chip.center(), Modifiers::none());
+        vcx.run_until_parked();
+        assert_eq!(clipboard(vcx), Some(expected), "chip {index}");
+    }
 }

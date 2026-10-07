@@ -2070,8 +2070,9 @@ dependencies = [
 
 [[package]]
 name = "fernrohr"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
+ "ashpd",
  "dirs 7.0.0",
  "futures-util",
  "gpui-kit",
@@ -2097,6 +2098,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite 0.30.0",
  "toml 1.1.6+spec-1.1.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

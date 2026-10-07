@@ -6,6 +6,7 @@
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
 use super::common::{non_empty, quantities};
 use crate::k8s::object_ref::ObjectRef;
+use crate::k8s::resource::status_tone;
 use k8s_openapi::api::core::v1::{PersistentVolume, PersistentVolumeClaim, PersistentVolumeSpec};
 use k8s_openapi::api::storage::v1::StorageClass;
 
@@ -56,7 +57,11 @@ pub(super) fn claim(claim: &PersistentVolumeClaim) -> Vec<ObjectSection> {
     let status = claim.status.as_ref();
 
     if let Some(phase) = non_empty(status.and_then(|status| status.phase.as_deref())) {
-        fields.push(ObjectField::text("Status", phase));
+        fields.push(ObjectField::status(
+            "Status",
+            phase,
+            status_tone::claim_phase(phase),
+        ));
     }
     if let Some(volume) = non_empty(spec.and_then(|spec| spec.volume_name.as_deref())) {
         fields.push(ObjectField::references(
@@ -120,7 +125,11 @@ pub(super) fn volume(volume: &PersistentVolume) -> Vec<ObjectSection> {
             .as_ref()
             .and_then(|status| status.phase.as_deref()),
     ) {
-        fields.push(ObjectField::text("Phase", phase));
+        fields.push(ObjectField::status(
+            "Phase",
+            phase,
+            status_tone::volume_phase(phase),
+        ));
     }
     if let Some(capacity) = quantities(spec.and_then(|spec| spec.capacity.as_ref())) {
         fields.push(ObjectField::new("Capacity", capacity));

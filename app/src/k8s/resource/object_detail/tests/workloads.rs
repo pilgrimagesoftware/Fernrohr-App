@@ -6,6 +6,7 @@ use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::object_detail::model::FieldValue;
 use crate::k8s::resource::object_detail::sections::sections_for;
 use crate::ui::detail::BadgeTone;
+use crate::ui::style::Tone;
 use serde_json::json;
 
 #[test]
@@ -13,8 +14,11 @@ fn a_replica_set_shows_its_replicas_and_selector() {
     let sections = sections_for(&replica_sets(), &owned_replica_set());
 
     assert_eq!(
-        field(&sections, "Replicas").value.text(),
-        "desired 2 · current 2 · ready 1 · available 1"
+        field(&sections, "Replicas").value,
+        FieldValue::Status {
+            text: "desired 2 · current 2 · ready 1 · available 1".into(),
+            tone: Tone::Warning,
+        }
     );
     assert_eq!(field(&sections, "Selector").value.text(), "app=web");
 }
@@ -46,8 +50,11 @@ fn a_deployment_shows_replicas_strategy_selector_and_conditions() {
     let sections = sections_for(&deployments(), &deployment);
 
     assert_eq!(
-        field(&sections, "Replicas").value.text(),
-        "desired 3 · updated 3 · ready 2 · available 2"
+        field(&sections, "Replicas").value,
+        FieldValue::Status {
+            text: "desired 3 · updated 3 · ready 2 · available 2".into(),
+            tone: Tone::Warning,
+        }
     );
     assert_eq!(field(&sections, "Strategy").value.text(), "RollingUpdate");
     assert_eq!(
@@ -109,8 +116,11 @@ fn a_daemon_set_shows_its_scheduling() {
     let sections = sections_for(&kind("apps", "v1", "DaemonSet", true), &set);
 
     assert_eq!(
-        field(&sections, "Scheduled").value.text(),
-        "desired 4 · current 4 · ready 3 · available 3"
+        field(&sections, "Scheduled").value,
+        FieldValue::Status {
+            text: "desired 4 · current 4 · ready 3 · available 3".into(),
+            tone: Tone::Warning,
+        }
     );
     assert_eq!(field(&sections, "Misscheduled").value.text(), "1");
 }
@@ -130,6 +140,13 @@ fn a_failed_job_shows_its_counts_and_a_warning() {
 
     let sections = sections_for(&kind("batch", "v1", "Job", true), &job);
 
+    assert_eq!(
+        field(&sections, "Status").value,
+        FieldValue::Status {
+            text: "Failed".into(),
+            tone: Tone::Bad,
+        }
+    );
     assert_eq!(
         field(&sections, "Completions").value.text(),
         "wanted 1 · failed 2"

@@ -1,12 +1,13 @@
 //! `MainWindow`'s tab commands and `Cmd-W`: switching the focused tab group's
-//! tab (`tab-keyboard-navigation`), and closing its displayed tab - or, with
-//! no tab to close, the window (`per-tab-close-button`).
+//! tab (`tab-keyboard-navigation`), and closing its displayed tab - asking
+//! first when that would end a shell or discard an edit (Fernrohr#129) - or,
+//! with no tab to close, the window (`per-tab-close-button`).
 //!
 //! Which group and tab are meant is [`crate::ui::panel::tabs`]'s call; this
 //! module moves focus and dispatches, since the window owns the dock.
 
 use super::*;
-use crate::ui::confirm_dialog::{self, Confirmation};
+use crate::ui::confirm_dialog::{self, Confirmation, Severity};
 use crate::ui::confirm_text::ConfirmText;
 use crate::ui::menu::CloseWindow;
 use crate::ui::panel::tabs::{
@@ -66,7 +67,7 @@ impl MainWindow {
     }
 
     /// `Cmd-W`: closes the focused tab group's displayed tab, or - with no tab
-    /// on screen - the window, confirming first if that would drop a tunnel.
+    /// on screen - the window ([`Self::close_whole_window`]).
     ///
     /// The tab group handles `ClosePanel`, so it reaches a group only along the
     /// focus path. Focusing the displayed tab first is what makes `Cmd-W` close
@@ -81,6 +82,14 @@ impl MainWindow {
     ) {
         if let WindowMode::Workspace { dock_area, .. } = &self.mode {
             let dock_area = dock_area.clone();
+            let shown = tabs::focused_group(dock_area.read(cx), window, cx)
+                .map(|group| group.panels[group.active_ix]);
+            // A running shell or an unsaved edit asks first (Fernrohr#129).
+            if let Some(id) = shown
+                && super::arrange::ask_before_closing(&dock_area, id, window, cx)
+            {
+                return;
+            }
             let area = dock_area.read(cx);
             if let Some(group) = tabs::focused_group(area, window, cx)
                 && let Some(panel) = area.panel(group.panels[group.active_ix])
@@ -99,20 +108,46 @@ impl MainWindow {
                 return;
             }
         }
+        self.close_whole_window(window, cx);
+    }
+
+    /// Closes the window - `Cmd-W` with no tab on screen - confirming first if
+    /// that would drop a tunnel or discard an unsaved edit, irreversibly for an
+    /// edit (Fernrohr#168). `close_window` removes the window without its
+    /// should-close hook, so an edit is checked here too, not only by
+    /// [`close_requested`]: with no panel on screen none should be open, but
+    /// losing one silently is not a risk worth taking on that.
+    pub(super) fn close_whole_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let tunneled = self.contexts_losing_a_tunnel(cx);
-        if tunneled.is_empty() {
+        let unsaved = self.unsaved_edits(cx);
+        if tunneled.is_empty() && unsaved.is_empty() {
             // Deferred: closing records the window's layout, which reads this
             // `MainWindow` - still mid-update here, so reading it now panics
             // (#135). Once this handler returns, the read is free.
             window.defer(cx, close_window);
         } else {
-            open_close_window_dialog(tunneled, window, cx);
+            open_close_window_dialog(&tunneled, unsaved, window, cx);
         }
+    }
+
+    /// What closing the window would discard for good: each panel's unsaved
+    /// edit, as `Close Group` words it.
+    fn unsaved_edits(&self, cx: &App) -> Vec<ConfirmText> {
+        let WindowMode::Workspace { dock_area, .. } = &self.mode else {
+            return Vec::new();
+        };
+        let area = dock_area.read(cx);
+        tabs::all_panels(area)
+            .into_iter()
+            .filter_map(|panel| super::arrange::close_warning(area, panel, cx))
+            .filter(|(_, severity)| *severity == Severity::Irreversible)
+            .map(|(warning, _)| warning)
+            .collect()
     }
 
     /// This window's contexts whose tunnel closing the window would tear
     /// down: bound to a live forward, and held by no other window.
-    fn contexts_losing_a_tunnel(&self, cx: &mut App) -> Vec<String> {
+    pub(super) fn contexts_losing_a_tunnel(&self, cx: &mut App) -> Vec<String> {
         let WindowMode::Workspace { contexts, .. } = &self.mode else {
             return Vec::new();
         };
@@ -151,14 +186,53 @@ pub(super) fn losing_a_tunnel(
         .collect()
 }
 
+/// The window's close button: whether `window` may close now. With an unsaved
+/// edit in any panel it may not - the irreversible "Close Window?" asks first
+/// (Fernrohr#168), closing it only once confirmed. `Cmd-W` reaches the window
+/// only with no panel on screen, so this is where an edit can be lost.
+pub(super) fn close_requested(window: &mut Window, cx: &mut App) -> bool {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return true;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return true;
+    };
+    let unsaved = main_window.read(cx).unsaved_edits(cx);
+    if unsaved.is_empty() {
+        return true;
+    }
+    open_close_window_dialog(&[], unsaved, window, cx);
+    false
+}
+
 /// "Close Window?" naming the contexts whose tunnel will disconnect - the
-/// context bar's Disconnect dialog, with Close Window as the confirm.
-fn open_close_window_dialog(tunneled: Vec<String>, window: &mut Window, cx: &mut App) {
+/// context bar's Disconnect dialog, with Close Window as the confirm - and each
+/// unsaved edit it discards, which makes it irreversible.
+fn open_close_window_dialog(
+    tunneled: &[String],
+    unsaved: Vec<ConfirmText>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let severity = if unsaved.is_empty() {
+        Severity::Recoverable
+    } else {
+        Severity::Irreversible
+    };
+    let lead = (!tunneled.is_empty()).then(|| close_window_confirmation_body(tunneled));
+    let body = unsaved
+        .into_iter()
+        .fold(lead, |body, warning| match body {
+            Some(body) => Some(body.text(" ").append(warning)),
+            None => Some(warning),
+        })
+        .unwrap_or_default();
     let confirmation = Confirmation {
         title: "Close Window?".into(),
-        body: close_window_confirmation_body(&tunneled),
+        body,
         confirm: "Close Window".into(),
         id_prefix: "close-window",
+        severity,
     };
     confirm_dialog::open(confirmation, close_window, window, cx);
 }
@@ -193,6 +267,11 @@ pub(crate) fn close_panel<P: Panel>(panel: Entity<P>, window: &mut Window, cx: &
         WindowMode::Workspace { dock_area, .. } => dock_area.clone(),
         WindowMode::Picker(_) => return,
     };
+    // A running shell or an unsaved edit asks first (Fernrohr#129).
+    let id = gpui_kit::component::dock::PanelId::from(panel.entity_id());
+    if super::arrange::ask_before_closing(&dock_area, id, window, cx) {
+        return;
+    }
     dock_area.update(cx, |area, cx| area.remove_panel(panel, window, cx));
 }
 

@@ -128,3 +128,18 @@ async fn the_pod_yaml_view_folds(cx: &mut TestAppContext) {
     vcx.run_until_parked();
     assert!(!drawn(&mut vcx), "z folded metadata away");
 }
+
+/// #154, in the pod panel: `shift-c` copies the whole manifest, folded or not.
+#[gpui_kit::test]
+async fn shift_c_copies_the_pod_yaml(cx: &mut TestAppContext) {
+    let h = harness(cx, managed_pod());
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    focus_panel(&mut vcx, &h);
+    vcx.simulate_keystrokes("y z shift-c");
+    vcx.run_until_parked();
+    let yaml = vcx.update(|_, cx| h.panel.read(cx).yaml().expect("loaded"));
+    assert_eq!(
+        vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text())),
+        Some(yaml)
+    );
+}

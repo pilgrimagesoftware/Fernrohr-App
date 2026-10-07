@@ -6,6 +6,7 @@ use super::sections::field;
 use crate::k8s::resource::object_detail::model::FieldValue;
 use crate::k8s::resource::object_detail::sections::sections_for;
 use crate::ui::detail::BadgeTone;
+use crate::ui::style::Tone;
 use serde_json::json;
 
 /// A Namespace shows its phase and conditions. Every namespace condition
@@ -29,7 +30,13 @@ fn a_namespace_shows_its_phase_and_conditions() {
     let sections = sections_for(&kind("", "v1", "Namespace", false), &namespace);
 
     assert_eq!(sections[0].title, "Namespace");
-    assert_eq!(field(&sections, "Phase").value.text(), "Terminating");
+    assert_eq!(
+        field(&sections, "Phase").value,
+        FieldValue::Status {
+            text: "Terminating".into(),
+            tone: Tone::Warning,
+        }
+    );
     assert_eq!(
         field(&sections, "Conditions").value,
         FieldValue::Badges(vec![

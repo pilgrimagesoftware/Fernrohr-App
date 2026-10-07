@@ -21,12 +21,16 @@ use gpui_kit::*;
 mod collapsible;
 pub(crate) mod lifecycle;
 mod metadata;
+mod urls;
 pub use collapsible::Collapsible;
 pub use metadata::metadata_chips;
 #[cfg(test)]
 pub use metadata::{
     metadata_chip_id, metadata_chip_selector, metadata_copy_id, metadata_tooltip_selector,
 };
+#[cfg(test)]
+pub use urls::url_link_id;
+pub use urls::urls;
 
 /// A status's color, decided by the status rather than looked up at render
 /// time - so "is this good" is testable without a theme, and the renderer only

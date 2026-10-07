@@ -44,9 +44,12 @@ async fn l_in_a_pod_detail_panel_opens_its_logs(cx: &mut TestAppContext) {
         })
     });
     let detail = detail.expect("the pod's detail panel");
+    // Brings the detail panel's tab forward - opening logs adds a tab in its
+    // group - and focuses it, so its keys reach it.
     let focus_detail = |vcx: &mut VisualTestContext| {
         vcx.update(|window, cx| {
             use gpui_kit::Focusable as _;
+            main.update(cx, |main, cx| main.open_target(pod.clone(), window, cx));
             let handle = detail.read(cx).focus_handle(cx);
             window.focus(&handle, cx);
         });
@@ -75,7 +78,14 @@ async fn l_in_a_pod_detail_panel_opens_its_logs(cx: &mut TestAppContext) {
             };
             open_panels
                 .iter()
-                .filter(|open| open.key.target == NavTarget::Logs)
+                // Per pod is the default (`logs-panel-instancing`).
+                .filter(|open| {
+                    open.key.target
+                        == NavTarget::PodLogs(crate::ui::nav::PodRef {
+                            namespace: "staging".into(),
+                            name: "web-1".into(),
+                        })
+                })
                 .map(|open| open.key.context_name.clone())
                 .collect::<Vec<_>>()
         })
@@ -103,6 +113,21 @@ async fn l_in_a_pod_detail_panel_opens_its_logs(cx: &mut TestAppContext) {
     assert_eq!(
         logs_panels(&mut vcx).len(),
         1,
-        "the same Logs panel, focused"
+        "the pod's own Logs panel, focused"
     );
+
+    // `shift-l` the other way: the one shared Logs panel.
+    focus_detail(&mut vcx);
+    vcx.simulate_keystrokes("shift-l");
+    vcx.run_until_parked();
+    let shared = vcx.update(|_, cx| {
+        let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
+            return 0;
+        };
+        open_panels
+            .iter()
+            .filter(|open| open.key.target == NavTarget::Logs)
+            .count()
+    });
+    assert_eq!(shared, 1, "shift-l opened the shared Logs panel");
 }

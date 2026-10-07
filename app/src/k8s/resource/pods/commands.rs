@@ -17,6 +17,7 @@ actions!(
         WarpAllToNamespace,
         DescribePod,
         ShowPodLogs,
+        ShowPodLogsFlipped,
         ShowPodYaml,
         QuickLook,
         CloseQuickLook,
@@ -59,6 +60,9 @@ pub(super) const DESCRIBE_KEY: &str = "d";
 /// Open in Background: the platform modifier with Enter (`cmd-enter` on macOS).
 pub(super) const OPEN_IN_BACKGROUND_KEY: &str = "secondary-enter";
 pub(super) const LOGS_KEY: &str = "l";
+/// The selected pod's logs the other way from the Logs panels preference
+/// (`logs-panel-instancing`).
+pub(super) const LOGS_FLIPPED_KEY: &str = "shift-l";
 pub(super) const YAML_KEY: &str = "y";
 pub(super) const QUICK_LOOK_KEY: &str = "space";
 /// k9s's own keys for delete and kill.
@@ -204,6 +208,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Show Selected Pod's Logs",
         LOGS_KEY,
         Box::new(ShowPodLogs),
+        None,
+    );
+    register(
+        "pods.logs_flipped",
+        "Pods: Show Selected Pod's Logs (Other Panel Mode)",
+        LOGS_FLIPPED_KEY,
+        Box::new(ShowPodLogsFlipped),
         None,
     );
     register(

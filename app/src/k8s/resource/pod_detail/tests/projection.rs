@@ -260,6 +260,51 @@ fn a_container_with_no_status_yet_still_gets_a_row() {
     assert_eq!(containers[0].restart_count, 0);
     assert_eq!(containers[0].state, "Waiting");
 }
+/// #120: a container that ran to completion (exit 0) isn't ready and needn't
+/// be - its readiness is neutral, not a warning; one that exited with an error
+/// still warns, and a running ready one is good.
+#[test]
+fn a_completed_containers_readiness_is_no_warning() {
+    use k8s_openapi::api::core::v1::{
+        ContainerState, ContainerStateRunning, ContainerStateTerminated, ContainerStatus,
+    };
+    let terminated = |exit_code| ContainerState {
+        terminated: Some(ContainerStateTerminated {
+            exit_code,
+            reason: Some(if exit_code == 0 { "Completed" } else { "Error" }.into()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let running = ContainerState {
+        running: Some(ContainerStateRunning::default()),
+        ..Default::default()
+    };
+    let readiness = |ready, state: ContainerState| {
+        let mut pod = rich_pod();
+        pod.spec.as_mut().unwrap().containers = vec![Container {
+            name: "app".into(),
+            ..Default::default()
+        }];
+        pod.status.as_mut().unwrap().container_statuses = Some(vec![ContainerStatus {
+            name: "app".into(),
+            ready,
+            state: Some(state),
+            ..Default::default()
+        }]);
+        let fields = pod_fields(&pod, Timestamp::from_second(0).unwrap());
+        let PodFieldValue::Containers(containers) = &field(&fields, "Containers").unwrap().value
+        else {
+            panic!("containers render as PodFieldValue::Containers");
+        };
+        containers[0].ready_tone
+    };
+
+    assert_eq!(readiness(false, terminated(0)), BadgeTone::Unknown);
+    assert_eq!(readiness(false, terminated(1)), BadgeTone::Warning);
+    assert_eq!(readiness(true, running), BadgeTone::Good);
+}
+
 /// A condition the cluster did not resolve reads as neither good nor bad.
 #[test]
 fn an_unresolved_condition_is_neither_good_nor_a_warning() {

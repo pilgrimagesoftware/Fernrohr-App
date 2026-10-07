@@ -192,7 +192,9 @@ pub fn for_target(target: &crate::ui::nav::NavTarget) -> KindIcon {
         NavTarget::Kind(kind) => for_kind(&kind.gvk.group, &kind.gvk.kind),
         NavTarget::Object(object) => for_kind(&object.kind.gvk.group, &object.kind.gvk.kind),
         NavTarget::Pod(_) => KindIcon::Pod,
-        NavTarget::Logs | NavTarget::Exec(_) => KindIcon::Container,
+        NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) | NavTarget::Exec(_) => {
+            KindIcon::Container
+        }
     }
 }
 

@@ -404,8 +404,9 @@ impl TableDelegate for ObjectTableDelegate {
         row_ix: usize,
         col_ix: usize,
         _: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
+        cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
+        use crate::ui::style;
         use crate::ui::typography::TypeRole as _;
         let (row, column) = (&self.rows[row_ix], &self.columns[col_ix]);
         let cell = div()
@@ -418,7 +419,25 @@ impl TableDelegate for ObjectTableDelegate {
                 &row.forwards,
             ));
         }
-        cell.child(cell_text(row, column))
+        let text = cell_text(row, column);
+        // A status cell's text takes its tone's colour; a readiness ratio
+        // keeps plain text beside a dot in its tone, as the Pods table's Ready.
+        let value = row.cell(column);
+        match (value, value.and_then(columns::Cell::tone)) {
+            (Some(columns::Cell::Readiness(..)), Some(tone)) => cell
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(
+                    div()
+                        .size(px(7.))
+                        .rounded_full()
+                        .bg(style::status(tone, cx)),
+                )
+                .child(text),
+            (_, Some(tone)) => cell.text_color(style::status(tone, cx)).child(text),
+            (_, None) => cell.child(text),
+        }
     }
 
     fn move_column(

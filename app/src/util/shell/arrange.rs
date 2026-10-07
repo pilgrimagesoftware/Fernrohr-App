@@ -9,7 +9,7 @@
 //! outside them, or no group that way, they do nothing.
 
 use super::*;
-use crate::ui::confirm_dialog::{self, Confirmation};
+use crate::ui::confirm_dialog::{self, Confirmation, Severity};
 use crate::ui::confirm_text::ConfirmText;
 use crate::ui::panel::arrange::{
     self, ClosePanelGroup, Direction, MergeGroupDown, MergeGroupLeft, MergeGroupRight,
@@ -201,11 +201,20 @@ impl MainWindow {
         let Some(group) = tabs::tabs_of(dock_area.read(cx), node) else {
             return;
         };
-        let warnings: Vec<ConfirmText> = group
+        let warnings: Vec<(ConfirmText, Severity)> = group
             .panels
             .iter()
             .filter_map(|&panel| close_warning(dock_area.read(cx), panel, cx))
             .collect();
+        // Irreversible if any panel would lose something for good.
+        let severity = if warnings
+            .iter()
+            .any(|(_, severity)| *severity == Severity::Irreversible)
+        {
+            Severity::Irreversible
+        } else {
+            Severity::Recoverable
+        };
         if warnings.is_empty() {
             close_panels(&dock_area, &group.panels, window, cx);
             return;
@@ -215,13 +224,14 @@ impl MainWindow {
             ConfirmText::from(
                 format!("Closing this group closes {} panels.", panels.len()).as_str(),
             ),
-            |body, warning| body.text(" ").append(warning),
+            |body, (warning, _)| body.text(" ").append(warning),
         );
         let confirmation = Confirmation {
             title: "Close Group?".into(),
             body,
             confirm: "Close Group".into(),
             id_prefix: "close-group",
+            severity,
         };
         confirm_dialog::open(
             confirmation,
@@ -243,11 +253,56 @@ impl MainWindow {
     }
 }
 
+/// Asks before closing one `panel` - `Cmd-W`, or its tab's close control -
+/// when closing it would lose something, as Close Group asks for a group
+/// (Fernrohr#129): a running shell recoverably, an unsaved edit
+/// irreversibly. Whether it asked: if so, confirming closes the panel and the
+/// caller does nothing more; if not, the caller closes it as it always has.
+///
+/// Confirming closes by panel, not by the dock's focus-following `ClosePanel`:
+/// by then focus has been in the dialog.
+pub(super) fn ask_before_closing(
+    dock_area: &Entity<DockArea>,
+    panel: PanelId,
+    window: &mut Window,
+    cx: &mut App,
+) -> bool {
+    let Some((warning, severity)) = close_warning(dock_area.read(cx), panel, cx) else {
+        return false;
+    };
+    let confirmation = Confirmation {
+        title: "Close Panel?".into(),
+        body: warning,
+        confirm: "Close Panel".into(),
+        id_prefix: "close-panel",
+        severity,
+    };
+    let dock_area = dock_area.clone();
+    confirm_dialog::open(
+        confirmation,
+        move |window, cx| close_panels(&dock_area, &[panel], window, cx),
+        window,
+        cx,
+    );
+    true
+}
+
 /// What closing `panel` would cost, from the panels that can say.
-fn close_warning(area: &DockArea, panel: PanelId, cx: &App) -> Option<ConfirmText> {
+pub(super) fn close_warning(
+    area: &DockArea,
+    panel: PanelId,
+    cx: &App,
+) -> Option<(ConfirmText, Severity)> {
     match nav::opened_panel_for(area, panel, cx)? {
-        OpenedPanel::Exec(panel) => panel.read(cx).close_warning(),
-        OpenedPanel::ObjectDetail(panel) => panel.read(cx).close_warning(),
+        // An ended shell can be started again; a discarded edit is gone.
+        OpenedPanel::Exec(panel) => panel
+            .read(cx)
+            .close_warning()
+            .map(|warning| (warning, Severity::Recoverable)),
+        OpenedPanel::ObjectDetail(panel) => panel
+            .read(cx)
+            .close_warning()
+            .map(|warning| (warning, Severity::Irreversible)),
         OpenedPanel::Pods(_)
         | OpenedPanel::ObjectList(_)
         | OpenedPanel::Events(_)
@@ -282,5 +337,9 @@ fn close_panels(
     }
 }
 
+#[cfg(test)]
+mod close_panel_tests;
+#[cfg(test)]
+mod close_window_tests;
 #[cfg(test)]
 mod tests;

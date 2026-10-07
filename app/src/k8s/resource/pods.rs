@@ -30,7 +30,8 @@ pub(crate) use commands::STOP_PORT_FORWARD_KEY;
 pub use commands::{
     CloseQuickLook, DeletePod, DescribePod, EditPod, KillPod, OpenQuickLookDetails,
     PANEL_KEY_CONTEXT, PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs,
-    ShowPodYaml, StopPortForward, WarpAllToNamespace, WarpNamespace, register_commands,
+    ShowPodLogsFlipped, ShowPodYaml, StopPortForward, WarpAllToNamespace, WarpNamespace,
+    register_commands,
 };
 use commands::{
     DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OpenInBackground,

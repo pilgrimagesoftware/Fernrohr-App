@@ -10,6 +10,7 @@ use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::dock::{DockArea, DockPlacement, PanelId, panel_handle};
 use gpui_kit::*;
 
+mod naming;
 mod open_mode;
 pub use open_mode::{OpenMode, OpenPodInBackground};
 
@@ -26,6 +27,7 @@ actions!(
     [
         ShowPods,
         ShowLogs,
+        ShowLogsFlipped,
         ShowEvents,
         ShowPodDetail,
         ShowPodDetailYaml
@@ -39,6 +41,10 @@ pub const SHOW_PODS_COMMAND_ID: &str = "nav.show_pods";
 pub const SHOW_PODS_DEFAULT_BINDING: &str = "cmd-1";
 pub const SHOW_LOGS_COMMAND_ID: &str = "nav.show_logs";
 pub const SHOW_LOGS_DEFAULT_BINDING: &str = "cmd-2";
+/// `ShowLogs` the other way from the Logs panels preference, for one open
+/// (`logs-panel-instancing`). Palette only here; the Pods list and a pod's
+/// detail bind it to `shift-l` through their own commands.
+pub const SHOW_LOGS_FLIPPED_COMMAND_ID: &str = "nav.show_logs_flipped";
 
 /// What a connected window's active panel is showing. Which options exist is
 /// no longer a fixed set here - the Resource panel's discovery-driven list
@@ -64,6 +70,22 @@ pub enum NavTarget {
     Object(ObjectTarget),
     /// A shell in one container of a pod (`k9s-remaining-keybindings` 3).
     Exec(crate::k8s::resource::exec::ExecTarget),
+    /// One pod's logs, in a Logs panel of its own (`logs-panel-instancing`):
+    /// pinned to that pod, unlike [`Self::Logs`], which follows the selection.
+    /// Keyed by the pod alone, as [`Self::Pod`] is - so opening the same pod's
+    /// logs again focuses its panel, and another container of it switches
+    /// that panel rather than opening a second.
+    ///
+    /// The variant names no cluster: two contexts' pods of the same namespace
+    /// and name are the same `PodLogs`. What keeps their panels apart is
+    /// `PanelKey.context_name` beside it - the panel's context, from
+    /// `pod_scoped_context` - so dedup is per context, as for every target.
+    PodLogs(PodRef),
+    /// The logs of every pod a label selector picks (#150): a workload's pods,
+    /// or a selector typed into the panel. Keyed by what it follows, so
+    /// opening a workload's logs again focuses its panel, and the typed panel
+    /// is one per context.
+    LabelLogs(crate::util::logs::LabelLogs),
 }
 
 /// One object of a discovered kind: the kind as discovery reported it (so the
@@ -86,86 +108,6 @@ pub struct ObjectTarget {
 pub struct PodRef {
     pub namespace: String,
     pub name: String,
-}
-
-impl NavTarget {
-    /// The target of the `nav.show_pods` command. Built without discovery, so
-    /// it is pinned to the core `v1` `Pod` kind every cluster reports.
-    pub fn pods() -> Self {
-        NavTarget::Kind(DiscoveredKind::pods())
-    }
-
-    /// The detail view over one pod.
-    pub fn pod(namespace: impl Into<String>, name: impl Into<String>) -> Self {
-        NavTarget::Pod(PodRef {
-            namespace: namespace.into(),
-            name: name.into(),
-        })
-    }
-
-    /// The kind this target shows, for the cases that read it as one. A pod's
-    /// detail panel is over the core `Pod` kind, pinned the same way
-    /// [`Self::pods`] pins the list's.
-    fn pod_kind() -> DiscoveredKind {
-        DiscoveredKind::pods()
-    }
-
-    pub fn label(&self) -> String {
-        match self {
-            NavTarget::Kind(kind) => kind.label(),
-            NavTarget::Logs => "Logs".to_string(),
-            NavTarget::Pod(_) => Self::pod_kind().label(),
-            NavTarget::Object(object) => object.kind.label(),
-            NavTarget::Exec(_) => "Shell".to_string(),
-        }
-    }
-
-    /// What a panel *listing* this target titles itself: the plural form for
-    /// a resource kind (`"Pods"`), same as [`Self::label`] for anything that
-    /// isn't a list of many items. A custom resource's plural stands alone
-    /// (`"Certificates"`); [`Self::custom_group`] carries its group to the
-    /// tab's tooltip instead.
-    pub fn list_label(&self) -> String {
-        match self {
-            NavTarget::Kind(kind) if self.custom_group().is_some() => kind.plural_name(),
-            NavTarget::Kind(kind) => kind.plural_label(),
-            NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) | NavTarget::Exec(_) => {
-                self.label()
-            }
-        }
-    }
-
-    /// The API group of a custom resource kind's list - a kind outside the
-    /// built-in API groups - and `None` for every other target. The core
-    /// group (`""`) never counts: a core kind the taxonomy hasn't caught up
-    /// with has no group to show.
-    pub fn custom_group(&self) -> Option<&str> {
-        match self {
-            NavTarget::Kind(kind)
-                if !kind.gvk.group.is_empty()
-                    && !crate::ui::panel::resource::is_built_in(&kind.gvk.group, &kind.plural) =>
-            {
-                Some(&kind.gvk.group)
-            }
-            NavTarget::Kind(_)
-            | NavTarget::Logs
-            | NavTarget::Pod(_)
-            | NavTarget::Object(_)
-            | NavTarget::Exec(_) => None,
-        }
-    }
-
-    /// What a panel titles itself when it shows *one* item rather than a list of
-    /// them: the kind's singular name, plus the item's own name so two panels
-    /// over different pods are told apart in the dock's tabs.
-    pub fn item_label(&self) -> String {
-        match self {
-            NavTarget::Pod(pod) => format!("{}: {}", self.label(), pod.name),
-            NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
-            NavTarget::Exec(exec) => format!("Shell: {} · {}", exec.pod, exec.container),
-            _ => self.list_label(),
-        }
-    }
 }
 
 /// The commands this module contributes to the app-wide [`CommandRegistry`],
@@ -193,6 +135,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SHOW_LOGS_DEFAULT_BINDING,
         context: None,
         action: Box::new(ShowLogs),
+        menu: None,
+    });
+    registry.register(Command {
+        id: SHOW_LOGS_FLIPPED_COMMAND_ID,
+        title: "Show Logs (Other Panel Mode)",
+        default_binding: "",
+        context: None,
+        action: Box::new(ShowLogsFlipped),
         menu: None,
     });
     // Palette and keymap only: Navigate holds focus and tab moves.
@@ -340,7 +290,7 @@ pub fn add_panel(
     // generic call - but every arm does the same two things in the same order,
     // and the id is taken from the entity before `add_panel` consumes it.
     match &scope.target {
-        NavTarget::Logs => {
+        NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) => {
             let panel = cx.new(|cx| crate::util::logs::LogsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(

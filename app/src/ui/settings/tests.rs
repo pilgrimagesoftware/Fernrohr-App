@@ -336,6 +336,53 @@ async fn remove_and_reset_from_the_keyboard(cx: &mut TestAppContext) {
     });
 }
 
+/// Fernrohr#168: on macOS `cmd-backspace` is both Reset Shortcut and an
+/// irreversible confirmation's deliberate key (`secondary-backspace`). Over
+/// the shortcut list, an irreversible dialog takes its key - it confirms once,
+/// and the selected row isn't reset. Off macOS the two keys differ (`super-`
+/// and `ctrl-backspace`), and the same holds.
+#[gpui_kit::test]
+async fn an_irreversible_dialog_over_the_shortcuts_takes_cmd_backspace(cx: &mut TestAppContext) {
+    use crate::ui::confirm_dialog::{self, Confirmation, Severity};
+    use std::cell::Cell;
+    use std::rc::Rc;
+    let main = app(cx);
+    let (handle, section) = open(main, cx);
+    cx.update(|cx| section.update(cx, |s, cx| s.select("panel.focus_next", cx)));
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    press(&mut vcx, "backspace");
+    cx.update(|cx| assert_eq!(override_of(cx, "panel.focus_next").as_deref(), Some("")));
+
+    let confirmed = Rc::new(Cell::new(0));
+    let count = confirmed.clone();
+    vcx.update(|window, cx| {
+        let confirmation = Confirmation {
+            title: "Delete Secret?".into(),
+            body: crate::ui::confirm_text::ConfirmText::from("Delete it?"),
+            confirm: "Delete".into(),
+            id_prefix: "over-shortcuts",
+            severity: Severity::Irreversible,
+        };
+        confirm_dialog::open(
+            confirmation,
+            move |_, _| count.set(count.get() + 1),
+            window,
+            cx,
+        );
+    });
+    confirm_dialog::deliver_first_frame(&mut vcx);
+    press(&mut vcx, "secondary-backspace");
+
+    assert_eq!(confirmed.get(), 1, "the dialog confirmed, once");
+    cx.update(|cx| {
+        assert_eq!(
+            override_of(cx, "panel.focus_next").as_deref(),
+            Some(""),
+            "and Reset Shortcut didn't run"
+        );
+    });
+}
+
 /// ↓/↑ move the selection; `/` moves focus to the filter.
 #[gpui_kit::test]
 async fn arrows_move_the_selection_and_slash_filters(cx: &mut TestAppContext) {

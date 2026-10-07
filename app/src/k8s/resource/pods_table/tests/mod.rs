@@ -45,6 +45,7 @@ pub(super) fn pod_table_rows_fixture() -> Vec<crate::k8s::resource::pods_table::
             row: PodRow {
                 status_tone: crate::ui::style::Tone::Neutral,
                 ready_tone: crate::ui::style::Tone::Neutral,
+                restart_tone: crate::ui::style::Tone::Neutral,
                 name: name.into(),
                 namespace: namespace.into(),
                 ready: ready.into(),

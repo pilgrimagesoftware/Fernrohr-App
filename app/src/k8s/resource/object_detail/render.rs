@@ -24,6 +24,11 @@ impl ObjectDetailPanel {
     fn render_field(&self, section: &str, field: &ObjectField, cx: &Context<Self>) -> AnyElement {
         let value = match &field.value {
             FieldValue::Text(text) => div().child(text.clone()).into_any_element(),
+            FieldValue::Status { text, tone } => div()
+                .debug_selector(|| format!("object-status-{section}/{}", field.label))
+                .text_color(crate::ui::style::status(*tone, cx))
+                .child(text.clone())
+                .into_any_element(),
             FieldValue::References { targets, qualified } => {
                 let qualified = *qualified;
                 link::references(
@@ -43,12 +48,13 @@ impl ObjectDetailPanel {
             }
             FieldValue::Chips(chips) => detail::chips(chips, cx),
             FieldValue::Metadata(pairs) => {
-                detail::metadata_chips(&format!("{section}/{}", field.label), pairs, cx)
+                detail::metadata_chips(&format!("{section}/{}", field.label), pairs)
             }
             FieldValue::Badges(badges) => {
                 detail::badges(badges.iter().map(|(text, tone)| (text.as_str(), *tone)), cx)
             }
             FieldValue::Lines(lines) => detail::lines(lines),
+            FieldValue::Urls(urls) => detail::urls(&format!("{section}/{}", field.label), urls),
             FieldValue::KeyValues(pairs) => {
                 detail::key_values(&format!("{section}/{}", field.label), pairs, cx)
             }
@@ -144,6 +150,19 @@ impl ObjectDetailPanel {
         crate::ui::copy::copy_text(&self.target.name, cx);
     }
 
+    /// Copy YAML (#154): the whole manifest to the clipboard, folded blocks
+    /// included.
+    fn on_action_copy_yaml(
+        &mut self,
+        _: &crate::ui::yaml_view::CopyYaml,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(yaml) = self.yaml() {
+            crate::ui::copy::copy_text(&yaml, cx);
+        }
+    }
+
     fn on_action_unfold_all(
         &mut self,
         _: &crate::ui::yaml_view::UnfoldAll,
@@ -220,6 +239,7 @@ impl Render for ObjectDetailPanel {
                 .child(key)
                 .child(label)
         };
+        let logs_hint = self.logs_hint(window, cx);
         let header = div()
             .flex()
             .items_center()
@@ -265,6 +285,7 @@ impl Render for ObjectDetailPanel {
                                 .test_support(),
                         )
                     })
+                    .children(logs_hint)
                     .when(deletable, |this| {
                         this.child(hint(
                             Kbd::binding_for_action(
@@ -290,12 +311,14 @@ impl Render for ObjectDetailPanel {
                 self.edit.is_some(),
                 deletable,
                 self.verbs(cx).patch,
+                self.pod_logs_workload().is_some(),
             ))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))
             .on_action(cx.listener(Self::on_action_copy_name))
             .on_action(cx.listener(Self::on_action_unfold_all))
+            .on_action(cx.listener(Self::on_action_copy_yaml))
             .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_go_to))
             .capture_action(cx.listener(Self::capture_editor_escape))
@@ -303,6 +326,7 @@ impl Render for ObjectDetailPanel {
             .on_action(cx.listener(Self::on_action_save_edit))
             .on_action(cx.listener(Self::on_action_cancel_edit))
             .on_action(cx.listener(Self::on_action_delete_object))
+            .on_action(cx.listener(Self::on_action_show_logs))
             .flex()
             .flex_col()
             .child(header)
@@ -321,10 +345,14 @@ impl Render for ObjectDetailPanel {
 
 /// The panel's own key context plus the shared one `links.go_to` is gated to -
 /// and, while `editing`, the edit's own; while `deletable`, Delete's; while
-/// the kind is `patchable` and no edit is open, Edit's.
-fn key_context(editing: bool, deletable: bool, patchable: bool) -> KeyContext {
+/// the kind is `patchable` and no edit is open, Edit's; while the object
+/// `selects_pods`, Logs'.
+fn key_context(editing: bool, deletable: bool, patchable: bool, selects_pods: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
+    if selects_pods {
+        context.add(super::commands::POD_SELECTING_KEY_CONTEXT);
+    }
     if deletable {
         context.add(super::delete::DELETABLE_KEY_CONTEXT);
     }

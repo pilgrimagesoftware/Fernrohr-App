@@ -2,7 +2,8 @@
 //! window - and its Appearance section, reached and switched by keyboard.
 
 use super::super::appearance::theme_button_id;
-use super::super::{Section, SettingsWindow, ShowAppearance, ShowKeyboardShortcuts};
+use super::super::panels::logs_button_id;
+use super::super::{Section, SettingsWindow, ShowAppearance, ShowKeyboardShortcuts, ShowPanels};
 use super::{app, open, press};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, ElementId, TestAppContext, VisualTestContext};
@@ -149,6 +150,39 @@ async fn the_theme_buttons_change_the_theme(cx: &mut TestAppContext) {
     assert_eq!(cx.update(|cx| crate::ui::theme::current(cx)), Theme::Light);
 }
 
+/// `logs-panel-instancing`: the Panels section is reached by its command and
+/// its sidebar button, and its buttons - from the keyboard - set where pod
+/// logs open, live.
+#[gpui_kit::test]
+async fn the_panels_section_sets_where_pod_logs_open(cx: &mut TestAppContext) {
+    use crate::config::ui::LogsPanels;
+    let main = app(cx);
+    let (handle, _) = open(main, cx);
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+
+    show(&mut vcx, Box::new(ShowPanels));
+    assert_eq!(shown(cx, handle), Section::Panels);
+    show(&mut vcx, Box::new(ShowKeyboardShortcuts));
+    press_button(&mut vcx, handle.into(), Section::Panels.button_id());
+    assert_eq!(shown(cx, handle), Section::Panels, "Tab and Space on it");
+
+    assert_eq!(
+        cx.update(|cx| crate::ui::logs_panels::current(cx)),
+        LogsPanels::PerPod,
+        "each pod's own panel by default"
+    );
+    press_button(&mut vcx, handle.into(), logs_button_id(LogsPanels::Reuse));
+    assert_eq!(
+        cx.update(|cx| crate::ui::logs_panels::current(cx)),
+        LogsPanels::Reuse
+    );
+    press_button(&mut vcx, handle.into(), logs_button_id(LogsPanels::PerPod));
+    assert_eq!(
+        cx.update(|cx| crate::ui::logs_panels::current(cx)),
+        LogsPanels::PerPod
+    );
+}
+
 /// #166: each sidebar button spans the sidebar - so its selected background
 /// does - and its title starts at the left, whole: at the default text size
 /// the title's natural width fits the room the button gives it, so nothing
@@ -160,7 +194,11 @@ async fn sidebar_buttons_span_the_sidebar_with_whole_left_aligned_titles(cx: &mu
     let (handle, _) = open(main, cx);
     let mut vcx = VisualTestContext::from_window(handle.into(), cx);
 
-    for section in [Section::KeyboardShortcuts, Section::Appearance] {
+    for section in [
+        Section::KeyboardShortcuts,
+        Section::Appearance,
+        Section::Panels,
+    ] {
         // The title's natural width, in the font and size the window draws
         // it in, and the button's bounds, from a fresh frame.
         let (natural, button) = vcx

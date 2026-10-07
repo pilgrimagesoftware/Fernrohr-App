@@ -31,6 +31,9 @@ pub enum Tone {
     /// In progress, not a problem yet - a Pending pod, a waiting container.
     Info,
     Warning,
+    /// Worse than a warning, short of bad - orange, between the two (#121's
+    /// often-restarted pod).
+    Serious,
     Bad,
     Neutral,
 }
@@ -73,10 +76,29 @@ pub fn status(tone: Tone, cx: &App) -> Hsla {
         Tone::Good => theme.success,
         Tone::Info => theme.info,
         Tone::Warning => theme.warning,
+        Tone::Serious => midway(theme.warning, theme.danger),
         Tone::Bad => theme.danger,
         Tone::Neutral => return theme.muted_foreground,
     };
     meet(colour, theme.background, MARK_CONTRAST)
+}
+
+/// The colour halfway between `a` and `b`: hue along the shorter arc of the
+/// colour wheel, so the theme's yellow warning and red danger meet at orange
+/// rather than going round through blue.
+fn midway(a: Hsla, b: Hsla) -> Hsla {
+    let mut delta = b.h - a.h;
+    if delta > 0.5 {
+        delta -= 1.;
+    } else if delta < -0.5 {
+        delta += 1.;
+    }
+    hsla(
+        (a.h + delta / 2.).rem_euclid(1.),
+        (a.s + b.s) / 2.,
+        (a.l + b.l) / 2.,
+        (a.a + b.a) / 2.,
+    )
 }
 
 /// The background, stepped in lightness away from the text: lighter in dark

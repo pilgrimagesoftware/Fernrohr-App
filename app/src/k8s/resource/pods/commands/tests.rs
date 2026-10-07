@@ -63,6 +63,7 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
             "pods.open_in_background",
             "pods.describe",
             "pods.logs",
+            "pods.logs_flipped",
             "pods.yaml",
             "pods.fit_columns",
             "pods.pick_namespaces"
@@ -70,7 +71,7 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
     );
     assert_eq!(
         crate::command::build_items(&registry, &[PANEL_KEY_CONTEXT]).len(),
-        14,
+        15,
         "each is a palette item"
     );
 

@@ -16,6 +16,7 @@ actions!(
         SelectManagedFieldsTab,
         HideSecretValues,
         ViewLogs,
+        ViewLogsFlipped,
         EditPodYaml
     ]
 );
@@ -37,6 +38,9 @@ pub(super) const MANAGED_FIELDS_TAB_KEY: &str = "6";
 pub(super) const HIDE_SECRET_VALUES_KEY: &str = "h";
 /// The Pods list's own key for the same intent, so it reads as one shortcut.
 pub(super) const VIEW_LOGS_KEY: &str = "l";
+/// This pod's logs the other way from the Logs panels preference
+/// (`logs-panel-instancing`), as in the Pods list.
+pub(super) const VIEW_LOGS_FLIPPED_KEY: &str = "shift-l";
 /// Where View Logs is bound: the panel minus any text field in it, so its
 /// bare letter never fires while typing.
 pub(super) const VIEW_LOGS_CONTEXT: &str = "PodDetailPanel && !Input";
@@ -72,7 +76,7 @@ const DELETE_CONTEXT: &str = "DeletablePod && !Input";
 /// override by id. None belongs in the menu bar - they act on one panel, not
 /// the app.
 pub fn register_commands(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 11] = [
+    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 12] = [
         (
             TOGGLE_VIEW_COMMAND_ID,
             "Pod Detail: Toggle Fields/YAML",
@@ -134,6 +138,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             Box::new(crate::ui::yaml_view::UnfoldAll),
         ),
         (
+            "pod_detail.copy_yaml",
+            "Pod Detail: Copy YAML",
+            crate::ui::yaml_view::COPY_YAML_KEY,
+            Box::new(crate::ui::yaml_view::CopyYaml),
+        ),
+        (
             COPY_NAME_COMMAND_ID,
             "Pod Detail: Copy Resource Name",
             crate::ui::copy::COPY_NAME_KEY,
@@ -156,6 +166,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: VIEW_LOGS_KEY,
         context: Some(VIEW_LOGS_CONTEXT),
         action: Box::new(ViewLogs),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "pod_detail.view_logs_flipped",
+        title: "Pod Detail: View Logs (Other Panel Mode)",
+        default_binding: VIEW_LOGS_FLIPPED_KEY,
+        context: Some(VIEW_LOGS_CONTEXT),
+        action: Box::new(ViewLogsFlipped),
         menu: None,
     });
     registry.register(Command {
