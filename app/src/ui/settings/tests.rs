@@ -336,9 +336,11 @@ async fn remove_and_reset_from_the_keyboard(cx: &mut TestAppContext) {
     });
 }
 
-/// Fernrohr#168: `cmd-backspace` is both Reset Shortcut and an irreversible
-/// confirmation's deliberate key. Over the shortcut list, an irreversible
-/// dialog takes it - it confirms once, and the selected row isn't reset.
+/// Fernrohr#168: on macOS `cmd-backspace` is both Reset Shortcut and an
+/// irreversible confirmation's deliberate key (`secondary-backspace`). Over
+/// the shortcut list, an irreversible dialog takes its key - it confirms once,
+/// and the selected row isn't reset. Off macOS the two keys differ (`super-`
+/// and `ctrl-backspace`), and the same holds.
 #[gpui_kit::test]
 async fn an_irreversible_dialog_over_the_shortcuts_takes_cmd_backspace(cx: &mut TestAppContext) {
     use crate::ui::confirm_dialog::{self, Confirmation, Severity};
@@ -369,7 +371,7 @@ async fn an_irreversible_dialog_over_the_shortcuts_takes_cmd_backspace(cx: &mut 
         );
     });
     confirm_dialog::deliver_first_frame(&mut vcx);
-    press(&mut vcx, "cmd-backspace");
+    press(&mut vcx, "secondary-backspace");
 
     assert_eq!(confirmed.get(), 1, "the dialog confirmed, once");
     cx.update(|cx| {
