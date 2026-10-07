@@ -173,13 +173,30 @@ pub(crate) fn open(
         // so the button Enter presses is Cancel. Only while this dialog still
         // holds the focus it opened with: closed before its first frame, or
         // already tabbed through, it moves nothing.
-        let opened_with = window.focused(cx);
-        window.on_next_frame(move |window, cx| {
-            if opened_with.is_some_and(|focus| focus.is_focused(window)) {
-                window.focus_next(cx);
-            }
-        });
+        if let Some(dialog) = window.focused(cx) {
+            window.on_next_frame(move |window, cx| {
+                if dialog.is_focused(window) {
+                    focus_first_stop_in(&dialog, window, cx);
+                }
+            });
+        }
     }
+}
+
+/// Moves focus to the first tab stop inside `dialog`. Tab order runs through
+/// the whole window, and the dialog draws last, so the stop after it may be
+/// one behind it: step on until focus is back inside - as gpui-base's own Tab
+/// does in a focus trap - and leave it on `dialog` if no stop inside is found.
+fn focus_first_stop_in(dialog: &FocusHandle, window: &mut Window, cx: &mut App) {
+    /// More stops than any window here has, so a lap always comes back round.
+    const MAX_STEPS: usize = 200;
+    for _ in 0..MAX_STEPS {
+        window.focus_next(cx);
+        if dialog.contains_focused(window, cx) && !dialog.is_focused(window) {
+            return;
+        }
+    }
+    window.focus(dialog, cx);
 }
 
 /// Enter's and Escape's keys in a dialog, for another dialog's own confirm and
