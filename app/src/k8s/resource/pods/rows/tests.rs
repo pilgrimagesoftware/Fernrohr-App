@@ -230,3 +230,58 @@ mod tones {
         );
     }
 }
+
+/// #121: the restart count's colour - red while a restart is recent, orange
+/// past the many-restarts threshold, yellow for any, neutral for none.
+#[test]
+fn restart_tone_ranks_recent_over_many_over_any() {
+    use crate::k8s::resource::pods::rows::restart_tone;
+    use crate::ui::style::Tone;
+    use jiff::SignedDuration;
+    let minutes = |m: i64| Some(SignedDuration::from_mins(m));
+
+    assert_eq!(restart_tone(0, None), Tone::Neutral);
+    assert_eq!(restart_tone(1, None), Tone::Warning);
+    assert_eq!(restart_tone(10, minutes(60)), Tone::Warning);
+    assert_eq!(restart_tone(11, minutes(60)), Tone::Serious);
+    assert_eq!(restart_tone(1, minutes(14)), Tone::Bad);
+    assert_eq!(restart_tone(50, minutes(14)), Tone::Bad);
+    assert_eq!(restart_tone(1, minutes(15)), Tone::Warning);
+    // A finish just ahead of the local clock (skew) is as recent as it gets.
+    assert_eq!(restart_tone(1, minutes(-1)), Tone::Bad);
+}
+
+/// #121: the row reads the latest `lastState.terminated.finishedAt` across its
+/// containers, so one container's fresh restart turns the whole count red.
+#[test]
+fn a_pod_restarted_minutes_ago_reads_bad() {
+    use crate::ui::style::Tone;
+    use k8s_openapi::api::core::v1::{ContainerState, ContainerStateTerminated, ContainerStatus};
+    use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
+
+    let restarted_at = |secs: i64| ContainerState {
+        terminated: Some(ContainerStateTerminated {
+            finished_at: Some(Time(Timestamp::from_second(secs).unwrap())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut pod = pod("u1", "web-1");
+    let statuses = pod
+        .status
+        .as_mut()
+        .and_then(|status| status.container_statuses.as_mut())
+        .expect("the fixture has container statuses");
+    statuses[0].last_state = Some(restarted_at(0));
+    statuses.push(ContainerStatus {
+        name: "sidecar".into(),
+        restart_count: 1,
+        last_state: Some(restarted_at(3_000)),
+        ..Default::default()
+    });
+
+    let soon_after = Timestamp::from_second(3_000 + 5 * 60).unwrap();
+    assert_eq!(pod_row(&pod, soon_after).restart_tone, Tone::Bad);
+    let long_after = Timestamp::from_second(3_000 + 60 * 60).unwrap();
+    assert_eq!(pod_row(&pod, long_after).restart_tone, Tone::Warning);
+}

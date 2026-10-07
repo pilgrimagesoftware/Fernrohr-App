@@ -2,8 +2,8 @@
 //! contrast floor over both modes' themes with the overrides applied.
 
 use super::{
-    MARK_CONTRAST, TEXT_CONTRAST, Tone, accent, accent_subtle, contrast, meet, over, status,
-    stripe, surface_card, surface_raised,
+    MARK_CONTRAST, TEXT_CONTRAST, Tone, accent, accent_subtle, contrast, meet, midway, over,
+    status, stripe, surface_card, surface_raised,
 };
 use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode};
 use gpui_kit::{App, Hsla, TestAppContext, hsla, rgb};
@@ -117,7 +117,7 @@ fn every_mode_meets_the_contrast_floor(cx: &mut TestAppContext) {
             }
             let ratio = contrast(accent(cx), theme.background);
             assert!(ratio >= MARK_CONTRAST, "{mode:?}: accent is {ratio:.2}:1");
-            for tone in [Tone::Good, Tone::Warning, Tone::Bad] {
+            for tone in [Tone::Good, Tone::Warning, Tone::Serious, Tone::Bad] {
                 let ratio = contrast(status(tone, cx), theme.background);
                 assert!(ratio >= MARK_CONTRAST, "{mode:?}: {tone:?} is {ratio:.2}:1");
             }
@@ -193,4 +193,19 @@ fn chrome_views_use_the_raised_surface_token() {
             "{name} uses no raw muted fill"
         );
     }
+}
+
+/// #121: the serious tone sits between the default theme's yellow warning and
+/// red danger - orange - taking the short way round the hue wheel, even when
+/// red wraps past 0.
+#[test]
+fn midway_between_yellow_and_red_is_orange() {
+    let yellow = hsla(48. / 360., 0.96, 0.53, 1.);
+    let red = hsla(0., 0.84, 0.6, 1.);
+    let orange = midway(yellow, red);
+    assert!(close(orange.h * 360., 24.), "hue {}", orange.h * 360.);
+
+    let red_past_zero = hsla(354. / 360., 0.84, 0.6, 1.);
+    let orange = midway(yellow, red_past_zero);
+    assert!(close(orange.h * 360., 21.), "hue {}", orange.h * 360.);
 }

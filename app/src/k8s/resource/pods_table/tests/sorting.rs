@@ -19,6 +19,7 @@ fn compare_orders_rows_by_every_column() {
     let a = PodRow {
         status_tone: crate::ui::style::Tone::Neutral,
         ready_tone: crate::ui::style::Tone::Neutral,
+        restart_tone: crate::ui::style::Tone::Neutral,
         name: "a-name".into(),
         namespace: "ns-a".into(),
         ready: "0/2".into(),
@@ -33,6 +34,7 @@ fn compare_orders_rows_by_every_column() {
     let b = PodRow {
         status_tone: crate::ui::style::Tone::Neutral,
         ready_tone: crate::ui::style::Tone::Neutral,
+        restart_tone: crate::ui::style::Tone::Neutral,
         name: "b-name".into(),
         namespace: "ns-b".into(),
         ready: "1/2".into(),
@@ -128,6 +130,7 @@ fn set_rows_keeps_an_active_sort_applied() {
             row: PodRow {
                 status_tone: crate::ui::style::Tone::Neutral,
                 ready_tone: crate::ui::style::Tone::Neutral,
+                restart_tone: crate::ui::style::Tone::Neutral,
                 name: "aa-name".into(),
                 namespace: "ns-e".into(),
                 ready: "1/1".into(),
@@ -182,6 +185,7 @@ fn moving_columns_renders_each_visual_position_from_its_own_column() {
         row: PodRow {
             status_tone: crate::ui::style::Tone::Neutral,
             ready_tone: crate::ui::style::Tone::Neutral,
+            restart_tone: crate::ui::style::Tone::Neutral,
             name: "web-1".into(),
             namespace: "default".into(),
             ready: "1/1".into(),
