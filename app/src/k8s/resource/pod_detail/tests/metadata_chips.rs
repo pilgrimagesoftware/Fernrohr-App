@@ -1,7 +1,8 @@
 //! `collapse-large-metadata-values` 1.3, in the pod panel: a multi-line or
 //! long annotation's chip shows only its preview, hovering it shows the full
 //! value, Tab and Space on its copy control put the full value on the
-//! clipboard, and a short label is drawn whole with neither.
+//! clipboard, and a short label is drawn whole with neither. A chip copies
+//! itself as well (#153).
 
 use super::config_fixture::{Harness, focus_panel, press_by_keyboard};
 use super::states::harness;
@@ -107,4 +108,21 @@ async fn a_shortened_value_copies_in_full_by_keyboard(cx: &mut TestAppContext) {
         })
         .unwrap();
     assert!(!short_has_copy, "a short chip has no copy control");
+}
+
+/// #153's keyboard route: Tab reaches a label's chip itself, and Space copies
+/// its `key=value`.
+#[gpui_kit::test]
+async fn tab_and_space_on_a_label_chip_copy_it(cx: &mut TestAppContext) {
+    let h = harness(cx, annotated_pod());
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    vcx.run_until_parked();
+    focus_panel(&mut vcx, &h);
+
+    press_by_keyboard(&mut vcx, &h, metadata_chip_id("Labels", 0));
+    assert_eq!(
+        vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+            .as_deref(),
+        Some("app=api")
+    );
 }

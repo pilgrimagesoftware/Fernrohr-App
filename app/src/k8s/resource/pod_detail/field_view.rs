@@ -25,7 +25,7 @@ impl PodDetailPanel {
                 PodFieldValue::References { targets, qualified } => {
                     self.render_references(field.label, targets, *qualified, cx)
                 }
-                PodFieldValue::Metadata(pairs) => detail::metadata_chips(field.label, pairs, cx),
+                PodFieldValue::Metadata(pairs) => detail::metadata_chips(field.label, pairs),
                 PodFieldValue::Badges(badges) => detail::badges(
                     badges
                         .iter()
