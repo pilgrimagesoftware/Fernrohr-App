@@ -24,6 +24,15 @@ pub(super) fn cached(cx: &App) -> Option<Hsla> {
 
 /// Starts a read unless one is under way. When it lands it becomes the
 /// system accent, and the windows redraw if that changed it.
+///
+/// Never in a test build: `zbus` answers on its own executor thread, which the
+/// deterministic test scheduler rejects, and a test has no business reading
+/// the developer's desktop. Tests set the accent with `set_for_test`, as
+/// macOS tests do.
+#[cfg(test)]
+pub(super) fn request(_cx: &mut App) {}
+
+#[cfg(not(test))]
 pub(super) fn request(cx: &mut App) {
     let state = cx.default_global::<PortalAccent>();
     if state.reading {
@@ -45,6 +54,7 @@ pub(super) fn request(cx: &mut App) {
     .detach();
 }
 
+#[cfg(not(test))]
 async fn read() -> Option<Hsla> {
     let settings = ashpd::desktop::settings::Settings::new().await.ok()?;
     let color = settings.accent_color().await.ok()?;
