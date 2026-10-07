@@ -28,7 +28,7 @@ impl NavTarget {
     pub fn label(&self) -> String {
         match self {
             NavTarget::Kind(kind) => kind.label(),
-            NavTarget::Logs | NavTarget::PodLogs(_) => "Logs".to_string(),
+            NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) => "Logs".to_string(),
             NavTarget::Pod(_) => Self::pod_kind().label(),
             NavTarget::Object(object) => object.kind.label(),
             NavTarget::Exec(_) => "Shell".to_string(),
@@ -46,6 +46,7 @@ impl NavTarget {
             NavTarget::Kind(kind) => kind.plural_label(),
             NavTarget::Logs
             | NavTarget::PodLogs(_)
+            | NavTarget::LabelLogs(_)
             | NavTarget::Pod(_)
             | NavTarget::Object(_)
             | NavTarget::Exec(_) => self.label(),
@@ -67,6 +68,7 @@ impl NavTarget {
             NavTarget::Kind(_)
             | NavTarget::Logs
             | NavTarget::PodLogs(_)
+            | NavTarget::LabelLogs(_)
             | NavTarget::Pod(_)
             | NavTarget::Object(_)
             | NavTarget::Exec(_) => None,
@@ -80,6 +82,7 @@ impl NavTarget {
         match self {
             NavTarget::Pod(pod) => format!("{}: {}", self.label(), pod.name),
             NavTarget::PodLogs(pod) => format!("Logs: {}", pod.name),
+            NavTarget::LabelLogs(source) => source.label(),
             NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
             NavTarget::Exec(exec) => format!("Shell: {} · {}", exec.pod, exec.container),
             _ => self.list_label(),

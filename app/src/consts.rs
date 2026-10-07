@@ -61,6 +61,16 @@ pub(crate) const RECENT_RESTART_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// in the serious tone (orange) rather than the warning tone (yellow).
 pub(crate) const MANY_RESTARTS: i32 = 10;
 
+/// #150: a Logs panel following a label selector starts each container at its
+/// last this many lines, as `kubectl logs -l` starts at its last 10 - a
+/// workload's pods' whole histories at once would bury the live lines.
+pub(crate) const LABEL_LOGS_TAIL_LINES: i64 = 100;
+
+/// #150: at most this many containers stream into one label-following Logs
+/// panel at once - a log request each - like `kubectl logs -l`'s
+/// `--max-log-requests`. The panel says how many more matched.
+pub(crate) const LABEL_LOGS_MAX_STREAMS: usize = 20;
+
 /// `connection-status-bar` design decision 4: how often the status bar refreshes elapsed
 /// time and re-checks the escalation threshold while any item it shows is not connected.
 /// Idle (fully connected) windows run no timer at all, so this only ever wakes a window

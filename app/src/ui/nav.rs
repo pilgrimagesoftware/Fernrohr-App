@@ -81,6 +81,11 @@ pub enum NavTarget {
     /// `PanelKey.context_name` beside it - the panel's context, from
     /// `pod_scoped_context` - so dedup is per context, as for every target.
     PodLogs(PodRef),
+    /// The logs of every pod a label selector picks (#150): a workload's pods,
+    /// or a selector typed into the panel. Keyed by what it follows, so
+    /// opening a workload's logs again focuses its panel, and the typed panel
+    /// is one per context.
+    LabelLogs(crate::util::logs::LabelLogs),
 }
 
 /// One object of a discovered kind: the kind as discovery reported it (so the
@@ -285,7 +290,7 @@ pub fn add_panel(
     // generic call - but every arm does the same two things in the same order,
     // and the id is taken from the entity before `add_panel` consumes it.
     match &scope.target {
-        NavTarget::Logs | NavTarget::PodLogs(_) => {
+        NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) => {
             let panel = cx.new(|cx| crate::util::logs::LogsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(

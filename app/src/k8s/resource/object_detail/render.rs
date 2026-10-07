@@ -220,6 +220,7 @@ impl Render for ObjectDetailPanel {
                 .child(key)
                 .child(label)
         };
+        let logs_hint = self.logs_hint(window, cx);
         let header = div()
             .flex()
             .items_center()
@@ -265,6 +266,7 @@ impl Render for ObjectDetailPanel {
                                 .test_support(),
                         )
                     })
+                    .children(logs_hint)
                     .when(deletable, |this| {
                         this.child(hint(
                             Kbd::binding_for_action(
@@ -290,6 +292,7 @@ impl Render for ObjectDetailPanel {
                 self.edit.is_some(),
                 deletable,
                 self.verbs(cx).patch,
+                self.pod_logs_workload().is_some(),
             ))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
@@ -303,6 +306,7 @@ impl Render for ObjectDetailPanel {
             .on_action(cx.listener(Self::on_action_save_edit))
             .on_action(cx.listener(Self::on_action_cancel_edit))
             .on_action(cx.listener(Self::on_action_delete_object))
+            .on_action(cx.listener(Self::on_action_show_logs))
             .flex()
             .flex_col()
             .child(header)
@@ -321,10 +325,14 @@ impl Render for ObjectDetailPanel {
 
 /// The panel's own key context plus the shared one `links.go_to` is gated to -
 /// and, while `editing`, the edit's own; while `deletable`, Delete's; while
-/// the kind is `patchable` and no edit is open, Edit's.
-fn key_context(editing: bool, deletable: bool, patchable: bool) -> KeyContext {
+/// the kind is `patchable` and no edit is open, Edit's; while the object
+/// `selects_pods`, Logs'.
+fn key_context(editing: bool, deletable: bool, patchable: bool, selects_pods: bool) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(PANEL_KEY_CONTEXT);
+    if selects_pods {
+        context.add(super::commands::POD_SELECTING_KEY_CONTEXT);
+    }
     if deletable {
         context.add(super::delete::DELETABLE_KEY_CONTEXT);
     }
