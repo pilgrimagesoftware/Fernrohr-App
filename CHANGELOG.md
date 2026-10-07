@@ -1,4 +1,19 @@
 
+## 0.6.0 - 2026-10-07
+
+### <!-- 0 -->🚀 Features
+- Selectable connection failures, with Report… filled in
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Find exec auth plugins on the login shell's PATH
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.5.0
+
+
+
 ## 0.5.0 - 2026-10-07
 
 ### <!-- 0 -->🚀 Features
