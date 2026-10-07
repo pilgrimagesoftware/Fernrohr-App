@@ -182,3 +182,29 @@ fn panel_key_distinguishes_two_contexts_over_the_same_target() {
         "the same pod's detail panel on two contexts must be two different keys"
     );
 }
+
+/// `logs-panel-instancing`: a pod's own Logs panel saves its pod, and is keyed
+/// by it on restore - so opening that pod's logs again focuses it.
+#[test]
+fn a_restored_pods_logs_panel_is_keyed_by_its_pod() {
+    use gpui_kit::component::dock::{PanelInfo, PanelState};
+    let state = PanelState {
+        panel_name: "Logs".to_string(),
+        children: Vec::new(),
+        info: PanelInfo::Panel(serde_json::json!({
+            "context_name": "kind-dev",
+            "namespaces": [],
+            "pod_namespace": "shop",
+            "pod_name": "web-1",
+            "container": "web",
+        })),
+    };
+    let keys = super::restored_panel_keys(&state);
+    assert_eq!(
+        keys[0].as_ref().map(|key| key.target.clone()),
+        Some(NavTarget::PodLogs(crate::ui::nav::PodRef {
+            namespace: "shop".into(),
+            name: "web-1".into(),
+        }))
+    );
+}

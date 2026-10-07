@@ -26,6 +26,7 @@ actions!(
     [
         ShowPods,
         ShowLogs,
+        ShowLogsFlipped,
         ShowEvents,
         ShowPodDetail,
         ShowPodDetailYaml
@@ -39,6 +40,10 @@ pub const SHOW_PODS_COMMAND_ID: &str = "nav.show_pods";
 pub const SHOW_PODS_DEFAULT_BINDING: &str = "cmd-1";
 pub const SHOW_LOGS_COMMAND_ID: &str = "nav.show_logs";
 pub const SHOW_LOGS_DEFAULT_BINDING: &str = "cmd-2";
+/// `ShowLogs` the other way from the Logs panels preference, for one open
+/// (`logs-panel-instancing`). Palette only here; the Pods list and a pod's
+/// detail bind it to `shift-l` through their own commands.
+pub const SHOW_LOGS_FLIPPED_COMMAND_ID: &str = "nav.show_logs_flipped";
 
 /// What a connected window's active panel is showing. Which options exist is
 /// no longer a fixed set here - the Resource panel's discovery-driven list
@@ -64,6 +69,12 @@ pub enum NavTarget {
     Object(ObjectTarget),
     /// A shell in one container of a pod (`k9s-remaining-keybindings` 3).
     Exec(crate::k8s::resource::exec::ExecTarget),
+    /// One pod's logs, in a Logs panel of its own (`logs-panel-instancing`):
+    /// pinned to that pod, unlike [`Self::Logs`], which follows the selection.
+    /// Keyed by the pod alone, as [`Self::Pod`] is - so opening the same pod's
+    /// logs again focuses its panel, and another container of it switches
+    /// that panel rather than opening a second.
+    PodLogs(PodRef),
 }
 
 /// One object of a discovered kind: the kind as discovery reported it (so the
@@ -113,7 +124,7 @@ impl NavTarget {
     pub fn label(&self) -> String {
         match self {
             NavTarget::Kind(kind) => kind.label(),
-            NavTarget::Logs => "Logs".to_string(),
+            NavTarget::Logs | NavTarget::PodLogs(_) => "Logs".to_string(),
             NavTarget::Pod(_) => Self::pod_kind().label(),
             NavTarget::Object(object) => object.kind.label(),
             NavTarget::Exec(_) => "Shell".to_string(),
@@ -129,9 +140,11 @@ impl NavTarget {
         match self {
             NavTarget::Kind(kind) if self.custom_group().is_some() => kind.plural_name(),
             NavTarget::Kind(kind) => kind.plural_label(),
-            NavTarget::Logs | NavTarget::Pod(_) | NavTarget::Object(_) | NavTarget::Exec(_) => {
-                self.label()
-            }
+            NavTarget::Logs
+            | NavTarget::PodLogs(_)
+            | NavTarget::Pod(_)
+            | NavTarget::Object(_)
+            | NavTarget::Exec(_) => self.label(),
         }
     }
 
@@ -149,6 +162,7 @@ impl NavTarget {
             }
             NavTarget::Kind(_)
             | NavTarget::Logs
+            | NavTarget::PodLogs(_)
             | NavTarget::Pod(_)
             | NavTarget::Object(_)
             | NavTarget::Exec(_) => None,
@@ -161,6 +175,7 @@ impl NavTarget {
     pub fn item_label(&self) -> String {
         match self {
             NavTarget::Pod(pod) => format!("{}: {}", self.label(), pod.name),
+            NavTarget::PodLogs(pod) => format!("Logs: {}", pod.name),
             NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
             NavTarget::Exec(exec) => format!("Shell: {} · {}", exec.pod, exec.container),
             _ => self.list_label(),
@@ -193,6 +208,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: SHOW_LOGS_DEFAULT_BINDING,
         context: None,
         action: Box::new(ShowLogs),
+        menu: None,
+    });
+    registry.register(Command {
+        id: SHOW_LOGS_FLIPPED_COMMAND_ID,
+        title: "Show Logs (Other Panel Mode)",
+        default_binding: "",
+        context: None,
+        action: Box::new(ShowLogsFlipped),
         menu: None,
     });
     // Palette and keymap only: Navigate holds focus and tab moves.
@@ -340,7 +363,7 @@ pub fn add_panel(
     // generic call - but every arm does the same two things in the same order,
     // and the id is taken from the entity before `add_panel` consumes it.
     match &scope.target {
-        NavTarget::Logs => {
+        NavTarget::Logs | NavTarget::PodLogs(_) => {
             let panel = cx.new(|cx| crate::util::logs::LogsPanel::new(scope.clone(), cx));
             let id = PanelId::from(panel.entity_id());
             area.add_panel_view(

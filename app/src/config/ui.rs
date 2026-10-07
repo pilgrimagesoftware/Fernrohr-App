@@ -14,6 +14,10 @@ pub struct UiConfig {
     /// How long a chord whose keys so far are also a whole binding waits for
     /// its next key (`pending-chord-indicator`).
     pub shortcut_timeout_secs: ShortcutTimeout,
+    /// Whether opening a pod's logs opens a Logs panel of its own or reuses
+    /// the one Logs panel (`logs-panel-instancing`). Each open can do the
+    /// other once.
+    pub logs_panels: LogsPanels,
 }
 
 impl Default for UiConfig {
@@ -24,6 +28,7 @@ impl Default for UiConfig {
             resource_side: ResourceSide::default(),
             pod_events_window: PodEventsWindow::default(),
             shortcut_timeout_secs: ShortcutTimeout::DEFAULT,
+            logs_panels: LogsPanels::default(),
         }
     }
 }
@@ -162,6 +167,29 @@ pub enum Theme {
     System,
 }
 
+/// Where a pod's logs open (`logs-panel-instancing`). Stored as
+/// `logs_panels = "per_pod"` or `"reuse"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogsPanels {
+    /// Each pod's logs in a Logs panel of its own; opening them again focuses
+    /// it.
+    #[default]
+    PerPod,
+    /// Every pod's logs in the one Logs panel, which follows the selection.
+    Reuse,
+}
+
+impl LogsPanels {
+    /// The other way - what a flipped open does.
+    pub fn flipped(self) -> Self {
+        match self {
+            LogsPanels::PerPod => LogsPanels::Reuse,
+            LogsPanels::Reuse => LogsPanels::PerPod,
+        }
+    }
+}
+
 /// A window edge the Resource panel docks to. `ui::resource_panel` draws it;
 /// this is the stored vocabulary (`resource_side = "right"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -253,10 +281,32 @@ mod tests {
             resource_side: ResourceSide::Right,
             pod_events_window: PodEventsWindow::Hours6,
             shortcut_timeout_secs: ShortcutTimeout::from(7),
+            logs_panels: LogsPanels::Reuse,
         };
         let text = toml::to_string(&config).unwrap();
         let parsed: UiConfig = toml::from_str(&text).unwrap();
         assert_eq!(parsed, config);
+    }
+
+    /// `logs-panel-instancing`: stored by name, and a file from before it
+    /// existed opens each pod's logs in its own panel.
+    #[test]
+    fn logs_panels_is_stored_by_name_and_defaults_to_per_pod() {
+        let parsed: UiConfig = toml::from_str("theme = \"dark\"\n").unwrap();
+        assert_eq!(parsed.logs_panels, LogsPanels::PerPod);
+        let reuse = UiConfig {
+            logs_panels: LogsPanels::Reuse,
+            ..UiConfig::default()
+        };
+        assert!(
+            toml::to_string(&reuse)
+                .unwrap()
+                .contains("logs_panels = \"reuse\"")
+        );
+        let per_pod: UiConfig = toml::from_str("logs_panels = \"per_pod\"\n").unwrap();
+        assert_eq!(per_pod.logs_panels, LogsPanels::PerPod);
+        assert_eq!(LogsPanels::PerPod.flipped(), LogsPanels::Reuse);
+        assert_eq!(LogsPanels::Reuse.flipped(), LogsPanels::PerPod);
     }
 
     #[test]

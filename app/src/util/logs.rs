@@ -31,4 +31,5 @@ use view::*;
 
 use commands::PREVIOUS_KEY;
 pub use commands::{PANEL_KEY_CONTEXT, TogglePreviousLogs, register_commands};
+pub(crate) use panel::pinned_from_state;
 pub use panel::{LogsPanel, register_restore};

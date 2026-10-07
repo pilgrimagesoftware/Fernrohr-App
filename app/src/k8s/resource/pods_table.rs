@@ -255,7 +255,7 @@ impl TableDelegate for PodTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        use super::pods::{DescribePod, QuickLook, ShowPodLogs, ShowPodYaml};
+        use super::pods::{DescribePod, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml};
         if row_ix >= self.rows.len() {
             return menu;
         }
@@ -269,6 +269,10 @@ impl TableDelegate for PodTableDelegate {
         menu.menu("Quick Look", Box::new(QuickLook))
             .menu("Open Details", Box::new(DescribePod))
             .menu("Logs", Box::new(ShowPodLogs))
+            .menu(
+                crate::ui::logs_panels::flipped_label(cx),
+                Box::new(ShowPodLogsFlipped),
+            )
             .menu("YAML", Box::new(ShowPodYaml))
     }
 

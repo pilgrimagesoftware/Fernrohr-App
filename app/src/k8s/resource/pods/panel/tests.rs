@@ -168,10 +168,15 @@ async fn typed_pod_shortcuts_reach_the_focused_panel(cx: &mut gpui_kit::TestAppC
             dispatches: dispatches.clone(),
         }
     });
+    let flipped_requests = std::rc::Rc::new(std::cell::RefCell::new(0));
     cx.update(|cx| {
         let logs_requests = logs_requests.clone();
         cx.on_action(move |_: &crate::ui::nav::ShowLogs, _cx| {
             *logs_requests.borrow_mut() += 1;
+        });
+        let flipped_requests = flipped_requests.clone();
+        cx.on_action(move |_: &crate::ui::nav::ShowLogsFlipped, _cx| {
+            *flipped_requests.borrow_mut() += 1;
         });
     });
     let cx = &mut gpui_kit::VisualTestContext::from_window(window.into(), cx);
@@ -192,6 +197,15 @@ async fn typed_pod_shortcuts_reach_the_focused_panel(cx: &mut gpui_kit::TestAppC
     cx.simulate_keystrokes("l");
     cx.run_until_parked();
     assert_eq!(*logs_requests.borrow(), 1, "`l` asks for the pod's logs");
+
+    cx.simulate_keystrokes("shift-l");
+    cx.run_until_parked();
+    assert_eq!(
+        *flipped_requests.borrow(),
+        1,
+        "`shift-l` asks for them the other way from the preference"
+    );
+    assert_eq!(*logs_requests.borrow(), 1, "and not the usual way too");
 }
 
 /// `connection-status-bar` task 3.1: a paused watch no longer prints anything of its

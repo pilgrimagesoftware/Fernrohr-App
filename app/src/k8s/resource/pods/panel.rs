@@ -222,6 +222,19 @@ impl PodsPanel {
         }
     }
 
+    /// `ShowPodLogsFlipped` (`shift-l`): the selected pod's logs the other way
+    /// from the Logs panels preference.
+    pub(super) fn on_action_show_pod_logs_flipped(
+        &mut self,
+        _: &ShowPodLogsFlipped,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if Self::selected(cx).is_some() {
+            window.dispatch_action(Box::new(crate::ui::nav::ShowLogsFlipped), cx);
+        }
+    }
+
     /// `ShowPodYaml` (`y`) asks for the same panel as `d`, on the other view.
     /// It is a distinct app-level action rather than the same one, because `y`
     /// means "the YAML, now": routing it through `ShowPodDetail` would open

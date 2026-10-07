@@ -5,7 +5,8 @@ use super::commands::{
     CONFIGURATION_TAB_KEY, CONTAINERS_TAB_KEY, EVENTS_TAB_KEY, MANAGED_FIELDS_TAB_KEY,
     OVERVIEW_TAB_KEY, PANEL_KEY_CONTEXT, SelectConfigurationTab, SelectContainersTab,
     SelectEventsTab, SelectManagedFieldsTab, SelectOverviewTab, SelectVolumesTab, TOGGLE_VIEW_KEY,
-    ToggleDetailView, VIEW_LOGS_KEY, VOLUMES_TAB_KEY, ViewLogs,
+    ToggleDetailView, VIEW_LOGS_FLIPPED_KEY, VIEW_LOGS_KEY, VOLUMES_TAB_KEY, ViewLogs,
+    ViewLogsFlipped,
 };
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
@@ -206,6 +207,19 @@ impl Render for PodDetailPanel {
             .whitespace_nowrap()
             .child(logs_key)
             .child("Logs");
+        let logs_flipped_key =
+            Kbd::binding_for_action(&ViewLogsFlipped, Some(PANEL_KEY_CONTEXT), window)
+                .unwrap_or_else(|| {
+                    Kbd::new(Keystroke::parse(VIEW_LOGS_FLIPPED_KEY).expect("valid keybinding"))
+                });
+        let logs_flipped_hint = div()
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap_1()
+            .whitespace_nowrap()
+            .child(logs_flipped_key)
+            .child(crate::ui::logs_panels::flipped_label(cx));
         let shellable = !self.running().is_empty();
         let deletable = self.deletable(cx);
         let acting_hints = self.acting_hints(shellable, window, cx);
@@ -302,6 +316,7 @@ impl Render for PodDetailPanel {
                         )
                     })
                     .child(logs_hint)
+                    .child(logs_flipped_hint)
                     .children(acting_hints)
                     .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
             );
@@ -323,6 +338,7 @@ impl Render for PodDetailPanel {
             .on_action(cx.listener(Self::on_action_select_events_tab))
             .on_action(cx.listener(Self::on_action_select_managed_fields_tab))
             .on_action(cx.listener(Self::on_action_view_logs))
+            .on_action(cx.listener(Self::on_action_view_logs_flipped))
             .on_action(cx.listener(Self::on_action_edit_pod_yaml))
             .on_action(cx.listener(Self::on_action_delete_pod))
             .on_action(cx.listener(Self::on_action_kill_pod))

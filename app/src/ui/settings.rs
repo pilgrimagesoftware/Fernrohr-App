@@ -16,6 +16,7 @@ use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::*;
 
 mod appearance;
+mod panels;
 mod recorder;
 mod rows;
 mod shortcut_timeout;
@@ -28,7 +29,12 @@ pub use shortcuts::ShortcutsSection;
 
 actions!(
     settings,
-    [OpenSettings, ShowKeyboardShortcuts, ShowAppearance]
+    [
+        OpenSettings,
+        ShowKeyboardShortcuts,
+        ShowAppearance,
+        ShowPanels
+    ]
 );
 
 /// The window's key context: where the section commands are bound.
@@ -43,6 +49,8 @@ pub enum Section {
     #[default]
     KeyboardShortcuts,
     Appearance,
+    /// Where panels open: a pod's logs in its own or the shared Logs panel.
+    Panels,
 }
 
 impl Section {
@@ -50,6 +58,7 @@ impl Section {
         match self {
             Section::KeyboardShortcuts => "Keyboard Shortcuts",
             Section::Appearance => "Appearance",
+            Section::Panels => "Panels",
         }
     }
 
@@ -58,6 +67,7 @@ impl Section {
         match self {
             Section::KeyboardShortcuts => "settings-section-shortcuts",
             Section::Appearance => "settings-section-appearance",
+            Section::Panels => "settings-section-panels",
         }
     }
 
@@ -66,6 +76,7 @@ impl Section {
         match self {
             Section::KeyboardShortcuts => "settings-section-shortcuts-label",
             Section::Appearance => "settings-section-appearance-label",
+            Section::Panels => "settings-section-panels-label",
         }
     }
 }
@@ -92,6 +103,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             "Settings: Show Appearance",
             "",
             Box::new(ShowAppearance),
+        ),
+        (
+            "settings.show_panels",
+            "Settings: Show Panels",
+            "",
+            Box::new(ShowPanels),
         ),
     ] {
         registry.register(Command {
@@ -178,6 +195,8 @@ pub struct SettingsWindow {
     section: Section,
     /// The Appearance section's own focus, where showing it puts focus.
     appearance_focus: FocusHandle,
+    /// The Panels section's, likewise.
+    panels_focus: FocusHandle,
 }
 
 impl SettingsWindow {
@@ -186,6 +205,7 @@ impl SettingsWindow {
             shortcuts: cx.new(|cx| ShortcutsSection::new(window, cx)),
             section: Section::default(),
             appearance_focus: cx.focus_handle(),
+            panels_focus: cx.focus_handle(),
         }
     }
 
@@ -199,6 +219,7 @@ impl SettingsWindow {
                 window.focus(&focus, cx);
             }
             Section::Appearance => window.focus(&self.appearance_focus, cx),
+            Section::Panels => window.focus(&self.panels_focus, cx),
         }
         cx.notify();
     }
@@ -262,7 +283,8 @@ impl Render for SettingsWindow {
             .border_color(theme.border)
             .bg(theme.sidebar)
             .child(self.sidebar_button(Section::KeyboardShortcuts, cx))
-            .child(self.sidebar_button(Section::Appearance, cx));
+            .child(self.sidebar_button(Section::Appearance, cx))
+            .child(self.sidebar_button(Section::Panels, cx));
         let content = match self.section {
             Section::KeyboardShortcuts => div()
                 .flex_1()
@@ -285,6 +307,12 @@ impl Render for SettingsWindow {
                 .track_focus(&self.appearance_focus)
                 .child(appearance::section(window, cx))
                 .into_any_element(),
+            Section::Panels => div()
+                .flex_1()
+                .min_w_0()
+                .track_focus(&self.panels_focus)
+                .child(panels::section(cx))
+                .into_any_element(),
         };
         div()
             .key_context(KEY_CONTEXT)
@@ -293,6 +321,9 @@ impl Render for SettingsWindow {
             }))
             .on_action(cx.listener(|this, _: &ShowAppearance, window, cx| {
                 this.show(Section::Appearance, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowPanels, window, cx| {
+                this.show(Section::Panels, window, cx)
             }))
             .size_full()
             .flex()
