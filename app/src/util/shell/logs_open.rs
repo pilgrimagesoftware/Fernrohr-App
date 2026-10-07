@@ -51,17 +51,23 @@ impl MainWindow {
             namespace: selection.namespace.clone(),
             name: selection.name.clone(),
         });
-        self.open_target(target.clone(), window, cx);
-        // A panel just built read the selection itself; one already open is
-        // told it, in case it names another container.
-        if let WindowMode::Workspace { open_panels, .. } = &self.mode
-            && let Some(crate::ui::nav::OpenedPanel::Logs(panel)) = open_panels
+        // The pod's panel if it's already open here. One built by the open
+        // below reads the selection itself; only an existing one is told it,
+        // in case it names another container.
+        let existing = match &self.mode {
+            WindowMode::Workspace { open_panels, .. } => open_panels
                 .iter()
                 .find(|open| {
                     open.key.target == target && open.key.context_name == selection.context_name
                 })
-                .and_then(|open| open.panel.clone())
-        {
+                .and_then(|open| match &open.panel {
+                    Some(crate::ui::nav::OpenedPanel::Logs(panel)) => Some(panel.clone()),
+                    _ => None,
+                }),
+            WindowMode::Picker(_) => None,
+        };
+        self.open_target(target, window, cx);
+        if let Some(panel) = existing {
             panel.update(cx, |panel, cx| panel.pin_to(selection, cx));
         }
     }

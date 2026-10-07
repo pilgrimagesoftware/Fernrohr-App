@@ -74,6 +74,11 @@ pub enum NavTarget {
     /// Keyed by the pod alone, as [`Self::Pod`] is - so opening the same pod's
     /// logs again focuses its panel, and another container of it switches
     /// that panel rather than opening a second.
+    ///
+    /// The variant names no cluster: two contexts' pods of the same namespace
+    /// and name are the same `PodLogs`. What keeps their panels apart is
+    /// `PanelKey.context_name` beside it - the panel's context, from
+    /// `pod_scoped_context` - so dedup is per context, as for every target.
     PodLogs(PodRef),
 }
 
