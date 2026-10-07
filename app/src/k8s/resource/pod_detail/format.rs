@@ -71,6 +71,7 @@ pub(super) fn summarize_containers(
                 name: container.name.clone(),
                 image: container.image.clone().unwrap_or_default(),
                 ready: matching.map(|status| status.ready),
+                ready_tone: container_ready_tone(matching),
                 restart_count: matching.map(|status| status.restart_count).unwrap_or(0),
                 state: matching
                     .and_then(|status| status.state.as_ref())
@@ -102,6 +103,27 @@ pub(super) fn format_quantities(
         .flatten()
         .map(|(resource, quantity)| format!("{resource}={}", quantity.0))
         .collect()
+}
+
+/// A container's readiness as a tone. Not ready is a warning, except for one
+/// that ran to completion - exit 0, as a Job's or a `Succeeded` pod's
+/// containers do - which needn't be ready (#120).
+pub(super) fn container_ready_tone(
+    status: Option<&k8s_openapi::api::core::v1::ContainerStatus>,
+) -> BadgeTone {
+    let Some(status) = status else {
+        return BadgeTone::Unknown;
+    };
+    let completed = status
+        .state
+        .as_ref()
+        .and_then(|state| state.terminated.as_ref())
+        .is_some_and(|terminated| terminated.exit_code == 0);
+    match (status.ready, completed) {
+        (true, _) => BadgeTone::Good,
+        (false, true) => BadgeTone::Unknown,
+        (false, false) => BadgeTone::Warning,
+    }
 }
 
 /// The one human string a `ContainerState` union renders as - a reason when
