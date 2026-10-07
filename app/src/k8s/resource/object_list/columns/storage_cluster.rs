@@ -4,6 +4,7 @@
 //! ServiceAccount, RoleBinding and ClusterRoleBinding.
 
 use super::{Cell, ColumnDef, KindColumns, typed_cells};
+use crate::k8s::resource::status_tone;
 use k8s_openapi::api::core::v1::{
     Namespace, Node, PersistentVolume, PersistentVolumeClaim, ServiceAccount,
 };
@@ -65,12 +66,11 @@ pub(super) static PERSISTENT_VOLUME_CLAIM: KindColumns = KindColumns {
         typed_cells::<PersistentVolumeClaim>(object, |claim| {
             let spec = claim.spec.as_ref();
             let status = claim.status.as_ref();
+            let phase = status
+                .and_then(|status| status.phase.as_deref())
+                .unwrap_or_default();
             vec![
-                Cell::text(
-                    status
-                        .and_then(|status| status.phase.clone())
-                        .unwrap_or_default(),
-                ),
+                Cell::status(phase, status_tone::claim_phase(phase)),
                 Cell::text(
                     spec.and_then(|spec| spec.volume_name.clone())
                         .unwrap_or_default(),
@@ -109,6 +109,11 @@ pub(super) static PERSISTENT_VOLUME: KindColumns = KindColumns {
                     })
                 })
                 .unwrap_or_default();
+            let phase = volume
+                .status
+                .as_ref()
+                .and_then(|status| status.phase.as_deref())
+                .unwrap_or_default();
             vec![
                 storage(spec.and_then(|spec| spec.capacity.as_ref())),
                 access_modes(spec.and_then(|spec| spec.access_modes.as_ref())),
@@ -116,13 +121,7 @@ pub(super) static PERSISTENT_VOLUME: KindColumns = KindColumns {
                     spec.and_then(|spec| spec.persistent_volume_reclaim_policy.clone())
                         .unwrap_or_default(),
                 ),
-                Cell::text(
-                    volume
-                        .status
-                        .as_ref()
-                        .and_then(|status| status.phase.clone())
-                        .unwrap_or_default(),
-                ),
+                Cell::status(phase, status_tone::volume_phase(phase)),
                 Cell::text(claim),
                 Cell::text(
                     spec.and_then(|spec| spec.storage_class_name.clone())
@@ -152,8 +151,9 @@ pub(super) static STORAGE_CLASS_COLUMNS: KindColumns = KindColumns {
 };
 
 /// `Ready` or `NotReady` by the Ready condition (`Unknown` without one), with
-/// `,SchedulingDisabled` for a cordoned Node - as `kubectl get nodes` shows it.
-fn node_status(node: &Node) -> String {
+/// `,SchedulingDisabled` for a cordoned Node - as `kubectl get nodes` shows it -
+/// in its tone.
+fn node_status(node: &Node) -> Cell {
     let ready = node
         .status
         .iter()
@@ -166,10 +166,11 @@ fn node_status(node: &Node) -> String {
         None => "Unknown",
     }
     .to_string();
-    if node.spec.as_ref().and_then(|spec| spec.unschedulable) == Some(true) {
+    let cordoned = node.spec.as_ref().and_then(|spec| spec.unschedulable) == Some(true);
+    if cordoned {
         status.push_str(",SchedulingDisabled");
     }
-    status
+    Cell::status(status, status_tone::node(ready, cordoned))
 }
 
 pub(super) static NODE: KindColumns = KindColumns {
@@ -198,7 +199,7 @@ pub(super) static NODE: KindColumns = KindColumns {
                 .map(|address| address.address.clone())
                 .unwrap_or_default();
             vec![
-                Cell::text(node_status(node)),
+                node_status(node),
                 Cell::text(if roles.is_empty() {
                     "<none>".to_string()
                 } else {
@@ -220,13 +221,12 @@ pub(super) static NAMESPACE: KindColumns = KindColumns {
     columns: &[STATUS],
     cells: |object| {
         typed_cells::<Namespace>(object, |namespace| {
-            vec![Cell::text(
-                namespace
-                    .status
-                    .as_ref()
-                    .and_then(|status| status.phase.clone())
-                    .unwrap_or_default(),
-            )]
+            let phase = namespace
+                .status
+                .as_ref()
+                .and_then(|status| status.phase.as_deref())
+                .unwrap_or_default();
+            vec![Cell::status(phase, status_tone::namespace_phase(phase))]
         })
     },
 };

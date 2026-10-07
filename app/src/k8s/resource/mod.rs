@@ -11,3 +11,4 @@ mod pods_table;
 pub(crate) mod port_forwarding;
 pub(crate) mod resource_actions;
 pub(crate) mod secret_value;
+pub(crate) mod status_tone;

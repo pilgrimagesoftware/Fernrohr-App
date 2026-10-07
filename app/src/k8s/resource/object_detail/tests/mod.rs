@@ -22,6 +22,7 @@ mod panel;
 mod rbac;
 mod secrets;
 mod sections;
+mod status;
 mod storage;
 mod workloads;
 mod yaml;

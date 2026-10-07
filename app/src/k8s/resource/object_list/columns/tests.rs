@@ -49,6 +49,30 @@ fn ratios_sort_by_their_first_number_then_their_second() {
 
 /// An empty cell - a field the object doesn't set - sorts before any value,
 /// so unset rows gather at one end rather than scattering.
+/// #101: a status cell reads and sorts as its text, a readiness cell as its
+/// ratio; both carry the tone they are drawn in, and plain cells none.
+#[test]
+fn status_and_readiness_cells_read_as_plain_ones_with_a_tone() {
+    use crate::ui::style::Tone;
+    let failed = Cell::status("Failed", Tone::Bad);
+    assert_eq!(failed.display(now()), "Failed");
+    assert_eq!(failed.tone(), Some(Tone::Bad));
+    assert_eq!(Cell::status("", Tone::Bad), Cell::Empty);
+    assert_eq!(
+        sorted(vec![failed.clone(), Cell::status("Complete", Tone::Good)]),
+        vec![Cell::status("Complete", Tone::Good), failed]
+    );
+
+    assert_eq!(Cell::Readiness(1, 4).display(now()), "1/4");
+    assert_eq!(Cell::Readiness(1, 4).tone(), Some(Tone::Serious));
+    assert_eq!(
+        sorted(vec![Cell::Readiness(3, 3), Cell::Readiness(1, 4)]),
+        vec![Cell::Readiness(1, 4), Cell::Readiness(3, 3)]
+    );
+    assert_eq!(Cell::Ratio(1, 4).tone(), None);
+    assert_eq!(Cell::text("Bound").tone(), None);
+}
+
 #[test]
 fn an_empty_cell_sorts_first() {
     assert_eq!(
