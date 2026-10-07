@@ -41,6 +41,13 @@ pub struct ObjectListPanel {
     pub(super) filter: Option<Entity<InputState>>,
     /// The column layout to start the table with, once it's built.
     pub(super) initial_layout: ColumnLayout,
+    /// The filter text to start the filter field with, once it's built
+    /// (`saved-panel-layouts` 1.6).
+    pub(super) initial_filter: Option<String>,
+    /// The sort to start the table with, once it's built - a saved layout's
+    /// column id and direction (`saved-panel-layouts` 1.6), or `None` for the
+    /// table's own default (unsorted) order.
+    pub(super) initial_sort: Option<(String, bool)>,
     /// The last delete the cluster refused, shown until dismissed (`delete`).
     pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
 }
@@ -90,6 +97,8 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            initial_filter: None,
+            initial_sort: None,
             refusal: None,
         };
         this.subscribe_if_connected(&connection, cx);
@@ -122,6 +131,8 @@ impl ObjectListPanel {
             table: None,
             filter: None,
             initial_layout: Vec::new(),
+            initial_filter: None,
+            initial_sort: None,
             refusal: None,
         }
     }
@@ -190,7 +201,14 @@ impl ObjectListPanel {
         if let Some(filter) = &self.filter {
             return filter.clone();
         }
-        let filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter by name..."));
+        let initial_filter = self.initial_filter.clone();
+        let filter = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("Filter by name...");
+            if let Some(initial) = initial_filter {
+                state = state.default_value(initial);
+            }
+            state
+        });
         cx.subscribe(
             &filter,
             |_, _, _event: &gpui_kit::component::input::InputEvent, cx| cx.notify(),
@@ -210,9 +228,13 @@ impl ObjectListPanel {
     ) -> Entity<TableState<ObjectTableDelegate>> {
         if self.table.is_none() {
             let columns = apply_layout(ListColumn::for_kind(&self.kind), &self.initial_layout);
+            let initial_sort = self.initial_sort.clone();
             let this = cx.weak_entity();
             let table = cx.new(|cx| {
                 let mut delegate = ObjectTableDelegate::new(columns);
+                if let Some((column, descending)) = &initial_sort {
+                    delegate.set_sort(column, *descending);
+                }
                 delegate.set_on_open(move |row_ix, window, cx| {
                     let _ = this.update(cx, |this, cx| this.open_row(row_ix, window, cx));
                 });

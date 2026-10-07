@@ -377,6 +377,50 @@ async fn filters_are_saved_and_restored(cx: &mut TestAppContext) {
     assert_eq!(restored.filters, saved_filters);
 }
 
+/// `saved-panel-layouts` 1.6: the search box's text is saved and, once a
+/// restored panel's search box is built, comes back narrowing the rows the
+/// same way typing it would.
+#[gpui_kit::test]
+async fn search_text_is_saved_and_restored(cx: &mut TestAppContext) {
+    let mut h = harness(cx, fixture());
+    focus_table(&mut h);
+    press(&mut h.vcx, "/");
+    h.vcx.simulate_input("imagepullbackoff");
+    h.vcx.run_until_parked();
+    assert_eq!(shown(&mut h), ["e3"]);
+
+    let saved = h
+        .vcx
+        .update(|_, cx| super::restore::dump(h.panel.read(cx), cx));
+    let restored = super::restore::from_state(&saved).expect("a saved panel reads back");
+    assert_eq!(restored.filter.as_deref(), Some("imagepullbackoff"));
+
+    let mut h2 = harness_with(cx, fixture(), move |panel| {
+        panel.initial_search = restored.filter
+    });
+    assert_eq!(shown(&mut h2), ["e3"], "the restored search narrows rows");
+    let search_text = h2.vcx.update(|_, cx| {
+        h2.panel
+            .read(cx)
+            .search
+            .as_ref()
+            .expect("the search box is built on first render")
+            .read(cx)
+            .value()
+            .to_string()
+    });
+    assert_eq!(search_text, "imagepullbackoff");
+}
+
+/// Data saved before the search box's text was persisted
+/// (`saved-panel-layouts` 1.6) still restores, with no search text.
+#[test]
+fn state_without_a_saved_search_still_restores() {
+    let state = json!({ "context_name": "kind-dev", "namespaces": [] });
+    let restored = super::restore::from_state(&state).expect("the context name is there");
+    assert_eq!(restored.filter, None);
+}
+
 /// Spec: "Searching messages" - `/`, then text, narrows the rows and shows a
 /// count; Escape clears it.
 #[gpui_kit::test]

@@ -72,8 +72,12 @@ impl ObjectListPanel {
             ListMode::Polled { .. } => true,
             ListMode::Watched => false,
         };
-        let rows = self.visible_rows(cx);
+        // The filter field is built first (`saved-panel-layouts` 1.6): on a
+        // restored panel's very first render, its saved filter text has to be
+        // in place before `visible_rows` reads it, or that first paint would
+        // show every row unfiltered until some later event re-renders.
         let filter = self.filter_input(window, cx);
+        let rows = self.visible_rows(cx);
         let table = self.sync_table(rows, window, cx);
         let mut hints = div()
             .flex()

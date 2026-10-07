@@ -200,6 +200,11 @@ pub(crate) const PORT_FORWARD_HEALTH_CHECK_INTERVAL: Duration = Duration::from_s
 pub(crate) const PORT_FORWARD_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
 pub(crate) const PORT_FORWARD_BACKOFF_MAX: Duration = Duration::from_secs(30);
 
+/// `config::saved_layouts::slugify`'s filename stem for a display name that
+/// slugifies to nothing (all punctuation, or non-ASCII with no ASCII
+/// fallback) - `saved-panel-layouts` design.md D2.
+pub(crate) const SAVED_LAYOUT_PLACEHOLDER_STEM: &str = "layout";
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.

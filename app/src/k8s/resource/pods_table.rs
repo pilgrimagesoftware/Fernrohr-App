@@ -174,6 +174,38 @@ impl PodTableDelegate {
         self.columns.insert(to_ix, col);
     }
 
+    /// The active sort to save with the panel (`saved-panel-layouts` 1.6): its
+    /// column's id and whether it's descending, or `None` for no active sort -
+    /// `ColumnSort::Default` (the natural, unsorted order) counts as no sort
+    /// here, the same as never having one.
+    pub(super) fn sort_state(&self) -> Option<(&'static str, bool)> {
+        match self.sort {
+            Some((col, ColumnSort::Ascending)) => Some((col.id(), false)),
+            Some((col, ColumnSort::Descending)) => Some((col.id(), true)),
+            Some((_, ColumnSort::Default)) | None => None,
+        }
+    }
+
+    /// Applies a saved sort by column id (`saved-panel-layouts` 1.6): a
+    /// `column_id` this build doesn't have among [`PodColumn::DEFAULT_ORDER`]
+    /// is ignored - no sort is applied - rather than falling back to another
+    /// column.
+    pub(super) fn set_sort_state(&mut self, column_id: &str, descending: bool) {
+        let Some(column) = PodColumn::DEFAULT_ORDER
+            .into_iter()
+            .find(|col| col.id() == column_id)
+        else {
+            return;
+        };
+        let sort = if descending {
+            ColumnSort::Descending
+        } else {
+            ColumnSort::Ascending
+        };
+        self.sort = Some((column, sort));
+        self.apply_sort();
+    }
+
     /// Sets the active sort for the column at `col_ix` and re-derives `rows`
     /// from `natural`, matching [`TableDelegate::perform_sort`]'s contract:
     /// `sort` is the *new* direction to apply, already cycled by the caller.

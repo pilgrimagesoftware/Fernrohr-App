@@ -43,6 +43,9 @@ pub struct EventsPanel {
     pub(super) filters: EventFilters,
     /// The search box, created on first render.
     pub(super) search: Option<Entity<InputState>>,
+    /// The search text to start the search box with, once it's built
+    /// (`saved-panel-layouts` 1.6).
+    pub(super) initial_search: Option<String>,
     /// The context's discovery, which decides which involved objects link.
     pub(super) discovery: Entity<DiscoveredKinds>,
 }
@@ -99,6 +102,7 @@ impl EventsPanel {
             initial_sort: Some(DEFAULT_SORT),
             filters: EventFilters::default(),
             search: None,
+            initial_search: None,
             discovery,
         }
     }
@@ -188,8 +192,15 @@ impl EventsPanel {
         if let Some(search) = &self.search {
             return search.clone();
         }
-        let search = cx
-            .new(|cx| InputState::new(window, cx).placeholder("Search reason, object, message..."));
+        let initial_search = self.initial_search.clone();
+        let search = cx.new(|cx| {
+            let mut state =
+                InputState::new(window, cx).placeholder("Search reason, object, message...");
+            if let Some(initial) = initial_search {
+                state = state.default_value(initial);
+            }
+            state
+        });
         cx.subscribe(
             &search,
             |_, _, _event: &gpui_kit::component::input::InputEvent, cx| cx.notify(),
