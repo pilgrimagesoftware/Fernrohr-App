@@ -11,6 +11,7 @@ pub mod icon;
 pub mod icon_tooltip;
 pub mod link;
 pub mod list_keys;
+pub mod logs_panels;
 pub mod menu;
 pub mod namespace_filter;
 pub mod namespace_jump;

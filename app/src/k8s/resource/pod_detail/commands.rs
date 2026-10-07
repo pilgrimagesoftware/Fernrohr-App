@@ -16,6 +16,7 @@ actions!(
         SelectManagedFieldsTab,
         HideSecretValues,
         ViewLogs,
+        ViewLogsFlipped,
         EditPodYaml
     ]
 );
@@ -37,6 +38,9 @@ pub(super) const MANAGED_FIELDS_TAB_KEY: &str = "6";
 pub(super) const HIDE_SECRET_VALUES_KEY: &str = "h";
 /// The Pods list's own key for the same intent, so it reads as one shortcut.
 pub(super) const VIEW_LOGS_KEY: &str = "l";
+/// This pod's logs the other way from the Logs panels preference
+/// (`logs-panel-instancing`), as in the Pods list.
+pub(super) const VIEW_LOGS_FLIPPED_KEY: &str = "shift-l";
 /// Where View Logs is bound: the panel minus any text field in it, so its
 /// bare letter never fires while typing.
 pub(super) const VIEW_LOGS_CONTEXT: &str = "PodDetailPanel && !Input";
@@ -156,6 +160,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: VIEW_LOGS_KEY,
         context: Some(VIEW_LOGS_CONTEXT),
         action: Box::new(ViewLogs),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "pod_detail.view_logs_flipped",
+        title: "Pod Detail: View Logs (Other Panel Mode)",
+        default_binding: VIEW_LOGS_FLIPPED_KEY,
+        context: Some(VIEW_LOGS_CONTEXT),
+        action: Box::new(ViewLogsFlipped),
         menu: None,
     });
     registry.register(Command {

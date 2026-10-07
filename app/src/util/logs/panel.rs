@@ -12,16 +12,56 @@ pub fn register_restore(cx: &mut App) {
                 crate::ui::unrestored::required_str(state, "context_name")?.to_string();
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
-            let scope = PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
-            Ok(panel_handle(cx.new(|cx| LogsPanel::new(scope, cx))))
+            // A pod's own panel saves its pod and container, and comes back
+            // pinned to them; the one shared panel saves neither.
+            match pinned_from_state(state, &context_name) {
+                Some(pinned) => {
+                    let pod = crate::ui::nav::PodRef {
+                        namespace: pinned.namespace.clone(),
+                        name: pinned.name.clone(),
+                    };
+                    let scope = PanelScope::new(NavTarget::PodLogs(pod), context_name)
+                        .scoped_to(namespaces);
+                    Ok(panel_handle(
+                        cx.new(|cx| LogsPanel::build(scope, Some(pinned), cx)),
+                    ))
+                }
+                None => {
+                    let scope =
+                        PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
+                    Ok(panel_handle(cx.new(|cx| LogsPanel::new(scope, cx))))
+                }
+            }
         })
     });
 }
 
-/// A dock panel streaming the container logs of whichever pod was last
-/// clicked in a Pods panel (see [`SelectedPod`]).
+/// The pod (and the container it showed) a pod's own Logs panel saved, or
+/// `None` for the shared panel.
+pub(crate) fn pinned_from_state(
+    state: &serde_json::Value,
+    context_name: &str,
+) -> Option<PodSelection> {
+    Some(PodSelection {
+        namespace: state["pod_namespace"].as_str()?.to_string(),
+        name: state["pod_name"].as_str()?.to_string(),
+        containers: state["container"]
+            .as_str()
+            .map(|container| vec![container.to_string()])
+            .unwrap_or_default(),
+        context_name: context_name.to_string(),
+    })
+}
+
+/// A dock panel streaming container logs: of whichever pod was last clicked
+/// in a Pods panel (see [`SelectedPod`]), or - a pod's own panel
+/// (`NavTarget::PodLogs`) - of that one pod, whatever is selected since.
 pub struct LogsPanel {
     pub(super) scope: PanelScope,
+    /// The pod a pod's own panel is pinned to, and its containers in the
+    /// order the selection gave them (the first is the one shown); `None`
+    /// for the shared panel, which follows [`SelectedPod`].
+    pub(super) pinned: Option<PodSelection>,
     connection: Entity<crate::k8s::cluster::connection::ClusterConnection>,
     pub(super) view: Entity<LogsView>,
     stream: Option<Task<()>>,
@@ -34,17 +74,50 @@ pub struct LogsPanel {
 }
 
 impl LogsPanel {
+    /// The panel for `scope`: a pod's own, pinned to that pod as the selection
+    /// names it now, for `NavTarget::PodLogs`; else the shared one.
     pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
+        let pinned = match &scope.target {
+            NavTarget::PodLogs(pod) => Some(
+                cx.try_global::<SelectedPod>()
+                    .and_then(|selected| selected.0.clone())
+                    .filter(|selection| {
+                        selection.context_name == scope.context_name
+                            && selection.namespace == pod.namespace
+                            && selection.name == pod.name
+                    })
+                    .unwrap_or_else(|| PodSelection {
+                        namespace: pod.namespace.clone(),
+                        name: pod.name.clone(),
+                        containers: Vec::new(),
+                        context_name: scope.context_name.clone(),
+                    }),
+            ),
+            _ => None,
+        };
+        Self::build(scope, pinned, cx)
+    }
+
+    /// The panel over `scope`, pinned to `pinned` when it is a pod's own. Only
+    /// the shared panel observes [`SelectedPod`].
+    pub(crate) fn build(
+        scope: PanelScope,
+        pinned: Option<PodSelection>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         use crate::k8s::cluster::session::ClusterRegistry;
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
-        cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
-            .detach();
+        if pinned.is_none() {
+            cx.observe_global::<SelectedPod>(|this: &mut Self, cx| this.sync(cx))
+                .detach();
+        }
 
         let mut this = Self {
             scope,
+            pinned,
             connection,
             view: cx.new(|_| LogsView::new(vec![String::new()])),
             stream: None,
@@ -62,7 +135,11 @@ impl LogsPanel {
     /// isn't connected yet - [`Self::new`]'s observers call this again once
     /// either changes.
     fn sync(&mut self, cx: &mut Context<Self>) {
-        let Some(selection) = cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()) else {
+        let selection = match &self.pinned {
+            Some(pinned) => Some(pinned.clone()),
+            None => cx.try_global::<SelectedPod>().and_then(|s| s.0.clone()),
+        };
+        let Some(selection) = selection else {
             return;
         };
         // A selection published by a *different* context's Pods panel is not
@@ -95,6 +172,33 @@ impl LogsPanel {
         self.previous = false;
         let client = client.clone();
         self.restart(client, containers, cx);
+    }
+
+    /// Points a pod's own panel at `selection` again - reopened for its pod,
+    /// perhaps naming another container, which it then switches to. Ignored
+    /// by the shared panel, and for any other pod.
+    pub fn pin_to(&mut self, selection: PodSelection, cx: &mut Context<Self>) {
+        let Some(pinned) = &self.pinned else {
+            return;
+        };
+        if selection.context_name != pinned.context_name
+            || selection.namespace != pinned.namespace
+            || selection.name != pinned.name
+        {
+            return;
+        }
+        self.pinned = Some(selection);
+        self.sync(cx);
+        cx.notify();
+    }
+
+    /// Test-only: the pod a pod's own panel is pinned to, and the container
+    /// it shows first; `None` for the shared panel.
+    #[cfg(test)]
+    pub(crate) fn test_pinned(&self) -> Option<(String, Option<String>)> {
+        self.pinned
+            .as_ref()
+            .map(|pinned| (pinned.name.clone(), pinned.containers.first().cloned()))
     }
 
     /// Restarts the stream on `container`, reusing the current pod/namespace -

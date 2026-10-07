@@ -98,8 +98,8 @@ fn panel_opening_actions_are_registered_commands() {
     assert!(registry.get(SHOW_EVENTS_COMMAND_ID).is_some());
     assert_eq!(
         build_items(&registry, &[]).len(),
-        3,
-        "Pods, Logs and Events reach the palette"
+        4,
+        "Pods, Logs (both ways) and Events reach the palette"
     );
 }
 

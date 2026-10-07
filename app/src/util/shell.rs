@@ -45,6 +45,7 @@ mod empty_dock;
 mod exec;
 mod follow;
 mod layout;
+mod logs_open;
 mod main_window;
 mod namespace_defaults;
 mod namespace_sets;

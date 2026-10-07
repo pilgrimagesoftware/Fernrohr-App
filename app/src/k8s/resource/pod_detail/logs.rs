@@ -2,7 +2,7 @@
 //! `SelectedPod` + `ShowLogs` path the Pods list's `l` takes - so the Logs
 //! panel opens (or focuses) on this pod, its first container selected.
 
-use super::commands::ViewLogs;
+use super::commands::{ViewLogs, ViewLogsFlipped};
 use super::fetch::PodDetailState;
 use super::panel::PodDetailPanel;
 use crate::k8s::resource::pods::{PodSelection, SelectedPod};
@@ -40,5 +40,20 @@ impl PodDetailPanel {
         };
         cx.set_global(SelectedPod(Some(selection)));
         window.dispatch_action(Box::new(crate::ui::nav::ShowLogs), cx);
+    }
+
+    /// `ViewLogsFlipped` (`shift-l`): this pod's logs the other way from the
+    /// Logs panels preference - its own panel, or the shared one.
+    pub(super) fn on_action_view_logs_flipped(
+        &mut self,
+        _: &ViewLogsFlipped,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(selection) = self.log_selection() else {
+            return;
+        };
+        cx.set_global(SelectedPod(Some(selection)));
+        window.dispatch_action(Box::new(crate::ui::nav::ShowLogsFlipped), cx);
     }
 }

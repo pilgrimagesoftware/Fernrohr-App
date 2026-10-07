@@ -60,15 +60,6 @@ impl MainWindow {
         self.open_target(NavTarget::pods(), window, cx);
     }
 
-    pub(super) fn on_action_show_logs(
-        &mut self,
-        _: &ShowLogs,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_target(NavTarget::Logs, window, cx);
-    }
-
     /// Section 3.2: opens a small dialog offering Direct plus every configured
     /// tunnel for this window's connected context, writing through the same
     /// `TunnelStore::bind`/`unbind` the picker's own row selector uses. A no-op in

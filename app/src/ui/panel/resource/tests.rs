@@ -150,7 +150,9 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
 
                 let opened = match target {
                     NavTarget::Kind(kind) => kind,
-                    NavTarget::Logs => panic!("a discovered kind, not Logs"),
+                    NavTarget::Logs | NavTarget::PodLogs(_) => {
+                        panic!("a discovered kind, not Logs")
+                    }
                     NavTarget::Pod(_) | NavTarget::Object(_) | NavTarget::Exec(_) => {
                         panic!("a discovered kind, not one object's detail")
                     }
@@ -164,6 +166,7 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
                 !match fern_target {
                     NavTarget::Kind(kind) => kind,
                     NavTarget::Logs
+                    | NavTarget::PodLogs(_)
                     | NavTarget::Pod(_)
                     | NavTarget::Object(_)
                     | NavTarget::Exec(_) => unreachable!(),
@@ -175,6 +178,7 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
                 match pod_target {
                     NavTarget::Kind(kind) => kind,
                     NavTarget::Logs
+                    | NavTarget::PodLogs(_)
                     | NavTarget::Pod(_)
                     | NavTarget::Object(_)
                     | NavTarget::Exec(_) => unreachable!(),

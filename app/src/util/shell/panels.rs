@@ -99,7 +99,13 @@ fn panel_key(state: &PanelState) -> Option<PanelKey> {
     let namespaces = serde_json::from_value(data["namespaces"].clone()).unwrap_or_default();
     let target = match state.panel_name.as_str() {
         "Pods" => NavTarget::pods(),
-        "Logs" => NavTarget::Logs,
+        "Logs" => match crate::util::logs::pinned_from_state(data, &context_name) {
+            Some(pinned) => NavTarget::PodLogs(crate::ui::nav::PodRef {
+                namespace: pinned.namespace,
+                name: pinned.name,
+            }),
+            None => NavTarget::Logs,
+        },
         "Exec" => NavTarget::Exec(crate::k8s::resource::exec::ExecTarget {
             namespace: data["namespace"].as_str()?.to_string(),
             pod: data["pod"].as_str()?.to_string(),
@@ -149,7 +155,10 @@ pub(super) fn pod_scoped_context(
     active: usize,
     cx: &App,
 ) -> Option<String> {
-    if !matches!(target, NavTarget::Logs | NavTarget::Pod(_)) {
+    if !matches!(
+        target,
+        NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::Pod(_)
+    ) {
         return Some(contexts[active].clone());
     }
     match cx

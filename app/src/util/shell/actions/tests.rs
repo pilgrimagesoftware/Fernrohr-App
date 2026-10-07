@@ -209,7 +209,7 @@ async fn show_logs_and_pod_detail_use_the_selected_pods_context_not_the_active_o
             };
             let logs = open_panels
                 .iter()
-                .find(|open| open.key.target == NavTarget::Logs)
+                .find(|open| matches!(open.key.target, NavTarget::Logs | NavTarget::PodLogs(_)))
                 .expect("ShowLogs opened a panel");
             assert_eq!(
                 logs.key.context_name, "other-context",
@@ -273,7 +273,7 @@ async fn show_logs_no_ops_when_the_selected_pods_context_is_not_open_here(cx: &m
             assert!(
                 !open_panels
                     .iter()
-                    .any(|open| open.key.target == NavTarget::Logs),
+                    .any(|open| matches!(open.key.target, NavTarget::Logs | NavTarget::PodLogs(_))),
                 "a selection from a context this window doesn't hold must not open Logs \
                  against the active context instead"
             );
