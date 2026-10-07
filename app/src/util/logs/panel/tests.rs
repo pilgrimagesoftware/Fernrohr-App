@@ -9,6 +9,7 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::{AppContext as _, TestAppContext};
 
+mod follow;
 mod previous;
 mod restore;
 mod selection;

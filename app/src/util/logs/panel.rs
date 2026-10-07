@@ -215,8 +215,42 @@ impl LogsPanel {
         for line in lines {
             view.append_line(line.to_string());
         }
-        self.view = cx.new(|_| view);
+        let view = cx.new(|_| view);
+        self.follow(&view, cx);
+        self.view = view;
         cx.notify();
+    }
+
+    /// The wheel or a trackpad over the lines (#149): scrolling up to read
+    /// history stops following, so new lines no longer pull the view back
+    /// down; scrolling back down to the end follows again. The list moves
+    /// itself first - this only decides whether following continues.
+    pub(super) fn on_lines_scrolled(
+        &mut self,
+        event: &gpui_kit::ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let upward = match event.delta {
+            gpui_kit::ScrollDelta::Lines(delta) => delta.y > 0.,
+            gpui_kit::ScrollDelta::Pixels(delta) => delta.y > gpui_kit::px(0.),
+        };
+        if upward {
+            if self.view.read(cx).follow_state() == FollowState::Following {
+                self.view.update(cx, |view, _| view.scroll_up());
+                cx.notify();
+            }
+            return;
+        }
+        // Whether this scroll reached the end is known once the list has
+        // applied it.
+        cx.defer_in(window, |this, _window, cx| {
+            let at_end = this.scroll_handle.is_scrolled_to_end() != Some(false);
+            if at_end && this.view.read(cx).follow_state() == FollowState::Paused {
+                this.view.update(cx, |view, _| view.scroll_to_bottom());
+                cx.notify();
+            }
+        });
     }
 
     /// Restarts the stream on `container`, reusing the current pod/namespace -
@@ -268,15 +302,7 @@ impl LogsPanel {
         let mut view_model = LogsView::new(containers);
         view_model.select_container(&container);
         let view = cx.new(|_| view_model);
-        cx.observe(&view, |this: &mut Self, view, cx| {
-            if view.read(cx).follow_state() == FollowState::Following {
-                let last = view.read(cx).lines().len().saturating_sub(1);
-                this.scroll_handle
-                    .scroll_to_item(last, gpui_kit::ScrollStrategy::Bottom);
-            }
-            cx.notify();
-        })
-        .detach();
+        self.follow(&view, cx);
         let target = LogTarget {
             namespace,
             pod_name,
@@ -286,6 +312,29 @@ impl LogsPanel {
         };
         self.stream = Some(stream_container_logs(client, target, view.clone(), cx));
         self.view = view;
+    }
+
+    /// Keeps the list at the newest line as `view` grows, while it follows;
+    /// paused, new lines arrive without moving what's on screen.
+    fn follow(&self, view: &Entity<LogsView>, cx: &mut Context<Self>) {
+        cx.observe(view, |this: &mut Self, view, cx| {
+            if view.read(cx).follow_state() == FollowState::Following {
+                let last = view.read(cx).lines().len().saturating_sub(1);
+                this.scroll_handle
+                    .scroll_to_item(last, gpui_kit::ScrollStrategy::Bottom);
+            }
+            cx.notify();
+        })
+        .detach();
+    }
+
+    /// Test-only: appends `line` as the stream would.
+    #[cfg(test)]
+    pub(crate) fn test_append_line(&mut self, line: &str, cx: &mut Context<Self>) {
+        self.view.update(cx, |view, cx| {
+            view.append_line(line.to_string());
+            cx.notify();
+        });
     }
 }
 

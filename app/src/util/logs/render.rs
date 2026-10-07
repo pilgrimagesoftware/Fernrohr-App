@@ -30,6 +30,7 @@ impl Render for LogsPanel {
             let line_count = lines.len();
             div()
                 .debug_selector(|| LINES.into())
+                .on_scroll_wheel(cx.listener(Self::on_lines_scrolled))
                 .size_full()
                 .p(crate::ui::space::spacing(cx).panel_inset)
                 .code_font(cx)
