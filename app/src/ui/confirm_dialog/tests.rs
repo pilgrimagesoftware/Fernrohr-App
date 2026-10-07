@@ -248,3 +248,76 @@ async fn an_irreversible_dialog_closed_early_moves_no_focus(cx: &mut TestAppCont
     assert_eq!(confirmed.get(), 0, "Enter confirmed nothing");
     assert!(!dialog_open(&mut vcx), "and closed the dialog");
 }
+
+/// A host with tab stops of its own behind the dialog, each counting presses.
+struct BusyHost {
+    focus: FocusHandle,
+    pressed: Rc<Cell<usize>>,
+}
+
+impl Render for BusyHost {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_kit::InteractiveElement as _;
+        use gpui_kit::ParentElement as _;
+        use gpui_kit::component::button::Button;
+        div()
+            .track_focus(&self.focus)
+            .children((0..4usize).map(|ix| {
+                let pressed = self.pressed.clone();
+                Button::new(("behind", ix))
+                    .label(format!("Behind {ix}"))
+                    // Mixed tab indices: the background sorts both before and after
+                    // the dialog's own stops.
+                    .tab_index(if ix % 2 == 0 { 1 } else { -1 })
+                    .on_click(move |_, _, _| pressed.set(pressed.get() + 1))
+            }))
+    }
+}
+
+/// Irreversible, over a window full of tab stops: focus still opens on the
+/// dialog's Cancel - Space presses Cancel, not a button behind the dialog.
+#[gpui_kit::test]
+async fn irreversible_focus_stays_in_the_dialog_over_a_busy_window(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
+    });
+    let pressed = Rc::new(Cell::new(0));
+    let window = cx.add_window({
+        let pressed = pressed.clone();
+        move |window, cx| {
+            let host = cx.new(|cx| BusyHost {
+                focus: cx.focus_handle(),
+                pressed,
+            });
+            let focus = host.read(cx).focus.clone();
+            window.focus(&focus, cx);
+            Root::new(host, window, cx)
+        }
+    });
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+    let confirmed = Rc::new(Cell::new(0));
+    let count = confirmed.clone();
+    vcx.update(|window, cx| {
+        let confirmation = Confirmation {
+            title: "Delete Secret?".into(),
+            body: ConfirmText::from("Delete it?"),
+            confirm: "Delete".into(),
+            id_prefix: "busy",
+            severity: Severity::Irreversible,
+        };
+        open(
+            confirmation,
+            move |_, _| count.set(count.get() + 1),
+            window,
+            cx,
+        );
+    });
+    super::deliver_first_frame(&mut vcx);
+
+    press_space(&mut vcx);
+    assert_eq!(pressed.get(), 0, "no button behind the dialog was pressed");
+    assert_eq!(confirmed.get(), 0, "nor the dialog's confirm");
+    assert!(!dialog_open(&mut vcx), "Space pressed Cancel");
+}

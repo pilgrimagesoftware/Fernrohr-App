@@ -304,4 +304,6 @@ fn close_panels(
 }
 
 #[cfg(test)]
+mod close_window_tests;
+#[cfg(test)]
 mod tests;

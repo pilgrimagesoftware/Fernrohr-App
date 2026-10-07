@@ -66,7 +66,7 @@ impl MainWindow {
     }
 
     /// `Cmd-W`: closes the focused tab group's displayed tab, or - with no tab
-    /// on screen - the window, confirming first if that would drop a tunnel.
+    /// on screen - the window ([`Self::close_whole_window`]).
     ///
     /// The tab group handles `ClosePanel`, so it reaches a group only along the
     /// focus path. Focusing the displayed tab first is what makes `Cmd-W` close
@@ -99,14 +99,25 @@ impl MainWindow {
                 return;
             }
         }
+        self.close_whole_window(window, cx);
+    }
+
+    /// Closes the window - `Cmd-W` with no tab on screen - confirming first if
+    /// that would drop a tunnel or discard an unsaved edit, irreversibly for an
+    /// edit (Fernrohr#168). `close_window` removes the window without its
+    /// should-close hook, so an edit is checked here too, not only by
+    /// [`close_requested`]: with no panel on screen none should be open, but
+    /// losing one silently is not a risk worth taking on that.
+    pub(super) fn close_whole_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let tunneled = self.contexts_losing_a_tunnel(cx);
-        if tunneled.is_empty() {
+        let unsaved = self.unsaved_edits(cx);
+        if tunneled.is_empty() && unsaved.is_empty() {
             // Deferred: closing records the window's layout, which reads this
             // `MainWindow` - still mid-update here, so reading it now panics
             // (#135). Once this handler returns, the read is free.
             window.defer(cx, close_window);
         } else {
-            open_close_window_dialog(&tunneled, Vec::new(), window, cx);
+            open_close_window_dialog(&tunneled, unsaved, window, cx);
         }
     }
 
@@ -127,7 +138,7 @@ impl MainWindow {
 
     /// This window's contexts whose tunnel closing the window would tear
     /// down: bound to a live forward, and held by no other window.
-    fn contexts_losing_a_tunnel(&self, cx: &mut App) -> Vec<String> {
+    pub(super) fn contexts_losing_a_tunnel(&self, cx: &mut App) -> Vec<String> {
         let WindowMode::Workspace { contexts, .. } = &self.mode else {
             return Vec::new();
         };
