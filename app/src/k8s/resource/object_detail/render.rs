@@ -49,6 +49,7 @@ impl ObjectDetailPanel {
                 detail::badges(badges.iter().map(|(text, tone)| (text.as_str(), *tone)), cx)
             }
             FieldValue::Lines(lines) => detail::lines(lines),
+            FieldValue::Urls(urls) => detail::urls(&format!("{section}/{}", field.label), urls),
             FieldValue::KeyValues(pairs) => {
                 detail::key_values(&format!("{section}/{}", field.label), pairs, cx)
             }
