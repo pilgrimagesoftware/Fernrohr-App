@@ -73,9 +73,12 @@ pub fn status_tone(status: Option<&PodStatus>) -> Tone {
     }
 }
 
-/// All containers ready is good, some not is a warning, none at all neutral.
-pub(super) fn ready_tone(ready: usize, total: usize) -> Tone {
+/// All containers ready is good, some not is a warning, none at all neutral -
+/// and a pod that ran to completion (`phase` `Succeeded`) is neutral: its
+/// containers exited as they should, so none being ready is no warning.
+pub(super) fn ready_tone(ready: usize, total: usize, phase: Option<&str>) -> Tone {
     match (ready, total) {
+        _ if phase == Some("Succeeded") => Tone::Neutral,
         (_, 0) => Tone::Neutral,
         (ready, total) if ready == total => Tone::Good,
         _ => Tone::Warning,
@@ -132,7 +135,7 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
             .unwrap_or_default(),
         age_secs,
         status_tone: status_tone(status),
-        ready_tone: ready_tone(ready_count, total),
+        ready_tone: ready_tone(ready_count, total, status.and_then(|s| s.phase.as_deref())),
         forwards: 0,
     }
 }

@@ -21,6 +21,21 @@ fn pod_row_reports_ready_status_restarts_and_age() {
     assert_eq!(row.age, "1m");
 }
 
+/// #120: a pod that ran to completion - Succeeded, its container exited 0 and
+/// so not ready - reads 0/1 in a neutral tone, not the not-ready warning.
+#[test]
+fn a_succeeded_pods_ready_count_is_no_warning() {
+    let mut succeeded = pod("u1", "job-1");
+    let status = succeeded.status.as_mut().expect("the fixture has a status");
+    status.phase = Some("Succeeded".into());
+    for container in status.container_statuses.iter_mut().flatten() {
+        container.ready = false;
+    }
+    let row = pod_row(&succeeded, Timestamp::from_second(90).unwrap());
+    assert_eq!(row.ready, "0/1");
+    assert_eq!(row.ready_tone, crate::ui::style::Tone::Neutral);
+}
+
 #[test]
 fn single_namespace_scope_shows_only_its_pods() {
     let pods = mixed_namespace_fixture();
@@ -200,8 +215,18 @@ mod tones {
     #[test]
     fn readiness_is_good_when_all_ready_and_a_warning_otherwise() {
         use super::super::ready_tone;
-        assert_eq!(ready_tone(2, 2), Tone::Good);
-        assert_eq!(ready_tone(1, 2), Tone::Warning);
-        assert_eq!(ready_tone(0, 0), Tone::Neutral);
+        assert_eq!(ready_tone(2, 2, Some("Running")), Tone::Good);
+        assert_eq!(ready_tone(1, 2, Some("Running")), Tone::Warning);
+        assert_eq!(ready_tone(0, 0, None), Tone::Neutral);
+        assert_eq!(
+            ready_tone(0, 1, Some("Succeeded")),
+            Tone::Neutral,
+            "a pod that ran to completion is no warning (#120)"
+        );
+        assert_eq!(
+            ready_tone(0, 1, Some("Failed")),
+            Tone::Warning,
+            "a failed one still is"
+        );
     }
 }

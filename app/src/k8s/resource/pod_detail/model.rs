@@ -167,6 +167,10 @@ pub struct ContainerSummary {
     /// `None` before the container has any reported status (e.g. still being
     /// scheduled) - rendered distinctly from a known-not-ready container.
     pub ready: Option<bool>,
+    /// `ready`'s tone: ready is good, not ready a warning - unless the
+    /// container ran to completion (exit 0), which needn't be ready - and no
+    /// status yet unknown.
+    pub ready_tone: BadgeTone,
     pub restart_count: i32,
     /// "Running", "Waiting: ImagePullBackOff", "Terminated: Completed" - one
     /// human string rather than the raw `ContainerState` union, since the

@@ -79,14 +79,7 @@ impl PodDetailPanel {
 
     fn render_container(&self, container: &ContainerSummary, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
-        let ready_color = detail::tone_color(
-            match container.ready {
-                Some(true) => BadgeTone::Good,
-                Some(false) => BadgeTone::Warning,
-                None => BadgeTone::Unknown,
-            },
-            cx,
-        );
+        let ready_color = detail::tone_color(container.ready_tone, cx);
         let key = container_section_key(&container.name);
         let open = self.open_sections.contains(&key);
         let this = cx.weak_entity();
