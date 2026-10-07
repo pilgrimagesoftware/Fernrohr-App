@@ -277,7 +277,7 @@ impl TableDelegate for PodTableDelegate {
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,
-    /// and a non-zero restart count in the warning tone - the tones decided by
+    /// and a non-zero restart count in its restart tone - the tones decided by
     /// the row projection (`pods::rows`), mapped to colour by `ui::style`.
     fn render_td(
         &mut self,
@@ -310,8 +310,8 @@ impl TableDelegate for PodTableDelegate {
                         .bg(style::status(row.ready_tone, cx)),
                 )
                 .child(text),
-            PodColumn::Restarts if row.restarts > 0 => cell
-                .text_color(style::status(Tone::Warning, cx))
+            PodColumn::Restarts if row.restart_tone != Tone::Neutral => cell
+                .text_color(style::status(row.restart_tone, cx))
                 .child(text),
             PodColumn::Forwards => cell.children(crate::ui::forward_indicator::indicator(
                 &row.name,

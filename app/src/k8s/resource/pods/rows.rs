@@ -24,6 +24,9 @@ pub struct PodRow {
     pub status_tone: Tone,
     /// Whether its containers are ready, for the Ready cell's dot.
     pub ready_tone: Tone,
+    /// How alarming its restarts are, for the Restarts cell's colour
+    /// ([`restart_tone`]).
+    pub restart_tone: Tone,
     /// How many port-forwards reach it (`port-forward-indicators` 2.1) - not the
     /// Pod's own, so `pod_row` leaves it 0 and the panel fills it in.
     pub forwards: usize,
@@ -85,6 +88,49 @@ pub(super) fn ready_tone(ready: usize, total: usize, phase: Option<&str>) -> Ton
     }
 }
 
+/// #121: a restart that finished within [`RECENT_RESTART_WINDOW`] is bad (red),
+/// more than [`MANY_RESTARTS`] serious (orange), any at all a warning (yellow),
+/// and none neutral. `since_last` is how long ago the last restart finished, if
+/// any container reports one.
+///
+/// [`RECENT_RESTART_WINDOW`]: crate::consts::RECENT_RESTART_WINDOW
+/// [`MANY_RESTARTS`]: crate::consts::MANY_RESTARTS
+pub(super) fn restart_tone(restarts: i32, since_last: Option<jiff::SignedDuration>) -> Tone {
+    use crate::consts::{MANY_RESTARTS, RECENT_RESTART_WINDOW};
+    let recent = since_last.is_some_and(|since| {
+        // A finish a little ahead of the local clock (skew) is still recent.
+        since.as_secs() < RECENT_RESTART_WINDOW.as_secs() as i64
+    });
+    match restarts {
+        0 => Tone::Neutral,
+        _ if recent => Tone::Bad,
+        n if n > MANY_RESTARTS => Tone::Serious,
+        _ => Tone::Warning,
+    }
+}
+
+/// How long before `now` the pod's most recent container restart finished: the
+/// latest `lastState.terminated.finishedAt` among its restarted containers.
+fn since_last_restart(status: Option<&PodStatus>, now: Timestamp) -> Option<jiff::SignedDuration> {
+    status?
+        .container_statuses
+        .iter()
+        .flatten()
+        .filter(|container| container.restart_count > 0)
+        .filter_map(|container| {
+            container
+                .last_state
+                .as_ref()?
+                .terminated
+                .as_ref()?
+                .finished_at
+                .as_ref()
+        })
+        .map(|finished| finished.0)
+        .max()
+        .map(|finished| now.duration_since(finished))
+}
+
 pub(super) fn uid(pod: &Pod) -> String {
     pod.metadata.uid.clone().unwrap_or_default()
 }
@@ -136,6 +182,7 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
         age_secs,
         status_tone: status_tone(status),
         ready_tone: ready_tone(ready_count, total, status.and_then(|s| s.phase.as_deref())),
+        restart_tone: restart_tone(restarts, since_last_restart(status, now)),
         forwards: 0,
     }
 }
