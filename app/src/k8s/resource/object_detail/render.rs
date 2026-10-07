@@ -144,6 +144,19 @@ impl ObjectDetailPanel {
         crate::ui::copy::copy_text(&self.target.name, cx);
     }
 
+    /// Copy YAML (#154): the whole manifest to the clipboard, folded blocks
+    /// included.
+    fn on_action_copy_yaml(
+        &mut self,
+        _: &crate::ui::yaml_view::CopyYaml,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(yaml) = self.yaml() {
+            crate::ui::copy::copy_text(&yaml, cx);
+        }
+    }
+
     fn on_action_unfold_all(
         &mut self,
         _: &crate::ui::yaml_view::UnfoldAll,
@@ -299,6 +312,7 @@ impl Render for ObjectDetailPanel {
             .on_action(cx.listener(Self::on_action_fold_all))
             .on_action(cx.listener(Self::on_action_copy_name))
             .on_action(cx.listener(Self::on_action_unfold_all))
+            .on_action(cx.listener(Self::on_action_copy_yaml))
             .on_action(cx.listener(Self::on_action_hide_secret_values))
             .on_action(cx.listener(Self::on_action_go_to))
             .capture_action(cx.listener(Self::capture_editor_escape))

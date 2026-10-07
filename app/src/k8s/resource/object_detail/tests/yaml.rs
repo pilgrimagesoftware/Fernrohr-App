@@ -36,7 +36,7 @@ fn big_config_map() -> kube::api::DynamicObject {
 }
 
 /// A panel showing the ConfigMap's YAML, focused, with the real bindings.
-fn yaml_panel(
+pub(super) fn yaml_panel(
     cx: &mut TestAppContext,
 ) -> (
     WindowHandle<Root>,

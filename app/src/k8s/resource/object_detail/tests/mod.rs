@@ -23,3 +23,4 @@ mod sections;
 mod storage;
 mod workloads;
 mod yaml;
+mod yaml_copy;

@@ -76,7 +76,7 @@ const DELETE_CONTEXT: &str = "DeletablePod && !Input";
 /// override by id. None belongs in the menu bar - they act on one panel, not
 /// the app.
 pub fn register_commands(registry: &mut CommandRegistry) {
-    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 11] = [
+    let commands: [(&'static str, &'static str, &'static str, Box<dyn Action>); 12] = [
         (
             TOGGLE_VIEW_COMMAND_ID,
             "Pod Detail: Toggle Fields/YAML",
@@ -136,6 +136,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             "Pod Detail: Unfold All YAML",
             crate::ui::yaml_view::UNFOLD_ALL_KEY,
             Box::new(crate::ui::yaml_view::UnfoldAll),
+        ),
+        (
+            "pod_detail.copy_yaml",
+            "Pod Detail: Copy YAML",
+            crate::ui::yaml_view::COPY_YAML_KEY,
+            Box::new(crate::ui::yaml_view::CopyYaml),
         ),
         (
             COPY_NAME_COMMAND_ID,

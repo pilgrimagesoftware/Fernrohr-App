@@ -133,4 +133,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(crate::ui::yaml_view::UnfoldAll),
         menu: None,
     });
+    registry.register(Command {
+        id: "object_detail.copy_yaml",
+        title: "Object Detail: Copy YAML",
+        default_binding: crate::ui::yaml_view::COPY_YAML_KEY,
+        context: Some(PANEL_KEYS_CONTEXT),
+        action: Box::new(crate::ui::yaml_view::CopyYaml),
+        menu: None,
+    });
 }
