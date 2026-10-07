@@ -1,6 +1,7 @@
 //! The arrange commands through a real window and the app's keymap: Split,
 //! Move and Merge in each case the spec names, and Close Group with nothing to
-//! lose, and with an unsaved edit - asking once, Cancel closing nothing.
+//! lose, and with an unsaved edit - asking once, irreversibly: Enter and Escape
+//! close nothing. Closing the window with an unsaved edit asks the same way.
 
 use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::ConnectionState;
@@ -140,20 +141,57 @@ impl Harness {
         self.vcx.update(|window, cx| window.has_active_dialog(cx))
     }
 
-    fn press_dialog_button(&mut self, n: usize) {
-        for _ in 0..n {
-            self.press("tab");
-        }
-        let space = gpui_kit::Keystroke::parse("space").expect("valid");
-        self.vcx.simulate_event(gpui_kit::KeyDownEvent {
-            keystroke: space.clone(),
-            is_held: false,
-            prefer_character_input: false,
-        });
-        self.vcx
-            .simulate_event(gpui_kit::KeyUpEvent { keystroke: space });
-        self.vcx.run_until_parked();
+    /// Delivers the dialog's first frame, which moves an irreversible
+    /// question's focus to Cancel.
+    fn first_frame(&mut self) {
+        crate::ui::confirm_dialog::deliver_first_frame(&mut self.vcx);
     }
+}
+
+/// A Deployment open, loaded, and being edited, in a pane of its own, with
+/// focus on its panel rather than in the editor.
+fn edit_a_deployment(h: &mut Harness) {
+    let main = h.main.clone();
+    h.vcx.update(|window, cx| {
+        main.update(cx, |main, cx| {
+            main.open_target(NavTarget::Object(deployment_target()), window, cx)
+        })
+    });
+    h.vcx.run_until_parked();
+    h.press("cmd-k down");
+    let object = h.vcx.update(|_, cx| {
+        let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
+            return None;
+        };
+        open_panels.iter().rev().find_map(|open| match &open.panel {
+            Some(OpenedPanel::ObjectDetail(panel)) => Some(panel.clone()),
+            _ => None,
+        })
+    });
+    let object = object.expect("the split's Deployment panel");
+    h.vcx.update(|_, cx| {
+        object.update(cx, |panel, cx| {
+            let loaded = serde_json::from_value(serde_json::json!({
+                "apiVersion": "apps/v1", "kind": "Deployment",
+                "metadata": { "name": "web", "namespace": "staging" },
+            }))
+            .unwrap();
+            panel.test_set_loaded(loaded, cx);
+        })
+    });
+    h.press("e");
+    assert!(
+        h.vcx
+            .update(|_, cx| object.read(cx).close_warning().is_some()),
+        "editing"
+    );
+    // Out of the editor - a text field, where the arrange keys don't fire -
+    // and onto the panel, the edit still open.
+    h.vcx.update(|window, cx| {
+        use gpui_kit::Focusable as _;
+        let focus = object.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+    });
 }
 
 fn pods() -> NavTarget {
@@ -245,63 +283,59 @@ async fn close_group_asks_only_when_something_would_be_lost(cx: &mut TestAppCont
     assert!(!h.dialog_open(), "nothing to lose: no question");
     assert_eq!(h.groups(), [vec![pods(), svc()]], "the right pane closed");
 
-    // A Deployment open, loaded, and being edited, in a pane of its own.
-    let main = h.main.clone();
-    h.vcx.update(|window, cx| {
-        main.update(cx, |main, cx| {
-            main.open_target(NavTarget::Object(deployment_target()), window, cx)
-        })
-    });
-    h.vcx.run_until_parked();
-    h.press("cmd-k down");
-    let object = h.vcx.update(|_, cx| {
-        let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
-            return None;
-        };
-        open_panels.iter().rev().find_map(|open| match &open.panel {
-            Some(OpenedPanel::ObjectDetail(panel)) => Some(panel.clone()),
-            _ => None,
-        })
-    });
-    let object = object.expect("the split's Deployment panel");
-    h.vcx.update(|_, cx| {
-        object.update(cx, |panel, cx| {
-            let loaded = serde_json::from_value(serde_json::json!({
-                "apiVersion": "apps/v1", "kind": "Deployment",
-                "metadata": { "name": "web", "namespace": "staging" },
-            }))
-            .unwrap();
-            panel.test_set_loaded(loaded, cx);
-        })
-    });
-    h.press("e");
-    assert!(
-        h.vcx
-            .update(|_, cx| object.read(cx).close_warning().is_some()),
-        "editing"
-    );
-    // Out of the editor - a text field, where the arrange keys don't fire -
-    // and onto the panel, the edit still open.
-    h.vcx.update(|window, cx| {
-        use gpui_kit::Focusable as _;
-        let focus = object.read(cx).focus_handle(cx);
-        window.focus(&focus, cx);
-    });
+    edit_a_deployment(&mut h);
     let groups_before = h.groups();
 
     h.press("cmd-k w");
     assert!(h.dialog_open(), "an unsaved edit: it asks");
-    h.press_dialog_button(1);
-    assert!(!h.dialog_open());
-    assert_eq!(h.groups(), groups_before, "Cancel closes nothing");
+    h.first_frame();
+    h.press("enter");
+    assert!(!h.dialog_open(), "Enter closes the question");
+    assert_eq!(
+        h.groups(),
+        groups_before,
+        "and, losing an edit being irreversible, closes nothing"
+    );
 
     h.press("cmd-k w");
-    h.press_dialog_button(2);
+    h.first_frame();
+    h.press("escape");
+    assert_eq!(h.groups(), groups_before, "Escape closes nothing");
+
+    h.press("cmd-k w");
+    h.first_frame();
+    h.press("tab enter");
     assert_eq!(
         h.groups().len(),
         groups_before.len() - 1,
-        "Close Group closed the pane"
+        "Tab to Close Group then Enter closed the pane"
     );
+}
+
+/// Fernrohr#168: closing the window with an unsaved edit asks, irreversibly -
+/// Enter cancels, and the deliberate shortcut closes the window.
+#[gpui_kit::test]
+async fn close_window_with_an_unsaved_edit_asks_irreversibly(cx: &mut TestAppContext) {
+    let mut h = harness(cx, None);
+    // The close button's hook, as `open_main_window` installs it.
+    h.vcx.update(|window, cx| {
+        window.on_window_should_close(cx, crate::util::shell::tabs::close_requested)
+    });
+    edit_a_deployment(&mut h);
+
+    assert!(!h.vcx.simulate_close(), "an unsaved edit keeps the window");
+    h.vcx.run_until_parked();
+    assert!(h.dialog_open(), "and asks");
+    h.first_frame();
+    h.press("enter");
+    assert!(!h.dialog_open(), "Enter closes the question");
+    assert_eq!(h.vcx.windows().len(), 1, "and keeps the window");
+
+    assert!(!h.vcx.simulate_close());
+    h.vcx.run_until_parked();
+    h.first_frame();
+    h.press("secondary-backspace");
+    assert!(h.vcx.windows().is_empty(), "the shortcut closed the window");
 }
 
 /// 2.2, 3.2, 4.2, 5.2: every arrange command is offered in the dock's context

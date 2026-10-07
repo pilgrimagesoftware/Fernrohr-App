@@ -38,6 +38,7 @@ fn open(cx: &mut TestAppContext, delete: bool) -> Harness {
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);
+        crate::ui::confirm_dialog::register_commands(&mut registry);
         let bindings = keymap::bindings(
             &registry,
             &KeymapConfig::default(),
@@ -127,8 +128,9 @@ impl Harness {
     }
 }
 
-/// `ctrl-d` asks; Escape sends nothing; `ctrl-d` then Enter deletes the
-/// object, and the panel shows it deleted - and no longer offers Delete.
+/// `ctrl-d` asks; Escape sends nothing, nor Enter - the confirmation opens on
+/// Cancel; the shortcut deletes the object, and the panel shows it deleted -
+/// and no longer offers Delete.
 #[gpui_kit::test]
 async fn ctrl_d_deletes_the_object_and_the_panel_shows_it_gone(cx: &mut TestAppContext) {
     let mut harness = open(cx, true);
@@ -140,7 +142,17 @@ async fn ctrl_d_deletes_the_object_and_the_panel_shows_it_gone(cx: &mut TestAppC
     assert!(harness.cluster.deletes().is_empty(), "Escape sends nothing");
 
     harness.press("ctrl-d");
+    crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
     harness.press("enter");
+    assert!(!harness.dialog_open(), "Enter closes it");
+    assert!(
+        harness.cluster.deletes().is_empty(),
+        "on Cancel, sending nothing"
+    );
+
+    harness.press("ctrl-d");
+    crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
+    harness.press("secondary-backspace");
     harness.wait_for("showed the object deleted", |panel, _| {
         matches!(panel.lifecycle, Some(Lifecycle::Deleted { .. }))
     });

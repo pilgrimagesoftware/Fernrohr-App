@@ -62,6 +62,7 @@ pub fn confirm_stop(
         body: body(&target),
         confirm: "Stop Forward".into(),
         id_prefix: ID_PREFIX,
+        severity: crate::ui::confirm_dialog::Severity::Recoverable,
     };
     confirm_dialog::open(confirmation, stop, window, cx);
 }

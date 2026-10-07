@@ -105,6 +105,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::text_size::register_commands(registry);
     crate::ui::shortcut_timeout::register_commands(registry);
     crate::ui::report_issue::register_commands(registry);
+    crate::ui::confirm_dialog::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
