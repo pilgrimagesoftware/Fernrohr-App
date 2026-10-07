@@ -48,14 +48,19 @@ impl RecordingTextSystem {
         self.lines.lock().clone()
     }
 
-    /// The families `text` was drawn in, from the last line laid out that
-    /// contains it. `None` if no line contains it.
+    /// The families `text` was drawn in, from the last line laid out that is
+    /// exactly `text` - else the last that contains it. `None` if no line
+    /// contains it.
     pub(crate) fn families_of(&self, text: &str) -> Option<Vec<SharedString>> {
-        self.lines
-            .lock()
+        let lines = self.lines.lock();
+        // A line that is exactly `text` first - the label itself, rather than
+        // a longer line that happens to mention it, like an error naming the
+        // context a context bar shows.
+        lines
             .iter()
             .rev()
-            .find(|(line, _)| line.contains(text))
+            .find(|(line, _)| line == text)
+            .or_else(|| lines.iter().rev().find(|(line, _)| line.contains(text)))
             .map(|(_, families)| families.clone())
     }
 

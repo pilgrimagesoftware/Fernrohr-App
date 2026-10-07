@@ -9,16 +9,45 @@ use super::*;
 /// (or in-cluster config) when `None`. Pure async, no GPUI context, so it's testable
 /// on its own - the picker's "connect to this specific context" behavior lives here,
 /// not scattered across [`ClusterConnection::connect`].
+///
+/// A context authenticating through an exec plugin gets the login shell's
+/// `PATH` for it (#178, `exec_path`), so a Dock-launched app finds the plugin
+/// as a terminal would.
 pub(in crate::k8s::cluster) async fn resolve_config(
     context_name: Option<&str>,
 ) -> Result<Config, String> {
-    match context_name {
+    let config = match context_name {
         Some(name) => {
             let kubeconfig = Kubeconfig::read().map_err(|error| error_chain(&error))?;
             resolve_named_context(kubeconfig, name).await
         }
         None => Config::infer().await.map_err(|error| error_chain(&error)),
+    }?;
+    Ok(with_login_path(config).await)
+}
+
+/// `config` with its exec plugin, if any, pointed at the login shell's `PATH`.
+/// Resolving that runs the login shell the first time - up to
+/// `LOGIN_SHELL_TIMEOUT` - so it's done on a blocking thread, and only for a
+/// config that has a plugin to find.
+#[cfg(unix)]
+async fn with_login_path(mut config: Config) -> Config {
+    if config.auth_info.exec.is_none() {
+        return config;
     }
+    let path = tokio::task::spawn_blocking(crate::util::login_env::login_path)
+        .await
+        .map(str::to_string)
+        .unwrap_or_default();
+    if !path.is_empty() {
+        crate::k8s::cluster::exec_path::use_login_path(&mut config, &path);
+    }
+    config
+}
+
+#[cfg(not(unix))]
+async fn with_login_path(config: Config) -> Config {
+    config
 }
 
 /// [`resolve_config`]'s named-context branch, taking an already-loaded [`Kubeconfig`]

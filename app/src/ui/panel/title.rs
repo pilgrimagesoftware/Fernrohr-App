@@ -354,8 +354,13 @@ pub fn close_button<P: Panel>(panel: Entity<P>) -> Button {
 /// copy it. `1-window-context-bar` bug 2: a raw `{error:?}` dump was neither
 /// readable nor selectable; this is Logs' and Pod detail's shared fix for
 /// both halves at once, so the two panels cannot drift back apart on either.
+///
+/// Below them, Report… (#177) opens Report Issue with the message and detail
+/// already filled in - a tab stop, so Enter or Space reaches it as a click
+/// does.
 pub fn error_content(message: String, detail: Option<String>, cx: &App) -> impl IntoElement {
     let space = crate::ui::space::spacing(cx);
+    let report = crate::ui::report_issue::ReportError::of(&message, detail.as_deref());
     div()
         .size_full()
         .p(space.panel_inset)
@@ -369,6 +374,20 @@ pub fn error_content(message: String, detail: Option<String>, cx: &App) -> impl 
                 .text_color(cx.theme().muted_foreground)
                 .child(gpui_kit::component::text::markdown(code_block(&detail)).selectable(true))
         }))
+        .child(div().flex().child(report_button(report)))
+}
+
+/// The id of an error's Report… button, for tests.
+pub const REPORT_ERROR_BUTTON: &str = "report-error";
+
+/// Report…: opens Report Issue filled in with `report`.
+pub fn report_button(report: crate::ui::report_issue::ReportError) -> Button {
+    Button::new(REPORT_ERROR_BUTTON)
+        .label("Report\u{2026}")
+        .link()
+        .small()
+        .tooltip("Report this error, its text filled in")
+        .on_click(move |_event, window, cx| window.dispatch_action(Box::new(report.clone()), cx))
 }
 
 /// `text` with every markdown-significant character backslash-escaped, so the only
