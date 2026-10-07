@@ -201,6 +201,24 @@ impl LogsPanel {
             .map(|pinned| (pinned.name.clone(), pinned.containers.first().cloned()))
     }
 
+    /// Test-only: shows `lines` as `pod`'s `container` logs, with no stream.
+    #[cfg(test)]
+    pub(crate) fn test_show_lines(
+        &mut self,
+        pod: &str,
+        container: &str,
+        lines: &[&str],
+        cx: &mut Context<Self>,
+    ) {
+        self.current = Some(("shop".into(), pod.into(), container.into()));
+        let mut view = LogsView::new(vec![container.to_string()]);
+        for line in lines {
+            view.append_line(line.to_string());
+        }
+        self.view = cx.new(|_| view);
+        cx.notify();
+    }
+
     /// Restarts the stream on `container`, reusing the current pod/namespace -
     /// the container picker's only job, since `LogsView::select_container`
     /// already reports whether the selection actually changed.
