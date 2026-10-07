@@ -110,6 +110,7 @@ impl Render for ClusterPicker {
 
         let status = self.attempt.as_ref().map(|attempt| {
             let context_name = attempt.context_name.clone();
+            let mut report = None;
             let (text, color) = match &attempt.connection.read(cx).state {
                 ConnectionState::Connecting => (
                     format!("Connecting to {context_name}..."),
@@ -119,15 +120,33 @@ impl Render for ClusterPicker {
                     format!("Waiting for tunnel to {context_name}..."),
                     theme.muted_foreground,
                 ),
-                ConnectionState::Failed(reason) => (
-                    format!("Could not connect to {context_name}: {reason}"),
-                    theme.danger,
-                ),
+                ConnectionState::Failed(reason) => {
+                    // The report leaves the context's name out: it goes to a
+                    // public issue.
+                    report = Some(crate::ui::report_issue::ReportError::of(
+                        "Couldn't connect to the cluster",
+                        Some(reason),
+                    ));
+                    (
+                        format!("Could not connect to {context_name}: {reason}"),
+                        theme.danger,
+                    )
+                }
                 ConnectionState::Connected(_) => {
                     (format!("Connected to {context_name}"), theme.success)
                 }
             };
-            div().text_sm().text_color(color).child(text)
+            // Selectable, so a failure can be copied - and Report… beside a
+            // failure files it with the text filled in (#177).
+            div()
+                .flex()
+                .flex_col()
+                .items_start()
+                .gap_1()
+                .text_sm()
+                .text_color(color)
+                .child(gpui_kit::base::SelectableText::new(PICKER_STATUS, text))
+                .children(report.map(crate::ui::panel_title::report_button))
         });
 
         let connect_disabled = self.selected_context.is_none() || self.is_connect_in_flight(cx);
@@ -161,3 +180,6 @@ impl Render for ClusterPicker {
 
 #[cfg(test)]
 mod tests;
+
+/// The picker's connection status line, for tests.
+pub(crate) const PICKER_STATUS: &str = "picker-status";

@@ -53,10 +53,14 @@ impl Render for PodsPanel {
                 .size_full()
                 .p(space.panel_inset)
                 .child("Waiting for tunnel..."),
-            ConnectionState::Failed(reason) => div()
-                .size_full()
-                .p(space.panel_inset)
-                .child(format!("Connection failed: {reason}")),
+            // Selectable, with Report… beside it (#177).
+            ConnectionState::Failed(reason) => div().size_full().child(panel_title::error_content(
+                // Not the context's name: it's in the panel's title already, and a
+                // report filed from here goes to a public issue (#177).
+                "Couldn't connect to the cluster".to_string(),
+                Some(reason.clone()),
+                cx,
+            )),
             // `connection-status-bar`: a paused watch used to print its own "Paused
             // (...)" line here. That moved to the window's status bar
             // (`ui/status_bar.rs`), which shows it once per window rather than once per

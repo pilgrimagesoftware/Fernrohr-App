@@ -23,6 +23,38 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 
 actions!(report_issue, [ReportIssue]);
 
+/// Opens Report Issue with its fields filled in - a panel error's Report…
+/// (#177), so the error's text reaches the report without copying it there.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = report_issue, no_json)]
+pub struct ReportError {
+    pub subject: String,
+    pub description: String,
+}
+
+impl ReportError {
+    /// A report of the error `message`, with its technical `detail` - the
+    /// subject its first line, the description both, the detail verbatim.
+    pub fn of(message: &str, detail: Option<&str>) -> Self {
+        let first_line = message.lines().next().unwrap_or_default().trim();
+        let subject = match first_line.char_indices().nth(SUBJECT_LIMIT) {
+            Some((cut, _)) => format!("{}\u{2026}", &first_line[..cut]),
+            None => first_line.to_string(),
+        };
+        let description = match detail {
+            Some(detail) => format!("{message}\n\n```\n{detail}\n```\n"),
+            None => format!("{message}\n"),
+        };
+        Self {
+            subject,
+            description,
+        }
+    }
+}
+
+/// How many characters of an error's first line its report's subject keeps.
+const SUBJECT_LIMIT: usize = 80;
+
 pub const REPORT_ISSUE_COMMAND_ID: &str = "help.report_issue";
 pub const REPORT_ISSUE_DEFAULT_BINDING: &str = "cmd-shift-/";
 
@@ -53,9 +85,24 @@ pub fn register_handler(cx: &mut App) {
         // fails silently ("window not found") without ever running our
         // closure. Deferring runs this after that update completes and the
         // window is back in its slot.
-        cx.defer(open_report_issue_dialog);
+        cx.defer(|cx| open_report_issue_dialog(None, cx));
+    });
+    cx.on_action(|report: &ReportError, cx: &mut App| {
+        let report = report.clone();
+        // Deferred, as above.
+        cx.defer(move |cx| open_report_issue_dialog(Some(report), cx));
     });
 }
+
+/// Test-only: the last dialog's fields, to read what it was filled in with.
+#[cfg(test)]
+pub(crate) struct LastForm {
+    pub(crate) subject: Entity<InputState>,
+    pub(crate) description: Entity<TextareaState>,
+}
+
+#[cfg(test)]
+impl Global for LastForm {}
 
 /// How Report will file the issue.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -104,15 +151,30 @@ fn resolve_path(path: Option<String>) -> String {
     path.unwrap_or_else(|| crate::util::login_env::login_path().to_string())
 }
 
-fn open_report_issue_dialog(cx: &mut App) {
+/// Opens the dialog, its fields filled in from `prefill` when given.
+fn open_report_issue_dialog(prefill: Option<ReportError>, cx: &mut App) {
     let Some(handle) = cx.active_window() else {
         return;
     };
     let _ = handle.update(cx, |_, window, cx| {
-        let subject = cx.new(|cx| InputState::new(window, cx).placeholder("Subject"));
+        let (subject_text, description_text) = prefill
+            .map(|report| (report.subject, report.description))
+            .unwrap_or_default();
+        let subject = cx.new(|cx| {
+            let mut input = InputState::new(window, cx).placeholder("Subject");
+            input.set_value(subject_text, window, cx);
+            input
+        });
         let description = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .placeholder("Steps to reproduce, and what you expected instead.")
+            let mut input = TextareaState::new(window, cx)
+                .placeholder("Steps to reproduce, and what you expected instead.");
+            input.set_value(description_text, window, cx);
+            input
+        });
+        #[cfg(test)]
+        cx.set_global(LastForm {
+            subject: subject.clone(),
+            description: description.clone(),
         });
         let state = cx.new(|_| ReportState::default());
         check_route(state.clone(), window.window_handle(), cx);

@@ -396,6 +396,8 @@ impl Panel for PodsPanel {
 }
 
 #[cfg(test)]
+mod failure_tests;
+#[cfg(test)]
 mod list_keys_tests;
 #[cfg(test)]
 mod namespace_jump_tests;
