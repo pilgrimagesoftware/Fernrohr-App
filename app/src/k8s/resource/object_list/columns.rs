@@ -9,6 +9,7 @@
 //! frame. An object that doesn't deserialize as its kind gets empty cells, and
 //! a kind with no table gets the base columns only.
 
+mod autoscaling;
 mod config_network;
 mod storage_cluster;
 mod workloads;
@@ -132,6 +133,7 @@ pub fn for_kind(group: &str, kind: &str) -> Option<&'static KindColumns> {
         ("apps", "DaemonSet") => &workloads::DAEMON_SET,
         ("batch", "Job") => &workloads::JOB,
         ("batch", "CronJob") => &workloads::CRON_JOB,
+        ("autoscaling", "HorizontalPodAutoscaler") => &autoscaling::HORIZONTAL_POD_AUTOSCALER,
         ("", "ConfigMap") => &config_network::CONFIG_MAP,
         ("", "Secret") => &config_network::SECRET,
         ("", "Service") => &config_network::SERVICE,

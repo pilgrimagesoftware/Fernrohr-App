@@ -150,6 +150,11 @@ fn every_kind_in_the_spec_has_its_columns() {
             "CronJob",
             &["Schedule", "Suspend", "Active", "Last schedule"],
         ),
+        (
+            "autoscaling",
+            "HorizontalPodAutoscaler",
+            &["Reference", "Targets", "Min", "Max", "Replicas"],
+        ),
         ("", "ConfigMap", &["Data"]),
         ("", "Secret", &["Type", "Data"]),
         (
@@ -231,5 +236,38 @@ fn a_kind_outside_the_table_has_no_columns_of_its_own() {
     assert!(
         super::for_kind("", "Pod").is_none(),
         "Pods keep their own table"
+    );
+}
+
+/// #156: an HPA's row - what it scales, its metrics against their targets,
+/// its bounds, and its replicas as current/desired.
+#[test]
+fn an_hpas_row_reads_like_kubectl_get_hpa() {
+    let hpa: DynamicObject = serde_json::from_value(serde_json::json!({
+        "apiVersion": "autoscaling/v2", "kind": "HorizontalPodAutoscaler",
+        "metadata": { "name": "web", "namespace": "shop" },
+        "spec": {
+            "scaleTargetRef": { "apiVersion": "apps/v1", "kind": "Deployment", "name": "web" },
+            "minReplicas": 2, "maxReplicas": 10,
+            "metrics": [{ "type": "Resource", "resource": { "name": "cpu",
+                "target": { "type": "Utilization", "averageUtilization": 80 } } }],
+        },
+        "status": {
+            "currentReplicas": 3, "desiredReplicas": 4,
+            "currentMetrics": [{ "type": "Resource", "resource": { "name": "cpu",
+                "current": { "averageUtilization": 45 } } }],
+        },
+    }))
+    .unwrap();
+    let columns = super::for_kind("autoscaling", "HorizontalPodAutoscaler").unwrap();
+    assert_eq!(
+        columns.cells_for(&hpa),
+        [
+            Cell::Text("Deployment/web".into()),
+            Cell::Text("cpu: 45%/80%".into()),
+            Cell::Number(2),
+            Cell::Number(10),
+            Cell::Ratio(3, 4),
+        ]
     );
 }
