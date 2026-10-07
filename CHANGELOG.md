@@ -1,4 +1,48 @@
 
+## 0.5.0 - 2026-10-07
+
+### <!-- 0 -->🚀 Features
+- Irreversible confirmations open on Cancel
+- Open each pod's logs in its own Logs panel
+- Color the restart count by how alarming it is
+- Parse, extract and match label selectors
+- Follow the logs of a deployment's pods, or of typed labels
+- Copy a label or annotation by clicking its chip
+- Select and copy the YAML view's text
+- File Report Issue with the GitHub CLI when it's ready
+- Show an HPA's replicas and metrics in its list and detail
+- Open an Ingress's hosts in the browser
+- Colour-code statuses for kinds other than Pods
+- Read the system accent colour on Linux and Windows
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- A pod that ran to completion isn't shown not-ready
+- Cmd-W's window close checks for unsaved edits
+- Log lines can be drag-selected and copied
+- Scrolling back stops the Logs panel following
+- Case list tab titles like the kind they list
+- Open a followed namespace's detail, not its pods
+- Key label streams by pod uid, and read a Service's selector by kind
+- Confirm before closing one panel that would lose a shell or edit
+- Never read the portal in a test build
+- Allow the portal's in-flight flag to go unread in a test build
+
+
+### <!-- 2 -->🚜 Refactor
+- Move NavTarget's naming into its own module
+
+
+### <!-- 6 -->🧪 Testing
+- A pod's own Logs panel restores through register_restore
+- Press the irreversible key, not cmd-backspace, off macOS
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.4.0
+
+
+
 ## 0.4.0 - 2026-10-06
 
 ### <!-- 0 -->🚀 Features
