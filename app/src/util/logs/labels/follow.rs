@@ -145,14 +145,19 @@ impl LogsPanel {
         self.labels.as_ref()?.error.clone()
     }
 
-    /// Test-only: the containers streaming now, as `pod/container#restarts`.
+    /// Test-only: the containers streaming now, as `pod/container#restarts@uid`.
     #[cfg(test)]
     pub(crate) fn test_streams(&self) -> Vec<String> {
         let mut streams: Vec<String> = self
             .labels
             .iter()
             .flat_map(|following| following.streams.keys())
-            .map(|key| format!("{}/{}#{}", key.pod, key.container, key.restart_count))
+            .map(|key| {
+                format!(
+                    "{}/{}#{}@{}",
+                    key.pod, key.container, key.restart_count, key.uid
+                )
+            })
             .collect();
         streams.sort();
         streams

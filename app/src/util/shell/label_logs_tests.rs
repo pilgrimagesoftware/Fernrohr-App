@@ -166,10 +166,15 @@ async fn l_in_a_deployments_detail_panel_follows_its_pods(cx: &mut TestAppContex
 }
 
 fn pod(name: &str, app: &str, restarts: i32) -> serde_json::Value {
+    pod_as(name, app, restarts, &format!("uid-{name}"))
+}
+
+/// [`pod`], with its own `uid` - a pod recreated under the same name.
+fn pod_as(name: &str, app: &str, restarts: i32, uid: &str) -> serde_json::Value {
     json!({
         "apiVersion": "v1", "kind": "Pod",
         "metadata": {
-            "name": name, "namespace": "shop", "uid": format!("uid-{name}"),
+            "name": name, "namespace": "shop", "uid": uid,
             "labels": { "app": app },
         },
         "status": {
@@ -208,13 +213,31 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
         vcx.update(|_, cx| panel.read(cx).test_selector()),
         Some("app=web".to_string())
     );
-    wait_for_streams(&mut vcx, &panel, &["web-1/app#0"]);
+    wait_for_streams(&mut vcx, &panel, &["web-1/app#0@uid-web-1"]);
 
     // A pod that starts matching streams too, and a restart is a new stream.
     cluster.apply("/api/v1", "pods", pod("web-2", "web", 0));
     cluster.apply("/api/v1", "pods", pod("web-1", "web", 1));
     vcx.run_until_parked();
-    wait_for_streams(&mut vcx, &panel, &["web-1/app#1", "web-2/app#0"]);
+    wait_for_streams(
+        &mut vcx,
+        &panel,
+        &["web-1/app#1@uid-web-1", "web-2/app#0@uid-web-2"],
+    );
+
+    // A pod deleted and recreated under the same name - a StatefulSet's,
+    // restart count 0 again - is a new pod to stream, not the old one.
+    cluster.delete("/api/v1", "pods", "shop", "web-2");
+    cluster.apply(
+        "/api/v1",
+        "pods",
+        pod_as("web-2", "web", 0, "uid-web-2-again"),
+    );
+    wait_for_streams(
+        &mut vcx,
+        &panel,
+        &["web-1/app#1@uid-web-1", "web-2/app#0@uid-web-2-again"],
+    );
 
     // A selector that doesn't parse says why and keeps the last one.
     vcx.simulate_keystrokes("secondary-a backspace t e a m space i n space ( enter");
@@ -229,7 +252,10 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
             .is_some_and(|error| error.contains("team in (")),
         "{error:?}"
     );
-    assert_eq!(streams, ["web-1/app#1", "web-2/app#0"]);
+    assert_eq!(
+        streams,
+        ["web-1/app#1@uid-web-1", "web-2/app#0@uid-web-2-again"]
+    );
 
     // Follow Labels again focuses the open panel, and its field.
     vcx.update(|window, cx| {
@@ -242,5 +268,5 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
     assert_eq!(label_logs(&main, &mut vcx), [typed]);
     vcx.simulate_keystrokes("secondary-a backspace a p p = d b enter");
     vcx.run_until_parked();
-    wait_for_streams(&mut vcx, &panel, &["db-1/app#0"]);
+    wait_for_streams(&mut vcx, &panel, &["db-1/app#0@uid-db-1"]);
 }

@@ -50,12 +50,15 @@ impl LabelLogs {
     }
 }
 
-/// One container instance a label-following panel streams. The restart count
-/// makes a restarted container a new instance, whose log is streamed afresh.
+/// One container instance a label-following panel streams. The pod's uid
+/// makes a pod recreated under the same name - a StatefulSet's - a new pod,
+/// and the restart count a restarted container a new instance; either's log
+/// is streamed afresh.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(super) struct StreamKey {
     pub(super) namespace: String,
     pub(super) pod: String,
+    pub(super) uid: String,
     pub(super) container: String,
     pub(super) restart_count: i32,
 }
@@ -106,6 +109,7 @@ pub(super) fn wanted(
         let several = started.len() > 1;
         let namespace = pod.metadata.namespace.clone().unwrap_or_default();
         let name = pod.metadata.name.clone().unwrap_or_default();
+        let uid = pod.metadata.uid.clone().unwrap_or_default();
         for container in started {
             matched.containers += 1;
             let source = if several {
@@ -117,6 +121,7 @@ pub(super) fn wanted(
                 key: StreamKey {
                     namespace: namespace.clone(),
                     pod: name.clone(),
+                    uid: uid.clone(),
                     container: container.name.clone(),
                     restart_count: container.restart_count,
                 },

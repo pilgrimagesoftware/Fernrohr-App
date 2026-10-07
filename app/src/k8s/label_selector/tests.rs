@@ -1,6 +1,6 @@
 use super::{matches, of_object, parse};
 use kube::api::DynamicObject;
-use kube::core::{Expression, Selector};
+use kube::core::{Expression, GroupVersionKind, Selector};
 use std::collections::BTreeMap;
 
 fn labels(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
@@ -79,6 +79,14 @@ fn a_selector_matches_pods_by_their_labels() {
     assert!(!matches(&selector, None));
 }
 
+fn deployment_kind() -> GroupVersionKind {
+    GroupVersionKind::gvk("apps", "v1", "Deployment")
+}
+
+fn service_kind() -> GroupVersionKind {
+    GroupVersionKind::gvk("", "v1", "Service")
+}
+
 fn object(spec: serde_json::Value) -> DynamicObject {
     serde_json::from_value(serde_json::json!({
         "apiVersion": "apps/v1",
@@ -98,7 +106,7 @@ fn a_workloads_selector_is_its_match_labels_and_expressions() {
         },
     }));
     assert_eq!(
-        of_object(&deployment).unwrap(),
+        of_object(&deployment_kind(), &deployment).unwrap(),
         parse("app=web,tier in (front)").unwrap()
     );
 }
@@ -106,11 +114,37 @@ fn a_workloads_selector_is_its_match_labels_and_expressions() {
 #[test]
 fn a_services_selector_is_its_label_map() {
     let service = object(serde_json::json!({ "selector": { "app": "web" } }));
-    assert_eq!(of_object(&service).unwrap(), parse("app=web").unwrap());
+    assert_eq!(
+        of_object(&service_kind(), &service).unwrap(),
+        parse("app=web").unwrap()
+    );
 }
 
 #[test]
 fn no_selector_or_an_empty_one_selects_no_pods_to_stream() {
-    assert!(of_object(&object(serde_json::json!({ "replicas": 1 }))).is_none());
-    assert!(of_object(&object(serde_json::json!({ "selector": {} }))).is_none());
+    assert!(
+        of_object(
+            &deployment_kind(),
+            &object(serde_json::json!({ "replicas": 1 }))
+        )
+        .is_none()
+    );
+    assert!(
+        of_object(
+            &deployment_kind(),
+            &object(serde_json::json!({ "selector": {} }))
+        )
+        .is_none()
+    );
+}
+
+/// Review of #167: a Service's selector is a label map by its kind, even when
+/// it selects on a label literally named `matchLabels`.
+#[test]
+fn a_services_selector_is_a_label_map_whatever_its_keys() {
+    let service_object = object(serde_json::json!({ "selector": { "matchLabels": "yes" } }));
+    assert_eq!(
+        of_object(&service_kind(), &service_object).unwrap(),
+        parse("matchLabels=yes").unwrap()
+    );
 }

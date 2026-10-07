@@ -17,7 +17,7 @@ impl ObjectDetailPanel {
     /// namespaced and its spec selects pods.
     pub(super) fn pod_logs_workload(&self) -> Option<WorkloadRef> {
         let namespace = self.target.namespace.clone()?;
-        let selector = label_selector::of_object(self.object()?)?;
+        let selector = label_selector::of_object(&self.target.kind.gvk, self.object()?)?;
         Some(WorkloadRef {
             kind: self.target.kind.gvk.kind.clone(),
             namespace,

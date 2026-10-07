@@ -6,7 +6,7 @@
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use kube::api::DynamicObject;
-use kube::core::{Expression, Selector, SelectorExt as _};
+use kube::core::{Expression, GroupVersionKind, Selector, SelectorExt as _};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -169,22 +169,25 @@ fn value_of(value: &str) -> Result<String, &'static str> {
     Ok(value.to_string())
 }
 
-/// The pods `object` manages, as its `spec.selector` names them: a
-/// `LabelSelector` for a workload (Deployment, StatefulSet, DaemonSet,
-/// ReplicaSet, Job), or a plain label map for a Service. `None` when the
-/// object has no selector, or one that selects every pod - no workload's.
-pub fn of_object(object: &DynamicObject) -> Option<Selector> {
+/// The pods `object`, of kind `gvk`, manages, as its `spec.selector` names
+/// them: a plain label map for a core Service, a `LabelSelector` for
+/// everything else (Deployment, StatefulSet, DaemonSet, ReplicaSet, Job). The
+/// shape comes from the kind, not the keys - a Service may select on a label
+/// named `matchLabels`. `None` when the object has no selector, or one that
+/// selects every pod - no workload's.
+pub fn of_object(gvk: &GroupVersionKind, object: &DynamicObject) -> Option<Selector> {
     let selector = object.data.get("spec")?.get("selector")?;
-    let map = selector.as_object()?;
-    let selector = if map.contains_key("matchLabels") || map.contains_key("matchExpressions") {
-        let selector: LabelSelector = serde_json::from_value(selector.clone()).ok()?;
-        Selector::try_from(selector).ok()?
-    } else {
-        map.iter()
+    let selector = if gvk.group.is_empty() && gvk.kind == "Service" {
+        selector
+            .as_object()?
+            .iter()
             .map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
             .collect::<Option<Vec<_>>>()?
             .into_iter()
             .collect()
+    } else {
+        let selector: LabelSelector = serde_json::from_value(selector.clone()).ok()?;
+        Selector::try_from(selector).ok()?
     };
     (!selector.selects_all()).then_some(selector)
 }

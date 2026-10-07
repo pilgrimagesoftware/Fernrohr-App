@@ -183,3 +183,23 @@ fn a_saved_panel_names_what_it_followed() {
         None
     );
 }
+
+/// Review of #167: a pod deleted and recreated under the same name - a
+/// StatefulSet's, its restart count 0 again - is a new stream, not the old
+/// pod's finished one.
+#[test]
+fn a_pod_recreated_under_the_same_name_is_a_new_stream() {
+    let selector = parse("app=db").unwrap();
+    let before = vec![pod(
+        "shop",
+        "db-0",
+        &[("app", "db")],
+        vec![container("db", running(), 0)],
+    )];
+    let mut recreated = before.clone();
+    recreated[0].metadata.uid = Some("uid-recreated".into());
+    let (before, _) = wanted(&before, &selector, &[]);
+    let (after, _) = wanted(&recreated, &selector, &[]);
+    assert_eq!(before[0].source, after[0].source, "the same tag");
+    assert_ne!(before[0].key, after[0].key);
+}
