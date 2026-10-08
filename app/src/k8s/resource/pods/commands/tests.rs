@@ -3,7 +3,8 @@
 //! builder (`keymap::bindings`).
 
 use super::{
-    DescribePod, PANEL_KEY_CONTEXT, ShowPodLogs, ShowPodYaml, WarpNamespace, register_commands,
+    DescribePod, FocusFilter, PANEL_KEY_CONTEXT, ShowPodLogs, ShowPodYaml, WarpNamespace,
+    register_commands,
 };
 use crate::command::CommandRegistry;
 use crate::keymap::{self, KeymapConfig};
@@ -52,6 +53,7 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
     assert_eq!(
         in_pods,
         [
+            "pods.focus_filter",
             "pods.edit",
             "pods.quick_look",
             "pods.port_forward",
@@ -71,7 +73,7 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
     );
     assert_eq!(
         crate::command::build_items(&registry, &[PANEL_KEY_CONTEXT]).len(),
-        15,
+        16,
         "each is a palette item"
     );
 
@@ -89,7 +91,8 @@ fn the_palette_offers_the_pods_shortcuts_only_in_a_pods_panel() {
 fn each_default_key_resolves_to_its_action_beneath_a_focused_row() {
     let registry = registry();
     let keymap = app_keymap(&registry, &KeymapConfig::default());
-    let expected: [(&str, &dyn Action); 5] = [
+    let expected: [(&str, &dyn Action); 6] = [
+        ("/", &FocusFilter),
         ("w", &WarpNamespace),
         ("d", &DescribePod),
         ("l", &ShowPodLogs),

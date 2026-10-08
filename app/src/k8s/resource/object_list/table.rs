@@ -13,6 +13,16 @@ use list_model::{FORWARDS, cell_text, compare};
 
 use super::columns;
 
+/// Every one of `columns`' text for `row` - a list panel's "visible columns"
+/// for its search box (`crate::ui::list_search`, #189), gathered the same way
+/// `render_td`/`cell_text` reads each cell.
+pub(super) fn visible_texts(row: &ListRow, columns: &[ListColumn]) -> Vec<String> {
+    columns
+        .iter()
+        .map(|column| cell_text(row, column))
+        .collect()
+}
+
 /// The panel's table over `state`: striped, bordered, scrollable both ways, its
 /// rows `ui::space`'s row height - the same table the Pods panel draws - with a
 /// double-click on a header divider fitting the column on its left.

@@ -14,6 +14,20 @@ mod columns;
 use columns::cell_text;
 pub(super) use columns::{PodColumn, compare};
 
+/// Every column's text for `row`, in [`PodColumn::DEFAULT_ORDER`] - a list
+/// panel's "visible columns" for its search box (`crate::ui::list_search`,
+/// #189), gathered the same way [`PodTableDelegate::render_td`]/`cell_text`
+/// reads each cell. The Pods table's column *set* never changes with the
+/// user's reordering (only which position each sits in), so the fixed default
+/// order is every column there is to search, not just the ones currently left
+/// of the fold.
+pub(super) fn visible_texts(row: &PodRow) -> Vec<String> {
+    PodColumn::DEFAULT_ORDER
+        .iter()
+        .map(|&column| cell_text(row, column))
+        .collect()
+}
+
 /// One row of the live Pods table: the display fields plus the selection a
 /// click on it should publish.
 #[derive(Clone)]

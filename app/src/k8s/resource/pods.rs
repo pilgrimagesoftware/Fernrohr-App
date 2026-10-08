@@ -3,7 +3,6 @@
 //! (see their own doc comments). The imports below are the submodules' shared
 //! vocabulary - each opens with `use super::*`.
 
-use crate::config::workspace::{NamespaceScope, SortState};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use crate::util::resource_index::ResourceIndex;
@@ -11,7 +10,6 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState, panel_handle, register_panel,
 };
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::table::{TableEvent, TableState};
 use gpui_kit::*;
 use jiff::Timestamp;
@@ -23,18 +21,19 @@ mod actions;
 mod background;
 mod commands;
 mod edit;
+mod filter;
 mod hints;
 #[cfg(test)]
 pub(crate) use commands::LIST_KEY_CONTEXT;
 pub(crate) use commands::STOP_PORT_FORWARD_KEY;
 pub use commands::{
-    CloseQuickLook, DeletePod, DescribePod, EditPod, KillPod, OpenQuickLookDetails,
+    CloseQuickLook, DeletePod, DescribePod, EditPod, FocusFilter, KillPod, OpenQuickLookDetails,
     PANEL_KEY_CONTEXT, PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs,
     ShowPodLogsFlipped, ShowPodYaml, StopPortForward, WarpAllToNamespace, WarpNamespace,
     register_commands,
 };
 use commands::{
-    DESCRIBE_KEY, LOGS_KEY, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OpenInBackground,
+    DESCRIBE_KEY, FILTER_KEY, LOGS_KEY, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OpenInBackground,
     QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY,
 };
 

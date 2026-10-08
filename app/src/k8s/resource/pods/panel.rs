@@ -1,6 +1,7 @@
 //! The Pods dock panel: its state, lifecycle, selection wiring and dock integration. What it draws is `render`'s.
 
 use super::*;
+use crate::ui::list_search::ListSearch;
 
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Pods", |context, _window, cx| {
@@ -11,9 +12,11 @@ pub fn register_restore(cx: &mut App) {
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
             let scope = PanelScope::new(NavTarget::pods(), context_name).scoped_to(namespaces);
             let sort = sort_from_state(state);
+            let filter = filter::filter_from_state(state);
             Ok(panel_handle(cx.new(|cx| {
                 let mut panel = PodsPanel::new(scope, cx);
                 panel.initial_sort = sort;
+                panel.filter = ListSearch::restored(filter);
                 panel
             })))
         })
@@ -51,6 +54,9 @@ pub struct PodsPanel {
     /// column id and direction (`saved-panel-layouts` 1.6), or `None` for the
     /// table's own default (unsorted) order.
     pub(super) initial_sort: Option<(String, bool)>,
+    /// The filter box: its lazily built `InputState`, and the text to start it
+    /// with once restored (`saved-panel-layouts` 1.6, `list-search` #189).
+    pub(super) filter: ListSearch,
 }
 
 impl PodsPanel {
@@ -111,6 +117,7 @@ impl PodsPanel {
             quick_look: None,
             action_failure: None,
             initial_sort: None,
+            filter: ListSearch::new(),
         };
         this.start_watch_if_connected(&connection, cx);
         this
@@ -399,6 +406,7 @@ impl BasePanel for PodsPanel {
         let sort = sort.map(|(column, descending)| {
             serde_json::json!({ "column": column, "descending": descending })
         });
+        let filter = self.filter.dump(cx);
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
@@ -406,6 +414,7 @@ impl BasePanel for PodsPanel {
                 "context_name": self.scope.context_name,
                 "namespaces": self.scope.namespaces,
                 "sort": sort,
+                "filter": filter,
             })),
         }
     }
@@ -442,5 +451,7 @@ mod list_keys_tests;
 mod namespace_jump_tests;
 #[cfg(test)]
 mod restore_tests;
+#[cfg(test)]
+mod search_tests;
 #[cfg(test)]
 mod tests;

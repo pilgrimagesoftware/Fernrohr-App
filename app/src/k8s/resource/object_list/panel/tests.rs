@@ -69,17 +69,30 @@ fn harness_with(
     objects: Vec<DynamicObject>,
     refused: Option<&str>,
 ) -> Harness {
+    harness_overriding_keymap(cx, kind, objects, refused, &[])
+}
+
+/// [`harness_with`], with `overrides` (command id, key) added to the keymap -
+/// so a test can prove the hint row's key is the live, rebound one rather than
+/// always its fallback.
+pub(super) fn harness_overriding_keymap(
+    cx: &mut TestAppContext,
+    kind: DiscoveredKind,
+    objects: Vec<DynamicObject>,
+    refused: Option<&str>,
+    overrides: &[(&str, &str)],
+) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_list::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let mut config = KeymapConfig::default();
+        for (id, key) in overrides {
+            config.bindings.insert(id.to_string(), key.to_string());
+        }
+        let bindings = keymap::bindings(&registry, &config, cx.keyboard_mapper().as_ref());
         cx.bind_keys(bindings);
     });
     let client = {
@@ -435,3 +448,4 @@ async fn double_clicking_a_header_divider_fits_its_column(cx: &mut TestAppContex
 
 mod background;
 mod poll;
+mod search;

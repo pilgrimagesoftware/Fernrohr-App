@@ -5,13 +5,14 @@
 use super::commands::{FocusFilter, OpenListedObject, OpenSelected, WarpNamespace};
 use super::store::ObjectsTable;
 use super::table::{
-    ColumnLayout, ListColumn, ListRow, ObjectTableDelegate, apply_layout, reselect,
+    ColumnLayout, ListColumn, ListRow, ObjectTableDelegate, apply_layout, reselect, visible_texts,
 };
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::DetailView;
+use crate::ui::list_search::{self, ListSearch};
 use crate::ui::nav::{ObjectTarget, OpenMode};
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::dock::{
@@ -22,6 +23,10 @@ use gpui_kit::component::table::{TableEvent, TableState};
 use gpui_kit::*;
 
 mod keys;
+
+/// The filter box's placeholder - narrows rows by every visible column, not
+/// name alone (`list-search` #189).
+pub(super) const FILTER_PLACEHOLDER: &str = "Filter rows...";
 
 /// A dock panel listing one discovered kind's objects in its scope's cluster,
 /// live, narrowed to its namespace selection and its filter.
@@ -38,12 +43,11 @@ pub struct ObjectListPanel {
     pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
     /// Built on first render, which is the first time there's a `Window`.
     pub(super) table: Option<Entity<TableState<ObjectTableDelegate>>>,
-    pub(super) filter: Option<Entity<InputState>>,
+    /// The filter box: its lazily built `InputState`, and the text to start it
+    /// with once restored (`saved-panel-layouts` 1.6, `list-search` #189).
+    pub(super) filter: ListSearch,
     /// The column layout to start the table with, once it's built.
     pub(super) initial_layout: ColumnLayout,
-    /// The filter text to start the filter field with, once it's built
-    /// (`saved-panel-layouts` 1.6).
-    pub(super) initial_filter: Option<String>,
     /// The sort to start the table with, once it's built - a saved layout's
     /// column id and direction (`saved-panel-layouts` 1.6), or `None` for the
     /// table's own default (unsorted) order.
@@ -95,9 +99,8 @@ impl ObjectListPanel {
             subscribed: false,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             table: None,
-            filter: None,
+            filter: ListSearch::new(),
             initial_layout: Vec::new(),
-            initial_filter: None,
             initial_sort: None,
             refusal: None,
         };
@@ -129,9 +132,8 @@ impl ObjectListPanel {
             subscribed: true,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             table: None,
-            filter: None,
+            filter: ListSearch::new(),
             initial_layout: Vec::new(),
-            initial_filter: None,
             initial_sort: None,
             refusal: None,
         }
@@ -161,16 +163,16 @@ impl ObjectListPanel {
         &self.kind
     }
 
-    /// The rows to show now: the kind's objects in this panel's namespaces whose
-    /// name contains the filter text.
+    /// The rows to show now: the kind's objects in this panel's namespaces
+    /// whose visible column text - every one of [`ListColumn::for_kind`]'s
+    /// columns, the table's own column set regardless of the order the user
+    /// left them in - contains the filter text, case-insensitively
+    /// (`list-search` #189).
     pub(super) fn visible_rows(&self, cx: &App) -> Vec<ListRow> {
         let now = jiff::Timestamp::now();
         let namespaces = &self.scope.namespaces;
-        let filter = self
-            .filter
-            .as_ref()
-            .map(|filter| filter.read(cx).value().to_string())
-            .unwrap_or_default();
+        let query = self.filter.query(cx);
+        let columns = ListColumn::for_kind(&self.kind);
         self.objects
             .read(cx)
             .rows()
@@ -182,40 +184,23 @@ impl ObjectListPanel {
                         .as_ref()
                         .is_some_and(|namespace| namespaces.contains(namespace))
             })
-            .filter(|row| row.name.contains(filter.as_str()))
             .map(|row| {
                 let mut listed = ListRow::new(row.clone(), now);
                 listed.forwards = self.forwards_of(row, cx);
                 listed
             })
+            .filter(|row| list_search::matches(visible_texts(row, &columns), &query))
             .collect()
     }
 
-    /// The text field filtering rows by name, created the first time a window
-    /// renders this panel.
+    /// The text field filtering rows, created the first time a window renders
+    /// this panel.
     pub(super) fn filter_input(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<InputState> {
-        if let Some(filter) = &self.filter {
-            return filter.clone();
-        }
-        let initial_filter = self.initial_filter.clone();
-        let filter = cx.new(|cx| {
-            let mut state = InputState::new(window, cx).placeholder("Filter by name...");
-            if let Some(initial) = initial_filter {
-                state = state.default_value(initial);
-            }
-            state
-        });
-        cx.subscribe(
-            &filter,
-            |_, _, _event: &gpui_kit::component::input::InputEvent, cx| cx.notify(),
-        )
-        .detach();
-        self.filter = Some(filter.clone());
-        filter
+        self.filter.input(FILTER_PLACEHOLDER, window, cx)
     }
 
     /// The table, created the first time a window renders this panel and given
@@ -352,12 +337,8 @@ impl ObjectListPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(filter) = &self.filter {
-            filter.update(cx, |filter, cx| filter.set_value("", window, cx));
-        }
-        if let Some(table) = &self.table {
-            table.read(cx).focus_handle(cx).focus(window, cx);
-        }
+        let focus = self.table_focus_handle(cx);
+        self.filter.clear(&focus, window, cx);
         cx.notify();
     }
 
@@ -367,16 +348,22 @@ impl ObjectListPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let filter = self.filter_input(window, cx);
-        filter.read(cx).focus_handle(cx).focus(window, cx);
+        self.filter.focus(FILTER_PLACEHOLDER, window, cx);
+    }
+
+    /// Focus to return to once the filter clears - the table if it's drawn,
+    /// the panel itself otherwise.
+    fn table_focus_handle(&self, cx: &App) -> FocusHandle {
+        match &self.table {
+            Some(table) => table.read(cx).focus_handle(cx),
+            None => self.focus_handle.clone(),
+        }
     }
 
     /// Whether the filter box holds focus. Test-only.
     #[cfg(test)]
     pub(crate) fn filter_focused(&self, window: &Window, cx: &App) -> bool {
-        self.filter
-            .as_ref()
-            .is_some_and(|filter| filter.read(cx).focus_handle(cx).is_focused(window))
+        self.filter.is_focused(window, cx)
     }
 
     /// Narrows a namespaced kind's list to the selected object's namespace - the
