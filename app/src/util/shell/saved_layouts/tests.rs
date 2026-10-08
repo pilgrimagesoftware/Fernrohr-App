@@ -12,6 +12,7 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::ui::confirm_dialog;
 use crate::ui::nav::NavTarget;
+use crate::util::shell::SaveLayout;
 use crate::util::shell::test_support::{press, temp_layouts_dir, temp_workspace_path};
 use crate::util::shell::{MainWindow, SavedLayoutsDir, init};
 use gpui_kit::component::Root;
@@ -129,7 +130,26 @@ async fn the_default_binding_does_nothing_from_the_cluster_picker(cx: &mut TestA
     press(&mut h.vcx, "secondary-shift-s");
     assert!(
         !dialog_open(&mut h),
-        "the picker has no Workspace context, so the command is unavailable"
+        "the picker has no Save handler, so the key does nothing"
+    );
+}
+
+/// The Window menu's Save Panel Layout is enabled in a workspace and disabled
+/// from the cluster picker: a menu item is enabled exactly while a handler
+/// for its action is on the focus path.
+#[gpui_kit::test]
+async fn save_is_available_in_a_workspace_and_not_from_the_cluster_picker(cx: &mut TestAppContext) {
+    let mut workspace = harness(cx, false, false);
+    assert!(
+        workspace
+            .vcx
+            .update(|window, cx| window.is_action_available(&SaveLayout, cx))
+    );
+    let mut picker = harness(cx, true, false);
+    assert!(
+        !picker
+            .vcx
+            .update(|window, cx| window.is_action_available(&SaveLayout, cx))
     );
 }
 

@@ -73,8 +73,9 @@ pub const MANAGE_LAYOUTS_COMMAND_ID: &str = "layouts.manage";
 pub const MANAGE_LAYOUTS_DEFAULT_BINDING: &str = "secondary-shift-o";
 /// The key context active while a window shows a connected workspace (its
 /// dock, Resource panel and status bar) rather than the cluster picker -
-/// `render.rs` tags the workspace body with it, so a command scoped here
-/// (like `layouts.save`) is unavailable from an unconnected window.
+/// `render.rs` tags the workspace body with it, where `layouts.save`'s
+/// handler also lives, so commands that only make sense in a connected
+/// workspace can be scoped to it.
 pub(super) const WORKSPACE_KEY_CONTEXT: &str = "Workspace";
 
 pub fn default_workspace_path() -> PathBuf {
@@ -127,18 +128,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         id: SAVE_LAYOUT_COMMAND_ID,
         title: "Save Panel Layout…",
         default_binding: SAVE_LAYOUT_DEFAULT_BINDING,
-        context: Some(WORKSPACE_KEY_CONTEXT),
+        // Not context-gated, so it can sit in the Window menu (a menu item is
+        // built once at startup). Its handler is on the workspace body, not
+        // the window root, so from the cluster picker nothing handles it:
+        // the menu item shows disabled (`is_action_available`, which asks
+        // the focus path for a handler) and the key does nothing.
+        context: None,
         action: Box::new(SaveLayout),
-        // design.md D4's table gives this a Window-menu entry too, but
-        // `ui::menu::tests::no_menu_item_is_scoped_to_a_panel` is an existing,
-        // crate-wide invariant that no context-gated command sits in the menu
-        // bar (the bar is built once and never rebuilt on a focus or mode
-        // change). `Workspace` is a window-*mode* context, not a per-panel
-        // one, but loosening that invariant to say so is section 7's own
-        // task (7.2 "both top-level commands appear under MenuSlot::Window"),
-        // not this section's - so this stays palette/keymap-only for now
-        // rather than silently weakening a test section 2 doesn't own.
-        menu: None,
+        menu: Some(crate::command::MenuSlot::Window),
     });
     registry.register(Command {
         id: MANAGE_LAYOUTS_COMMAND_ID,

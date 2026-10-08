@@ -266,6 +266,17 @@ fn the_navigate_menu_holds_only_global_navigation() {
     );
 }
 
+/// `saved-panel-layouts` 7.2: `layouts.save` and `layouts.manage` both show
+/// up under the Window menu, alongside `shell.new_window` - the registry's
+/// own `menu` slot, not a hand-kept list that could drift from it.
+#[test]
+fn the_window_menu_carries_both_layout_commands() {
+    assert_eq!(
+        structure(TopMenu::Window),
+        ["New Window", "Save Panel Layout…", "Saved Layouts…"]
+    );
+}
+
 /// 1.3: no panel-scoped command is in the menu bar. Every menu item is
 /// global, so the bar never depends on which panel has focus - it is built
 /// once at startup and rebuilt only when the keymap changes

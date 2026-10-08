@@ -156,10 +156,12 @@ fn open_save_dialog(main_window: WeakEntity<MainWindow>, window: &mut Window, cx
     }
     let dialog = cx.new(|cx| SaveLayoutDialog::new(main_window, window, cx));
     let name_input = dialog.read(cx).name_input.clone();
-    let key = Kbd::binding_for_action(&SaveLayout, Some(WORKSPACE_KEY_CONTEXT), window)
-        .unwrap_or_else(|| {
-            Kbd::new(Keystroke::parse(SAVE_LAYOUT_DEFAULT_BINDING).expect("a valid default key"))
-        });
+    // `layouts.save` is registered `context: None` (section 7's menu-greying
+    // investigation - see its registration in `util::shell::app` for why), so
+    // its binding is global like `ManageLayouts`'s own lookup just above.
+    let key = Kbd::binding_for_action(&SaveLayout, None, window).unwrap_or_else(|| {
+        Kbd::new(Keystroke::parse(SAVE_LAYOUT_DEFAULT_BINDING).expect("a valid default key"))
+    });
     window.open_dialog(cx, move |built, _window, _cx| {
         let dialog = dialog.clone();
         built

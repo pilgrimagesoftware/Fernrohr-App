@@ -42,8 +42,19 @@ fn fixture(name: &str) -> SavedLayout {
 /// cluster picker instead - either way with its own temp layouts directory
 /// (mirrors `saved_layouts::tests::harness`).
 fn harness(cx: &mut TestAppContext, picker: bool) -> Harness {
+    harness_with_keymap(cx, picker, "")
+}
+
+/// [`harness`], with `keymap_text` written to `keymap.toml` before `init` -
+/// the same `harness_with_keymap` pattern `pending_chord_tests.rs` uses - so
+/// a test can assert the picker's hint row reads a live override rather than
+/// a hardcoded default (7.3).
+fn harness_with_keymap(cx: &mut TestAppContext, picker: bool, keymap_text: &str) -> Harness {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
+    if !keymap_text.is_empty() {
+        std::fs::write(&keymap, keymap_text).expect("writes a keymap.toml fixture");
+    }
     let layouts_dir = temp_layouts_dir();
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
@@ -209,4 +220,44 @@ async fn backspace_then_confirming_removes_the_layout(cx: &mut TestAppContext) {
     press(&mut h.vcx, "secondary-backspace");
 
     assert!(saved(&h).is_empty(), "the layout is gone from the store");
+}
+
+/// 7.3: the picker's hint row reads the live keymap, not a hardcoded
+/// default - a `keymap.toml` fixture overriding `saved_layouts.
+/// rename_selected` from `r` to `n` resolves, once the picker is open,
+/// through `window.highest_precedence_binding_for_action_in_context` - the
+/// same resolution `Kbd::binding_for_action` wraps, which `ui::picker::
+/// saved_layouts::render::hint_row` calls for this exact action and context.
+#[gpui_kit::test]
+async fn the_hint_row_shows_an_overridden_key_not_the_default(cx: &mut TestAppContext) {
+    use crate::ui::picker::saved_layouts::{KEY_CONTEXT, RenameSelected};
+    use gpui_kit::KeyContext;
+
+    let mut h = harness_with_keymap(
+        cx,
+        false,
+        "[bindings]\n\"saved_layouts.rename_selected\" = \"n\"\n",
+    );
+    crate::config::saved_layouts::save(&h.layouts_dir, &fixture("Alpha")).expect("seeds a layout");
+    open_picker(&mut h);
+
+    let shown = h
+        .vcx
+        .update_window(h._window.into(), |_, window, _cx| {
+            let context = KeyContext::parse(KEY_CONTEXT).expect("a valid context");
+            window.highest_precedence_binding_for_action_in_context(&RenameSelected, context)
+        })
+        .unwrap()
+        .expect("rename_selected is bound in the picker's context");
+    let shown_keys: Vec<String> = shown
+        .keystrokes()
+        .iter()
+        .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
+        .collect();
+    let overridden = gpui_kit::Keystroke::parse("n").unwrap().unparse();
+    assert_eq!(
+        shown_keys,
+        vec![overridden],
+        "the hint row's own lookup resolves the override, not the default `r`"
+    );
 }
