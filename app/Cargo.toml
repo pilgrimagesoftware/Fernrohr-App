@@ -52,7 +52,7 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 ashpd = { version = "=0.13.13", default-features = false, features = ["async-io", "settings"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "=0.59.0", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
 
 [dev-dependencies]
 gpui-kit = { version = "=0.7.0", features = ["test-support"] }
