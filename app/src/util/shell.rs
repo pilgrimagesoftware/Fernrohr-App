@@ -58,6 +58,8 @@ mod chord_precedence_tests;
 mod edit_yaml_tests;
 #[cfg(test)]
 mod label_logs_tests;
+#[cfg(test)]
+mod node_pods_window_tests;
 mod open;
 mod panel_focus;
 mod panels;

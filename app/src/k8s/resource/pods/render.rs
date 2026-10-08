@@ -79,123 +79,156 @@ impl Render for PodsPanel {
                 let namespaces = &self.scope.namespaces;
                 let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
                 let forwards = forwards.read(cx);
-                let items: Vec<PodTableRow> = self
-                    .table
-                    .read(cx)
-                    .pods()
-                    .iter()
-                    .filter(|pod| matches_namespaces(pod, namespaces))
-                    .map(|pod| {
-                        let containers = pod
-                            .spec
-                            .as_ref()
-                            .map(|spec| spec.containers.iter().map(|c| c.name.clone()).collect())
-                            .unwrap_or_default();
-                        let selection = PodSelection {
-                            namespace: pod.metadata.namespace.clone().unwrap_or_default(),
-                            name: pod.metadata.name.clone().unwrap_or_default(),
-                            containers,
-                            context_name: self.scope.context_name.clone(),
-                        };
-                        let forwards = forwards.for_object(
-                            &crate::k8s::cluster::port_forwards::ForwardObject::pod(
-                                &selection.context_name,
-                                &selection.namespace,
-                                &selection.name,
-                            ),
-                        );
-                        let mut row = pod_row(pod, now);
-                        row.forwards = forwards.len();
-                        PodTableRow {
-                            row,
-                            selection,
-                            forwards,
-                        }
-                    })
-                    // Every visible column, not name alone - the table's own
-                    // idea of "visible" (`pods_table::visible_texts`) for the
-                    // shared matcher.
-                    .filter(|item| {
-                        list_search::matches(pods_table::visible_texts(&item.row), &query)
-                    })
-                    .collect();
-                let table = self.sync_table(items, window, cx);
-                // The shell command's context, only while the selected pod has a
-                // running container (`shell`).
-                let shellable = self.shell_candidates(cx).is_some();
-                // A quick look whose pod has no row - deleted while open - can't
-                // hang below it, so it sits at the top of the table instead.
-                let unanchored = self.quick_look.clone().filter(|popover| {
-                    let target = &popover.read(cx).target;
-                    table.read(cx).delegate().index_of(target).is_none()
+                // Whether this node has any pods at all, before the text filter -
+                // kept separate from `items` below so an active search narrowing
+                // a non-empty node to nothing still shows the (empty) table
+                // rather than "no pods on this node" (#186).
+                let any_on_node = self.table.read(cx).pods().iter().any(|pod| {
+                    matches_namespaces(pod, namespaces) && matches_node(pod, self.node.as_deref())
                 });
-                let shortcuts = self.render_hints(shellable, window, cx);
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .p(space.panel_inset)
-                    .children(self.render_action_failure(cx))
-                    .child(
-                        div()
-                            .on_action(cx.listener(Self::on_action_clear_filter))
-                            .child(Input::new(&filter_input)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_h_0()
-                            .when(shellable, |this| this.key_context(SHELL_KEY_CONTEXT))
-                            .children(unanchored.map(|popover| {
-                                deferred(
-                                    anchored().snap_to_window_with_margin(px(8.)).child(popover),
-                                )
-                                .with_priority(1)
-                            }))
-                            .child(pods_table::data_table(&table, cx)),
-                    )
-                    .child(
-                        div()
-                            .mt(space.control_gap)
-                            .px_2()
-                            .py_1()
-                            .rounded_md()
-                            .bg(crate::ui::style::surface_raised(cx))
-                            .child(shortcuts),
-                    )
+                if self.node.is_some() && !any_on_node {
+                    div()
+                        .size_full()
+                        .p(space.panel_inset)
+                        .debug_selector(|| "node-pods-empty".to_string())
+                        .child("No pods are scheduled on this node.")
+                } else {
+                    let items: Vec<PodTableRow> = self
+                        .table
+                        .read(cx)
+                        .pods()
+                        .iter()
+                        .filter(|pod| {
+                            matches_namespaces(pod, namespaces)
+                                && matches_node(pod, self.node.as_deref())
+                        })
+                        .map(|pod| {
+                            let containers = pod
+                                .spec
+                                .as_ref()
+                                .map(|spec| {
+                                    spec.containers.iter().map(|c| c.name.clone()).collect()
+                                })
+                                .unwrap_or_default();
+                            let selection = PodSelection {
+                                namespace: pod.metadata.namespace.clone().unwrap_or_default(),
+                                name: pod.metadata.name.clone().unwrap_or_default(),
+                                containers,
+                                context_name: self.scope.context_name.clone(),
+                            };
+                            let forwards = forwards.for_object(
+                                &crate::k8s::cluster::port_forwards::ForwardObject::pod(
+                                    &selection.context_name,
+                                    &selection.namespace,
+                                    &selection.name,
+                                ),
+                            );
+                            let mut row = pod_row(pod, now);
+                            row.forwards = forwards.len();
+                            PodTableRow {
+                                row,
+                                selection,
+                                forwards,
+                            }
+                        })
+                        // Every visible column, not name alone - the table's own
+                        // idea of "visible" (`pods_table::visible_texts`) for the
+                        // shared matcher.
+                        .filter(|item| {
+                            list_search::matches(pods_table::visible_texts(&item.row), &query)
+                        })
+                        .collect();
+                    let table = self.sync_table(items, window, cx);
+                    // The shell command's context, only while the selected pod has a
+                    // running container (`shell`).
+                    let shellable = self.shell_candidates(cx).is_some();
+                    // A quick look whose pod has no row - deleted while open - can't
+                    // hang below it, so it sits at the top of the table instead.
+                    let unanchored = self.quick_look.clone().filter(|popover| {
+                        let target = &popover.read(cx).target;
+                        table.read(cx).delegate().index_of(target).is_none()
+                    });
+                    let shortcuts = self.render_hints(shellable, window, cx);
+                    div()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .p(space.panel_inset)
+                        .children(self.render_action_failure(cx))
+                        .child(
+                            div()
+                                .on_action(cx.listener(Self::on_action_clear_filter))
+                                .child(Input::new(&filter_input)),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_h_0()
+                                .when(shellable, |this| this.key_context(SHELL_KEY_CONTEXT))
+                                .children(unanchored.map(|popover| {
+                                    deferred(
+                                        anchored()
+                                            .snap_to_window_with_margin(px(8.))
+                                            .child(popover),
+                                    )
+                                    .with_priority(1)
+                                }))
+                                .child(pods_table::data_table(&table, cx)),
+                        )
+                        .child(
+                            div()
+                                .mt(space.control_gap)
+                                .px_2()
+                                .py_1()
+                                .rounded_md()
+                                .bg(crate::ui::style::surface_raised(cx))
+                                .child(shortcuts),
+                        )
+                }
             }
         };
 
-        let this = cx.weak_entity();
-        let namespaces = self.namespaces.read(cx).names().to_vec();
-        let namespace_bar = self.namespace_picker.element(
-            &self.scope,
-            &namespaces,
-            move |namespaces, cx| {
-                let _ = this.update(cx, |this: &mut Self, cx| {
-                    this.scope = this.scope.scoped_to(namespaces.clone());
-                    cx.emit(ScopeEvent::NamespacesChanged(namespaces));
-                });
-            },
-            window,
-            cx,
-        );
-        // "Context: <name>" on the left, the namespace picker (when there is one)
-        // on the right, in one header row.
-        let header = div()
-            .flex()
-            .items_center()
-            .gap(space.control_gap)
-            .px(space.panel_inset)
-            .py(space.control_gap)
-            .bg(crate::ui::style::surface_raised(cx))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(panel_title::context_label(
+        // Embedded in a Node's detail panel (#186), this table is already
+        // under that panel's own "Context: <name>" header, and shows every
+        // namespace by construction - its own context label and namespace
+        // picker would only repeat the first and offer a filter the feature
+        // doesn't call for, so it draws no header of its own.
+        let header = if self.node.is_none() {
+            let this = cx.weak_entity();
+            let namespaces = self.namespaces.read(cx).names().to_vec();
+            let namespace_bar = self.namespace_picker.element(
                 &self.scope,
-                cx.theme().muted_foreground,
-            ))
-            .children(namespace_bar);
+                &namespaces,
+                move |namespaces, cx| {
+                    let _ = this.update(cx, |this: &mut Self, cx| {
+                        this.scope = this.scope.scoped_to(namespaces.clone());
+                        cx.emit(ScopeEvent::NamespacesChanged(namespaces));
+                    });
+                },
+                window,
+                cx,
+            );
+            // "Context: <name>" on the left, the namespace picker (when there is
+            // one) on the right, in one header row.
+            Some(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(space.control_gap)
+                    .px(space.panel_inset)
+                    .py(space.control_gap)
+                    .bg(crate::ui::style::surface_raised(cx))
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(panel_title::context_label(
+                        &self.scope,
+                        cx.theme().muted_foreground,
+                    ))
+                    .children(namespace_bar),
+            )
+        } else {
+            None
+        };
 
         // While a quick look is open its own keys (Escape, Enter) apply too.
         let mut key_context = KeyContext::default();
@@ -238,11 +271,20 @@ impl Render for PodsPanel {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .child(header)
+                    .children(header)
                     .child(div().flex_1().min_h_0().child(content)),
-            )
-            // Tab stays in the panel: see `ui::panel::focus`.
-            .focus_trap("pods-panel-tab-trap", &self.focus_handle);
+            );
+        // Tab stays in the panel (`ui::panel::focus`) - except embedded in a
+        // Node's detail panel (#186), where it is one region among several
+        // rather than the whole focus scope, and must let Tab carry on to the
+        // rest of that panel instead of cycling back into this table.
+        let panel = if self.node.is_some() {
+            panel.into_any_element()
+        } else {
+            panel
+                .focus_trap("pods-panel-tab-trap", &self.focus_handle)
+                .into_any_element()
+        };
         // Namespace quick-jump's context, as its own frame around the panel so
         // it's on the focus path with the panel or its table focused.
         div()
