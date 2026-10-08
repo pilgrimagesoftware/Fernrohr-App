@@ -1,4 +1,42 @@
 
+## 0.7.0 - 2026-10-08
+
+### <!-- 0 -->🚀 Features
+- Saved-layout file store and list-panel view state
+- Save Panel Layout command and naming dialog
+- Saved Layouts picker with rename and delete
+- Load a saved layout with Replace or Add
+- Restore a panel for an unheld context as a placeholder
+- Layouts section to list and remove saved layouts
+- Window-menu entries and command checks for saved layouts
+- One search for every list panel
+- List the pods running on a node in its detail panel
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Renew an expired OIDC auth-provider id-token before connecting
+- Serialize OIDC renewals and verify the discovered issuer
+- Read saved layouts off the main thread, not while rendering
+- Show that a metadata chip or copy control copied
+- Build on Windows with windows-sys 0.61
+
+
+### <!-- 10 -->💼 Other
+- Bump windows-sys from 0.59.0 to 0.61.2
+- Bump tokio from 1.53.1 to 1.53.2
+- Bump rust-i18n from 4.2.3 to 4.2.4
+- Bump base64 from 0.22.1 to 0.23.1
+
+
+### <!-- 6 -->🧪 Testing
+- End-to-end save, reload, Replace and Add round trips
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.6.0
+
+
+
 ## 0.6.0 - 2026-10-07
 
 ### <!-- 0 -->🚀 Features
