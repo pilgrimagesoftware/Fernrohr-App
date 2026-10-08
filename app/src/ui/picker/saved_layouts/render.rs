@@ -3,7 +3,10 @@
 //! its command), the unreadable-file notice, and the keyboard hint row.
 //! Wires `Command`'s `on_select` into [`super::interaction::
 //! SavedLayoutsPicker::follow_keyboard`] the same way `ClusterPicker` does,
-//! so hover never moves the keyboard selection (`keyboard-first.md`).
+//! so hover never moves the keyboard selection (`keyboard-first.md`); wires
+//! `Command`'s own built-in confirm (`enter`) into [`super::interaction::
+//! SavedLayoutsPicker::confirm_selected`] the same way `ClusterPicker` wires
+//! it to its own `confirm_row`, so a bare `enter` does Replace.
 
 use super::*;
 
@@ -68,6 +71,18 @@ impl Render for SavedLayoutsPicker {
                     }
                     let _ = this.update(cx, |this, cx| this.follow_keyboard(index_path.row, cx));
                 }
+            })
+            // `Command`'s own built-in confirm action (bound to a bare
+            // `enter` in its own `"Command"` key context, which `enter`
+            // reaches before this view's own `LoadReplace` binding ever
+            // would - see `interaction::SavedLayoutsPicker::confirm_selected`'s
+            // doc comment). Routed to the same method `on_action_load_replace`
+            // calls, so Enter does Replace exactly once either way.
+            .on_confirm({
+                let this = this.clone();
+                move |_index_path, window, cx| {
+                    let _ = this.update(cx, |this, cx| this.confirm_selected(window, cx));
+                }
             });
 
         let theme = cx.theme().clone();
@@ -92,6 +107,8 @@ impl Render for SavedLayoutsPicker {
             .key_context(KEY_CONTEXT)
             .on_action(cx.listener(Self::on_action_rename_selected))
             .on_action(cx.listener(Self::on_action_delete_selected))
+            .on_action(cx.listener(Self::on_action_load_replace))
+            .on_action(cx.listener(Self::on_action_load_add))
             .w(px(420.))
             .flex()
             .flex_col()
@@ -201,8 +218,8 @@ fn row(
     }
 }
 
-/// "R Rename  ⌫ Delete", each key read from the live keymap - load with Add/
-/// Replace join this once section 4 registers them.
+/// "↵ Load (Replace)  ⌘↵ Load (Add)  R Rename  ⌫ Delete", each key read from
+/// the live keymap.
 ///
 /// Looks up [`KEY_CONTEXT`] alone, not [`KEYS_CONTEXT`]: `Kbd::binding_for_action`'s
 /// `context` parameter is `gpui`'s own `KeyContext` mini-language (a plain
@@ -218,6 +235,8 @@ fn row(
 /// field has focus and `!Input` would matter, so the plain context is exactly
 /// right here, not just a workaround.
 fn hint_row(window: &mut Window) -> impl IntoElement {
+    let replace_key = Kbd::binding_for_action(&LoadReplace, Some(KEY_CONTEXT), window);
+    let add_key = Kbd::binding_for_action(&LoadAdd, Some(KEY_CONTEXT), window);
     let rename_key = Kbd::binding_for_action(&RenameSelected, Some(KEY_CONTEXT), window);
     let delete_key = Kbd::binding_for_action(&DeleteSelected, Some(KEY_CONTEXT), window);
     div()
@@ -225,6 +244,8 @@ fn hint_row(window: &mut Window) -> impl IntoElement {
         .flex_wrap()
         .gap_3()
         .text_sm()
+        .children(replace_key.map(|key| hint(key, "Load (Replace)")))
+        .children(add_key.map(|key| hint(key, "Load (Add)")))
         .children(rename_key.map(|key| hint(key, "Rename")))
         .children(delete_key.map(|key| hint(key, "Delete")))
 }

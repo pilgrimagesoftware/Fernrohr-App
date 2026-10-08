@@ -25,14 +25,8 @@ pub struct SavedLayoutsPicker {
     pub(super) command_state: Entity<CommandState>,
     pub(super) selected_index: Option<usize>,
     pub(super) rename: Option<RenameState>,
-    /// The seam section 4 (`saved_layouts.load_replace`/`load_add`) acts
-    /// through: the window this picker opened over, so loading the selected
-    /// layout needs no new plumbing once those commands exist.
-    // UNWIRED(#176): nothing reads this or `Self::main_window` yet - section
-    // 4's `load_replace`/`load_add` commands are the first real callers. A
-    // test that only constructs a `SavedLayoutsPicker` is not coverage of
-    // that later section.
-    #[allow(dead_code)]
+    /// The window this picker opened over: `saved_layouts.load_replace`/
+    /// `load_add` (`interaction.rs`) act on it through [`Self::main_window`].
     main_window: WeakEntity<MainWindow>,
 }
 
@@ -71,17 +65,15 @@ impl SavedLayoutsPicker {
         cx.notify();
     }
 
-    /// The seam section 4 acts on: the layout the keyboard or mouse currently
-    /// highlights, if any.
+    /// What `saved_layouts.load_replace`/`load_add` act on: the layout the
+    /// keyboard or mouse currently highlights, if any.
     pub(crate) fn selected(&self) -> Option<&SavedLayout> {
         self.selected_index
             .and_then(|index| self.layouts.get(index))
     }
 
-    /// The seam section 4 acts through: the window this picker should load
-    /// Add/Replace into.
-    // UNWIRED(#176): see the field's own doc comment above.
-    #[allow(dead_code)]
+    /// What `saved_layouts.load_replace`/`load_add` act through: the window
+    /// this picker should load Add/Replace into.
     pub(crate) fn main_window(&self) -> WeakEntity<MainWindow> {
         self.main_window.clone()
     }

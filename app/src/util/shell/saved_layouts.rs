@@ -11,8 +11,15 @@
 //! `pub(super)` fields it reads (`dock_area`, `contexts`, `resource_width`,
 //! `resource_collapsed`) are visible here without widening them, since this
 //! is a sibling module of `main_window.rs`/`window.rs` inside `util::shell`.
-//! Loading a saved layout back (Add/Replace, tasks section 4) is a later
-//! change to this same module.
+//! Loading a saved layout back (Add/Replace, tasks section 4) lives in the
+//! sibling [`load`] module: `MainWindow::load_replace`/`load_add`, reached
+//! through `ui::picker::saved_layouts::SavedLayoutsPicker`'s own
+//! `selected()`/`main_window()` seam (that picker's `render`/`interaction`
+//! own the two commands themselves and the `enter`/`secondary-enter`
+//! wiring - see their own doc comments for why `enter` needs no second
+//! `on_action` handler here).
+
+mod load;
 
 use super::*;
 use crate::config::saved_layouts::{self, SavedLayout};

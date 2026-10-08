@@ -1,13 +1,16 @@
 //! Click/keyboard selection ([`SavedLayoutsPicker::follow_keyboard`],
 //! [`SavedLayoutsPicker::handle_row_click`], mirroring `ClusterPicker`'s own)
-//! and the picker's two commands: `saved_layouts.rename_selected` opens an
+//! and the picker's four commands: `saved_layouts.rename_selected` opens an
 //! inline rename field seeded with the selected layout's name (Enter
 //! commits, Escape cancels, a collision shows [`RenameError::NameTaken`]
 //! inline without losing either name); `saved_layouts.delete_selected` asks
 //! through the app's Irreversible confirmation (design.md D6) before
-//! removing the file.
+//! removing the file; `saved_layouts.load_replace`/`load_add`
+//! ([`SavedLayoutsPicker::load_selected`]) close this dialog and apply the
+//! selected layout to the window this picker opened over.
 
 use super::*;
+use gpui_kit::component::WindowExt as _;
 
 impl SavedLayoutsPicker {
     /// Keyboard navigation moved `Command`'s highlight to `row_index`:
@@ -178,6 +181,73 @@ impl SavedLayoutsPicker {
             cx,
         );
     }
+
+    /// `saved_layouts.load_replace` (`enter`): acts on the selected layout
+    /// with Replace. The actual `enter` *keystroke* never dispatches this
+    /// `LoadReplace` action - `gpui_component`'s own `Command` widget binds
+    /// `enter` to its built-in `Confirm` in its own `"Command"` key context,
+    /// which sits deeper in the render tree than this picker's own and so
+    /// wins first (`render`'s `Command::on_confirm` calls
+    /// [`Self::confirm_selected`], the same method below, for that path) -
+    /// this handler exists so `LoadReplace` still does the right thing
+    /// wherever else it's dispatched (the command palette, or a direct
+    /// `window.dispatch_action` in a test), without a second copy of the
+    /// loading logic.
+    pub(super) fn on_action_load_replace(
+        &mut self,
+        _: &LoadReplace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.confirm_selected(window, cx);
+    }
+
+    /// `saved_layouts.load_add` (`secondary-enter`): acts on the selected
+    /// layout with Add. Unlike Replace's `enter`, `secondary-enter` is not
+    /// one of `Command`'s own built-in bindings, so this `on_action` is the
+    /// only route a keystroke reaches it by - no `on_confirm` detour needed.
+    pub(super) fn on_action_load_add(
+        &mut self,
+        _: &LoadAdd,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.load_selected(LoadMode::Add, window, cx);
+    }
+
+    /// What `render`'s `Command::on_confirm` reaches for a bare `Enter` -
+    /// Replace, the picker's "I asked for *that* layout" action (design.md
+    /// D4). Calls the same [`Self::load_selected`] `on_action_load_replace`
+    /// does, so Enter does Replace exactly once no matter which of the two
+    /// paths dispatches it.
+    pub(super) fn confirm_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.load_selected(LoadMode::Replace, window, cx);
+    }
+
+    /// Closes the picker dialog and applies the selected layout to the
+    /// window this picker opened over - a no-op with nothing selected, or if
+    /// that window is already gone (closed or disconnected while the picker
+    /// was open).
+    fn load_selected(&mut self, mode: LoadMode, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(layout) = self.selected().cloned() else {
+            return;
+        };
+        let Some(main_window) = self.main_window().upgrade() else {
+            return;
+        };
+        window.close_dialog(cx);
+        main_window.update(cx, |main_window, cx| match mode {
+            LoadMode::Replace => main_window.load_replace(layout, window, cx),
+            LoadMode::Add => main_window.load_add(layout, window, cx),
+        });
+    }
+}
+
+/// Which of [`SavedLayoutsPicker::load_selected`]'s two loading actions to
+/// carry out.
+enum LoadMode {
+    Replace,
+    Add,
 }
 
 #[cfg(test)]
