@@ -123,6 +123,7 @@ impl SavedLayoutsPicker {
             Ok(()) => {
                 self.rename = None;
                 self.reload(cx);
+                crate::util::shell::note_layouts_changed(cx);
             }
             Err(RenameError::NameTaken) => {
                 if let Some(rename) = &mut self.rename {

@@ -48,6 +48,7 @@ pub(crate) fn confirm_delete(
             if let Err(error) = saved_layouts::remove(&dir, &name) {
                 log::warn!("failed to remove saved layout {name:?}: {error}");
             }
+            crate::util::shell::note_layouts_changed(cx);
             on_removed(window, cx);
         },
         window,
