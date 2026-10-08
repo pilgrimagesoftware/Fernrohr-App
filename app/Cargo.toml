@@ -44,15 +44,18 @@ base64 = "=0.23.1"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation"] }
 
-# The system accent colour (Fernrohr#100). Both are already in the graph - GPUI
-# pulls in `ashpd` on Linux with these features, and `windows-sys` 0.59 on
-# Windows - so naming them adds no crate, only the portal's `settings` API and
-# DWM's bindings.
+# The system accent colour (Fernrohr#100). Both are already in the graph, so
+# naming them adds no crate, only the portal's `settings` API and DWM's
+# bindings: GPUI pulls in `ashpd` on Linux with these features, and on Windows
+# tokio, mio, socket2 and rustls-platform-verifier already pull in
+# `windows-sys` 0.61 (GPUI itself uses the `windows` crate). Keep this pin on
+# the version those share - not the 0.59 only `alacritty_terminal` still uses -
+# so it stays one crate as they move.
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "=0.13.13", default-features = false, features = ["async-io", "settings"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Graphics_Dwm"] }
 
 [dev-dependencies]
 gpui-kit = { version = "=0.7.0", features = ["test-support"] }

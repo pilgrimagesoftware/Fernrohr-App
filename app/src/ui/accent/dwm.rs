@@ -2,8 +2,8 @@
 //! the user picks under Personalization > Colors. A cheap, synchronous call,
 //! read like macOS's.
 
-use windows_sys::Win32::Foundation::BOOL;
 use windows_sys::Win32::Graphics::Dwm::DwmGetColorizationColor;
+use windows_sys::core::BOOL;
 
 /// The colorization colour as `0xAARRGGBB`, or `None` if DWM won't say.
 pub(super) fn colorization() -> Option<u32> {
