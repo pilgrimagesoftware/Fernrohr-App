@@ -245,6 +245,15 @@ impl PodDetailPanel {
         cx.notify();
     }
 
+    /// Whether the panel has settled on "this pod no longer exists" - for a
+    /// test outside this module (`saved-panel-layouts` 5.2) that restores a
+    /// panel pointed at a pod a fake cluster never served, and cannot read
+    /// `state` across the module boundary directly.
+    #[cfg(test)]
+    pub(crate) fn test_is_not_found(&self) -> bool {
+        matches!(self.state, PodDetailState::NotFound)
+    }
+
     /// Switches the active tab of the structured view.
     pub(super) fn set_active_tab(&mut self, section: DetailSection, cx: &mut Context<Self>) {
         // Leaving the Configuration tab hides every revealed value - one

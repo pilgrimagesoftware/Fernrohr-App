@@ -8,6 +8,7 @@ use crate::k8s::resource::pods::{PodRow, PodSelection};
 
 mod fit;
 mod fonts;
+mod saved_sort;
 mod selection;
 mod sorting;
 mod spacing;

@@ -2,7 +2,16 @@
 
 use super::*;
 
-actions!(shell, [NewWindow, ToggleCommandPalette, SetContextTunnel]);
+actions!(
+    shell,
+    [
+        NewWindow,
+        ToggleCommandPalette,
+        SetContextTunnel,
+        SaveLayout,
+        ManageLayouts
+    ]
+);
 
 /// Last known geometry of every window that has closed this run, keyed by
 /// `WindowId`. Populated from each window's `on_window_should_close` hook,
@@ -33,12 +42,41 @@ pub(super) struct SavedDockLayouts(pub(super) crate::config::dock_layouts::DockL
 
 impl Global for SavedDockLayouts {}
 
+/// Where saved layouts are read from and written to
+/// (`saved_layouts::layouts_dir`): `state_dir()/layouts/` in production,
+/// overridden with a temp directory in tests (mirroring [`WorkspacePath`])
+/// so no test ever touches the real state directory.
+pub(super) struct SavedLayoutsDir(pub(super) PathBuf);
+
+impl Global for SavedLayoutsDir {}
+
 pub const NEW_WINDOW_COMMAND_ID: &str = "shell.new_window";
 pub const NEW_WINDOW_DEFAULT_BINDING: &str = "cmd-n";
 pub const TOGGLE_PALETTE_COMMAND_ID: &str = "shell.toggle_command_palette";
 pub const TOGGLE_PALETTE_DEFAULT_BINDING: &str = "cmd-shift-p";
 pub const SET_CONTEXT_TUNNEL_COMMAND_ID: &str = "context.set_tunnel";
 pub const SET_CONTEXT_TUNNEL_DEFAULT_BINDING: &str = "cmd-shift-b";
+/// `saved-panel-layouts` design.md D4's table says `cmd-shift-s`; this
+/// codebase spells a cross-platform modified key as `secondary-...`
+/// (`secondary-enter`, `secondary-backspace`) rather than the macOS-only
+/// `cmd-`, so the registered default is `secondary-shift-s` instead. No
+/// other registered command uses `secondary-shift-s` at all (checked by
+/// reading every `default_binding` in the registry), so it collides with
+/// nothing regardless of scope; `keymap::conflicts` is still the
+/// authoritative, context-aware check `tasks.md` 7.1 runs over the full
+/// registry.
+pub const SAVE_LAYOUT_COMMAND_ID: &str = "layouts.save";
+pub const SAVE_LAYOUT_DEFAULT_BINDING: &str = "secondary-shift-s";
+/// design.md D4's table: `cmd-shift-o`, spelled cross-platform like
+/// [`SAVE_LAYOUT_DEFAULT_BINDING`] above.
+pub const MANAGE_LAYOUTS_COMMAND_ID: &str = "layouts.manage";
+pub const MANAGE_LAYOUTS_DEFAULT_BINDING: &str = "secondary-shift-o";
+/// The key context active while a window shows a connected workspace (its
+/// dock, Resource panel and status bar) rather than the cluster picker -
+/// `render.rs` tags the workspace body with it, where `layouts.save`'s
+/// handler also lives, so commands that only make sense in a connected
+/// workspace can be scoped to it.
+pub(super) const WORKSPACE_KEY_CONTEXT: &str = "Workspace";
 
 pub fn default_workspace_path() -> PathBuf {
     paths::state_dir().join("workspace.toml")
@@ -46,6 +84,12 @@ pub fn default_workspace_path() -> PathBuf {
 
 pub fn default_dock_layouts_path() -> PathBuf {
     paths::state_dir().join("dock-layouts.json")
+}
+
+/// Where saved layouts live absent a test override (`saved_layouts::
+/// layouts_dir`): `state_dir()/layouts/` (`saved-panel-layouts` design.md D2).
+pub fn default_saved_layouts_dir() -> PathBuf {
+    paths::state_dir().join("layouts")
 }
 
 /// The commands this module contributes to the app-wide [`CommandRegistry`].
@@ -80,6 +124,31 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             crate::command::ContextGroup::Tunnels,
         )),
     });
+    registry.register(Command {
+        id: SAVE_LAYOUT_COMMAND_ID,
+        title: "Save Panel Layout…",
+        default_binding: SAVE_LAYOUT_DEFAULT_BINDING,
+        // Not context-gated, so it can sit in the Window menu (a menu item is
+        // built once at startup). Its handler is on the workspace body, not
+        // the window root, so from the cluster picker nothing handles it:
+        // the menu item shows disabled (`is_action_available`, which asks
+        // the focus path for a handler) and the key does nothing.
+        context: None,
+        action: Box::new(SaveLayout),
+        menu: Some(crate::command::MenuSlot::Window),
+    });
+    registry.register(Command {
+        id: MANAGE_LAYOUTS_COMMAND_ID,
+        title: "Saved Layouts…",
+        default_binding: MANAGE_LAYOUTS_DEFAULT_BINDING,
+        // Available from both window modes (design.md D4's table), unlike
+        // `layouts.save` above - so `context: None` rather than
+        // `WORKSPACE_KEY_CONTEXT`.
+        context: None,
+        action: Box::new(ManageLayouts),
+        menu: Some(crate::command::MenuSlot::Window),
+    });
+    crate::ui::picker::saved_layouts::register_commands(registry);
     crate::ui::menu::register_commands(registry);
     nav::register_commands(registry);
     tunnels::register_commands(registry);
@@ -163,11 +232,13 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::object_list::register_restore(cx);
     crate::k8s::resource::events_browser::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
+    crate::ui::unrestored::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
     cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(
         &dock_layouts_path,
     )));
 
+    cx.set_global(SavedLayoutsDir(default_saved_layouts_dir()));
     cx.set_global(WorkspacePath(workspace_path.clone()));
     cx.on_app_quit(move |cx| {
         save(cx, &workspace_path);

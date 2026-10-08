@@ -1,6 +1,6 @@
 //! Saving and restoring an events browser with the window's dock layout: its
-//! context, namespace selection and sort. [`dump`] and [`from_state`] own the
-//! saved shape.
+//! context, namespace selection, sort and search text (`saved-panel-layouts`
+//! 1.6). [`dump`] and [`from_state`] own the saved shape.
 
 use super::columns::EventColumn;
 use super::filters::EventFilters;
@@ -29,6 +29,9 @@ pub(crate) struct SavedEvents {
     pub(crate) namespaces: Vec<String>,
     pub(super) sort: Option<(EventColumn, ColumnSort)>,
     pub(super) filters: EventFilters,
+    /// The search box's text last saved with this panel, if any
+    /// (`saved-panel-layouts` 1.6).
+    pub(super) filter: Option<String>,
 }
 
 fn sort_name(sort: ColumnSort) -> &'static str {
@@ -53,11 +56,17 @@ pub(super) fn dump(panel: &EventsPanel, cx: &App) -> Value {
     let sort = panel
         .sort(cx)
         .map(|(column, sort)| json!({ "column": column.id(), "order": sort_name(sort) }));
+    let filter = match &panel.search {
+        Some(search) => Some(search.read(cx).value().to_string()),
+        // Never drawn, so the search text it was given is still the one it has.
+        None => panel.initial_search.clone(),
+    };
     json!({
         "context_name": panel.scope.context_name,
         "namespaces": panel.scope.namespaces,
         "sort": sort,
         "filters": panel.filters,
+        "filter": filter,
     })
 }
 
@@ -75,6 +84,7 @@ pub(crate) fn from_state(state: &Value) -> Option<SavedEvents> {
         namespaces: serde_json::from_value(state["namespaces"].clone()).unwrap_or_default(),
         sort: sort.or(Some(super::table::DEFAULT_SORT)),
         filters: serde_json::from_value(state["filters"].clone()).unwrap_or_default(),
+        filter: state["filter"].as_str().map(str::to_string),
     })
 }
 
@@ -91,6 +101,7 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
         let mut panel = EventsPanel::new(scope, cx);
         panel.initial_sort = saved.sort;
         panel.filters = saved.filters;
+        panel.initial_search = saved.filter;
         panel
     })))
 }

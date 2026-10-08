@@ -10,9 +10,24 @@ pub fn register_restore(cx: &mut App) {
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
             let scope = PanelScope::new(NavTarget::pods(), context_name).scoped_to(namespaces);
-            Ok(panel_handle(cx.new(|cx| PodsPanel::new(scope, cx))))
+            let sort = sort_from_state(state);
+            Ok(panel_handle(cx.new(|cx| {
+                let mut panel = PodsPanel::new(scope, cx);
+                panel.initial_sort = sort;
+                panel
+            })))
         })
     });
+}
+
+/// The `sort` a saved Pods panel names, if any (`saved-panel-layouts` 1.6):
+/// `{ "column": <id>, "descending": <bool> }`, or absent/`null` for no saved
+/// sort - true of every layout saved before this field existed.
+fn sort_from_state(state: &serde_json::Value) -> Option<(String, bool)> {
+    let sort = &state["sort"];
+    let column = sort["column"].as_str()?.to_string();
+    let descending = sort["descending"].as_bool().unwrap_or(false);
+    Some((column, descending))
 }
 
 /// A dock panel connecting to its scope's cluster and rendering its live,
@@ -32,6 +47,10 @@ pub struct PodsPanel {
     /// The last row action the cluster refused, shown above the table until
     /// dismissed or the next action.
     pub(super) action_failure: Option<super::actions::PodActionFailure>,
+    /// The sort to start the table with, once it's built - a saved layout's
+    /// column id and direction (`saved-panel-layouts` 1.6), or `None` for the
+    /// table's own default (unsorted) order.
+    pub(super) initial_sort: Option<(String, bool)>,
 }
 
 impl PodsPanel {
@@ -91,6 +110,7 @@ impl PodsPanel {
             pod_table: None,
             quick_look: None,
             action_failure: None,
+            initial_sort: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
@@ -257,8 +277,13 @@ impl PodsPanel {
         cx: &mut Context<Self>,
     ) -> Entity<TableState<PodTableDelegate>> {
         if self.pod_table.is_none() {
+            let initial_sort = self.initial_sort.clone();
             let table = cx.new(|cx| {
-                TableState::new(PodTableDelegate::default(), window, cx)
+                let mut delegate = PodTableDelegate::default();
+                if let Some((column, descending)) = &initial_sort {
+                    delegate.set_sort_state(column, *descending);
+                }
+                TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
                     .sortable(true)
@@ -360,13 +385,27 @@ impl BasePanel for PodsPanel {
         "Pods"
     }
 
-    fn dump(&self, _cx: &App) -> PanelState {
+    fn dump(&self, cx: &App) -> PanelState {
+        let sort = match &self.pod_table {
+            Some(table) => table
+                .read(cx)
+                .delegate()
+                .sort_state()
+                .map(|(column, descending)| (column.to_string(), descending)),
+            // Never drawn, so the saved sort it was given (if any) is still
+            // the one it has.
+            None => self.initial_sort.clone(),
+        };
+        let sort = sort.map(|(column, descending)| {
+            serde_json::json!({ "column": column, "descending": descending })
+        });
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
             info: PanelInfo::Panel(serde_json::json!({
                 "context_name": self.scope.context_name,
                 "namespaces": self.scope.namespaces,
+                "sort": sort,
             })),
         }
     }
@@ -401,5 +440,7 @@ mod failure_tests;
 mod list_keys_tests;
 #[cfg(test)]
 mod namespace_jump_tests;
+#[cfg(test)]
+mod restore_tests;
 #[cfg(test)]
 mod tests;

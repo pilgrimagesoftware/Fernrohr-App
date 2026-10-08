@@ -28,6 +28,13 @@ pub(super) fn temp_tunnels_path() -> PathBuf {
     crate::util::test_paths::temp_path("shell-tunnels")
 }
 
+/// A scratch directory for saved layouts, as [`temp_workspace_path`] - set as
+/// the `SavedLayoutsDir` global (`saved_layouts::layouts_dir`) so a test
+/// never writes under the real `state_dir()/layouts/`.
+pub(super) fn temp_layouts_dir() -> PathBuf {
+    crate::util::test_paths::temp_path("shell-layouts")
+}
+
 /// A connected window on `context_name`, for the panel-opening tests.
 ///
 /// `enter_workspace` opens a real Pods panel (`nav::add_panel` always

@@ -7,6 +7,7 @@ use gpui_kit::actions;
 actions!(keymap_test, [TestAction]);
 
 mod k9s_commands;
+mod saved_layouts_commands;
 
 /// `keys` as GPUI spells it back on this platform - `cmd` reads `super` off
 /// macOS - for comparing with a keystroke's `unparse`.

@@ -10,7 +10,17 @@ struct TokioRuntime(Runtime);
 
 impl Global for TokioRuntime {}
 
+/// Idempotent, like `gpui_base::dock::PanelRegistry::init`: a second call (a
+/// test that needs the runtime up before building a window whose own setup
+/// also calls this) leaves the existing runtime in place rather than
+/// replacing it - dropping a `Runtime` shuts down its worker threads and
+/// aborts every task still spawned on it, which would otherwise silently
+/// kill work already running (e.g. `k8s::test_cluster::FakeCluster`'s own
+/// listener).
 pub fn init(cx: &mut App) {
+    if cx.has_global::<TokioRuntime>() {
+        return;
+    }
     let runtime = Runtime::new().expect("failed to start the tokio runtime");
     cx.set_global(TokioRuntime(runtime));
 }

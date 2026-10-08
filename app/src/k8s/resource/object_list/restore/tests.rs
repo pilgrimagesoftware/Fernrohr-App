@@ -99,6 +99,143 @@ fn a_pre_list_placeholders_state_still_restores() {
     assert!(from_state(&json!({ "context_name": "kind-dev" })).is_none());
 }
 
+/// Data saved before `filter`/`sort` existed (`saved-panel-layouts` 1.6) still
+/// restores, reading both as absent rather than failing.
+#[test]
+fn state_without_filter_or_sort_still_restores() {
+    let state = json!({
+        "context_name": "kind-dev", "namespaces": [],
+        "group": "apps", "version": "v1", "kind": "Deployment",
+        "plural": "deployments", "namespaced": true,
+    });
+    let saved = from_state(&state).expect("the kind fields are all there");
+    assert_eq!(saved.filter, None);
+    assert_eq!(saved.sort, None);
+}
+
+/// Three objects in `staging`, two named `web-*`, for the filter/sort round
+/// trip below.
+fn web_objects_fixture() -> ObjectsTable {
+    use kube::api::{DynamicObject, ObjectMeta};
+    use kube_runtime::watcher;
+
+    let mut table = ObjectsTable::default();
+    table.apply(watcher::Event::Init);
+    for (uid, name) in [("u1", "web-a"), ("u2", "web-b"), ("u3", "other")] {
+        table.apply(watcher::Event::InitApply(DynamicObject {
+            types: None,
+            metadata: ObjectMeta {
+                uid: Some(uid.into()),
+                name: Some(name.into()),
+                namespace: Some("staging".into()),
+                ..Default::default()
+            },
+            data: serde_json::Value::Null,
+        }));
+    }
+    table.apply(watcher::Event::InitDone);
+    table
+}
+
+/// Spec: "Namespaces and filters are saved and restored" - a list scoped to
+/// two namespaces, with filter text entered and a descending sort, saves and
+/// reads back the same namespaces, filter (with rows filtered by it), and
+/// sort.
+#[gpui_kit::test]
+async fn filter_text_and_sort_are_saved_and_restored(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let client = test_client(cx);
+    let objects = cx.update(|cx| cx.new(|_| web_objects_fixture()));
+    let mut built = None;
+    let window = cx.add_window(|window, cx| {
+        let scope = PanelScope::new(NavTarget::Kind(leases()), "kind-dev".into())
+            .scoped_to(vec!["staging".into()]);
+        let panel = cx.new(|cx| ObjectListPanel::with_table(leases(), scope, objects, client, cx));
+        built = Some(panel.clone());
+        Root::new(panel, window, cx)
+    });
+    let panel = built.unwrap();
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+
+    // The user types a filter and sorts the Name column descending.
+    vcx.update(|window, cx| {
+        let filter = panel.update(cx, |panel, cx| panel.filter_input(window, cx));
+        filter.update(cx, |filter, cx| filter.set_value("web", window, cx));
+    });
+    vcx.run_until_parked();
+    vcx.update(|_, cx| {
+        let table = panel.read(cx).table.clone().expect("the table is drawn");
+        table.update(cx, |table, _| table.delegate_mut().set_sort("name", true));
+    });
+
+    let state = vcx.update(|_, cx| panel.read(cx).dump(cx));
+    let PanelInfo::Panel(data) = state.info else {
+        panic!("a list panel saves panel state");
+    };
+    let saved = from_state(&data).expect("the state names its kind and cluster");
+    assert_eq!(saved.namespaces, ["staging"]);
+    assert_eq!(saved.filter.as_deref(), Some("web"));
+    assert_eq!(saved.sort, Some(("name".to_string(), true)));
+
+    // Restoring with that saved state shows the same filter text, with rows
+    // filtered by it and sorted descending by name - a fresh panel and table
+    // over the same objects, as a restored window's would be.
+    let client2 = test_client(cx);
+    let objects2 = cx.update(|cx| cx.new(|_| web_objects_fixture()));
+    let mut restored_built = None;
+    let window2 = cx.add_window(|window, cx| {
+        let scope = PanelScope::new(NavTarget::Kind(leases()), "kind-dev".into())
+            .scoped_to(saved.namespaces.clone());
+        let panel = cx.new(|cx| {
+            let mut panel = ObjectListPanel::with_table(leases(), scope, objects2, client2, cx);
+            panel.initial_filter = saved.filter.clone();
+            panel.initial_sort = saved.sort.clone();
+            panel
+        });
+        restored_built = Some(panel.clone());
+        Root::new(panel, window, cx)
+    });
+    let restored = restored_built.unwrap();
+    let mut rvcx = VisualTestContext::from_window(window2.into(), cx);
+    rvcx.run_until_parked();
+
+    let filter_text = rvcx.update(|_, cx| {
+        restored
+            .read(cx)
+            .filter
+            .as_ref()
+            .expect("the filter field is built on first render")
+            .read(cx)
+            .value()
+            .to_string()
+    });
+    assert_eq!(filter_text, "web");
+    let names: Vec<String> = rvcx.update(|_, cx| {
+        let table = restored
+            .read(cx)
+            .table
+            .clone()
+            .expect("the table is built on first render");
+        table
+            .read(cx)
+            .delegate()
+            .rows()
+            .iter()
+            .map(|row| row.object.name.clone())
+            .collect()
+    });
+    assert_eq!(
+        names,
+        ["web-b", "web-a"],
+        "filtered to the two `web-` rows, descending by name"
+    );
+}
+
 /// D4: the placeholder only stands in once discovery has finished without the kind;
 /// a kind still served, or discovery not yet done, restores as a list.
 #[test]

@@ -25,6 +25,7 @@ pub mod picker_tunnel;
 pub mod placeholder;
 pub mod raster;
 pub mod report_issue;
+pub mod saved_layout_delete;
 pub mod settings;
 pub mod shortcut_timeout;
 pub mod space;
