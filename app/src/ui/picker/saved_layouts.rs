@@ -34,8 +34,6 @@
 
 use crate::command::{Command as RegisteredCommand, CommandRegistry};
 use crate::config::saved_layouts::{self, RenameError, SavedLayout, UnreadableLayout};
-use crate::ui::confirm_dialog::{self, Confirmation, Severity};
-use crate::ui::confirm_text::ConfirmText;
 use crate::util::shell::MainWindow;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
@@ -75,8 +73,10 @@ pub(crate) const RENAME_SELECTED_COMMAND_ID: &str = "saved_layouts.rename_select
 pub(crate) const RENAME_SELECTED_DEFAULT_BINDING: &str = "r";
 pub(crate) const DELETE_SELECTED_COMMAND_ID: &str = "saved_layouts.delete_selected";
 pub(crate) const DELETE_SELECTED_DEFAULT_BINDING: &str = "backspace";
-/// [`confirm_dialog::open`]'s `id_prefix` for the delete confirmation's
-/// buttons.
+/// [`crate::ui::saved_layout_delete::confirm_delete`]'s `id_prefix` for the
+/// delete confirmation's buttons - the same helper the Settings Layouts
+/// section's Remove control calls too (design.md D6), so deleting reads,
+/// looks and keys alike from both surfaces.
 const DELETE_ID_PREFIX: &str = "saved-layouts-delete";
 pub(crate) const LOAD_REPLACE_COMMAND_ID: &str = "saved_layouts.load_replace";
 pub(crate) const LOAD_REPLACE_DEFAULT_BINDING: &str = "enter";

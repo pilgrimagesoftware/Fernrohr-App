@@ -47,7 +47,10 @@ async fn a_long_conflict_prompt_keeps_its_buttons_in_the_window(cx: &mut TestApp
 }
 
 /// Runs a section command as the palette does: dispatched from the focus.
-fn show(vcx: &mut VisualTestContext, action: Box<dyn gpui_kit::Action>) {
+///
+/// `pub(super)`: shared with the sibling `saved_layouts` test module, not
+/// just this file's own tests.
+pub(super) fn show(vcx: &mut VisualTestContext, action: Box<dyn gpui_kit::Action>) {
     vcx.update(|window, cx| window.dispatch_action(action, cx));
     vcx.run_until_parked();
 }
@@ -64,7 +67,13 @@ fn space(vcx: &mut VisualTestContext) {
 }
 
 /// Tabs until the element `id` has focus, then presses Space on it.
-fn press_button(vcx: &mut VisualTestContext, handle: gpui_kit::AnyWindowHandle, id: &str) {
+///
+/// `pub(super)`: shared with the sibling `saved_layouts` test module.
+pub(super) fn press_button(
+    vcx: &mut VisualTestContext,
+    handle: gpui_kit::AnyWindowHandle,
+    id: &str,
+) {
     for _ in 0..40 {
         let focused = vcx
             .update_window(handle, |_, window, cx| {
@@ -83,7 +92,8 @@ fn press_button(vcx: &mut VisualTestContext, handle: gpui_kit::AnyWindowHandle, 
     panic!("Tab never reached {id}");
 }
 
-fn shown(
+/// `pub(super)`: shared with the sibling `saved_layouts` test module.
+pub(super) fn shown(
     cx: &mut TestAppContext,
     handle: gpui_kit::WindowHandle<gpui_kit::component::Root>,
 ) -> Section {
@@ -99,7 +109,8 @@ fn shown(
         .unwrap()
 }
 
-fn drawn(
+/// `pub(super)`: shared with the sibling `saved_layouts` test module.
+pub(super) fn drawn(
     vcx: &mut VisualTestContext,
     handle: gpui_kit::AnyWindowHandle,
     selector: &'static str,

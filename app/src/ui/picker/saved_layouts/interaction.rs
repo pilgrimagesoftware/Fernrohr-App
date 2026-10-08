@@ -145,9 +145,10 @@ impl SavedLayoutsPicker {
         cx.notify();
     }
 
-    /// `saved_layouts.delete_selected` (`backspace`): asks through the app's
-    /// Irreversible confirmation (design.md D6) before removing the file,
-    /// then reloads the list. A no-op with no selection.
+    /// `saved_layouts.delete_selected` (`backspace`): asks through the
+    /// shared [`crate::ui::saved_layout_delete::confirm_delete`] helper
+    /// (design.md D6) before removing the file, then reloads the list. A
+    /// no-op with no selection.
     pub(super) fn on_action_delete_selected(
         &mut self,
         _: &DeleteSelected,
@@ -159,22 +160,11 @@ impl SavedLayoutsPicker {
         };
         let dir = self.dir.clone();
         let this = cx.weak_entity();
-        let confirmation = Confirmation {
-            title: "Delete Saved Layout?".into(),
-            body: ConfirmText::new()
-                .text("Deleting ")
-                .name(&layout.name)
-                .text(" can't be undone."),
-            confirm: "Delete".into(),
-            id_prefix: DELETE_ID_PREFIX,
-            severity: Severity::Irreversible,
-        };
-        confirm_dialog::open(
-            confirmation,
+        crate::ui::saved_layout_delete::confirm_delete(
+            &layout.name,
+            DELETE_ID_PREFIX,
+            dir,
             move |_window, cx| {
-                if let Err(error) = saved_layouts::remove(&dir, &layout.name) {
-                    log::warn!("failed to remove saved layout {:?}: {error}", layout.name);
-                }
                 let _ = this.update(cx, |this, cx| this.reload(cx));
             },
             window,

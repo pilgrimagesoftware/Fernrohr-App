@@ -12,6 +12,7 @@ use gpui_kit::{
 };
 
 mod layout;
+mod saved_layouts;
 
 fn temp_path(name: &str) -> std::path::PathBuf {
     crate::util::test_paths::temp_path(&format!("settings-{name}"))

@@ -136,7 +136,14 @@ fn focus_picker_after_first_render(picker: Entity<SavedLayoutsPicker>, window: &
 /// Where saved layouts are read from and written to: a test override
 /// (`SavedLayoutsDir`, set once per test the way `WorkspacePath` is) when
 /// one is set, otherwise [`default_saved_layouts_dir`].
-pub(super) fn layouts_dir(cx: &App) -> PathBuf {
+///
+/// `pub(crate)` (re-exported as `util::shell::layouts_dir`) rather than
+/// `pub(super)`: `ui::settings::layouts` (`saved-panel-layouts` tasks 6.1)
+/// needs the same directory this module's own save/manage dialogs read and
+/// write, and it isn't a descendant of `util::shell` - this is the one
+/// function widened for that, not `SavedLayoutsDir` itself or the
+/// `saved_layouts` module path.
+pub(crate) fn layouts_dir(cx: &App) -> PathBuf {
     cx.try_global::<SavedLayoutsDir>()
         .map(|dir| dir.0.clone())
         .unwrap_or_else(default_saved_layouts_dir)
