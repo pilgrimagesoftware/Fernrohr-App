@@ -4,6 +4,7 @@
 //! of that into a GPUI entity. Probing a resolved `Config` is `probe.rs`'s.
 
 use super::*;
+use crate::k8s::cluster::oidc;
 
 /// Resolves `Config` for `context_name`, or the kubeconfig's own `current-context`
 /// (or in-cluster config) when `None`. Pure async, no GPUI context, so it's testable
@@ -12,18 +13,47 @@ use super::*;
 ///
 /// A context authenticating through an exec plugin gets the login shell's
 /// `PATH` for it (#178, `exec_path`), so a Dock-launched app finds the plugin
-/// as a terminal would.
+/// as a terminal would; one authenticating through the `oidc` auth-provider
+/// has an expired id-token renewed first (#188, `oidc`).
 pub(in crate::k8s::cluster) async fn resolve_config(
     context_name: Option<&str>,
 ) -> Result<Config, String> {
-    let config = match context_name {
-        Some(name) => {
-            let kubeconfig = Kubeconfig::read().map_err(|error| error_chain(&error))?;
-            resolve_named_context(kubeconfig, name).await
+    let config = match (context_name, Kubeconfig::read()) {
+        (Some(name), kubeconfig) => {
+            let kubeconfig = kubeconfig.map_err(|error| error_chain(&error))?;
+            resolve_with_fresh_tokens(kubeconfig, Some(name), &oidc::kubeconfig_files()).await
         }
-        None => Config::infer().await.map_err(|error| error_chain(&error)),
+        // The current context, through the same renewal; `Config::infer` only
+        // for what has no kubeconfig context to renew (in-cluster config).
+        (None, Ok(kubeconfig)) if kubeconfig.current_context.is_some() => {
+            resolve_with_fresh_tokens(kubeconfig, None, &oidc::kubeconfig_files()).await
+        }
+        (None, _) => Config::infer().await.map_err(|error| error_chain(&error)),
     }?;
     Ok(with_login_path(config).await)
+}
+
+/// `context` (the current one when `None`) resolved from `kubeconfig` after
+/// renewing its user's OIDC id-token if that has expired, the renewed tokens
+/// saved to whichever of `files` defines the user. Takes an already-loaded
+/// [`Kubeconfig`] rather than reading `$KUBECONFIG`/`~/.kube/config` itself -
+/// the seam that lets tests inject a fixture kubeconfig instead of this
+/// machine's real one.
+async fn resolve_with_fresh_tokens(
+    mut kubeconfig: Kubeconfig,
+    context: Option<&str>,
+    files: &[std::path::PathBuf],
+) -> Result<Config, String> {
+    oidc::refresh_expired(&mut kubeconfig, context, files).await?;
+    Config::from_custom_kubeconfig(
+        kubeconfig,
+        &KubeConfigOptions {
+            context: context.map(str::to_string),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|error| error_chain(&error))
 }
 
 /// `config` with its exec plugin, if any, pointed at the login shell's `PATH`.
@@ -48,24 +78,6 @@ async fn with_login_path(mut config: Config) -> Config {
 #[cfg(not(unix))]
 async fn with_login_path(config: Config) -> Config {
     config
-}
-
-/// [`resolve_config`]'s named-context branch, taking an already-loaded [`Kubeconfig`]
-/// rather than reading `$KUBECONFIG`/`~/.kube/config` itself - the seam that lets tests
-/// inject a fixture kubeconfig instead of this machine's real one.
-async fn resolve_named_context(
-    kubeconfig: Kubeconfig,
-    context_name: &str,
-) -> Result<Config, String> {
-    Config::from_custom_kubeconfig(
-        kubeconfig,
-        &KubeConfigOptions {
-            context: Some(context_name.to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .map_err(|error| error_chain(&error))
 }
 
 /// The context name whose tunnel binding decides `connect`'s forward, per section 1.2:
@@ -269,6 +281,8 @@ impl ClusterConnection {
     }
 }
 
+#[cfg(test)]
+mod oidc_tests;
 #[cfg(test)]
 mod proxy_tests;
 #[cfg(test)]

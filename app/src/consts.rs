@@ -38,6 +38,18 @@ pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long a copy control - a copy button, a metadata chip - shows that it
+/// copied (#187), its check mark and "Copied" in place of the copy icon.
+pub(crate) const COPIED_FEEDBACK: Duration = Duration::from_millis(1500);
+
+/// How long before an OIDC id-token's expiry it is already renewed (#188), so
+/// it can't lapse between the check and the requests it authorizes.
+pub(crate) const OIDC_EXPIRY_MARGIN: Duration = Duration::from_secs(60);
+
+/// How long one request to an OIDC issuer may take, connecting included
+/// (#188): discovery, then the token refresh.
+pub(crate) const OIDC_ISSUER_TIMEOUT: Duration = Duration::from_secs(15);
+
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
 // the section 5.2 keychain wrapper this backs.
 #[allow(dead_code)]
@@ -199,6 +211,20 @@ pub(crate) const EXEC_INPUT_NOTICE: std::time::Duration = std::time::Duration::f
 pub(crate) const PORT_FORWARD_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 pub(crate) const PORT_FORWARD_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
 pub(crate) const PORT_FORWARD_BACKOFF_MAX: Duration = Duration::from_secs(30);
+
+/// `config::saved_layouts::slugify`'s filename stem for a display name that
+/// slugifies to nothing (all punctuation, or non-ASCII with no ASCII
+/// fallback) - `saved-panel-layouts` design.md D2.
+pub(crate) const SAVED_LAYOUT_PLACEHOLDER_STEM: &str = "layout";
+
+/// `SavedLayout.version`: bumped on a breaking change to its on-disk shape
+/// (`saved-panel-layouts` design.md D2).
+pub(crate) const SAVED_LAYOUT_SCHEMA_VERSION: u32 = 1;
+
+/// #186: how tall a Node detail panel's embedded Pods table draws, below its
+/// fields - the table scrolls within this, rather than growing the whole
+/// detail view with the node's pod count.
+pub(crate) const NODE_PODS_REGION_HEIGHT: gpui_kit::Pixels = gpui_kit::px(320.);
 
 #[cfg(test)]
 mod tests {

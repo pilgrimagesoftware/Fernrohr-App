@@ -82,17 +82,6 @@ impl PodColumn {
             PodColumn::Forwards => 90.,
         }
     }
-
-    /// The column an id names, or [`PodColumn::Name`] for an id this build
-    /// doesn't know - e.g. a [`crate::config::workspace::SortState`] persisted
-    /// by an older version. Kept as a lookup over [`Self::id`] rather than a
-    /// second parallel `match`, so the two can't drift.
-    pub(in crate::k8s::resource) fn from_id(id: &str) -> Self {
-        Self::DEFAULT_ORDER
-            .into_iter()
-            .find(|col| col.id() == id)
-            .unwrap_or(PodColumn::Name)
-    }
 }
 
 /// The pure per-column comparison, shared by [`PodTableDelegate`]'s

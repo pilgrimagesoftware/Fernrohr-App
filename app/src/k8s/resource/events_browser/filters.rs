@@ -1,7 +1,7 @@
-//! The events browser's filters (design D2): type, involved-object kind and
-//! reason, each a multi-select whose options are the values present, and the
-//! search (design D3's interim substring filter). Filters apply before search,
-//! both client-side.
+//! The events browser's facet filters (design D2): type, involved-object kind
+//! and reason, each a multi-select whose options are the values present.
+//! Filters apply before the search box (`panel::visible_rows`, `list-search`
+//! #189), both client-side.
 //!
 //! [`EventFilters`] is the state the panel saves; [`FacetPicker`] is the dialog
 //! that sets one facet, from the keyboard or a filter button alike.
@@ -126,19 +126,6 @@ pub fn options(rows: &[EventRow], facet: Facet) -> Vec<String> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
-}
-
-/// Whether `row` matches `query` (design D3's interim search): a
-/// case-insensitive substring of its reason, involved object or message.
-/// An empty query matches everything.
-pub fn search_matches(row: &EventRow, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-    let query = query.to_lowercase();
-    [&row.reason, &row.object_label(), &row.message]
-        .iter()
-        .any(|text| text.to_lowercase().contains(&query))
 }
 
 type OnToggle = Rc<dyn Fn(Facet, String, &mut Window, &mut App)>;

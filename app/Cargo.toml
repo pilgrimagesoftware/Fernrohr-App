@@ -1,6 +1,6 @@
 [package]
 name = "fernrohr"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 
 [dependencies]
@@ -9,7 +9,7 @@ gpui-kit = "=0.7.0"
 # (`k8s::resource::exec`). The user's own crate, extracted from Knot; its `pty`
 # feature is off, since the session is a remote kube exec, not a local process.
 gpui-terminal = { git = "https://github.com/pilgrimagesoftware/gpui-terminal", tag = "v0.2.1", default-features = false }
-tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time"] }
+tokio = { version = "=1.53.2", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time"] }
 kube = { version = "=4.2.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws", "http-proxy"] }
 kube-runtime = "=4.2.0"
 k8s-openapi = { version = "=0.28.0", features = ["v1_36"] }
@@ -18,7 +18,7 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 serde_yaml_ng = "=0.10.0"
 toml = "=1.1.6"
-rust-i18n = "=4.2.3"
+rust-i18n = "=4.2.4"
 log = "=0.4.34"
 jiff = "=0.2.37"
 futures-util = "=0.3.34"
@@ -32,21 +32,30 @@ shlex = "=1.3.0"
 # (`ui::raster`). Already in the build through gpui, which decodes images with
 # it; pinned to that same version, with only the two decoders those assets need.
 image = { version = "=0.25.10", default-features = false, features = ["png", "webp"] }
+# Refreshing an expired OIDC `auth-provider` id-token against its issuer
+# (`k8s::cluster::oidc`, #188): requests for kube's own client, and the JWT and
+# Basic-auth encodings. Both already in the build through kube-client; pinned
+# to those same versions.
+http = "=1.5.0"
+base64 = "=0.23.1"
 
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation"] }
 
-# The system accent colour (Fernrohr#100). Both are already in the graph - GPUI
-# pulls in `ashpd` on Linux with these features, and `windows-sys` 0.59 on
-# Windows - so naming them adds no crate, only the portal's `settings` API and
-# DWM's bindings.
+# The system accent colour (Fernrohr#100). Both are already in the graph, so
+# naming them adds no crate, only the portal's `settings` API and DWM's
+# bindings: GPUI pulls in `ashpd` on Linux with these features, and on Windows
+# tokio, mio, socket2 and rustls-platform-verifier already pull in
+# `windows-sys` 0.61 (GPUI itself uses the `windows` crate). Keep this pin on
+# the version those share - not the 0.59 only `alacritty_terminal` still uses -
+# so it stays one crate as they move.
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "=0.13.13", default-features = false, features = ["async-io", "settings"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "=0.59.0", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Graphics_Dwm"] }
 
 [dev-dependencies]
 gpui-kit = { version = "=0.7.0", features = ["test-support"] }

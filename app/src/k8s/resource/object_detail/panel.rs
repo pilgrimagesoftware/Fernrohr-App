@@ -5,11 +5,12 @@ use super::commands::ToggleObjectView;
 use super::fetch::{ObjectDetailState, ObjectFetch, fetch_object};
 use super::live::LiveSource;
 use super::model::{ObjectSection, go_to_entries};
-use super::{metadata, restore, sections};
+use super::{metadata, node_pods, restore, sections};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::discovery_registry::{DiscoveredKinds, DiscoveryRegistry};
 use crate::k8s::resource::pod_detail::DetailView;
+use crate::k8s::resource::pods::PodsPanel;
 use crate::ui::link::{self, GoToEntry, GoToReference};
 use crate::ui::nav::ObjectTarget;
 use crate::ui::panel_title::{self, PanelScope};
@@ -59,6 +60,10 @@ pub struct ObjectDetailPanel {
     /// The last delete the cluster refused, shown until dismissed (`delete`).
     pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
     pub(super) focus_handle: FocusHandle,
+    /// The Node's own live pods region (#186): `Some`, scoped to this node,
+    /// for `("", "Node")` alone - `None` for every other kind, which draws no
+    /// such region.
+    pub(super) node_pods: Option<Entity<PodsPanel>>,
 }
 
 impl ObjectDetailPanel {
@@ -68,19 +73,34 @@ impl ObjectDetailPanel {
         (self.edit.is_some(), self.edit_notice.clone())
     }
 
+    /// Test-only: the Node's own embedded pods region (#186), if this panel
+    /// built one - `None` for every kind but Node.
+    #[cfg(test)]
+    pub(crate) fn test_node_pods(&self) -> Option<Entity<PodsPanel>> {
+        self.node_pods.clone()
+    }
+
     pub fn new(target: ObjectTarget, scope: PanelScope, cx: &mut Context<Self>) -> Self {
         use crate::k8s::cluster::session::ClusterRegistry;
 
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         let discovery = DiscoveryRegistry::kinds(cx, &scope.context_name);
-        Self::build(
+        let mut this = Self::build(
             target,
             scope,
             connection,
             discovery,
             LiveSource::Pending,
             cx,
-        )
+        );
+        // Built only here, not in `build` - it is the one caller whose
+        // `context_name` is already a real, registered `ClusterRegistry`
+        // session (the connection just above came from it), so the embedded
+        // table's own `PodsPanel::new` sourcing that same session back is a
+        // no-op, never a fresh real connect. `with_connection`'s stub
+        // contexts are never registered, so it leaves this `None` (#186).
+        this.node_pods = node_pods::build(&this.target, &this.scope.context_name, cx);
+        this
     }
 
     /// Construction from an explicit connection and discovery result, so tests
@@ -127,6 +147,9 @@ impl ObjectDetailPanel {
             yaml_view: Default::default(),
             refusal: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
+            // Set by `new` alone, once the struct exists (see its own
+            // comment) - `with_connection`'s stub tests leave this `None`.
+            node_pods: None,
         };
         this.sync(cx);
         this

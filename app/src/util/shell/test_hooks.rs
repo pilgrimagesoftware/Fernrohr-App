@@ -92,4 +92,51 @@ impl MainWindow {
             WindowMode::Picker(_) => Vec::new(),
         }
     }
+
+    /// Test-only: the dock's own panel handle currently open for `target`, for
+    /// a test that needs the concrete panel entity behind it (`saved-panel-
+    /// layouts` 5.2's restored pod detail, whose own "not found" state lives
+    /// behind its module boundary) rather than just the content key
+    /// [`Self::test_open_targets`] reports.
+    #[cfg(test)]
+    pub(crate) fn test_panel_view_for(
+        &self,
+        target: &crate::ui::nav::NavTarget,
+        cx: &App,
+    ) -> Option<std::sync::Arc<dyn gpui_kit::base::dock::PanelView>> {
+        let WindowMode::Workspace {
+            open_panels,
+            dock_area,
+            ..
+        } = &self.mode
+        else {
+            return None;
+        };
+        let id = open_panels
+            .iter()
+            .find(|open| &open.key.target == target)?
+            .id;
+        dock_area.read(cx).panel(id).cloned()
+    }
+
+    /// Test-only: every panel view currently in the centre dock, in tree
+    /// order - for a test that needs to look past [`Self::test_open_targets`]'
+    /// content keys (which a placeholder has none of) at what the dock
+    /// actually built, e.g. `saved-panel-layouts` 5.1's missing-context
+    /// placeholder or 5.3's unrecognised-kind one.
+    #[cfg(test)]
+    pub(crate) fn test_dock_views(
+        &self,
+        cx: &App,
+    ) -> Vec<std::sync::Arc<dyn gpui_kit::base::dock::PanelView>> {
+        let WindowMode::Workspace { dock_area, .. } = &self.mode else {
+            return Vec::new();
+        };
+        let Some(tree) = dock_area.read(cx).layout(DockPlacement::Center) else {
+            return Vec::new();
+        };
+        tree.panels()
+            .filter_map(|id| dock_area.read(cx).panel(id).cloned())
+            .collect()
+    }
 }

@@ -4,8 +4,9 @@
 //! clipboard, and a short label is drawn whole with neither. A chip copies
 //! itself as well (#153).
 
-use super::config_fixture::{Harness, focus_panel, press_by_keyboard};
+use super::config_fixture::{Harness, focus_panel, press_by_keyboard, press_key_by_keyboard};
 use super::states::harness;
+use crate::ui::copy::copied_selector;
 use crate::ui::detail::{
     metadata_chip_id, metadata_chip_selector, metadata_copy_id, metadata_tooltip_selector,
 };
@@ -125,4 +126,56 @@ async fn tab_and_space_on_a_label_chip_copy_it(cx: &mut TestAppContext) {
             .as_deref(),
         Some("app=api")
     );
+}
+
+/// Whether the `field` row's chip `index` shows it copied (#187).
+fn shows_copied(vcx: &mut VisualTestContext, field: &str, index: usize) -> bool {
+    vcx.run_until_parked();
+    vcx.debug_bounds(copied_selector(&metadata_chip_id(field, index)).leak())
+        .is_some()
+}
+
+/// #187: a chip copied from the keyboard shows it copied, with Space and with
+/// Enter - not only the clipboard changes.
+#[gpui_kit::test]
+async fn a_chip_copied_by_keyboard_shows_it_copied(cx: &mut TestAppContext) {
+    for key in ["space", "enter"] {
+        let h = harness(cx, annotated_pod());
+        let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+        vcx.run_until_parked();
+        focus_panel(&mut vcx, &h);
+        assert!(
+            !shows_copied(&mut vcx, "Labels", 0),
+            "{key}: nothing copied yet"
+        );
+
+        press_key_by_keyboard(&mut vcx, &h, metadata_chip_id("Labels", 0), key);
+
+        assert_eq!(
+            vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+                .as_deref(),
+            Some("app=api"),
+            "{key} copies"
+        );
+        assert!(shows_copied(&mut vcx, "Labels", 0), "{key} shows it copied");
+    }
+}
+
+/// #187: a shortened chip's copy control shows it copied, by keyboard too.
+#[gpui_kit::test]
+async fn a_shortened_chips_copy_control_shows_it_copied(cx: &mut TestAppContext) {
+    let h = harness(cx, annotated_pod());
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    vcx.run_until_parked();
+    focus_panel(&mut vcx, &h);
+    let control = metadata_copy_id("Annotations", 0);
+    let shown = |vcx: &mut VisualTestContext| {
+        vcx.run_until_parked();
+        vcx.debug_bounds(copied_selector(&control).leak()).is_some()
+    };
+    assert!(!shown(&mut vcx));
+
+    press_by_keyboard(&mut vcx, &h, control.clone());
+
+    assert!(shown(&mut vcx), "the copy control shows it copied");
 }

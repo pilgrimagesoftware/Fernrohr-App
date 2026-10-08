@@ -302,8 +302,10 @@ struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-    /// `/api/v1/pods`, `/api/v1/namespaces/shop/pods` or
-    /// `/api/v1/namespaces/shop/pods/web-1`, and the same under `/apis/<group>/<version>`.
+    /// `/api/v1/pods`, `/api/v1/namespaces/shop/pods`,
+    /// `/api/v1/namespaces/shop/pods/web-1`, or - a cluster-scoped kind's
+    /// single object, a Node's say - `/api/v1/nodes/node-a`, and the same
+    /// under `/apis/<group>/<version>`.
     fn parse(path: &'a str) -> Option<Self> {
         let prefix_len = if path.starts_with("/api/") {
             "/api/v1".len()
@@ -315,6 +317,7 @@ impl<'a> Request<'a> {
         let parts: Vec<&str> = rest.trim_start_matches('/').split('/').collect();
         let (namespace, plural, name) = match parts.as_slice() {
             [plural] => (None, *plural, None),
+            [plural, name] => (None, *plural, Some(*name)),
             ["namespaces", namespace, plural] => (Some(*namespace), *plural, None),
             ["namespaces", namespace, plural, name] => (Some(*namespace), *plural, Some(*name)),
             _ => return None,

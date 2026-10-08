@@ -103,6 +103,13 @@ impl Render for MainWindow {
                 .size_full()
                 .flex()
                 .flex_col()
+                // The connected workspace's own context.
+                .key_context(WORKSPACE_KEY_CONTEXT)
+                // Save Panel Layout is handled here, on the workspace, not at
+                // the window root: from the cluster picker there's no handler
+                // on the focus path, so the Window menu shows it disabled and
+                // its key does nothing (`is_action_available`).
+                .on_action(cx.listener(Self::on_action_save_layout))
                 .child(div().flex_1().min_h_0().child(Self::workspace_row(
                     dock_area,
                     resource_panel,
@@ -159,6 +166,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_add_context))
             .on_action(cx.listener(Self::on_action_disconnect_active_context))
             .on_action(cx.listener(Self::on_action_save_resource_side))
+            .on_action(cx.listener(Self::on_action_manage_layouts))
             .child(toolbar)
             .child(div().flex_1().min_h_0().child(body))
     }

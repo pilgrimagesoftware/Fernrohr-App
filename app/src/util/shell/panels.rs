@@ -59,32 +59,48 @@ pub(super) struct OpenPanel {
 ///
 /// One entry per built panel, keyed or not, is what lets the window pair these
 /// with the dock's panel ids by position: skipping a panel would shift every
-/// key after it onto the wrong panel. The walk mirrors gpui-base's
-/// `PaneTree::from_state` - stacks recurse, tab groups flatten nested tabs and
-/// skip empty `TabPanel` leaves, and every other node is one panel.
+/// key after it onto the wrong panel. Delegates its walk to
+/// [`restored_panel_leaves`] - same order, minus the raw state section 5's
+/// `saved_layouts::load` also needs.
 pub(super) fn restored_panel_keys(state: &PanelState) -> Vec<Option<PanelKey>> {
+    restored_panel_leaves(state)
+        .into_iter()
+        .map(|(_, key)| key)
+        .collect()
+}
+
+/// [`restored_panel_keys`]'s own pairs, each with the leaf [`PanelState`] its
+/// key (or lack of one) came from - `saved_layouts::load`'s `load_add` (section
+/// 5.1) needs the raw state too, to wrap a panel scoped to a context this
+/// window doesn't hold as `ui::unrestored`'s placeholder, keeping its
+/// original content rather than only deciding whether to open it.
+///
+/// The walk mirrors gpui-base's `PaneTree::from_state` - stacks recurse, tab
+/// groups flatten nested tabs and skip empty `TabPanel` leaves, and every
+/// other node is one panel.
+pub(super) fn restored_panel_leaves(state: &PanelState) -> Vec<(PanelState, Option<PanelKey>)> {
     match &state.info {
         PanelInfo::Stack { .. } => state
             .children
             .iter()
-            .flat_map(restored_panel_keys)
+            .flat_map(restored_panel_leaves)
             .collect(),
-        PanelInfo::Tabs { .. } => tab_panel_keys(&state.children),
+        PanelInfo::Tabs { .. } => tab_panel_leaves(&state.children),
         PanelInfo::Panel(_) if state.panel_name == TAB_PANEL_NAME => Vec::new(),
-        PanelInfo::Panel(_) => vec![panel_key(state)],
+        PanelInfo::Panel(_) => vec![(state.clone(), panel_key(state))],
     }
 }
 
 /// The name a tab group saves under; a leaf carrying it is an empty group.
 const TAB_PANEL_NAME: &str = "TabPanel";
 
-fn tab_panel_keys(children: &[PanelState]) -> Vec<Option<PanelKey>> {
+fn tab_panel_leaves(children: &[PanelState]) -> Vec<(PanelState, Option<PanelKey>)> {
     children
         .iter()
         .flat_map(|child| match &child.info {
-            PanelInfo::Tabs { .. } => tab_panel_keys(&child.children),
+            PanelInfo::Tabs { .. } => tab_panel_leaves(&child.children),
             PanelInfo::Panel(_) if child.panel_name == TAB_PANEL_NAME => Vec::new(),
-            _ => vec![panel_key(child)],
+            _ => vec![(child.clone(), panel_key(child))],
         })
         .collect()
 }

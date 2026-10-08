@@ -1,6 +1,7 @@
 //! The Pods dock panel: its state, lifecycle, selection wiring and dock integration. What it draws is `render`'s.
 
 use super::*;
+use crate::ui::list_search::ListSearch;
 
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Pods", |context, _window, cx| {
@@ -10,9 +11,26 @@ pub fn register_restore(cx: &mut App) {
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
             let scope = PanelScope::new(NavTarget::pods(), context_name).scoped_to(namespaces);
-            Ok(panel_handle(cx.new(|cx| PodsPanel::new(scope, cx))))
+            let sort = sort_from_state(state);
+            let filter = filter::filter_from_state(state);
+            Ok(panel_handle(cx.new(|cx| {
+                let mut panel = PodsPanel::new(scope, cx);
+                panel.initial_sort = sort;
+                panel.filter = ListSearch::restored(filter);
+                panel
+            })))
         })
     });
+}
+
+/// The `sort` a saved Pods panel names, if any (`saved-panel-layouts` 1.6):
+/// `{ "column": <id>, "descending": <bool> }`, or absent/`null` for no saved
+/// sort - true of every layout saved before this field existed.
+fn sort_from_state(state: &serde_json::Value) -> Option<(String, bool)> {
+    let sort = &state["sort"];
+    let column = sort["column"].as_str()?.to_string();
+    let descending = sort["descending"].as_bool().unwrap_or(false);
+    Some((column, descending))
 }
 
 /// A dock panel connecting to its scope's cluster and rendering its live,
@@ -32,6 +50,19 @@ pub struct PodsPanel {
     /// The last row action the cluster refused, shown above the table until
     /// dismissed or the next action.
     pub(super) action_failure: Option<super::actions::PodActionFailure>,
+    /// The sort to start the table with, once it's built - a saved layout's
+    /// column id and direction (`saved-panel-layouts` 1.6), or `None` for the
+    /// table's own default (unsorted) order.
+    pub(super) initial_sort: Option<(String, bool)>,
+    /// The filter box: its lazily built `InputState`, and the text to start it
+    /// with once restored (`saved-panel-layouts` 1.6, `list-search` #189).
+    pub(super) filter: ListSearch,
+    /// Scopes this table to one node's pods, across every namespace - unset
+    /// (the default) for the standalone Pods panel, which shows every pod its
+    /// namespace scope allows. Set by [`Self::scoped_to_node`] for the
+    /// embedded table a Node's detail panel draws (#186); applied beside the
+    /// namespace filter in `render`.
+    pub(super) node: Option<String>,
 }
 
 impl PodsPanel {
@@ -91,9 +122,21 @@ impl PodsPanel {
             pod_table: None,
             quick_look: None,
             action_failure: None,
+            initial_sort: None,
+            filter: ListSearch::new(),
+            node: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
+    }
+
+    /// Scopes this table to `node`'s pods alone, across every namespace
+    /// (#186): a Node's detail panel's embedded table, built over the same
+    /// shared, all-namespaces watch [`Self::new`] already subscribes to -
+    /// filtered client-side rather than with a second, field-selected watch.
+    pub(crate) fn scoped_to_node(mut self, node: impl Into<String>) -> Self {
+        self.node = Some(node.into());
+        self
     }
 
     /// A panel over stub cluster state: the connection never leaves
@@ -257,8 +300,13 @@ impl PodsPanel {
         cx: &mut Context<Self>,
     ) -> Entity<TableState<PodTableDelegate>> {
         if self.pod_table.is_none() {
+            let initial_sort = self.initial_sort.clone();
             let table = cx.new(|cx| {
-                TableState::new(PodTableDelegate::default(), window, cx)
+                let mut delegate = PodTableDelegate::default();
+                if let Some((column, descending)) = &initial_sort {
+                    delegate.set_sort_state(column, *descending);
+                }
+                TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
                     .sortable(true)
@@ -360,13 +408,29 @@ impl BasePanel for PodsPanel {
         "Pods"
     }
 
-    fn dump(&self, _cx: &App) -> PanelState {
+    fn dump(&self, cx: &App) -> PanelState {
+        let sort = match &self.pod_table {
+            Some(table) => table
+                .read(cx)
+                .delegate()
+                .sort_state()
+                .map(|(column, descending)| (column.to_string(), descending)),
+            // Never drawn, so the saved sort it was given (if any) is still
+            // the one it has.
+            None => self.initial_sort.clone(),
+        };
+        let sort = sort.map(|(column, descending)| {
+            serde_json::json!({ "column": column, "descending": descending })
+        });
+        let filter = self.filter.dump(cx);
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
             info: PanelInfo::Panel(serde_json::json!({
                 "context_name": self.scope.context_name,
                 "namespaces": self.scope.namespaces,
+                "sort": sort,
+                "filter": filter,
             })),
         }
     }
@@ -401,5 +465,11 @@ mod failure_tests;
 mod list_keys_tests;
 #[cfg(test)]
 mod namespace_jump_tests;
+#[cfg(test)]
+mod restore_tests;
+#[cfg(test)]
+mod search_tests;
+#[cfg(test)]
+mod test_accessors;
 #[cfg(test)]
 mod tests;

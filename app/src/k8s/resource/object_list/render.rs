@@ -11,6 +11,7 @@ use super::panel::ObjectListPanel;
 use super::store::ListMode;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
+use crate::ui::list_search::ListSearch;
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -23,9 +24,7 @@ impl ObjectListPanel {
     /// One hint: `action`'s live key (or `fallback` when the keymap has none) and
     /// what it does.
     fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &mut Window) -> Div {
-        let key = Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
-            .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("a valid default key")));
-        div().flex().gap_1().items_center().child(key).child(label)
+        ListSearch::hint(action, PANEL_KEY_CONTEXT, fallback, label, window)
     }
 
     fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -72,8 +71,12 @@ impl ObjectListPanel {
             ListMode::Polled { .. } => true,
             ListMode::Watched => false,
         };
-        let rows = self.visible_rows(cx);
+        // The filter field is built first (`saved-panel-layouts` 1.6): on a
+        // restored panel's very first render, its saved filter text has to be
+        // in place before `visible_rows` reads it, or that first paint would
+        // show every row unfiltered until some later event re-renders.
         let filter = self.filter_input(window, cx);
+        let rows = self.visible_rows(cx);
         let table = self.sync_table(rows, window, cx);
         let mut hints = div()
             .flex()

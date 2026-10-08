@@ -9,9 +9,11 @@ use crate::command::CommandRegistry;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::keymap::{self, KeymapConfig};
 use crate::ui::link::FollowReference;
+use crate::ui::list_search::ListSearch;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::table::ColumnSort;
 use gpui_kit::{
     AppContext as _, Entity, Focusable as _, Keystroke, Modifiers, TestAppContext,
@@ -105,6 +107,18 @@ fn harness_with(
     events: Vec<K8sEvent>,
     setup: impl FnOnce(&mut EventsPanel),
 ) -> Harness {
+    harness_overriding_keymap(cx, events, &[], setup)
+}
+
+/// [`harness_with`], with `overrides` (command id, key) added to the keymap -
+/// so a test can prove the hint row's key is the live, rebound one rather
+/// than always its fallback.
+fn harness_overriding_keymap(
+    cx: &mut TestAppContext,
+    events: Vec<K8sEvent>,
+    overrides: &[(&str, &str)],
+    setup: impl FnOnce(&mut EventsPanel),
+) -> Harness {
     cx.executor().allow_parking();
     let followed: Rc<RefCell<Vec<FollowReference>>> = Rc::default();
     cx.update(|cx| {
@@ -112,11 +126,11 @@ fn harness_with(
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         super::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let mut config = KeymapConfig::default();
+        for (id, key) in overrides {
+            config.bindings.insert(id.to_string(), key.to_string());
+        }
+        let bindings = keymap::bindings(&registry, &config, cx.keyboard_mapper().as_ref());
         cx.bind_keys(bindings);
         let followed = followed.clone();
         cx.on_action(move |action: &FollowReference, _cx| {
@@ -377,6 +391,41 @@ async fn filters_are_saved_and_restored(cx: &mut TestAppContext) {
     assert_eq!(restored.filters, saved_filters);
 }
 
+/// `saved-panel-layouts` 1.6: the search box's text is saved and, once a
+/// restored panel's search box is built, comes back narrowing the rows the
+/// same way typing it would.
+#[gpui_kit::test]
+async fn search_text_is_saved_and_restored(cx: &mut TestAppContext) {
+    let mut h = harness(cx, fixture());
+    focus_table(&mut h);
+    press(&mut h.vcx, "/");
+    h.vcx.simulate_input("imagepullbackoff");
+    h.vcx.run_until_parked();
+    assert_eq!(shown(&mut h), ["e3"]);
+
+    let saved = h
+        .vcx
+        .update(|_, cx| super::restore::dump(h.panel.read(cx), cx));
+    let restored = super::restore::from_state(&saved).expect("a saved panel reads back");
+    assert_eq!(restored.filter.as_deref(), Some("imagepullbackoff"));
+
+    let mut h2 = harness_with(cx, fixture(), move |panel| {
+        panel.search = ListSearch::restored(restored.filter)
+    });
+    assert_eq!(shown(&mut h2), ["e3"], "the restored search narrows rows");
+    let search_text = h2.vcx.update(|_, cx| h2.panel.read(cx).search.query(cx));
+    assert_eq!(search_text, "imagepullbackoff");
+}
+
+/// Data saved before the search box's text was persisted
+/// (`saved-panel-layouts` 1.6) still restores, with no search text.
+#[test]
+fn state_without_a_saved_search_still_restores() {
+    let state = json!({ "context_name": "kind-dev", "namespaces": [] });
+    let restored = super::restore::from_state(&state).expect("the context name is there");
+    assert_eq!(restored.filter, None);
+}
+
 /// Spec: "Searching messages" - `/`, then text, narrows the rows and shows a
 /// count; Escape clears it.
 #[gpui_kit::test]
@@ -442,3 +491,7 @@ async fn the_type_button_opens_the_type_picker(cx: &mut TestAppContext) {
     h.vcx.run_until_parked();
     assert!(h.vcx.debug_bounds("events-facet-picker").is_some());
 }
+
+/// `list-search` #189's regression: the shared `ListSearch` component behind
+/// this search box, case-insensitivity and the hint row's live key.
+mod search;

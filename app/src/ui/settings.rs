@@ -16,6 +16,7 @@ use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::*;
 
 mod appearance;
+mod layouts;
 mod panels;
 mod recorder;
 mod rows;
@@ -33,7 +34,8 @@ actions!(
         OpenSettings,
         ShowKeyboardShortcuts,
         ShowAppearance,
-        ShowPanels
+        ShowPanels,
+        ShowLayouts
     ]
 );
 
@@ -51,6 +53,9 @@ pub enum Section {
     Appearance,
     /// Where panels open: a pod's logs in its own or the shared Logs panel.
     Panels,
+    /// Lists and removes saved panel layouts (`saved-panel-layouts` design.md
+    /// D7). Renaming stays in the saved layouts picker.
+    Layouts,
 }
 
 impl Section {
@@ -59,6 +64,7 @@ impl Section {
             Section::KeyboardShortcuts => "Keyboard Shortcuts",
             Section::Appearance => "Appearance",
             Section::Panels => "Panels",
+            Section::Layouts => "Layouts",
         }
     }
 
@@ -68,6 +74,7 @@ impl Section {
             Section::KeyboardShortcuts => "settings-section-shortcuts",
             Section::Appearance => "settings-section-appearance",
             Section::Panels => "settings-section-panels",
+            Section::Layouts => "settings-section-layouts",
         }
     }
 
@@ -77,6 +84,7 @@ impl Section {
             Section::KeyboardShortcuts => "settings-section-shortcuts-label",
             Section::Appearance => "settings-section-appearance-label",
             Section::Panels => "settings-section-panels-label",
+            Section::Layouts => "settings-section-layouts-label",
         }
     }
 }
@@ -109,6 +117,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             "Settings: Show Panels",
             "",
             Box::new(ShowPanels),
+        ),
+        (
+            "settings.show_layouts",
+            "Settings: Show Layouts",
+            "",
+            Box::new(ShowLayouts),
         ),
     ] {
         registry.register(Command {
@@ -197,15 +211,30 @@ pub struct SettingsWindow {
     appearance_focus: FocusHandle,
     /// The Panels section's, likewise.
     panels_focus: FocusHandle,
+    /// The Layouts section's, likewise.
+    layouts_focus: FocusHandle,
+    /// The saved layouts the Layouts section shows, read off the main thread
+    /// (`layouts::LayoutsCache`) - never by rendering.
+    layouts: layouts::LayoutsCache,
 }
 
 impl SettingsWindow {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // A save, rename or removal anywhere re-reads the list while the
+        // Layouts section is the one shown; the next show re-reads it anyway.
+        cx.observe_global::<crate::util::shell::SavedLayoutsChanged>(|this: &mut Self, cx| {
+            if this.section == Section::Layouts {
+                this.reload_layouts(cx);
+            }
+        })
+        .detach();
         Self {
             shortcuts: cx.new(|cx| ShortcutsSection::new(window, cx)),
             section: Section::default(),
             appearance_focus: cx.focus_handle(),
             panels_focus: cx.focus_handle(),
+            layouts_focus: cx.focus_handle(),
+            layouts: layouts::LayoutsCache::default(),
         }
     }
 
@@ -220,6 +249,10 @@ impl SettingsWindow {
             }
             Section::Appearance => window.focus(&self.appearance_focus, cx),
             Section::Panels => window.focus(&self.panels_focus, cx),
+            Section::Layouts => {
+                window.focus(&self.layouts_focus, cx);
+                self.reload_layouts(cx);
+            }
         }
         cx.notify();
     }
@@ -284,7 +317,8 @@ impl Render for SettingsWindow {
             .bg(theme.sidebar)
             .child(self.sidebar_button(Section::KeyboardShortcuts, cx))
             .child(self.sidebar_button(Section::Appearance, cx))
-            .child(self.sidebar_button(Section::Panels, cx));
+            .child(self.sidebar_button(Section::Panels, cx))
+            .child(self.sidebar_button(Section::Layouts, cx));
         let content = match self.section {
             Section::KeyboardShortcuts => div()
                 .flex_1()
@@ -313,6 +347,12 @@ impl Render for SettingsWindow {
                 .track_focus(&self.panels_focus)
                 .child(panels::section(cx))
                 .into_any_element(),
+            Section::Layouts => div()
+                .flex_1()
+                .min_w_0()
+                .track_focus(&self.layouts_focus)
+                .child(layouts::section(&self.layouts, cx))
+                .into_any_element(),
         };
         div()
             .key_context(KEY_CONTEXT)
@@ -324,6 +364,9 @@ impl Render for SettingsWindow {
             }))
             .on_action(cx.listener(|this, _: &ShowPanels, window, cx| {
                 this.show(Section::Panels, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowLayouts, window, cx| {
+                this.show(Section::Layouts, window, cx)
             }))
             .size_full()
             .flex()

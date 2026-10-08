@@ -58,6 +58,8 @@ mod chord_precedence_tests;
 mod edit_yaml_tests;
 #[cfg(test)]
 mod label_logs_tests;
+#[cfg(test)]
+mod node_pods_window_tests;
 mod open;
 mod panel_focus;
 mod panels;
@@ -70,6 +72,7 @@ mod pod_detail_logs_tests;
 mod quick_look_window_tests;
 mod render;
 mod resource_edge;
+mod saved_layouts;
 mod tab_focus;
 mod tabs;
 mod test_hooks;
@@ -90,6 +93,13 @@ pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
 pub(crate) use layout::{close_window, window_context_count};
 pub use main_window::MainWindow;
 pub use persist::open_saved_or_default;
+// `ui::settings::layouts` (`saved-panel-layouts` tasks 6.1) reads saved
+// layouts to list them, so it needs the same directory `layouts.save`/
+// `layouts.manage` already read and write. `layouts_dir` itself is
+// `pub(crate)` (see its own doc comment) just so this one re-export is
+// legal; `SavedLayoutsDir` - the test-override global it reads - and the
+// `saved_layouts` module stay unwidened.
+pub(crate) use saved_layouts::{SavedLayoutsChanged, layouts_dir, note_layouts_changed};
 pub(crate) use tabs::close_panel;
 pub(crate) use window::open_window;
 
@@ -102,3 +112,14 @@ use panels::*;
 use persist::*;
 use tunnel_dialog::*;
 use window::*;
+
+/// Test-only: points [`layouts_dir`] at `dir` instead of the real
+/// `state_dir()/layouts/` - the same [`SavedLayoutsDir`] override
+/// `util::shell`'s own saved-layout tests already set directly, exposed here
+/// (rather than widening `SavedLayoutsDir` itself, a tuple struct whose field
+/// is `pub(super)`) so `ui::settings`'s Layouts section can be tested against
+/// a temp directory too.
+#[cfg(test)]
+pub(crate) fn set_layouts_dir_for_test(dir: PathBuf, cx: &mut App) {
+    cx.set_global(SavedLayoutsDir(dir));
+}

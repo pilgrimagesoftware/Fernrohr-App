@@ -9,8 +9,9 @@
 //! pods' logs, [`model`] the field model, [`fetch`]
 //! the one-shot read, [`redact`] keeping Secret values out of everything the
 //! panel stores, [`metadata`] the Overview section every kind gets,
-//! [`sections`] the kind-specific ones, and [`panel`], [`render`] and
-//! [`restore`] the dock panel itself.
+//! [`sections`] the kind-specific ones, [`node_pods`] the Node's live pods
+//! region (#186), and [`panel`], [`render`] and [`restore`] the dock panel
+//! itself.
 
 mod commands;
 mod delete;
@@ -21,6 +22,7 @@ mod live;
 mod logs;
 mod metadata;
 mod model;
+mod node_pods;
 mod panel;
 mod redact;
 mod render;
@@ -30,6 +32,13 @@ mod sections;
 #[cfg(test)]
 mod tests;
 
-pub use commands::register_commands;
 pub use panel::ObjectDetailPanel;
 pub use restore::{register_restore, target_from_state};
+
+/// Every command this panel contributes: its own ([`commands`]) plus the
+/// Node pods region's ([`node_pods`]) - one registry entry point, so a call
+/// site can't wire one and forget the other.
+pub fn register_commands(registry: &mut crate::command::CommandRegistry) {
+    commands::register_commands(registry);
+    node_pods::register_commands(registry);
+}

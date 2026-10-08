@@ -187,20 +187,10 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
     }
 }
 
-// UNWIRED: `view_rows` below composes this into the view pipeline; `PodsPanel::render`
-// doesn't call `view_rows` yet (it renders `pods()` unfiltered/unsorted), so neither
-// reaches the bin target. First real caller is whatever wires namespace-scope/sort
-// UI state into the panel.
-#[allow(dead_code)]
-pub fn matches_namespace(pod: &Pod, scope: &NamespaceScope) -> bool {
-    match scope {
-        NamespaceScope::All => true,
-        NamespaceScope::Single(namespace) => {
-            pod.metadata.namespace.as_deref() == Some(namespace.as_str())
-        }
-    }
-}
-
+/// Whether `pod` is in one of `namespaces` - every pod if the list is empty
+/// (no namespace scope set). What `PodsPanel::render` filters by before
+/// projecting to rows; its own name filtering runs after, over the built
+/// rows' visible columns (`list-search` #189, `pods::filter`).
 pub fn matches_namespaces(pod: &Pod, namespaces: &[String]) -> bool {
     namespaces.is_empty()
         || pod
@@ -210,45 +200,15 @@ pub fn matches_namespaces(pod: &Pod, namespaces: &[String]) -> bool {
             .is_some_and(|namespace| namespaces.contains(namespace))
 }
 
-// UNWIRED: see `matches_namespace` above.
-#[allow(dead_code)]
-pub(super) fn matches_filter(row: &PodRow, filter: &str) -> bool {
-    filter.is_empty() || row.name.contains(filter)
-}
-
-// UNWIRED: see `matches_namespace` above.
-#[allow(dead_code)]
-pub(super) fn sort_rows(rows: &mut [PodRow], sort: &SortState) {
-    let col = pods_table::PodColumn::from_id(&sort.column);
-    if sort.ascending {
-        rows.sort_by(|a, b| pods_table::compare(a, b, col));
-    } else {
-        // A reversed comparator, not `.reverse()` on the slice - see
-        // `PodTableDelegate::apply_sort` for why that matters with ties.
-        rows.sort_by(|a, b| pods_table::compare(b, a, col));
+/// Whether `pod` is scheduled on `node` - every pod if `node` is `None` (the
+/// standalone Pods panel's own, node-unscoped table). A Node's embedded table
+/// (#186) filters the same shared, all-namespaces watch by this alone, rather
+/// than opening a second watch with a `spec.nodeName` field selector.
+pub(super) fn matches_node(pod: &Pod, node: Option<&str>) -> bool {
+    match node {
+        None => true,
+        Some(node) => pod.spec.as_ref().and_then(|spec| spec.node_name.as_deref()) == Some(node),
     }
-}
-
-/// The full view pipeline for a Pods panel: scope to a namespace, project to
-/// rows, apply the name filter, then sort. Pure and GPUI-free so it's
-/// directly unit-testable as "the view model".
-// UNWIRED: see `matches_namespace` above - `PodsPanel::render` doesn't call this yet.
-#[allow(dead_code)]
-pub fn view_rows(
-    pods: &[Pod],
-    now: Timestamp,
-    namespace: &NamespaceScope,
-    name_filter: &str,
-    sort: &SortState,
-) -> Vec<PodRow> {
-    let mut rows: Vec<PodRow> = pods
-        .iter()
-        .filter(|pod| matches_namespace(pod, namespace))
-        .map(|pod| pod_row(pod, now))
-        .filter(|row| matches_filter(row, name_filter))
-        .collect();
-    sort_rows(&mut rows, sort);
-    rows
 }
 
 #[cfg(test)]

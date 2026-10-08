@@ -7,6 +7,7 @@ use super::panel::ObjectListPanel;
 use super::table::ColumnLayout;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
+use crate::ui::list_search::ListSearch;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use crate::ui::placeholder::PlaceholderPanel;
@@ -31,6 +32,12 @@ pub(crate) struct SavedList {
     pub(crate) context_name: String,
     pub(crate) namespaces: Vec<String>,
     pub(super) columns: ColumnLayout,
+    /// The filter text last saved with this panel, if any
+    /// (`saved-panel-layouts` 1.6).
+    pub(super) filter: Option<String>,
+    /// The sort column id and direction last saved with this panel, if any
+    /// (`saved-panel-layouts` 1.6).
+    pub(super) sort: Option<(String, bool)>,
 }
 
 /// What `panel` saves.
@@ -41,6 +48,17 @@ pub(super) fn dump(panel: &ObjectListPanel, cx: &App) -> Value {
         // Never drawn, so the layout it was given is still the one it has.
         None => panel.initial_layout.clone(),
     };
+    let filter = panel.filter.dump(cx);
+    let sort = match &panel.table {
+        Some(table) => table
+            .read(cx)
+            .delegate()
+            .sort_state()
+            .map(|(column, descending)| (column.to_string(), descending)),
+        None => panel.initial_sort.clone(),
+    };
+    let sort =
+        sort.map(|(column, descending)| json!({ "column": column, "descending": descending }));
     json!({
         "context_name": panel.scope.context_name,
         "namespaces": panel.scope.namespaces,
@@ -50,6 +68,8 @@ pub(super) fn dump(panel: &ObjectListPanel, cx: &App) -> Value {
         "plural": panel.kind.plural,
         "namespaced": panel.kind.namespaced,
         "columns": columns,
+        "filter": filter,
+        "sort": sort,
     })
 }
 
@@ -71,7 +91,19 @@ pub(crate) fn from_state(state: &Value) -> Option<SavedList> {
         context_name: state["context_name"].as_str()?.to_string(),
         namespaces: serde_json::from_value(state["namespaces"].clone()).unwrap_or_default(),
         columns: serde_json::from_value(state["columns"].clone()).unwrap_or_default(),
+        filter: state["filter"].as_str().map(str::to_string),
+        sort: sort_from_state(state),
     })
+}
+
+/// The `sort` a saved list panel names, if any (`saved-panel-layouts` 1.6):
+/// `{ "column": <id>, "descending": <bool> }`, or absent/`null` for no saved
+/// sort - true of every layout saved before this field existed.
+fn sort_from_state(state: &Value) -> Option<(String, bool)> {
+    let sort = &state["sort"];
+    let column = sort["column"].as_str()?.to_string();
+    let descending = sort["descending"].as_bool().unwrap_or(false);
+    Some((column, descending))
 }
 
 /// `standard-resource-panels` D4: a saved list comes back as a list - unless its
@@ -104,6 +136,8 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
     Ok(panel_handle(cx.new(|cx| {
         let mut panel = ObjectListPanel::new(saved.kind, scope, cx);
         panel.initial_layout = saved.columns;
+        panel.filter = ListSearch::restored(saved.filter);
+        panel.initial_sort = saved.sort;
         panel
     })))
 }

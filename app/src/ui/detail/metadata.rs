@@ -14,13 +14,16 @@
 //!
 //! A chip copies itself (#153): clicking it, or Enter or Space while the chip
 //! has keyboard focus - each chip is a tab stop - puts its whole `key=value`
-//! on the clipboard, a shortened value in full.
+//! on the clipboard, a shortened value in full. It then shows it copied (#187)
+//! as a copy button does (`ui::copy::CopiedFeedback`): a check mark in the
+//! chip, and "Copied" in a short chip's tooltip, for a moment.
 
 use super::collapsible::preview;
+use crate::ui::copy::{CopiedFeedback, copied_selector, copy_with_feedback};
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _};
 use gpui_kit::*;
 
 /// What a metadata chip shows: `key=value`, or `key=` and the value's preview,
@@ -69,6 +72,8 @@ pub fn metadata_tooltip_selector(id_prefix: &str, index: usize) -> String {
 
 /// What an unshortened chip's tooltip says it does.
 pub const COPY_CHIP_TOOLTIP: &str = "Click to copy";
+/// What it says for a moment once it has copied.
+pub const COPIED_CHIP_TOOLTIP: &str = "Copied";
 
 /// One chip per `(key, value)`, a large value shortened - labels and
 /// annotations. `id_prefix` keeps the chips' ids apart from another field's.
@@ -117,6 +122,16 @@ impl RenderOnce for ChipElement {
             .use_keyed_state(id.clone(), cx, |_, cx| cx.focus_handle().tab_stop(true))
             .read(cx)
             .clone();
+        let feedback = CopiedFeedback::of(&id, window, cx);
+        let copied = feedback.read(cx).shown();
+        let copied_mark = copied.then(|| {
+            let selector = copied_selector(&id);
+            div().debug_selector(move || selector).child(
+                Icon::new(IconName::Check)
+                    .xsmall()
+                    .text_color(crate::ui::style::status(crate::ui::style::Tone::Good, cx)),
+            )
+        });
         let accent = crate::ui::style::accent(cx);
         let chip = MetadataChip::new(&key, &value);
         let selector = metadata_chip_selector(&id_prefix, index);
@@ -129,6 +144,9 @@ impl RenderOnce for ChipElement {
             .rounded_md()
             .bg(cx.theme().muted)
             .text_sm()
+            .flex()
+            .items_center()
+            .gap_1()
             // Copies itself on a click, or Enter or Space once Tab has
             // reached it - a ring shows which chip that is.
             .test_support()
@@ -138,7 +156,7 @@ impl RenderOnce for ChipElement {
             .border_1()
             .border_color(transparent_black())
             .focus_visible(|style| style.border_color(accent))
-            .on_click(move |_, _, cx| crate::ui::copy::copy_text(&pair, cx))
+            .on_click(move |_, _, cx| copy_with_feedback(&pair, &feedback, cx))
             .role(accesskit::Role::Label)
             .aria_value(chip.text.clone());
         match chip.tooltip {
@@ -173,7 +191,8 @@ impl RenderOnce for ChipElement {
                         })
                         .build(window, cx)
                     })
-                    .child(chip.text);
+                    .child(chip.text)
+                    .children(copied_mark);
                 div()
                     .group(group)
                     .flex()
@@ -183,12 +202,22 @@ impl RenderOnce for ChipElement {
                     .into_any_element()
             }
             None => base
-                .tooltip(|window, cx| Tooltip::new(COPY_CHIP_TOOLTIP).build(window, cx))
+                .tooltip(move |window, cx| {
+                    Tooltip::new(if copied {
+                        COPIED_CHIP_TOOLTIP
+                    } else {
+                        COPY_CHIP_TOOLTIP
+                    })
+                    .build(window, cx)
+                })
                 .child(chip.text)
+                .children(copied_mark)
                 .into_any_element(),
         }
     }
 }
 
+#[cfg(test)]
+mod feedback_tests;
 #[cfg(test)]
 mod tests;

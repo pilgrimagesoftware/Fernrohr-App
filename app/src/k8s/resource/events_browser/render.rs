@@ -11,21 +11,19 @@ use super::panel::EventsPanel;
 use super::row::EventRow;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
+use crate::ui::list_search::ListSearch;
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
 
 impl EventsPanel {
     /// One hint: `action`'s live key (or `fallback`) and what it does.
     fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &mut Window) -> Div {
-        let key = Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
-            .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("a valid default key")));
-        div().flex().gap_1().items_center().child(key).child(label)
+        ListSearch::hint(action, PANEL_KEY_CONTEXT, fallback, label, window)
     }
 
     /// The filter buttons, each opening its facet's picker, then a chip per
@@ -178,7 +176,7 @@ impl EventsPanel {
         let rows = self.visible_rows(cx);
         let total = self.scoped_rows(cx).len();
         let count = match (
-            self.search_query(cx).is_empty() && self.filters.is_empty(),
+            self.search.query(cx).is_empty() && self.filters.is_empty(),
             rows.len(),
         ) {
             (true, shown) => format!("{shown} events"),

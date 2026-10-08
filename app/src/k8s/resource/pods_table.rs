@@ -14,6 +14,20 @@ mod columns;
 use columns::cell_text;
 pub(super) use columns::{PodColumn, compare};
 
+/// Every column's text for `row`, in [`PodColumn::DEFAULT_ORDER`] - a list
+/// panel's "visible columns" for its search box (`crate::ui::list_search`,
+/// #189), gathered the same way [`PodTableDelegate::render_td`]/`cell_text`
+/// reads each cell. The Pods table's column *set* never changes with the
+/// user's reordering (only which position each sits in), so the fixed default
+/// order is every column there is to search, not just the ones currently left
+/// of the fold.
+pub(super) fn visible_texts(row: &PodRow) -> Vec<String> {
+    PodColumn::DEFAULT_ORDER
+        .iter()
+        .map(|&column| cell_text(row, column))
+        .collect()
+}
+
 /// One row of the live Pods table: the display fields plus the selection a
 /// click on it should publish.
 #[derive(Clone)]
@@ -172,6 +186,38 @@ impl PodTableDelegate {
     pub(super) fn reorder_columns(&mut self, col_ix: usize, to_ix: usize) {
         let col = self.columns.remove(col_ix);
         self.columns.insert(to_ix, col);
+    }
+
+    /// The active sort to save with the panel (`saved-panel-layouts` 1.6): its
+    /// column's id and whether it's descending, or `None` for no active sort -
+    /// `ColumnSort::Default` (the natural, unsorted order) counts as no sort
+    /// here, the same as never having one.
+    pub(super) fn sort_state(&self) -> Option<(&'static str, bool)> {
+        match self.sort {
+            Some((col, ColumnSort::Ascending)) => Some((col.id(), false)),
+            Some((col, ColumnSort::Descending)) => Some((col.id(), true)),
+            Some((_, ColumnSort::Default)) | None => None,
+        }
+    }
+
+    /// Applies a saved sort by column id (`saved-panel-layouts` 1.6): a
+    /// `column_id` this build doesn't have among [`PodColumn::DEFAULT_ORDER`]
+    /// is ignored - no sort is applied - rather than falling back to another
+    /// column.
+    pub(super) fn set_sort_state(&mut self, column_id: &str, descending: bool) {
+        let Some(column) = PodColumn::DEFAULT_ORDER
+            .into_iter()
+            .find(|col| col.id() == column_id)
+        else {
+            return;
+        };
+        let sort = if descending {
+            ColumnSort::Descending
+        } else {
+            ColumnSort::Ascending
+        };
+        self.sort = Some((column, sort));
+        self.apply_sort();
     }
 
     /// Sets the active sort for the column at `col_ix` and re-derives `rows`
