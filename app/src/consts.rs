@@ -38,6 +38,14 @@ pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long before an OIDC id-token's expiry it is already renewed (#188), so
+/// it can't lapse between the check and the requests it authorizes.
+pub(crate) const OIDC_EXPIRY_MARGIN: Duration = Duration::from_secs(60);
+
+/// How long one request to an OIDC issuer may take, connecting included
+/// (#188): discovery, then the token refresh.
+pub(crate) const OIDC_ISSUER_TIMEOUT: Duration = Duration::from_secs(15);
+
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
 // the section 5.2 keychain wrapper this backs.
 #[allow(dead_code)]
