@@ -1,6 +1,9 @@
 //! The Save Panel Layout command (`saved-panel-layouts` tasks 2.1-2.3): the
 //! naming dialog, and capturing a live window's dock, Resource panel state,
-//! contexts and bounds into a [`SavedLayout`] on confirm.
+//! contexts and bounds into a [`SavedLayout`] on confirm. `layouts.manage`
+//! (tasks 3.2) also lives here: it just opens [`SavedLayoutsPicker`] (`ui::
+//! picker::saved_layouts`, which owns the picker view itself) as a dialog
+//! over this window, in both `Workspace` and cluster-picker modes.
 //!
 //! `config::saved_layouts` owns the on-disk shape and plain file I/O; this
 //! module is the one place that reaches into a live `MainWindow`'s
@@ -16,6 +19,7 @@ use crate::config::saved_layouts::{self, SavedLayout};
 use crate::consts::SAVED_LAYOUT_SCHEMA_VERSION;
 use crate::ui::confirm_dialog::{self, Confirmation, Severity};
 use crate::ui::confirm_text::ConfirmText;
+use crate::ui::picker::saved_layouts::SavedLayoutsPicker;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::Button;
@@ -50,6 +54,76 @@ impl MainWindow {
         }
         open_save_dialog(cx.weak_entity(), window, cx);
     }
+
+    /// `layouts.manage`: opens the saved layouts picker over this window - in
+    /// both `Workspace` and cluster-picker modes (design.md D4's table:
+    /// `context: None`), so a fresh, unconnected window can still load a
+    /// saved layout straight away.
+    pub(super) fn on_action_manage_layouts(
+        &mut self,
+        _: &ManageLayouts,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        open_manage_dialog(cx.weak_entity(), window, cx);
+    }
+}
+
+/// Opens the saved layouts picker, focused on its list.
+fn open_manage_dialog(main_window: WeakEntity<MainWindow>, window: &mut Window, cx: &mut App) {
+    if !matches!(window.root::<Root>(), Some(Some(_))) {
+        return;
+    }
+    let dir = layouts_dir(cx);
+    let picker = cx.new(|cx| SavedLayoutsPicker::new(dir, main_window, window, cx));
+    let key = Kbd::binding_for_action(&ManageLayouts, None, window).unwrap_or_else(|| {
+        Kbd::new(Keystroke::parse(MANAGE_LAYOUTS_DEFAULT_BINDING).expect("a valid default key"))
+    });
+    let picker_for_focus = picker.clone();
+    window.open_dialog(cx, move |built, _window, _cx| {
+        let picker = picker.clone();
+        built
+            .w(px(420.))
+            .title(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child("Saved Layouts…")
+                    .child(key.clone()),
+            )
+            .content(move |content, _window, _cx| content.child(picker.clone()))
+    });
+    focus_picker_after_first_render(picker_for_focus, window);
+}
+
+/// Focuses `picker`'s list once its first real frame has rendered, rather
+/// than right away.
+///
+/// `SavedLayoutsPicker::focus_handle` delegates to
+/// `gpui_kit`'s `CommandState::focus_handle`, which is conditional: with no
+/// query field (`searchable(false)`, set in `ui::picker::saved_layouts`'s
+/// own `Render` impl) it returns the list's own handle, but that branch
+/// isn't live until `CommandState`'s model has actually taken that option -
+/// which happens only when the `Command` builder renders once, not at
+/// construction. Reading the handle synchronously, right after `cx.new`,
+/// still sees the *default* (searchable) branch: the query input's handle -
+/// one that is never mounted here at all, since nothing with `searchable:
+/// true`'s shape ever paints. Focusing an unmounted handle has nothing to
+/// fail loudly: `window.focus` happily records it as the window's current
+/// focus, but no element in the next rendered frame's dispatch tree carries
+/// that id, so every subsequent keystroke's context stack resolves to the
+/// window root - empty - and every one of this view's own key-bound
+/// commands (and even `Command`'s own built-in up/down/enter) silently goes
+/// nowhere. Deferring to `on_next_frame`, after `open_dialog` schedules the
+/// content but before a test or the user sends a key, lets that first real
+/// render settle the model and expose the handle that is actually on
+/// screen.
+fn focus_picker_after_first_render(picker: Entity<SavedLayoutsPicker>, window: &mut Window) {
+    window.on_next_frame(move |window, cx| {
+        let focus = picker.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+    });
 }
 
 /// Where saved layouts are read from and written to: a test override
@@ -291,5 +365,7 @@ fn write_layout(dir: &Path, layout: SavedLayout) {
     }
 }
 
+#[cfg(test)]
+mod manage_tests;
 #[cfg(test)]
 mod tests;

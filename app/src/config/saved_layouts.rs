@@ -12,14 +12,9 @@
 //! `save` and `load_all` are wired for real by the Save Panel Layout command
 //! (`util::shell::saved_layouts`, tasks section 2): `save` writes a new or
 //! overwritten layout, and `load_all` is how its naming dialog checks a typed
-//! name against what's already saved.
-//!
-//! # UNWIRED(#176)
-//! Nothing outside this module's own tests calls `rename` or `remove` yet:
-//! the saved layouts picker and the Settings Layouts section
-//! (`saved-panel-layouts` tasks sections 3 and 6) are their first real
-//! callers. A test that exercises this file-store behaviour is not coverage
-//! of those later sections.
+//! name against what's already saved. `rename` and `remove` are wired by the
+//! saved layouts picker (`ui::picker::saved_layouts`, tasks section 3); the
+//! Settings Layouts section (tasks section 6) calls `remove` too.
 
 use gpui_kit::component::dock::DockAreaState;
 use serde::{Deserialize, Serialize};
@@ -244,9 +239,6 @@ pub fn load_all(dir: &Path) -> (Vec<SavedLayout>, Vec<UnreadableLayout>) {
 /// derived filename changes, the new file is written before the old one is
 /// removed, so an interruption leaves the old file as the recoverable copy
 /// (design.md D2).
-// UNWIRED(#176): see the module doc comment - the picker's rename command
-// (tasks section 3.4) is the first real caller.
-#[allow(dead_code)]
 pub fn rename(dir: &Path, old_name: &str, new_name: &str) -> Result<(), RenameError> {
     let all = entries(dir);
     let Some((old_path, mut layout)) = all.iter().find_map(|(path, parsed)| {
@@ -280,10 +272,6 @@ pub fn rename(dir: &Path, old_name: &str, new_name: &str) -> Result<(), RenameEr
 
 /// Removes the saved layout named `name`, if one exists; an absent name is a
 /// no-op, not an error.
-// UNWIRED(#176): see the module doc comment - the picker's delete command and
-// the Settings Layouts section's Remove control (tasks sections 3.5 and 6.3)
-// are the first real callers.
-#[allow(dead_code)]
 pub fn remove(dir: &Path, name: &str) -> io::Result<()> {
     let found = entries(dir)
         .into_iter()

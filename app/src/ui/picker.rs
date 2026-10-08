@@ -41,6 +41,7 @@ mod layout;
 mod logo;
 mod render;
 mod rows;
+pub mod saved_layouts;
 mod state;
 
 use layout::*;

@@ -163,6 +163,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_disconnect_active_context))
             .on_action(cx.listener(Self::on_action_save_resource_side))
             .on_action(cx.listener(Self::on_action_save_layout))
+            .on_action(cx.listener(Self::on_action_manage_layouts))
             .child(toolbar)
             .child(div().flex_1().min_h_0().child(body))
     }

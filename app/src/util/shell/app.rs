@@ -8,7 +8,8 @@ actions!(
         NewWindow,
         ToggleCommandPalette,
         SetContextTunnel,
-        SaveLayout
+        SaveLayout,
+        ManageLayouts
     ]
 );
 
@@ -66,6 +67,10 @@ pub const SET_CONTEXT_TUNNEL_DEFAULT_BINDING: &str = "cmd-shift-b";
 /// registry.
 pub const SAVE_LAYOUT_COMMAND_ID: &str = "layouts.save";
 pub const SAVE_LAYOUT_DEFAULT_BINDING: &str = "secondary-shift-s";
+/// design.md D4's table: `cmd-shift-o`, spelled cross-platform like
+/// [`SAVE_LAYOUT_DEFAULT_BINDING`] above.
+pub const MANAGE_LAYOUTS_COMMAND_ID: &str = "layouts.manage";
+pub const MANAGE_LAYOUTS_DEFAULT_BINDING: &str = "secondary-shift-o";
 /// The key context active while a window shows a connected workspace (its
 /// dock, Resource panel and status bar) rather than the cluster picker -
 /// `render.rs` tags the workspace body with it, so a command scoped here
@@ -135,6 +140,18 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         // rather than silently weakening a test section 2 doesn't own.
         menu: None,
     });
+    registry.register(Command {
+        id: MANAGE_LAYOUTS_COMMAND_ID,
+        title: "Saved Layouts…",
+        default_binding: MANAGE_LAYOUTS_DEFAULT_BINDING,
+        // Available from both window modes (design.md D4's table), unlike
+        // `layouts.save` above - so `context: None` rather than
+        // `WORKSPACE_KEY_CONTEXT`.
+        context: None,
+        action: Box::new(ManageLayouts),
+        menu: Some(crate::command::MenuSlot::Window),
+    });
+    crate::ui::picker::saved_layouts::register_commands(registry);
     crate::ui::menu::register_commands(registry);
     nav::register_commands(registry);
     tunnels::register_commands(registry);
