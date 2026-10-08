@@ -32,6 +32,12 @@ shlex = "=1.3.0"
 # (`ui::raster`). Already in the build through gpui, which decodes images with
 # it; pinned to that same version, with only the two decoders those assets need.
 image = { version = "=0.25.10", default-features = false, features = ["png", "webp"] }
+# Refreshing an expired OIDC `auth-provider` id-token against its issuer
+# (`k8s::cluster::oidc`, #188): requests for kube's own client, and the JWT and
+# Basic-auth encodings. Both already in the build through kube-client; pinned
+# to those same versions.
+http = "=1.5.0"
+base64 = "=0.22.1"
 
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.

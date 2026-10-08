@@ -2073,10 +2073,12 @@ name = "fernrohr"
 version = "0.6.0"
 dependencies = [
  "ashpd",
+ "base64 0.22.1",
  "dirs 7.0.0",
  "futures-util",
  "gpui-kit",
  "gpui-terminal",
+ "http",
  "image",
  "jiff",
  "k8s-openapi",

@@ -2,7 +2,7 @@
 // would shadow the built-in `#[test]` for these plain synchronous/tokio tests.
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::connection::connect::{
-    ForwardWait, connect_and_probe, resolve_bound_context, resolve_named_context,
+    ForwardWait, connect_and_probe, resolve_bound_context, resolve_with_fresh_tokens,
     rewrite_for_tunnel, route_through_tunnel,
 };
 use crate::k8s::cluster::connection::test_support::{config_for, respond_once, version_info_json};
@@ -56,7 +56,7 @@ fn resolve_bound_context_prefers_the_passed_context_name() {
 
 #[tokio::test]
 async fn resolve_named_context_picks_that_context_not_current_context() {
-    let config = resolve_named_context(two_context_kubeconfig(), "staging")
+    let config = resolve_with_fresh_tokens(two_context_kubeconfig(), Some("staging"), &[])
         .await
         .unwrap();
     assert_eq!(config.cluster_url.host(), Some("staging.example.com"));
@@ -64,7 +64,7 @@ async fn resolve_named_context_picks_that_context_not_current_context() {
 
 #[tokio::test]
 async fn resolve_named_context_reports_an_unknown_context() {
-    let error = resolve_named_context(two_context_kubeconfig(), "does-not-exist")
+    let error = resolve_with_fresh_tokens(two_context_kubeconfig(), Some("does-not-exist"), &[])
         .await
         .unwrap_err();
     assert!(error.contains("does-not-exist"));
