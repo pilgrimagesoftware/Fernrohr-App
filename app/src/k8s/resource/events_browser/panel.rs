@@ -3,7 +3,7 @@
 //! `table`'s.
 
 use super::columns::EventColumn;
-use super::filters::{EventFilters, search_matches};
+use super::filters::EventFilters;
 use super::row::EventRow;
 use super::store::EventsTable;
 use super::table::{DEFAULT_SORT, EventsTableDelegate, reselect};
@@ -11,6 +11,7 @@ use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery_registry::{DiscoveredKinds, DiscoveryRegistry};
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
+use crate::ui::list_search::{self, ListSearch};
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelControl, PanelEvent, PanelInfo, PanelState,
@@ -18,6 +19,10 @@ use gpui_kit::component::dock::{
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::table::{ColumnSort, TableEvent, TableState};
 use gpui_kit::*;
+
+/// The search box's placeholder - also what it matches on (reason, involved
+/// object, message), design D3's interim substring filter.
+pub(super) const SEARCH_PLACEHOLDER: &str = "Search reason, object, message...";
 
 /// A dock panel listing one context's retained events, live, newest first,
 /// narrowed to its namespace selection.
@@ -41,11 +46,9 @@ pub struct EventsPanel {
     pub(super) initial_sort: Option<(EventColumn, ColumnSort)>,
     /// The type, kind and reason filters, saved with the panel.
     pub(super) filters: EventFilters,
-    /// The search box, created on first render.
-    pub(super) search: Option<Entity<InputState>>,
-    /// The search text to start the search box with, once it's built
-    /// (`saved-panel-layouts` 1.6).
-    pub(super) initial_search: Option<String>,
+    /// The search box: its lazily built `InputState`, and the text to start
+    /// it with once restored (`saved-panel-layouts` 1.6, `list-search` #189).
+    pub(super) search: ListSearch,
     /// The context's discovery, which decides which involved objects link.
     pub(super) discovery: Entity<DiscoveredKinds>,
 }
@@ -101,8 +104,7 @@ impl EventsPanel {
             table: None,
             initial_sort: Some(DEFAULT_SORT),
             filters: EventFilters::default(),
-            search: None,
-            initial_search: None,
+            search: ListSearch::new(),
             discovery,
         }
     }
@@ -165,22 +167,19 @@ impl EventsPanel {
     }
 
     /// The events to show now: [`Self::scoped_rows`] through the filters, then
-    /// the search.
+    /// the search - a case-insensitive substring of its reason, involved
+    /// object or message (design D3's interim search), not every column the
+    /// table renders: this browser's own idea of "visible" for
+    /// `crate::ui::list_search`'s shared matcher.
     pub(super) fn visible_rows(&self, cx: &App) -> Vec<EventRow> {
-        let query = self.search_query(cx);
+        let query = self.search.query(cx);
         self.scoped_rows(cx)
             .into_iter()
             .filter(|row| self.filters.matches(row))
-            .filter(|row| search_matches(row, &query))
+            .filter(|row| {
+                list_search::matches([&row.reason, &row.object_label(), &row.message], &query)
+            })
             .collect()
-    }
-
-    /// The search box's text, trimmed.
-    pub(super) fn search_query(&self, cx: &App) -> String {
-        self.search
-            .as_ref()
-            .map(|search| search.read(cx).value().trim().to_string())
-            .unwrap_or_default()
     }
 
     /// The search box, created the first time a window renders this panel.
@@ -189,25 +188,7 @@ impl EventsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<InputState> {
-        if let Some(search) = &self.search {
-            return search.clone();
-        }
-        let initial_search = self.initial_search.clone();
-        let search = cx.new(|cx| {
-            let mut state =
-                InputState::new(window, cx).placeholder("Search reason, object, message...");
-            if let Some(initial) = initial_search {
-                state = state.default_value(initial);
-            }
-            state
-        });
-        cx.subscribe(
-            &search,
-            |_, _, _event: &gpui_kit::component::input::InputEvent, cx| cx.notify(),
-        )
-        .detach();
-        self.search = Some(search.clone());
-        search
+        self.search.input(SEARCH_PLACEHOLDER, window, cx)
     }
 
     /// The table, created the first time a window renders this panel and given

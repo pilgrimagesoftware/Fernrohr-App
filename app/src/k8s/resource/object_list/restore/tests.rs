@@ -3,6 +3,7 @@
 use super::{from_state, restores_as_placeholder};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::object_list::{ObjectListPanel, ObjectsTable};
+use crate::ui::list_search::ListSearch;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
@@ -193,7 +194,7 @@ async fn filter_text_and_sort_are_saved_and_restored(cx: &mut TestAppContext) {
             .scoped_to(saved.namespaces.clone());
         let panel = cx.new(|cx| {
             let mut panel = ObjectListPanel::with_table(leases(), scope, objects2, client2, cx);
-            panel.initial_filter = saved.filter.clone();
+            panel.filter = ListSearch::restored(saved.filter.clone());
             panel.initial_sort = saved.sort.clone();
             panel
         });
@@ -204,16 +205,7 @@ async fn filter_text_and_sort_are_saved_and_restored(cx: &mut TestAppContext) {
     let mut rvcx = VisualTestContext::from_window(window2.into(), cx);
     rvcx.run_until_parked();
 
-    let filter_text = rvcx.update(|_, cx| {
-        restored
-            .read(cx)
-            .filter
-            .as_ref()
-            .expect("the filter field is built on first render")
-            .read(cx)
-            .value()
-            .to_string()
-    });
+    let filter_text = rvcx.update(|_, cx| restored.read(cx).filter.query(cx));
     assert_eq!(filter_text, "web");
     let names: Vec<String> = rvcx.update(|_, cx| {
         let table = restored

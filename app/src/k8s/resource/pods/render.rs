@@ -2,8 +2,10 @@
 
 use super::*;
 use crate::ui::list_keys::{self, Step};
+use crate::ui::list_search;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
+use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 
 /// Up/Down with no pod selected, or with focus on the panel rather than its table
@@ -67,6 +69,12 @@ impl Render for PodsPanel {
             // affected panel - this branch no longer reads pause state at all, so a
             // paused panel just keeps rendering its last rows undisturbed.
             ConnectionState::Connected(_) => {
+                // Built (and a restored filter's text loaded) before the rows
+                // below are read, so the first paint is already narrowed
+                // rather than showing every row until some later redraw
+                // (`list-search` #189).
+                let filter_input = self.filter.input(filter::FILTER_PLACEHOLDER, window, cx);
+                let query = self.filter.query(cx);
                 let now = Timestamp::now();
                 let namespaces = &self.scope.namespaces;
                 let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
@@ -104,6 +112,12 @@ impl Render for PodsPanel {
                             forwards,
                         }
                     })
+                    // Every visible column, not name alone - the table's own
+                    // idea of "visible" (`pods_table::visible_texts`) for the
+                    // shared matcher.
+                    .filter(|item| {
+                        list_search::matches(pods_table::visible_texts(&item.row), &query)
+                    })
                     .collect();
                 let table = self.sync_table(items, window, cx);
                 // The shell command's context, only while the selected pod has a
@@ -122,6 +136,11 @@ impl Render for PodsPanel {
                     .flex_col()
                     .p(space.panel_inset)
                     .children(self.render_action_failure(cx))
+                    .child(
+                        div()
+                            .on_action(cx.listener(Self::on_action_clear_filter))
+                            .child(Input::new(&filter_input)),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -191,6 +210,7 @@ impl Render for PodsPanel {
             .capture_action(cx.listener(Self::capture_cancel))
             .capture_action(cx.listener(Self::capture_select_down))
             .capture_action(cx.listener(Self::capture_select_up))
+            .on_action(cx.listener(Self::on_action_focus_filter))
             .on_action(cx.listener(Self::on_action_warp_namespace))
             .on_action(cx.listener(Self::on_action_warp_all_to_namespace))
             .on_action(cx.listener(

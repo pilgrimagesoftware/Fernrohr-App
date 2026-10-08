@@ -6,6 +6,7 @@ use super::columns::EventColumn;
 use super::filters::EventFilters;
 use super::panel::EventsPanel;
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::ui::list_search::ListSearch;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::base::dock::PanelView;
@@ -56,11 +57,7 @@ pub(super) fn dump(panel: &EventsPanel, cx: &App) -> Value {
     let sort = panel
         .sort(cx)
         .map(|(column, sort)| json!({ "column": column.id(), "order": sort_name(sort) }));
-    let filter = match &panel.search {
-        Some(search) => Some(search.read(cx).value().to_string()),
-        // Never drawn, so the search text it was given is still the one it has.
-        None => panel.initial_search.clone(),
-    };
+    let filter = panel.search.dump(cx);
     json!({
         "context_name": panel.scope.context_name,
         "namespaces": panel.scope.namespaces,
@@ -101,7 +98,7 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
         let mut panel = EventsPanel::new(scope, cx);
         panel.initial_sort = saved.sort;
         panel.filters = saved.filters;
-        panel.initial_search = saved.filter;
+        panel.search = ListSearch::restored(saved.filter);
         panel
     })))
 }

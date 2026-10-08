@@ -49,8 +49,8 @@ impl EventsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let search = self.search_input(window, cx);
-        search.read(cx).focus_handle(cx).focus(window, cx);
+        self.search
+            .focus(super::panel::SEARCH_PLACEHOLDER, window, cx);
     }
 
     /// Escape in the search box: clears it and hands focus back to the table, so
@@ -61,17 +61,15 @@ impl EventsPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(search) = &self.search {
-            search.update(cx, |search, cx| search.set_value("", window, cx));
-        }
-        self.focus_table(window, cx);
+        let focus = self.table_focus_handle(cx);
+        self.search.clear(&focus, window, cx);
         cx.notify();
     }
 
-    fn focus_table(&self, window: &mut Window, cx: &mut App) {
+    fn table_focus_handle(&self, cx: &App) -> FocusHandle {
         match &self.table {
-            Some(table) => table.read(cx).focus_handle(cx).focus(window, cx),
-            None => self.focus_handle.focus(window, cx),
+            Some(table) => table.read(cx).focus_handle(cx),
+            None => self.focus_handle.clone(),
         }
     }
 

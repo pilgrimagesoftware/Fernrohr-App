@@ -13,6 +13,7 @@ use gpui_kit::{Action, actions};
 actions!(
     pods,
     [
+        FocusFilter,
         WarpNamespace,
         WarpAllToNamespace,
         DescribePod,
@@ -52,6 +53,10 @@ pub const QUICK_LOOK_KEY_CONTEXT: &str = "PodQuickLook";
 
 /// The default keys, also the hint bar's fallback when the keymap has no
 /// binding to show. Named once so the hint bar and the command can't drift.
+/// Every list's filter key (`object_list::FILTER_KEY`, `events_browser::SEARCH_KEY`),
+/// so `/` means "focus the filter" the same way in every list panel
+/// (`list-search` #189).
+pub(super) const FILTER_KEY: &str = "/";
 pub(super) const NAMESPACE_KEY: &str = "w";
 /// Warp All to Namespace (`warp-all-to-namespace`): `w` for this panel alone,
 /// shifted for every list in the context.
@@ -80,6 +85,7 @@ pub(super) const EDIT_KEY: &str = "e";
 pub(super) const CLOSE_QUICK_LOOK_KEY: &str = "escape";
 pub(super) const OPEN_QUICK_LOOK_DETAILS_KEY: &str = "enter";
 
+const FILTER_COMMAND_ID: &str = "pods.focus_filter";
 const NAMESPACE_COMMAND_ID: &str = "pods.warp_namespace";
 const WARP_ALL_COMMAND_ID: &str = "pods.warp_all_namespace";
 const DESCRIBE_COMMAND_ID: &str = "pods.describe";
@@ -133,6 +139,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu,
         });
     };
+    register(
+        FILTER_COMMAND_ID,
+        "Pods: Focus Filter",
+        FILTER_KEY,
+        Box::new(FocusFilter),
+        None,
+    );
     register(
         "pods.edit",
         "Pods: Edit Selected Pod's YAML",

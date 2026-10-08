@@ -5,6 +5,7 @@
 //! forward while the selected pod has one (`port-forward-indicators` 4.1).
 
 use super::*;
+use crate::ui::list_search::ListSearch;
 use commands::{LOGS_FLIPPED_KEY, PORT_FORWARD_KEY, SHELL_KEY};
 use gpui_kit::prelude::FluentBuilder as _;
 
@@ -13,23 +14,16 @@ pub(super) fn hint_selector(label: &str) -> String {
     format!("pods-hint {label}")
 }
 
-/// One hint: `action`'s key in the panel, else `fallback`, then `label`.
-fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &Window) -> Div {
-    let key = Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
-        .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("a valid default key")));
+/// One hint: `action`'s live key in the panel, else `fallback`, then `label`.
+fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &mut Window) -> Div {
     let selector = hint_selector(label);
-    div()
+    ListSearch::hint(action, PANEL_KEY_CONTEXT, fallback, label, window)
         .debug_selector(move || selector)
-        .flex()
-        .gap_1()
-        .items_center()
-        .child(key)
-        .child(label)
 }
 
 impl PodsPanel {
     /// The row, for a selection that `shellable` says can take a shell.
-    pub(super) fn render_hints(&self, shellable: bool, window: &Window, cx: &App) -> Div {
+    pub(super) fn render_hints(&self, shellable: bool, window: &mut Window, cx: &App) -> Div {
         let selected = self.table_selection(cx).is_some();
         let stoppable = !self.selected_forwards(cx).is_empty();
         div()
@@ -38,6 +32,7 @@ impl PodsPanel {
             .gap(crate::ui::space::spacing(cx).control_gap)
             .text_sm()
             .text_color(cx.theme().muted_foreground)
+            .child(hint(&FocusFilter, FILTER_KEY, "Filter", window))
             .child(hint(&QuickLook, QUICK_LOOK_KEY, "Quick look", window))
             .child(hint(&WarpNamespace, NAMESPACE_KEY, "Namespace", window))
             .child(hint(

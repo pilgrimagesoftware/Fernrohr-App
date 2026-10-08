@@ -3,7 +3,6 @@
 // Named imports rather than `use super::*`: `gpui_kit::*` (imported by the
 // parent) re-exports its own `test` attribute macro, which would shadow the
 // built-in `#[test]` for these plain synchronous tests.
-use crate::config::workspace::SortState;
 use jiff::Timestamp;
 use k8s_openapi::api::core::v1::Pod;
 
@@ -43,11 +42,4 @@ pub(super) fn mixed_namespace_fixture() -> Vec<Pod> {
         pod_in("kube-system", "u2", "coredns-1", 0),
         pod_in("kube-system", "u3", "kube-proxy-1", 0),
     ]
-}
-
-pub(super) fn default_sort() -> SortState {
-    SortState {
-        column: "name".into(),
-        ascending: true,
-    }
 }

@@ -7,6 +7,7 @@ use super::panel::ObjectListPanel;
 use super::table::ColumnLayout;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
+use crate::ui::list_search::ListSearch;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use crate::ui::placeholder::PlaceholderPanel;
@@ -47,10 +48,7 @@ pub(super) fn dump(panel: &ObjectListPanel, cx: &App) -> Value {
         // Never drawn, so the layout it was given is still the one it has.
         None => panel.initial_layout.clone(),
     };
-    let filter = match &panel.filter {
-        Some(input) => Some(input.read(cx).value().to_string()),
-        None => panel.initial_filter.clone(),
-    };
+    let filter = panel.filter.dump(cx);
     let sort = match &panel.table {
         Some(table) => table
             .read(cx)
@@ -138,7 +136,7 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
     Ok(panel_handle(cx.new(|cx| {
         let mut panel = ObjectListPanel::new(saved.kind, scope, cx);
         panel.initial_layout = saved.columns;
-        panel.initial_filter = saved.filter;
+        panel.filter = ListSearch::restored(saved.filter);
         panel.initial_sort = saved.sort;
         panel
     })))
