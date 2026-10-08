@@ -157,3 +157,69 @@ async fn removing_a_layout_entirely_by_keyboard(cx: &mut TestAppContext) {
         "the section shows the empty message once its only layout is removed"
     );
 }
+
+/// Rendering reads only the cache, never the directory: once the list has
+/// loaded, deleting the whole directory and redrawing still shows it.
+#[gpui_kit::test]
+async fn rendering_reads_the_cache_not_the_directory(cx: &mut TestAppContext) {
+    let (dir, handle) = harness(cx);
+    crate::config::saved_layouts::save(&dir, &fixture("Alpha")).expect("seeds a layout");
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    show(&mut vcx, Box::new(ShowLayouts));
+    assert!(drawn(
+        &mut vcx,
+        handle.into(),
+        "settings-layouts-row-name-0"
+    ));
+
+    std::fs::remove_dir_all(&dir).expect("removes the layouts directory");
+    handle
+        .update(&mut vcx, |_, window, _| window.refresh())
+        .unwrap();
+    vcx.run_until_parked();
+    assert!(
+        drawn(&mut vcx, handle.into(), "settings-layouts-row-name-0"),
+        "still drawn from the cache"
+    );
+    assert!(!drawn(&mut vcx, handle.into(), layouts::EMPTY_SELECTOR));
+}
+
+/// Before the first background read lands, the section says it's loading
+/// rather than claiming there are no saved layouts.
+#[gpui_kit::test]
+async fn the_section_says_it_is_loading_until_the_first_read_lands(cx: &mut TestAppContext) {
+    let (dir, handle) = harness(cx);
+    crate::config::saved_layouts::save(&dir, &fixture("Alpha")).expect("seeds a layout");
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    // Dispatched without letting the background read run yet.
+    vcx.update(|window, cx| window.dispatch_action(Box::new(ShowLayouts), cx));
+    assert!(drawn(&mut vcx, handle.into(), layouts::LOADING_SELECTOR));
+    assert!(!drawn(&mut vcx, handle.into(), layouts::EMPTY_SELECTOR));
+
+    vcx.run_until_parked();
+    assert!(drawn(
+        &mut vcx,
+        handle.into(),
+        "settings-layouts-row-name-0"
+    ));
+    assert!(!drawn(&mut vcx, handle.into(), layouts::LOADING_SELECTOR));
+}
+
+/// A layout saved elsewhere while the section is shown appears without
+/// showing the section again: a save bumps `SavedLayoutsChanged`.
+#[gpui_kit::test]
+async fn a_layout_saved_elsewhere_appears_while_the_section_is_shown(cx: &mut TestAppContext) {
+    let (dir, handle) = harness(cx);
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    show(&mut vcx, Box::new(ShowLayouts));
+    assert!(drawn(&mut vcx, handle.into(), layouts::EMPTY_SELECTOR));
+
+    crate::config::saved_layouts::save(&dir, &fixture("Alpha")).expect("saves a layout");
+    vcx.update(|_, cx| crate::util::shell::note_layouts_changed(cx));
+    vcx.run_until_parked();
+    assert!(drawn(
+        &mut vcx,
+        handle.into(),
+        "settings-layouts-row-name-0"
+    ));
+}

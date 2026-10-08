@@ -149,6 +149,20 @@ pub(crate) fn layouts_dir(cx: &App) -> PathBuf {
         .unwrap_or_else(default_saved_layouts_dir)
 }
 
+/// Bumped after every change to the saved layouts on disk - a save, an
+/// overwrite, a rename or a removal, from any window - so a view that caches
+/// the list (the Settings window's Layouts section) knows to read it again,
+/// off the main thread, rather than reading the directory as it renders.
+#[derive(Default)]
+pub(crate) struct SavedLayoutsChanged(pub(crate) u64);
+
+impl Global for SavedLayoutsChanged {}
+
+/// Records that the saved layouts on disk changed ([`SavedLayoutsChanged`]).
+pub(crate) fn note_layouts_changed(cx: &mut App) {
+    cx.default_global::<SavedLayoutsChanged>().0 += 1;
+}
+
 /// Opens the naming dialog, focused on its name field.
 fn open_save_dialog(main_window: WeakEntity<MainWindow>, window: &mut Window, cx: &mut App) {
     if !matches!(window.root::<Root>(), Some(Some(_))) {
@@ -241,7 +255,7 @@ impl SaveLayoutDialog {
             None => {
                 let created_at = jiff::Timestamp::now().to_string();
                 if let Some(layout) = capture_layout(&main_window, window, cx, name, created_at) {
-                    write_layout(&dir, layout);
+                    write_layout(&dir, layout, cx);
                 }
             }
         }
@@ -310,7 +324,7 @@ fn confirm_overwrite(
         body: ConfirmText::new()
             .text("Overwriting ")
             .name(&existing.name)
-            .text(" replaces its saved panels, size and position. This can't be undone."),
+            .text(" replaces its saved panels and window size. This can't be undone."),
         confirm: "Overwrite".into(),
         id_prefix: OVERWRITE_ID_PREFIX,
         severity: Severity::Irreversible,
@@ -322,7 +336,7 @@ fn confirm_overwrite(
             if let Some(layout) =
                 capture_layout(&main_window, window, cx, name.clone(), created_at.clone())
             {
-                write_layout(&dir, layout);
+                write_layout(&dir, layout, cx);
             }
         },
         window,
@@ -374,11 +388,12 @@ fn capture_layout(
 
 /// Writes `layout`, logging rather than failing the dialog's close on an I/O
 /// error - the same "report, don't crash" treatment every other save in this
-/// module gives a write that fails.
-fn write_layout(dir: &Path, layout: SavedLayout) {
+/// module gives a write that fails - and notes the change.
+fn write_layout(dir: &Path, layout: SavedLayout, cx: &mut App) {
     if let Err(error) = saved_layouts::save(dir, &layout) {
         log::warn!("failed to save layout {:?}: {error}", layout.name);
     }
+    note_layouts_changed(cx);
 }
 
 #[cfg(test)]

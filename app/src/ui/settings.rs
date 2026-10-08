@@ -213,16 +213,28 @@ pub struct SettingsWindow {
     panels_focus: FocusHandle,
     /// The Layouts section's, likewise.
     layouts_focus: FocusHandle,
+    /// The saved layouts the Layouts section shows, read off the main thread
+    /// (`layouts::LayoutsCache`) - never by rendering.
+    layouts: layouts::LayoutsCache,
 }
 
 impl SettingsWindow {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // A save, rename or removal anywhere re-reads the list while the
+        // Layouts section is the one shown; the next show re-reads it anyway.
+        cx.observe_global::<crate::util::shell::SavedLayoutsChanged>(|this: &mut Self, cx| {
+            if this.section == Section::Layouts {
+                this.reload_layouts(cx);
+            }
+        })
+        .detach();
         Self {
             shortcuts: cx.new(|cx| ShortcutsSection::new(window, cx)),
             section: Section::default(),
             appearance_focus: cx.focus_handle(),
             panels_focus: cx.focus_handle(),
             layouts_focus: cx.focus_handle(),
+            layouts: layouts::LayoutsCache::default(),
         }
     }
 
@@ -237,7 +249,10 @@ impl SettingsWindow {
             }
             Section::Appearance => window.focus(&self.appearance_focus, cx),
             Section::Panels => window.focus(&self.panels_focus, cx),
-            Section::Layouts => window.focus(&self.layouts_focus, cx),
+            Section::Layouts => {
+                window.focus(&self.layouts_focus, cx);
+                self.reload_layouts(cx);
+            }
         }
         cx.notify();
     }
@@ -336,7 +351,7 @@ impl Render for SettingsWindow {
                 .flex_1()
                 .min_w_0()
                 .track_focus(&self.layouts_focus)
-                .child(layouts::section(cx.weak_entity(), cx))
+                .child(layouts::section(&self.layouts, cx))
                 .into_any_element(),
         };
         div()

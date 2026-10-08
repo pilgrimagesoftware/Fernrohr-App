@@ -97,7 +97,7 @@ pub use persist::open_saved_or_default;
 // `pub(crate)` (see its own doc comment) just so this one re-export is
 // legal; `SavedLayoutsDir` - the test-override global it reads - and the
 // `saved_layouts` module stay unwidened.
-pub(crate) use saved_layouts::layouts_dir;
+pub(crate) use saved_layouts::{SavedLayoutsChanged, layouts_dir, note_layouts_changed};
 pub(crate) use tabs::close_panel;
 pub(crate) use window::open_window;
 

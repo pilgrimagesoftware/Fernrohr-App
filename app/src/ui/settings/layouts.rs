@@ -6,18 +6,11 @@
 //! deleting reads, looks and keys alike from either surface. Renaming stays
 //! in the picker (D4); this section only lists and removes.
 //!
-//! No state of its own: [`section`] reads [`saved_layouts::load_all`] fresh
-//! on every call, the same stateless placement [`super::panels::section`]
-//! uses for its own live-config row. A removal from this section's own
-//! Remove control, or from the picker in a different window, shows up the
-//! next time this section renders - which `SettingsWindow::show` always
-//! does when the user switches to it (it calls `cx.notify()`
-//! unconditionally), so "the next show" always re-reads the directory.
-//! Removing from *this* section's own Remove control needs one more push:
-//! the confirmation's `on_confirm` runs after the click that opened it has
-//! already been dispatched, so nothing would otherwise ask `SettingsWindow`
-//! to render again - [`section`] is handed a `WeakEntity<SettingsWindow>`
-//! for exactly that, calling `cx.notify()` on it once the file is gone.
+//! The list is read off the main thread, never while rendering
+//! ([`LayoutsCache`]): `SettingsWindow` loads it in the background when the
+//! section is shown, and again whenever a save, rename or removal anywhere
+//! bumps `util::shell::SavedLayoutsChanged` while it is shown. Rendering reads
+//! only the cache, saying it's loading until the first load lands.
 
 use super::SettingsWindow;
 use crate::config::saved_layouts::{self, UnreadableLayout};
@@ -30,6 +23,39 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::*;
 use std::path::PathBuf;
 
+/// The saved layouts as last read off the main thread, and which read is the
+/// latest - so an older read that lands late never replaces a newer one.
+#[derive(Default)]
+pub(super) struct LayoutsCache {
+    /// `None` until the first read lands.
+    loaded: Option<(Vec<String>, Vec<UnreadableLayout>)>,
+    generation: u64,
+}
+
+impl SettingsWindow {
+    /// Reads the saved layouts off the main thread into the cache, keeping
+    /// what it showed until the read lands, then redrawing.
+    pub(super) fn reload_layouts(&mut self, cx: &mut Context<Self>) {
+        self.layouts.generation += 1;
+        let generation = self.layouts.generation;
+        let dir = crate::util::shell::layouts_dir(cx);
+        let read = cx.background_spawn(async move { saved_layouts::load_all(&dir) });
+        cx.spawn(async move |this, cx| {
+            let (layouts, unreadable) = read.await;
+            let names = layouts.into_iter().map(|layout| layout.name).collect();
+            let _ = this.update(cx, |this, cx| {
+                if this.layouts.generation == generation {
+                    this.layouts.loaded = Some((names, unreadable));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+}
+
+/// The loading message's debug selector.
+pub(super) const LOADING_SELECTOR: &str = "settings-layouts-loading";
 /// The empty-list message's debug selector.
 pub(super) const EMPTY_SELECTOR: &str = "settings-layouts-empty";
 /// One unreadable file's notice.
@@ -58,10 +84,21 @@ pub(super) fn row_name_selector(index: usize) -> String {
 /// "none yet" message in their place when there are none, and any unreadable
 /// file named alongside the layouts that did parse - the same wording the
 /// saved layouts picker uses for both (`ui::picker::saved_layouts::render`).
-pub(super) fn section(settings_window: WeakEntity<SettingsWindow>, cx: &App) -> impl IntoElement {
+pub(super) fn section(cache: &LayoutsCache, cx: &App) -> impl IntoElement {
     let space = crate::ui::space::spacing(cx);
+    let Some((layouts, unreadable)) = &cache.loaded else {
+        return div()
+            .p(space.panel_inset)
+            .child(
+                div()
+                    .debug_selector(|| LOADING_SELECTOR.into())
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Loading saved layouts\u{2026}"),
+            )
+            .into_any_element();
+    };
     let dir = crate::util::shell::layouts_dir(cx);
-    let (layouts, unreadable) = saved_layouts::load_all(&dir);
 
     let empty = layouts.is_empty().then(|| {
         div()
@@ -72,11 +109,11 @@ pub(super) fn section(settings_window: WeakEntity<SettingsWindow>, cx: &App) -> 
     });
 
     let rows = layouts
-        .into_iter()
+        .iter()
         .enumerate()
-        .map(|(index, layout)| row(index, layout.name, dir.clone(), settings_window.clone()));
+        .map(|(index, name)| row(index, name.clone(), dir.clone()));
 
-    let unreadable_notice = (!unreadable.is_empty()).then(|| unreadable_list(&unreadable, cx));
+    let unreadable_notice = (!unreadable.is_empty()).then(|| unreadable_list(unreadable, cx));
 
     div()
         .p(space.panel_inset)
@@ -86,6 +123,7 @@ pub(super) fn section(settings_window: WeakEntity<SettingsWindow>, cx: &App) -> 
         .children(empty)
         .children(rows)
         .children(unreadable_notice)
+        .into_any_element()
 }
 
 /// Every unreadable file, named - the same notice text
@@ -109,12 +147,7 @@ fn unreadable_list(files: &[UnreadableLayout], cx: &App) -> impl IntoElement {
 
 /// One row: the layout's name, and its Remove control - a tab stop reachable
 /// by Tab, activated by Enter or Space (`icon-buttons.md`, `keyboard-first.md`).
-fn row(
-    index: usize,
-    name: String,
-    dir: PathBuf,
-    settings_window: WeakEntity<SettingsWindow>,
-) -> impl IntoElement {
+fn row(index: usize, name: String, dir: PathBuf) -> impl IntoElement {
     let name_for_click = name.clone();
     div()
         .flex()
@@ -139,14 +172,13 @@ fn row(
                 .ghost()
                 .xsmall()
                 .on_click(move |_event, window, cx| {
-                    let settings_window = settings_window.clone();
+                    // The removal bumps `SavedLayoutsChanged`, which re-reads
+                    // the list; nothing more to do here.
                     saved_layout_delete::confirm_delete(
                         &name_for_click,
                         DELETE_ID_PREFIX,
                         dir.clone(),
-                        move |_window, cx| {
-                            let _ = settings_window.update(cx, |_, cx| cx.notify());
-                        },
+                        |_window, _cx| {},
                         window,
                         cx,
                     );
