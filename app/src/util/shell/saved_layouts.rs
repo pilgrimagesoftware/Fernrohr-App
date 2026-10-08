@@ -384,4 +384,6 @@ fn write_layout(dir: &Path, layout: SavedLayout) {
 #[cfg(test)]
 mod manage_tests;
 #[cfg(test)]
+mod round_trip_tests;
+#[cfg(test)]
 mod tests;
