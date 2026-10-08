@@ -14,10 +14,18 @@ use gpui_kit::base::dock::PanelView;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::dock::{
     BasePanel, Panel, PanelBuildContext, PanelEvent, PanelInfo, PanelState, panel_handle,
+    register_panel,
 };
 use gpui_kit::*;
 use serde_json::Value;
 use std::sync::Arc;
+
+/// The panel kind this placeholder registers under. `restore_with`'s own
+/// fallback never writes it to a saved layout - [`UnrestoredPanel::dump`]
+/// always answers with the panel it stands in for - but `saved_layouts::load`
+/// (section 5.1) does write it, to wrap a panel scoped to a context a window
+/// doesn't hold, which [`register_restore`] is what reads back.
+pub(crate) const PANEL_NAME: &str = "Unrestored";
 
 /// Restores the panel `context` describes with `restore`, or - when its state
 /// isn't a panel's, or `restore` can't read it - an [`UnrestoredPanel`] saying
@@ -47,6 +55,26 @@ pub fn required_str<'a>(value: &'a Value, field: &str) -> Result<&'a str, String
     value[field]
         .as_str()
         .ok_or_else(|| format!("its state has no `{field}`"))
+}
+
+/// Registers how a saved [`PANEL_NAME`] panel comes back: unwraps straight to
+/// the [`UnrestoredPanel`] it already was (`reason` and the wrapped `original`
+/// state `saved_layouts::load` saved it with, design.md D5), rather than
+/// reinterpreting the wrapper through a kind-specific reader - there is no
+/// kind-specific data here to misread, only this module's own shape. Still
+/// goes through [`restore_with`], so a wrapper a hand-edited file corrupted
+/// becomes a (less specific) placeholder instead of failing the whole load.
+pub fn register_restore(cx: &mut App) {
+    register_panel(cx, PANEL_NAME, |context, _window, cx| {
+        restore_with(&context, cx, |data, cx| {
+            let reason = required_str(data, "reason")?.to_string();
+            let original: PanelState = serde_json::from_value(data["original"].clone())
+                .map_err(|_| "its wrapped state isn't readable".to_string())?;
+            Ok(panel_handle(
+                cx.new(|cx| UnrestoredPanel::new(original, reason, cx)),
+            ))
+        })
+    });
 }
 
 /// A saved panel whose state couldn't be restored: it says which kind of panel
@@ -89,7 +117,7 @@ impl EventEmitter<PanelEvent> for UnrestoredPanel {}
 
 impl BasePanel for UnrestoredPanel {
     fn panel_name(&self) -> &'static str {
-        "Unrestored"
+        PANEL_NAME
     }
 
     /// The original state, so saving the layout doesn't lose the panel.

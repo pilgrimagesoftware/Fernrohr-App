@@ -15,8 +15,26 @@
 //! [`restored_panel_keys`], design.md D3) and opens each one through
 //! [`MainWindow::open_target_in`], which already dedups by content key and
 //! leaves every other window state untouched.
+//!
+//! **Section 5 (missing context handling, design.md D5):** both modes refuse
+//! to build a saved panel scoped to a context this window doesn't hold -
+//! building that panel's own kind (`PodsPanel::new` and every other kind
+//! alike) reads its connection through `ClusterRegistry::connection`, which
+//! connects a context lazily on first use (`ensure_init`) rather than
+//! refusing one it doesn't know. Left alone, `DockArea::load` would do that
+//! silently for Replace, and would do it for Add too once a key decodes.
+//! Both instead restore that one panel as `ui::unrestored`'s placeholder, in
+//! the same slot, via [`placeholder_missing_contexts`] (Replace, which
+//! transforms the whole saved tree before `DockArea::load` ever sees it) and
+//! the `load_add` loop below (which checks each decoded key's context before
+//! opening it). A panel `restored_panel_keys` itself can't key - an
+//! unrecognised kind, or state it can't read - is untouched by either: that
+//! is `DockArea::load`'s own registry fallback's job already (section 5.3),
+//! and `load_add` has never opened one of those (there is no key to open).
 
 use super::*;
+use crate::ui::unrestored::{self, UnrestoredPanel};
+use gpui_kit::component::dock::panel_handle;
 
 impl MainWindow {
     /// `saved_layouts.load_replace` (design.md D4): "I asked for *that*
@@ -42,10 +60,10 @@ impl MainWindow {
     /// *arrangement*, not which clusters the window is connected to
     /// (design.md Non-Goals - connecting a context on demand isn't this
     /// change's job). A saved panel scoped to a context this window doesn't
-    /// hold still restores today through the dock's own panel registry, the
-    /// same as the automatic restore already does - `open_target_in`'s
-    /// missing-context refusal (section 5's placeholder job) only applies to
-    /// `Add` below, which is the one path that goes through it.
+    /// hold is swapped for `ui::unrestored`'s placeholder before the dock
+    /// ever sees it ([`placeholder_missing_contexts`], section 5.1) - every
+    /// other panel restores through the dock's own panel registry exactly as
+    /// the automatic restore already does.
     pub(crate) fn load_replace(
         &mut self,
         layout: SavedLayout,
@@ -55,6 +73,7 @@ impl MainWindow {
         let WindowMode::Workspace {
             dock_area,
             resource_panel,
+            contexts,
             ..
         } = &self.mode
         else {
@@ -62,13 +81,18 @@ impl MainWindow {
         };
         let dock_area = dock_area.clone();
         let resource_panel = resource_panel.clone();
+        let contexts = contexts.clone();
         let SavedLayout {
-            dock,
+            mut dock,
             resource_panel_width,
             window_width,
             window_height,
             ..
         } = layout;
+        // Section 5.1: swapped in before `restored_panel_keys` reads the tree
+        // and before `area.load` builds it, so both the key pairing below and
+        // the dock itself agree on which slots are placeholders.
+        dock.center = placeholder_missing_contexts(dock.center, &contexts);
         // Computed before `dock` moves into the closure below - the same
         // `restored_panel_keys` decoder `enter_workspace`'s own restored
         // branch reads off a saved dock's `center` (design.md D3).
@@ -83,7 +107,11 @@ impl MainWindow {
             .map(|tree| tree.panels().collect::<Vec<_>>())
             .unwrap_or_default();
         // Paired by position, one key slot per rebuilt panel - exactly
-        // `enter_workspace`'s own restored-branch pairing.
+        // `enter_workspace`'s own restored-branch pairing. A placeholder's
+        // slot has no key (its panel name doesn't match anything
+        // `panel_key` recognises), so it is built in the dock but left out
+        // of `open_panels` - the same treatment any other unkeyable restored
+        // panel already gets.
         let open_panels: Vec<OpenPanel> = ids
             .into_iter()
             .zip(restored_keys)
@@ -145,42 +173,119 @@ impl MainWindow {
 
     /// `saved_layouts.load_add` (design.md D4): additive only, never a
     /// wholesale swap. Decodes `layout`'s panels into [`PanelKey`]s
-    /// ([`restored_panel_keys`], design.md D3) and opens each one through
-    /// [`MainWindow::open_target_in`] - the one path every panel open already
-    /// takes, so a panel matching one already open is focused instead of
-    /// duplicated, and the window's Resource panel state and bounds are left
-    /// untouched. A no-op for a window that isn't in `Workspace` mode.
+    /// ([`restored_panel_leaves`], design.md D3) and opens each one whose
+    /// context this window holds through [`MainWindow::open_target_in`] - the
+    /// one path every panel open already takes, so a panel matching one
+    /// already open is focused instead of duplicated, and the window's
+    /// Resource panel state and bounds are left untouched. A saved panel
+    /// scoped to a context this window doesn't hold is restored as
+    /// `ui::unrestored`'s placeholder instead (section 5.1), added straight
+    /// to the dock rather than through `open_target_in` - which would only
+    /// refuse it the same way and build nothing. A no-op for a window that
+    /// isn't in `Workspace` mode.
     pub(crate) fn load_add(
         &mut self,
         layout: SavedLayout,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !matches!(self.mode, WindowMode::Workspace { .. }) {
+        let WindowMode::Workspace {
+            dock_area,
+            contexts,
+            ..
+        } = &self.mode
+        else {
             return;
-        }
-        for key in restored_panel_keys(&layout.dock.center) {
-            // Section 5: a panel whose context this window doesn't hold is
-            // refused here exactly as `open_target_in` already refuses any
-            // other request for a context the window doesn't hold - a later
-            // change restores it as a placeholder instead of silently
-            // dropping it (design.md D5). `None` (an unrecognised panel kind,
-            // or one `panel_key` couldn't read a required field from) is
-            // skipped the same way an unrestored panel already is on the
-            // automatic restore - there is no key here to open anything with.
+        };
+        let dock_area = dock_area.clone();
+        let contexts = contexts.clone();
+        for (state, key) in restored_panel_leaves(&layout.dock.center) {
+            // `None` (an unrecognised panel kind, or one `panel_key`
+            // couldn't read a required field from) is skipped the same way
+            // an unrestored panel already is on the automatic restore -
+            // there is no key here to open anything with, or to name a
+            // missing context by.
             let Some(key) = key else {
                 continue;
             };
-            self.open_target_in(
-                key.target,
-                None,
-                Some(key.context_name),
-                key.namespaces,
-                OpenMode::Foreground,
-                window,
-                cx,
-            );
+            if contexts.contains(&key.context_name) {
+                self.open_target_in(
+                    key.target,
+                    None,
+                    Some(key.context_name),
+                    key.namespaces,
+                    OpenMode::Foreground,
+                    window,
+                    cx,
+                );
+                continue;
+            }
+            // Section 5.1: refused here exactly as `open_target_in` already
+            // refuses any other request for a context the window doesn't
+            // hold (design.md D5) - but restored as a placeholder in the
+            // dock rather than silently dropped. Not given an `open_panels`
+            // entry: there is no real panel behind it to dedupe a later
+            // request against or to select, the same treatment a slot
+            // `restored_panel_keys` can't key already gets in Replace above.
+            let reason = format!("this window isn't connected to {}", key.context_name);
+            let placeholder = cx.new(|cx| UnrestoredPanel::new(state, reason, cx));
+            dock_area.update(cx, |area, cx| {
+                area.add_panel_view(
+                    panel_handle(placeholder),
+                    DockPlacement::Center,
+                    None,
+                    window,
+                    cx,
+                );
+            });
         }
+    }
+}
+
+/// Swaps every panel in `state`'s tree whose saved `context_name` isn't in
+/// `contexts` for `ui::unrestored`'s placeholder, in the same tree position
+/// (section 5.1, design.md D5). Building that panel's own kind here would
+/// silently connect a context the user never asked this window to hold -
+/// `ClusterRegistry::connection`'s `ensure_init` does exactly that on first
+/// use, which is the same thing `open_target_in`'s own refusal already
+/// exists to prevent for every other open. A leaf `restored_panel_keys`
+/// itself can't key - an unrecognised kind, or state it can't read - is left
+/// untouched: `DockArea::load`'s own registry fallback already turns that
+/// into a placeholder (section 5.3), so this only has to handle the one case
+/// that fallback cannot reach - a kind this build recognises, scoped to a
+/// context this window simply isn't connected to right now.
+fn placeholder_missing_contexts(mut state: PanelState, contexts: &[String]) -> PanelState {
+    if matches!(state.info, PanelInfo::Panel(_)) {
+        let key = restored_panel_keys(&state).into_iter().next().flatten();
+        return match key {
+            Some(key) if !contexts.contains(&key.context_name) => {
+                missing_context_placeholder(state, &key.context_name)
+            }
+            _ => state,
+        };
+    }
+    state.children = state
+        .children
+        .into_iter()
+        .map(|child| placeholder_missing_contexts(child, contexts))
+        .collect();
+    state
+}
+
+/// Wraps `state` (a panel kind this build recognises, scoped to
+/// `context_name`) as a saved [`unrestored::PANEL_NAME`] panel:
+/// [`unrestored::register_restore`] unwraps it straight back to an
+/// [`UnrestoredPanel`] naming why, with `state` kept verbatim as its own
+/// `dump` - so a later load in a window that holds `context_name` restores
+/// the real panel, not this placeholder.
+fn missing_context_placeholder(state: PanelState, context_name: &str) -> PanelState {
+    PanelState {
+        panel_name: unrestored::PANEL_NAME.to_string(),
+        children: Vec::new(),
+        info: PanelInfo::Panel(serde_json::json!({
+            "reason": format!("this window isn't connected to {context_name}"),
+            "original": state,
+        })),
     }
 }
 

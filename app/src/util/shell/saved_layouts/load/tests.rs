@@ -9,6 +9,13 @@
 //! Named imports rather than `use super::*`: a glob re-import of `gpui_kit::*`
 //! next to `#[gpui_kit::test]` items blows the macro-expansion budget (see
 //! `util/shell.rs`), and would shadow the built-in `#[test]`.
+//!
+//! Section 5 (missing context, and an unrecognised panel kind) is split into
+//! its own sibling files - `missing_context` and `unknown_kind` - rather than
+//! grown in here, to stay under this crate's 500-line file limit; both reuse
+//! this file's own [`Harness`]/[`harness`]/[`open_picker`]/[`open_targets`]/
+//! [`dock_panel_names`] by named import, the same way this file reaches
+//! `manage_tests.rs`'s.
 use crate::config::saved_layouts::SavedLayout;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -36,6 +43,14 @@ struct Harness {
 /// saved layout into. Mirrors `manage_tests.rs`'s own `harness`, minus the
 /// cluster-picker-mode branch nothing here needs.
 fn harness(cx: &mut TestAppContext) -> Harness {
+    harness_with_connection(cx, ConnectionState::Connecting)
+}
+
+/// Like [`harness`], but `demo`'s session starts in `state` rather than
+/// always `Connecting` - `not_found`'s test (5.2) needs a *real* connected
+/// session, backed by a fake cluster, so a restored pod detail panel can
+/// actually fetch and discover its pod is gone.
+fn harness_with_connection(cx: &mut TestAppContext, state: ConnectionState) -> Harness {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
     let layouts_dir = temp_layouts_dir();
@@ -44,7 +59,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
         cx.set_global(SavedLayoutsDir(layouts_dir.clone()));
-        ClusterRegistry::insert_test_session(cx, "demo", ConnectionState::Connecting);
+        ClusterRegistry::insert_test_session(cx, "demo", state);
     });
     let mut built = None;
     let window = cx.add_window(|window, cx| {
@@ -110,6 +125,20 @@ fn fixture_layout(
 
 fn events_kind() -> DiscoveredKind {
     DiscoveredKind::events()
+}
+
+/// Every panel the dock actually built, by its own live `panel_name` - not
+/// `test_open_targets`' content keys, which a placeholder has none of
+/// (`saved-panel-layouts` 5.1/5.3).
+fn dock_panel_names(h: &mut Harness) -> Vec<&'static str> {
+    let main = h.main.clone();
+    h.vcx.update(move |_window, cx| {
+        main.read(cx)
+            .test_dock_views(cx)
+            .iter()
+            .map(|view| view.panel_name(cx))
+            .collect()
+    })
 }
 
 fn dialog_open(h: &mut Harness) -> bool {
@@ -296,3 +325,7 @@ fn the_same_panel_key_decodes_from_either_stores_dock_shape() {
     assert_eq!(key.context_name, "kind-dev");
     assert_eq!(key.namespaces, vec!["kube-system".to_string()]);
 }
+
+mod missing_context;
+mod not_found;
+mod unknown_kind;

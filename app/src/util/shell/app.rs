@@ -235,6 +235,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::object_list::register_restore(cx);
     crate::k8s::resource::events_browser::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
+    crate::ui::unrestored::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();
     cx.set_global(SavedDockLayouts(crate::config::dock_layouts::load(
         &dock_layouts_path,
