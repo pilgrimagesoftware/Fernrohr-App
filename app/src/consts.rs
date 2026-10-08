@@ -38,6 +38,10 @@ pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long a copy control - a copy button, a metadata chip - shows that it
+/// copied (#187), its check mark and "Copied" in place of the copy icon.
+pub(crate) const COPIED_FEEDBACK: Duration = Duration::from_millis(1500);
+
 /// How long before an OIDC id-token's expiry it is already renewed (#188), so
 /// it can't lapse between the check and the requests it authorizes.
 pub(crate) const OIDC_EXPIRY_MARGIN: Duration = Duration::from_secs(60);
