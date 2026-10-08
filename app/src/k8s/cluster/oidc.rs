@@ -16,6 +16,7 @@
 //! again. No token is ever logged.
 
 mod issuer;
+mod lock;
 mod persist;
 
 use crate::consts::OIDC_EXPIRY_MARGIN;
@@ -40,6 +41,10 @@ const REFRESH_TOKEN: &str = "refresh-token";
 /// tokens are saved to whichever of `files` defines the user. A user without
 /// that provider, or with a token still good, is left alone.
 ///
+/// One renewal per user at a time (`lock`): one that waited re-reads the file
+/// and uses the tokens the other just stored rather than spending the
+/// already-rotated refresh token again.
+///
 /// Fails, with a reason to show, only when renewing was needed and didn't
 /// work; failing to save the renewed tokens is logged, not fatal - the
 /// connection still uses them.
@@ -54,34 +59,66 @@ pub(in crate::k8s::cluster) async fn refresh_expired(
     let Some(config) = oidc_config(kubeconfig, &user) else {
         return Ok(());
     };
-    let expiry = config.get(ID_TOKEN).and_then(|token| expiry(token));
-    if !needs_refresh(expiry, Timestamp::now()) {
+    let token_expiry = config.get(ID_TOKEN).and_then(|token| expiry(token));
+    if !needs_refresh(token_expiry, Timestamp::now()) {
         return Ok(());
     }
     // A token this can't read may still be good (an opaque one): without the
     // means to renew it, leave it for the API server to judge, as before.
-    if expiry.is_none() && !issuer::can_refresh(config) {
+    if token_expiry.is_none() && !issuer::can_refresh(config) {
         return Ok(());
     }
-    let tokens = issuer::refresh(config)
+    let mut config = config.clone();
+
+    let file = persist::defining_file(files, &user);
+    let _renewal = lock::acquire(file.as_deref(), &user).await?;
+    // Another renewal may have finished while this one waited: take what it
+    // stored, and use its id-token if that is good.
+    if let Some(stored) = file
+        .as_deref()
+        .and_then(|file| persist::stored(file, &user))
+    {
+        for key in [ID_TOKEN, REFRESH_TOKEN] {
+            if let Some(value) = stored.get(key) {
+                config.insert(key.to_string(), value.clone());
+            }
+        }
+        let stored_expiry = config.get(ID_TOKEN).and_then(|token| expiry(token));
+        if !needs_refresh(stored_expiry, Timestamp::now()) {
+            apply(kubeconfig, &user, &config);
+            return Ok(());
+        }
+    }
+
+    let tokens = issuer::refresh(&config)
         .await
         .map_err(|error| format!("the OIDC id-token for user {user} has expired, and {error}"))?;
-
-    let config = oidc_config_mut(kubeconfig, &user).expect("found just above");
     config.insert(ID_TOKEN.to_string(), tokens.id_token.clone());
     if let Some(refresh_token) = &tokens.refresh_token {
         config.insert(REFRESH_TOKEN.to_string(), refresh_token.clone());
     }
-    match persist::save(files, &user, &tokens) {
-        Ok(true) => log::info!("renewed the OIDC id-token for user {user}"),
-        Ok(false) => log::warn!(
-            "renewed the OIDC id-token for user {user}, but no kubeconfig file defines that user to save it to"
-        ),
-        Err(error) => log::warn!(
+    apply(kubeconfig, &user, &config);
+    match file.map(|file| persist::save(&file, &user, &tokens)) {
+        Some(Ok(())) => log::info!("renewed the OIDC id-token for user {user}"),
+        Some(Err(error)) => log::warn!(
             "renewed the OIDC id-token for user {user}, but couldn't save it to the kubeconfig: {error}"
+        ),
+        None => log::warn!(
+            "renewed the OIDC id-token for user {user}, but no kubeconfig file defines that user to save it to"
         ),
     }
     Ok(())
+}
+
+/// Sets `user`'s id-token and refresh token in `kubeconfig` to `config`'s.
+fn apply(kubeconfig: &mut Kubeconfig, user: &str, config: &HashMap<String, String>) {
+    if let Some(target) = oidc_config_mut(kubeconfig, user) {
+        for key in [ID_TOKEN, REFRESH_TOKEN] {
+            if let Some(value) = config.get(key) {
+                target.insert(key.to_string(), value.clone());
+            }
+        }
+    }
 }
 
 /// The new tokens an issuer returned: always an id-token, and a refresh token

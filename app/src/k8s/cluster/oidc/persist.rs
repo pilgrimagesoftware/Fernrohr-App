@@ -8,7 +8,8 @@
 //! leave it half-written, and keeps its permissions.
 
 use super::{ID_TOKEN, REFRESH_TOKEN, Tokens};
-use serde_yaml_ng::Value;
+use serde_yaml_ng::{Mapping, Value};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// The kubeconfig files `Kubeconfig::read` merges, in its order: `$KUBECONFIG`'s
@@ -25,49 +26,65 @@ pub(in crate::k8s::cluster) fn kubeconfig_files() -> Vec<PathBuf> {
     }
 }
 
-/// Saves `tokens` to the first of `files` that defines `user` - the one its
-/// credentials were merged from. `Ok(false)` if none does.
-pub(super) fn save(files: &[PathBuf], user: &str, tokens: &Tokens) -> Result<bool, String> {
-    for file in files {
-        let Ok(text) = std::fs::read_to_string(file) else {
-            continue;
-        };
-        let mut document: Value = serde_yaml_ng::from_str(&text)
-            .map_err(|error| format!("{} isn't valid YAML ({error})", file.display()))?;
-        if !set_tokens(&mut document, user, tokens) {
-            continue;
-        }
-        let text = serde_yaml_ng::to_string(&document)
-            .map_err(|error| format!("couldn't serialize {} ({error})", file.display()))?;
-        replace(file, &text)
-            .map_err(|error| format!("couldn't write {} ({error})", file.display()))?;
-        return Ok(true);
-    }
-    Ok(false)
+/// The first of `files` that defines `user` with an oidc auth-provider - the
+/// one its credentials were merged from, and the one renewed tokens go to.
+pub(super) fn defining_file(files: &[PathBuf], user: &str) -> Option<PathBuf> {
+    files
+        .iter()
+        .find(|file| {
+            read(file).is_some_and(|mut document| provider_config(&mut document, user).is_some())
+        })
+        .cloned()
 }
 
-/// Sets `user`'s oidc tokens in a kubeconfig `document`; `false` if it doesn't
-/// define that user with an oidc auth-provider.
-fn set_tokens(document: &mut Value, user: &str, tokens: &Tokens) -> bool {
-    let Some(users) = document.get_mut("users").and_then(Value::as_sequence_mut) else {
-        return false;
-    };
-    let Some(config) = users
-        .iter_mut()
-        .find(|named| named.get("name").and_then(Value::as_str) == Some(user))
-        .and_then(|named| named.get_mut("user"))
-        .and_then(|info| info.get_mut("auth-provider"))
-        .filter(|provider| provider.get("name").and_then(Value::as_str) == Some(super::PROVIDER))
-        .and_then(|provider| provider.get_mut("config"))
-        .and_then(Value::as_mapping_mut)
-    else {
-        return false;
-    };
+/// `user`'s oidc auth-provider config as `file` holds it now - what another
+/// renewal may have written since this one read the kubeconfig.
+pub(super) fn stored(file: &Path, user: &str) -> Option<HashMap<String, String>> {
+    let mut document = read(file)?;
+    let config = provider_config(&mut document, user)?;
+    Some(
+        config
+            .iter()
+            .filter_map(|(key, value)| {
+                Some((key.as_str()?.to_string(), value.as_str()?.to_string()))
+            })
+            .collect(),
+    )
+}
+
+/// Saves `tokens` as `user`'s in `file`.
+pub(super) fn save(file: &Path, user: &str, tokens: &Tokens) -> Result<(), String> {
+    let text = std::fs::read_to_string(file)
+        .map_err(|error| format!("couldn't read {} ({error})", file.display()))?;
+    let mut document: Value = serde_yaml_ng::from_str(&text)
+        .map_err(|error| format!("{} isn't valid YAML ({error})", file.display()))?;
+    let config = provider_config(&mut document, user)
+        .ok_or_else(|| format!("{} no longer defines the user", file.display()))?;
     config.insert(ID_TOKEN.into(), tokens.id_token.clone().into());
     if let Some(refresh_token) = &tokens.refresh_token {
         config.insert(REFRESH_TOKEN.into(), refresh_token.clone().into());
     }
-    true
+    let text = serde_yaml_ng::to_string(&document)
+        .map_err(|error| format!("couldn't serialize {} ({error})", file.display()))?;
+    replace(file, &text).map_err(|error| format!("couldn't write {} ({error})", file.display()))
+}
+
+fn read(file: &Path) -> Option<Value> {
+    serde_yaml_ng::from_str(&std::fs::read_to_string(file).ok()?).ok()
+}
+
+/// `user`'s oidc auth-provider `config` mapping in a kubeconfig `document`.
+fn provider_config<'a>(document: &'a mut Value, user: &str) -> Option<&'a mut Mapping> {
+    document
+        .get_mut("users")?
+        .as_sequence_mut()?
+        .iter_mut()
+        .find(|named| named.get("name").and_then(Value::as_str) == Some(user))?
+        .get_mut("user")?
+        .get_mut("auth-provider")
+        .filter(|provider| provider.get("name").and_then(Value::as_str) == Some(super::PROVIDER))?
+        .get_mut("config")?
+        .as_mapping_mut()
 }
 
 /// Replaces `file` with `text` atomically, keeping its permissions. A

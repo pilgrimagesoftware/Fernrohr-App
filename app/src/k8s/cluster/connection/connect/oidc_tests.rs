@@ -5,7 +5,7 @@
 
 use super::resolve_with_fresh_tokens;
 use crate::k8s::cluster::oidc::test_support::{
-    FakeServer, TempDir, fake_issuer, from_now, jwt, oidc_kubeconfig,
+    FakeIssuer, FakeServer, TempDir, fake_issuer, from_now, jwt, oidc_kubeconfig,
 };
 use kube::config::Kubeconfig;
 
@@ -92,5 +92,80 @@ async fn an_expired_id_token_is_renewed_before_it_is_sent() {
         seen,
         format!("Bearer {renewed}"),
         "the renewed token, not the expired one"
+    );
+}
+
+/// Two connections whose shared token has expired renew at once - a
+/// reconnect racing a manual connect. The issuer rotates its refresh token, so
+/// a second renewal would spend a used one and fail; instead the second waits,
+/// finds the first's token stored, and uses it: one call to the token
+/// endpoint, and both connections get through.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_renewals_spend_the_refresh_token_once() {
+    let api = api_server();
+    let renewed = jwt(from_now(3600), "renewed");
+    let issuer = FakeIssuer {
+        refresh_token: "fake-refresh",
+        new_id_token: renewed.clone(),
+        new_refresh_token: "fake-refresh-2",
+        claimed_issuer: None,
+        token_delay: std::time::Duration::from_millis(300),
+    }
+    .start();
+    let dir = TempDir::new("concurrent");
+    let file = dir.write(
+        "config",
+        &oidc_kubeconfig(
+            &api.url(),
+            &format!("{}/dex", issuer.url()),
+            &jwt(from_now(-3600), "expired"),
+            "fake-refresh",
+        ),
+    );
+
+    let connect = |file: std::path::PathBuf| async move {
+        let kubeconfig = Kubeconfig::read_from(&file).expect("the fixture parses");
+        let config =
+            resolve_with_fresh_tokens(kubeconfig, Some("dex"), std::slice::from_ref(&file)).await?;
+        let client = kube::Client::try_from(config).map_err(|error| error.to_string())?;
+        client
+            .apiserver_version()
+            .await
+            .map_err(|error| error.to_string())
+    };
+    let (first, second) = tokio::join!(
+        tokio::spawn(connect(file.clone())),
+        tokio::spawn(connect(file.clone()))
+    );
+    first.unwrap().expect("the first connection gets through");
+    second.unwrap().expect("the second connection gets through");
+
+    let grants = issuer
+        .requests()
+        .iter()
+        .filter(|request| request.path == "/dex/token")
+        .count();
+    assert_eq!(grants, 1, "the refresh token is spent once");
+    let bearers: Vec<_> = api
+        .requests()
+        .iter()
+        .map(|request| {
+            request
+                .headers
+                .get("authorization")
+                .cloned()
+                .unwrap_or_default()
+        })
+        .collect();
+    assert_eq!(bearers, vec![format!("Bearer {renewed}"); 2]);
+    let saved = Kubeconfig::read_from(&file).unwrap();
+    let provider = saved.auth_infos[1]
+        .auth_info
+        .as_ref()
+        .and_then(|info| info.auth_provider.as_ref())
+        .unwrap();
+    assert_eq!(
+        provider.config["refresh-token"], "fake-refresh-2",
+        "the rotated token kept"
     );
 }

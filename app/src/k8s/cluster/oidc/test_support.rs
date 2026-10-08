@@ -129,42 +129,76 @@ pub(in crate::k8s::cluster) fn from_now(offset: i64) -> i64 {
 /// trades `refresh_token` for `new_id_token` and the rotated
 /// `new_refresh_token` - for client `fernrohr` with secret `fake-secret`,
 /// given either in a Basic header or in the form - and refuses anything else
-/// with `invalid_grant`.
+/// with `invalid_grant`. Like Dex, it rotates: `refresh_token` works once.
 pub(in crate::k8s::cluster) fn fake_issuer(
     refresh_token: &'static str,
     new_id_token: String,
     new_refresh_token: &'static str,
 ) -> FakeServer {
-    use base64::engine::general_purpose::STANDARD;
-    let basic = format!("Basic {}", STANDARD.encode("fernrohr:fake-secret"));
-    FakeServer::start(
-        move |request, addr| match (request.method.as_str(), request.path.as_str()) {
-            ("GET", "/dex/.well-known/openid-configuration") => (
-                200,
-                format!(
-                    r#"{{"issuer":"http://{addr}/dex","token_endpoint":"http://{addr}/dex/token"}}"#
-                ),
-            ),
-            ("POST", "/dex/token") => {
-                let client_ok = request.headers.get("authorization") == Some(&basic)
-                    || (request.form("client_id").as_deref() == Some("fernrohr")
-                        && request.form("client_secret").as_deref() == Some("fake-secret"));
-                let grant_ok = request.form("grant_type").as_deref() == Some("refresh_token")
-                    && request.form("refresh_token").as_deref() == Some(refresh_token);
-                if client_ok && grant_ok {
+    FakeIssuer {
+        refresh_token,
+        new_id_token,
+        new_refresh_token,
+        claimed_issuer: None,
+        token_delay: std::time::Duration::ZERO,
+    }
+    .start()
+}
+
+/// [`fake_issuer`], configurable.
+pub(in crate::k8s::cluster) struct FakeIssuer {
+    pub(in crate::k8s::cluster) refresh_token: &'static str,
+    pub(in crate::k8s::cluster) new_id_token: String,
+    pub(in crate::k8s::cluster) new_refresh_token: &'static str,
+    /// The `issuer` its discovery document names; its own URL when `None`.
+    pub(in crate::k8s::cluster) claimed_issuer: Option<String>,
+    /// How long the token endpoint takes - so two renewals overlap.
+    pub(in crate::k8s::cluster) token_delay: std::time::Duration,
+}
+
+impl FakeIssuer {
+    pub(in crate::k8s::cluster) fn start(self) -> FakeServer {
+        use base64::engine::general_purpose::STANDARD;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let basic = format!("Basic {}", STANDARD.encode("fernrohr:fake-secret"));
+        let spent = AtomicBool::new(false);
+        FakeServer::start(move |request, addr| {
+            match (request.method.as_str(), request.path.as_str()) {
+                ("GET", "/dex/.well-known/openid-configuration") => {
+                    let issuer = self
+                        .claimed_issuer
+                        .clone()
+                        .unwrap_or_else(|| format!("http://{addr}/dex"));
                     (
                         200,
                         format!(
-                            r#"{{"id_token":"{new_id_token}","refresh_token":"{new_refresh_token}","token_type":"bearer"}}"#
+                            r#"{{"issuer":"{issuer}","token_endpoint":"http://{addr}/dex/token"}}"#
                         ),
                     )
-                } else {
-                    (400, r#"{"error":"invalid_grant"}"#.to_string())
                 }
+                ("POST", "/dex/token") => {
+                    std::thread::sleep(self.token_delay);
+                    let client_ok = request.headers.get("authorization") == Some(&basic)
+                        || (request.form("client_id").as_deref() == Some("fernrohr")
+                            && request.form("client_secret").as_deref() == Some("fake-secret"));
+                    let grant_ok = request.form("grant_type").as_deref() == Some("refresh_token")
+                        && request.form("refresh_token").as_deref() == Some(self.refresh_token);
+                    if client_ok && grant_ok && !spent.swap(true, Ordering::SeqCst) {
+                        (
+                            200,
+                            format!(
+                                r#"{{"id_token":"{}","refresh_token":"{}","token_type":"bearer"}}"#,
+                                self.new_id_token, self.new_refresh_token
+                            ),
+                        )
+                    } else {
+                        (400, r#"{"error":"invalid_grant"}"#.to_string())
+                    }
+                }
+                _ => (404, "{}".to_string()),
             }
-            _ => (404, "{}".to_string()),
-        },
-    )
+        })
+    }
 }
 
 /// A kubeconfig with one context, `dex`, whose user `dex-user` logs in through

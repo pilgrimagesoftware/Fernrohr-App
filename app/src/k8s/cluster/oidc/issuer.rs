@@ -52,12 +52,13 @@ pub(super) async fn refresh(config: &HashMap<String, String>) -> Result<Tokens, 
     };
     let ca = (field(CA_FILE).cloned(), field(CA_DATA).cloned());
 
+    let issuer_url = issuer.as_str();
     let issuer = trusted_url(issuer.trim_end_matches('/'))?;
     let discovery = format!(
         "{}/.well-known/openid-configuration",
         issuer.to_string().trim_end_matches('/')
     );
-    let endpoint = token_endpoint(&discovery, &ca).await?;
+    let endpoint = token_endpoint(&discovery, issuer_url, &ca).await?;
     let endpoint = trusted_url(&endpoint)?;
 
     let secret = field(CLIENT_SECRET).map(String::as_str);
@@ -124,10 +125,15 @@ fn trusted_url(url: &str) -> Result<Uri, String> {
     }
 }
 
-/// The token endpoint from the issuer's discovery document.
-async fn token_endpoint(discovery: &str, ca: &Ca) -> Result<String, String> {
+/// The token endpoint from the issuer's discovery document - only if the
+/// document names `expected` (the kubeconfig's `idp-issuer-url`, a trailing
+/// slash aside) as its issuer, as OIDC discovery requires. Anything else
+/// (a misconfigured or impersonating server) gets neither the refresh token
+/// nor the client secret.
+async fn token_endpoint(discovery: &str, expected: &str, ca: &Ca) -> Result<String, String> {
     #[derive(serde::Deserialize)]
     struct Metadata {
+        issuer: String,
         token_endpoint: String,
     }
     let uri = trusted_url(discovery)?;
@@ -140,9 +146,16 @@ async fn token_endpoint(discovery: &str, ca: &Ca) -> Result<String, String> {
             "the OIDC issuer's discovery document couldn't be fetched (HTTP {status})"
         ));
     }
-    serde_json::from_slice::<Metadata>(&body)
-        .map(|metadata| metadata.token_endpoint)
-        .map_err(|_| "the OIDC issuer's discovery document names no token endpoint".to_string())
+    let metadata = serde_json::from_slice::<Metadata>(&body).map_err(|_| {
+        "the OIDC issuer's discovery document names no issuer and token endpoint".to_string()
+    })?;
+    if metadata.issuer.trim_end_matches('/') != expected.trim_end_matches('/') {
+        return Err(
+            "the OIDC discovery document names a different issuer than the kubeconfig's idp-issuer-url, so the refresh token won't be sent"
+                .to_string(),
+        );
+    }
+    Ok(metadata.token_endpoint)
 }
 
 async fn post_form(

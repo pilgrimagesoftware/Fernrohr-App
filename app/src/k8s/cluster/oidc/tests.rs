@@ -2,7 +2,7 @@
 //! it has expired, the rotated tokens written back to the kubeconfig as
 //! `kubectl` does - and left alone when it is still good.
 
-use super::test_support::{TempDir, fake_issuer, from_now, jwt, oidc_kubeconfig};
+use super::test_support::{FakeIssuer, TempDir, fake_issuer, from_now, jwt, oidc_kubeconfig};
 use super::*;
 use kube::config::Kubeconfig;
 
@@ -144,6 +144,64 @@ async fn a_refused_refresh_says_why_without_the_token() {
     assert_eq!(attempts, 2, "a Basic header, then the client in the form");
 }
 
+/// Discovery must name the configured issuer: a document claiming another
+/// gets neither the refresh token nor the client secret.
+#[tokio::test]
+async fn a_discovery_document_naming_another_issuer_is_refused() {
+    let issuer = FakeIssuer {
+        refresh_token: OLD_REFRESH,
+        new_id_token: jwt(from_now(3600), "x"),
+        new_refresh_token: NEW_REFRESH,
+        claimed_issuer: Some("https://issuer.invalid/dex".into()),
+        token_delay: std::time::Duration::ZERO,
+    }
+    .start();
+    let mut kubeconfig: Kubeconfig = serde_yaml_ng::from_str(&oidc_kubeconfig(
+        "https://127.0.0.1:6443",
+        &format!("{}/dex", issuer.url()),
+        &jwt(from_now(-60), "expired"),
+        OLD_REFRESH,
+    ))
+    .unwrap();
+
+    let error = refresh_expired(&mut kubeconfig, Some("dex"), &[])
+        .await
+        .expect_err("a mismatched issuer is refused");
+
+    assert!(error.contains("different issuer"), "{error}");
+    let requests = issuer.requests();
+    assert!(
+        requests.iter().all(|request| request.method == "GET"),
+        "nothing is posted to its token endpoint"
+    );
+    assert!(
+        requests
+            .iter()
+            .all(|request| !request.body.contains(OLD_REFRESH)),
+        "the refresh token never leaves"
+    );
+}
+
+/// A trailing slash on either side is the same issuer.
+#[tokio::test]
+async fn an_issuer_with_a_trailing_slash_still_matches() {
+    let renewed = jwt(from_now(3600), "renewed");
+    let issuer = fake_issuer(OLD_REFRESH, renewed.clone(), NEW_REFRESH);
+    let mut kubeconfig: Kubeconfig = serde_yaml_ng::from_str(&oidc_kubeconfig(
+        "https://127.0.0.1:6443",
+        &format!("{}/dex/", issuer.url()),
+        &jwt(from_now(-60), "expired"),
+        OLD_REFRESH,
+    ))
+    .unwrap();
+
+    refresh_expired(&mut kubeconfig, Some("dex"), &[])
+        .await
+        .expect("the same issuer, a trailing slash aside");
+
+    assert_eq!(provider_config(&kubeconfig)[ID_TOKEN], renewed);
+}
+
 #[tokio::test]
 async fn a_refresh_token_is_never_sent_to_a_plain_http_issuer_elsewhere() {
     let mut kubeconfig: Kubeconfig = serde_yaml_ng::from_str(&oidc_kubeconfig(
@@ -197,25 +255,32 @@ fn tokens_are_saved_to_the_file_that_defines_the_user() {
         id_token: "fake-new-id".into(),
         refresh_token: Some("fake-new-refresh".into()),
     };
+    let files = [first.clone(), second.clone()];
 
-    assert_eq!(
-        persist::save(&[first.clone(), second.clone()], "dex-user", &tokens),
-        Ok(true)
-    );
+    let file = persist::defining_file(&files, "dex-user").expect("the second file defines it");
+    assert_eq!(file, second);
+    persist::save(&file, "dex-user", &tokens).expect("saved");
 
     assert_eq!(std::fs::read_to_string(&first).unwrap(), first_text);
     let saved = provider_config(&Kubeconfig::read_from(&second).unwrap());
     assert_eq!(saved[ID_TOKEN], "fake-new-id");
     assert_eq!(saved[REFRESH_TOKEN], "fake-new-refresh");
-    assert!(
-        std::fs::read_dir(dir.path()).unwrap().count() == 2,
+    assert_eq!(
+        persist::stored(&second, "dex-user").unwrap()[ID_TOKEN],
+        "fake-new-id"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&second).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "a 0600 kubeconfig stays 0600 when rewritten");
+    }
+    assert_eq!(
+        std::fs::read_dir(dir.path()).unwrap().count(),
+        2,
         "no temp file left behind"
     );
-    assert_eq!(
-        persist::save(&[first], "nobody", &tokens),
-        Ok(false),
-        "no file defines the user"
-    );
+    assert_eq!(persist::defining_file(&files, "nobody"), None);
 }
 
 #[test]
