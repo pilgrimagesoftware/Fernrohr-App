@@ -122,3 +122,26 @@ async fn a_copy_control_is_reached_and_pressed_by_keyboard(cx: &mut TestAppConte
     vcx.run_until_parked();
     assert_eq!(clipboard(&mut vcx).as_deref(), Some("debug"));
 }
+
+/// #187: a copy control shows it copied - a check mark and "Copied" - for a
+/// moment after a click, then returns to its copy icon.
+#[gpui_kit::test]
+async fn a_copy_control_shows_it_copied_for_a_moment(cx: &mut TestAppContext) {
+    use crate::consts::COPIED_FEEDBACK;
+    use crate::ui::copy::{copied_selector, tooltip_text};
+    let (window, mut vcx) = config_map_panel(cx);
+    let id = ElementId::Name("copy ConfigMap/Data value 0".into());
+    let shown = |vcx: &mut VisualTestContext| {
+        vcx.run_until_parked();
+        vcx.debug_bounds(copied_selector(&id).leak()).is_some()
+    };
+    assert!(!shown(&mut vcx), "nothing copied yet");
+
+    click(window, &mut vcx, "copy ConfigMap/Data value 0");
+
+    assert!(shown(&mut vcx), "the control shows it copied");
+    vcx.executor().advance_clock(COPIED_FEEDBACK);
+    assert!(!shown(&mut vcx), "then goes back");
+    assert_eq!(tooltip_text(true), "Copied");
+    assert_eq!(tooltip_text(false), "Copy");
+}

@@ -197,6 +197,16 @@ pub(super) fn reveal_password_by_keyboard(vcx: &mut VisualTestContext, h: &Harne
 
 /// Tabs until `button` has focus, then presses Space on it.
 pub(super) fn press_by_keyboard(vcx: &mut VisualTestContext, h: &Harness, button: ElementId) {
+    press_key_by_keyboard(vcx, h, button, "space");
+}
+
+/// [`press_by_keyboard`] with `key` - `space` or `enter` - as the press.
+pub(super) fn press_key_by_keyboard(
+    vcx: &mut VisualTestContext,
+    h: &Harness,
+    button: ElementId,
+    key: &str,
+) {
     for _ in 0..20 {
         let focused = vcx
             .update_window(h.window.into(), |_, window, cx| {
@@ -207,13 +217,13 @@ pub(super) fn press_by_keyboard(vcx: &mut VisualTestContext, h: &Harness, button
         if focused == Some(true) {
             // A key down *and* up, as a real press is: `Button` fires its
             // keyboard click on the release.
-            let space = gpui_kit::Keystroke::parse("space").unwrap();
+            let keystroke = gpui_kit::Keystroke::parse(key).unwrap();
             vcx.simulate_event(gpui_kit::KeyDownEvent {
-                keystroke: space.clone(),
+                keystroke: keystroke.clone(),
                 is_held: false,
                 prefer_character_input: false,
             });
-            vcx.simulate_event(gpui_kit::KeyUpEvent { keystroke: space });
+            vcx.simulate_event(gpui_kit::KeyUpEvent { keystroke });
             vcx.run_until_parked();
             return;
         }
