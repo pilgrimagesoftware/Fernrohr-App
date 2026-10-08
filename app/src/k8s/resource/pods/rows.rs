@@ -200,5 +200,16 @@ pub fn matches_namespaces(pod: &Pod, namespaces: &[String]) -> bool {
             .is_some_and(|namespace| namespaces.contains(namespace))
 }
 
+/// Whether `pod` is scheduled on `node` - every pod if `node` is `None` (the
+/// standalone Pods panel's own, node-unscoped table). A Node's embedded table
+/// (#186) filters the same shared, all-namespaces watch by this alone, rather
+/// than opening a second watch with a `spec.nodeName` field selector.
+pub(super) fn matches_node(pod: &Pod, node: Option<&str>) -> bool {
+    match node {
+        None => true,
+        Some(node) => pod.spec.as_ref().and_then(|spec| spec.node_name.as_deref()) == Some(node),
+    }
+}
+
 #[cfg(test)]
 mod tests;

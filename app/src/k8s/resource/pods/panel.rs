@@ -57,6 +57,12 @@ pub struct PodsPanel {
     /// The filter box: its lazily built `InputState`, and the text to start it
     /// with once restored (`saved-panel-layouts` 1.6, `list-search` #189).
     pub(super) filter: ListSearch,
+    /// Scopes this table to one node's pods, across every namespace - unset
+    /// (the default) for the standalone Pods panel, which shows every pod its
+    /// namespace scope allows. Set by [`Self::scoped_to_node`] for the
+    /// embedded table a Node's detail panel draws (#186); applied beside the
+    /// namespace filter in `render`.
+    pub(super) node: Option<String>,
 }
 
 impl PodsPanel {
@@ -118,9 +124,19 @@ impl PodsPanel {
             action_failure: None,
             initial_sort: None,
             filter: ListSearch::new(),
+            node: None,
         };
         this.start_watch_if_connected(&connection, cx);
         this
+    }
+
+    /// Scopes this table to `node`'s pods alone, across every namespace
+    /// (#186): a Node's detail panel's embedded table, built over the same
+    /// shared, all-namespaces watch [`Self::new`] already subscribes to -
+    /// filtered client-side rather than with a second, field-selected watch.
+    pub(crate) fn scoped_to_node(mut self, node: impl Into<String>) -> Self {
+        self.node = Some(node.into());
+        self
     }
 
     /// A panel over stub cluster state: the connection never leaves
@@ -453,5 +469,7 @@ mod namespace_jump_tests;
 mod restore_tests;
 #[cfg(test)]
 mod search_tests;
+#[cfg(test)]
+mod test_accessors;
 #[cfg(test)]
 mod tests;

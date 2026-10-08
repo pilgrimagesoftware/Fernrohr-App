@@ -6,6 +6,7 @@ use super::commands::{
 };
 use super::fetch::ObjectDetailState;
 use super::model::{FieldValue, ObjectField};
+use super::node_pods::{self, OpenNodePod};
 use super::panel::ObjectDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::events;
@@ -84,7 +85,7 @@ impl ObjectDetailPanel {
         detail::row(field.label.clone(), value, cx)
     }
 
-    fn render_structured(&self, cx: &Context<Self>) -> AnyElement {
+    fn render_structured(&self, window: &mut Window, cx: &Context<Self>) -> AnyElement {
         let events = match &self.state {
             ObjectDetailState::Loaded(_, Ok(events)) => {
                 Ok(events::summarize(events, Timestamp::now()))
@@ -110,7 +111,50 @@ impl ObjectDetailPanel {
             }))
             .child(detail::section_heading("Events", cx))
             .child(div().pt_1().child(detail::events(&events, cx)))
+            .children(self.render_node_pods(window, cx))
             .into_any_element()
+    }
+
+    /// The Node's own region (#186): its embedded, node-scoped Pods table,
+    /// below the sections and events every kind gets - `None` for every kind
+    /// but Node, which built no such table to show (`node_pods`).
+    fn render_node_pods(&self, window: &mut Window, cx: &Context<Self>) -> Option<AnyElement> {
+        let panel = self.node_pods.clone()?;
+        let open_key = Kbd::binding_for_action(&OpenNodePod, Some(node_pods::KEY_CONTEXT), window)
+            .unwrap_or_else(|| {
+                Kbd::new(Keystroke::parse(node_pods::OPEN_KEY).expect("valid keybinding"))
+            });
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .pt_2()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(detail::section_heading("Pods on This Node", cx))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(open_key)
+                                .child("Open pod detail"),
+                        ),
+                )
+                .child(
+                    div()
+                        .h(crate::consts::NODE_PODS_REGION_HEIGHT)
+                        .key_context(node_pods::KEY_CONTEXT)
+                        .on_action(cx.listener(Self::on_action_open_node_pod))
+                        .child(panel),
+                )
+                .into_any_element(),
+        )
     }
 
     /// The manifest, folding and scrolling both ways (`ui::yaml_view`).
@@ -209,7 +253,7 @@ impl Render for ObjectDetailPanel {
                     .size_full()
                     .p(space.panel_inset)
                     .overflow_y_scrollbar()
-                    .child(self.render_structured(cx))
+                    .child(self.render_structured(window, cx))
                     .into_any_element(),
                 // The view scrolls itself, both ways.
                 DetailView::Yaml => div()

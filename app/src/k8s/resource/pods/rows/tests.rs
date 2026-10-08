@@ -1,9 +1,10 @@
 // Named imports rather than `use super::*`: `gpui_kit::*` (imported by the
 // parent) re-exports its own `test` attribute macro, which would shadow the
 // built-in `#[test]` for these plain synchronous tests.
+use super::matches_node;
 use crate::k8s::resource::pods::{matches_namespaces, pod_row};
 use jiff::Timestamp;
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::{Pod, PodSpec};
 
 use crate::k8s::resource::pods::test_support::*;
 
@@ -48,6 +49,31 @@ fn multiple_namespace_scope_includes_each_selected_namespace() {
         &pod_in("other", "u4", "ignored", 0),
         &namespaces
     ));
+}
+
+/// #186: a Node's embedded table keeps only the pods `spec.nodeName` names,
+/// across every namespace; the standalone Pods panel's own table (`node:
+/// None`) keeps every pod regardless of which node it's on.
+#[test]
+fn matches_node_scopes_to_one_node_across_namespaces() {
+    let on_a = on_node("default", "u1", "web-1", "node-a");
+    let also_on_a = on_node("kube-system", "u2", "coredns-1", "node-a");
+    let on_b = on_node("default", "u3", "web-2", "node-b");
+
+    assert!(matches_node(&on_a, Some("node-a")));
+    assert!(matches_node(&also_on_a, Some("node-a")));
+    assert!(!matches_node(&on_b, Some("node-a")));
+    assert!(matches_node(&on_a, None), "no node scope keeps every pod");
+}
+
+fn on_node(namespace: &str, uid: &str, name: &str, node: &str) -> Pod {
+    Pod {
+        spec: Some(PodSpec {
+            node_name: Some(node.into()),
+            ..Default::default()
+        }),
+        ..pod_in(namespace, uid, name, 0)
+    }
 }
 
 mod tones {

@@ -221,6 +221,11 @@ pub(crate) const SAVED_LAYOUT_PLACEHOLDER_STEM: &str = "layout";
 /// (`saved-panel-layouts` design.md D2).
 pub(crate) const SAVED_LAYOUT_SCHEMA_VERSION: u32 = 1;
 
+/// #186: how tall a Node detail panel's embedded Pods table draws, below its
+/// fields - the table scrolls within this, rather than growing the whole
+/// detail view with the node's pod count.
+pub(crate) const NODE_PODS_REGION_HEIGHT: gpui_kit::Pixels = gpui_kit::px(320.);
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.

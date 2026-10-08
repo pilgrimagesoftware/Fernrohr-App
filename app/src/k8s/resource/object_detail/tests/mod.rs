@@ -17,6 +17,7 @@ mod ingress_links;
 mod live;
 mod metadata;
 mod network;
+mod node_pods;
 mod overview;
 mod panel;
 mod rbac;
