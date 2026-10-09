@@ -306,6 +306,8 @@ impl ClusterConnection {
 }
 
 #[cfg(test)]
+mod nonblocking_tests;
+#[cfg(test)]
 mod oidc_tests;
 #[cfg(test)]
 mod proxy_tests;
