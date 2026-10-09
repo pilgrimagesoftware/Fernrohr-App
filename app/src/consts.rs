@@ -33,6 +33,10 @@ pub(crate) const COMMAND_TUNNEL_POLL_INTERVAL: Duration = Duration::from_millis(
 /// How long a stopping command tunnel's process group has between `SIGTERM` and
 /// `SIGKILL`.
 pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
+/// `manual-confirmation-tunnels` D5: how long a manual tunnel's reachability
+/// shortcut waits for the API server to accept a TCP connection before it asks the
+/// user instead.
+pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.

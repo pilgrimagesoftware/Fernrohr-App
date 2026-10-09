@@ -37,9 +37,6 @@ pub trait ForwardTransport: Send + 'static {
 }
 
 /// Why a connect failed, and what the supervisor does next.
-// UNWIRED(#195): `GiveUp`'s first producer is the manual tunnel's transport
-// (section 2.2); only tests give up until then.
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectFailure {
     /// Try again after the backoff: the bastion may come back.

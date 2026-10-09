@@ -6,6 +6,7 @@ use crate::config::tunnels::CommandTunnelMode;
 use crate::forward::managed::{ForwardHandle, ForwardState, ManagedForward};
 use crate::forward::supervisor::FailureSlot;
 use crate::tunnel::command::CommandTunnel;
+use crate::tunnel::manual::ManualTunnel;
 use crate::tunnel::ssh::SshTunnel;
 use std::net::SocketAddr;
 use tokio::sync::watch;
@@ -20,11 +21,15 @@ pub enum TunnelRoute {
     /// The local port is an HTTP proxy: the client keeps its real address and sends
     /// its traffic through the proxy. Proxy-mode command tunnels.
     Proxy,
+    /// Nothing to go through: the client keeps its own address, and connects once
+    /// the tunnel is confirmed. Manual tunnels.
+    Direct,
 }
 
 pub enum TunnelForward {
     Ssh(SshTunnel),
     Command(CommandTunnel),
+    Manual(ManualTunnel),
 }
 
 impl TunnelForward {
@@ -35,6 +40,7 @@ impl TunnelForward {
                 CommandTunnelMode::Proxy => TunnelRoute::Proxy,
                 CommandTunnelMode::Forward => TunnelRoute::Rewrite,
             },
+            Self::Manual(_) => TunnelRoute::Direct,
         }
     }
 
@@ -43,6 +49,7 @@ impl TunnelForward {
         match self {
             Self::Ssh(tunnel) => tunnel.failure(),
             Self::Command(tunnel) => tunnel.failure(),
+            Self::Manual(tunnel) => tunnel.failure(),
         }
     }
 
@@ -50,6 +57,7 @@ impl TunnelForward {
         match self {
             Self::Ssh(tunnel) => tunnel,
             Self::Command(tunnel) => tunnel,
+            Self::Manual(tunnel) => tunnel,
         }
     }
 }

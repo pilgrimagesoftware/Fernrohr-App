@@ -21,9 +21,11 @@
 
 use super::kubeconfig::{self, ServerForContextError};
 use crate::config::tunnels::{TunnelConfig, TunnelKind};
+use crate::forward::managed::{ForwardState, ManagedForward as _};
 use crate::forward::registry::{ForwardRegistry, RegistryHandle};
 use crate::forward::supervisor::{BackoffPolicy, SupervisorOptions};
 use crate::tunnel::command::{CommandTunnel, argv};
+use crate::tunnel::manual::{ManualConfirmations, ManualTransport, ManualTunnel, ProbeTarget};
 use crate::tunnel::ssh::{SshTunnel, SshTunnelConfig, TransientIdentityFile};
 use crate::tunnel::store::{TunnelStore, TunnelStoreError};
 use gpui_kit::{App, Global};
@@ -49,12 +51,19 @@ pub enum ForwardKey {
     Command {
         tunnel_id: String,
     },
+    /// A manual tunnel: the tunnel alone, so every bound context shares one
+    /// confirmation (`manual-confirmation-tunnels` D2).
+    Manual {
+        tunnel_id: String,
+    },
 }
 
 impl ForwardKey {
     pub fn tunnel_id(&self) -> &str {
         match self {
-            Self::Ssh { tunnel_id, .. } | Self::Command { tunnel_id } => tunnel_id,
+            Self::Ssh { tunnel_id, .. }
+            | Self::Command { tunnel_id }
+            | Self::Manual { tunnel_id } => tunnel_id,
         }
     }
 }
@@ -184,12 +193,13 @@ pub fn acquire_for_context(
     };
     match config.kind {
         TunnelKind::Command => return acquire_command(cx, tunnel_id, &config).map(Some),
-        // UNWIRED(#195): the confirmation transport is section 2. Until then a manual
-        // tunnel fails its connection rather than connecting without being confirmed.
         TunnelKind::Manual => {
-            return Err(TunnelAcquireError::Command(format!(
-                "{} is a manual tunnel, and this build can't wait for its confirmation yet",
-                config.name
+            return Ok(Some(acquire_manual(
+                cx,
+                tunnel_id,
+                &config,
+                kubeconfig_path,
+                context,
             )));
         }
         TunnelKind::Ssh => {}
@@ -299,5 +309,52 @@ fn acquire_command(
     }))
 }
 
+/// A manual tunnel's shared forward: keyed by the tunnel alone, so every bound
+/// context waits on one confirmation. With the reachability shortcut on, the first
+/// acquiring context's API server is what is probed (design.md D5); a server that
+/// doesn't resolve just means asking. A context acquiring while the tunnel is
+/// unconfirmed is recorded as waiting on it.
+fn acquire_manual(
+    cx: &mut App,
+    tunnel_id: String,
+    config: &TunnelConfig,
+    kubeconfig_path: Option<&Path>,
+    context: &str,
+) -> RegistryHandle<ForwardKey, TunnelForward> {
+    let probe = config
+        .manual
+        .skip_when_reachable
+        .then(|| kubeconfig::server_for_context(kubeconfig_path, context).ok())
+        .flatten()
+        .map(|(host, port)| ProbeTarget { host, port });
+    let events = ManualConfirmations::events(cx);
+    let transport = ManualTransport::new(
+        tunnel_id.clone(),
+        config.name.clone(),
+        config.manual.message.clone(),
+        probe,
+        events,
+    );
+    let options = SupervisorOptions {
+        health_check_interval: HEALTH_CHECK_INTERVAL,
+        backoff: RECONNECT_BACKOFF,
+    };
+
+    TunnelForwards::ensure_init(cx);
+    let rt = crate::runtime::handle(cx);
+    let handle = cx.global::<TunnelForwards>().registry.acquire(
+        ForwardKey::Manual {
+            tunnel_id: tunnel_id.clone(),
+        },
+        || TunnelForward::Manual(ManualTunnel::spawn(&rt, transport, options)),
+    );
+    if *handle.forward().state().borrow() != ForwardState::Up {
+        ManualConfirmations::note_waiting(cx, &tunnel_id, context);
+    }
+    handle
+}
+
+#[cfg(test)]
+mod manual_tests;
 #[cfg(test)]
 mod tests;
