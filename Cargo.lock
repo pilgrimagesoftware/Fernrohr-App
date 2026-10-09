@@ -2094,6 +2094,7 @@ dependencies = [
  "rmcp",
  "rust-i18n",
  "rustls",
+ "schemars",
  "serde",
  "serde_json",
  "serde_yaml_ng",

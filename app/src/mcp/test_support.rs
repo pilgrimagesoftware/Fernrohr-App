@@ -5,6 +5,8 @@ use super::endpoint::{Endpoint, EndpointFiles, EndpointPaths};
 use super::foreground::Foreground;
 use super::server::{ServerState, serve};
 use super::tools::{ToolContext, ToolKind, ToolOutput, ToolRegistry, ToolSpec};
+use crate::k8s::cluster::discovery::DiscoveredKind;
+use kube::api::GroupVersionKind;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::path::PathBuf;
@@ -54,7 +56,10 @@ pub(super) fn echo_tool_registry() -> ToolRegistry {
 /// A tool context with no main thread behind it.
 pub(super) fn test_context() -> ToolContext {
     let (foreground, _jobs) = Foreground::channel();
-    ToolContext { foreground }
+    ToolContext {
+        foreground,
+        kubeconfig: None,
+    }
 }
 
 pub(super) fn object(value: Value) -> Map<String, Value> {
@@ -100,4 +105,20 @@ pub(super) fn dir_of(paths: &EndpointPaths) -> PathBuf {
         .parent()
         .expect("an endpoint socket has a directory")
         .to_path_buf()
+}
+
+/// A discovered kind with every verb, as a fixture's discovery reports it.
+pub(super) fn discovered(
+    group: &str,
+    version: &str,
+    kind: &str,
+    plural: &str,
+    namespaced: bool,
+) -> DiscoveredKind {
+    DiscoveredKind {
+        gvk: GroupVersionKind::gvk(group, version, kind),
+        plural: plural.to_string(),
+        namespaced,
+        verbs: Default::default(),
+    }
 }

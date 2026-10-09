@@ -14,10 +14,6 @@ use std::fmt;
 /// A tool call's failure, as the app reports it to the adapter and the adapter
 /// to the MCP client. Its serialized form is the structured error a client
 /// sees, tagged by [`Self::code`].
-// UNWIRED(#189): `UnknownContext`, `Disconnected`, `UnsupportedKind`,
-// `Kubernetes` and `ConnectionFailed` are what the cluster tools (section 2)
-// fail with; nothing in section 1 constructs them outside tests.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub(crate) enum ToolError {
@@ -33,6 +29,12 @@ pub(crate) enum ToolError {
     Disconnected { context: String },
     /// The context's discovery data has no such resource kind.
     UnsupportedKind { kind: String },
+    /// More than one API group in the context has a kind of this name; the
+    /// client has to say which.
+    AmbiguousKind { kind: String, groups: Vec<String> },
+    /// The kind exists, but its discovery data doesn't offer this operation
+    /// (`list`, say, for a kind that can only be read one at a time).
+    UnsupportedOperation { kind: String, operation: String },
     /// The Kubernetes API refused the request.
     Kubernetes {
         status: u16,
@@ -76,6 +78,8 @@ impl ToolError {
             Self::UnknownContext { .. } => "unknown_context",
             Self::Disconnected { .. } => "disconnected",
             Self::UnsupportedKind { .. } => "unsupported_kind",
+            Self::AmbiguousKind { .. } => "ambiguous_kind",
+            Self::UnsupportedOperation { .. } => "unsupported_operation",
             Self::Kubernetes { .. } => "kubernetes",
             Self::ConnectionFailed { .. } => "connection_failed",
             Self::ResultTooLarge { .. } => "result_too_large",
@@ -95,7 +99,7 @@ impl ToolError {
 
     /// A `kube` failure for a request against `context`, mapped as the module
     /// docs describe.
-    // UNWIRED(#189): the cluster tools (section 2) are its callers.
+    // UNWIRED(#189): the resource tools (section 2.2) map kube errors with it.
     #[allow(dead_code)]
     pub(crate) fn from_kube(context: &str, error: &kube::Error) -> Self {
         match error {
@@ -158,6 +162,17 @@ impl fmt::Display for ToolError {
             Self::UnsupportedKind { kind } => {
                 write!(f, "resource kind {kind:?} is not available in this context")
             }
+            Self::AmbiguousKind { kind, groups } => {
+                let groups: Vec<_> = groups.iter().map(|group| group_label(group)).collect();
+                write!(
+                    f,
+                    "{kind:?} names a kind in several API groups ({}); pass `group`",
+                    groups.join(", ")
+                )
+            }
+            Self::UnsupportedOperation { kind, operation } => {
+                write!(f, "{kind} does not support {operation}")
+            }
             Self::Kubernetes {
                 status,
                 reason,
@@ -178,6 +193,11 @@ impl fmt::Display for ToolError {
             Self::Internal => f.write_str("Fernrohr failed to handle the request"),
         }
     }
+}
+
+/// How a group reads in a message: the core group's name is empty.
+fn group_label(group: &str) -> &str {
+    if group.is_empty() { "core" } else { group }
 }
 
 #[cfg(test)]

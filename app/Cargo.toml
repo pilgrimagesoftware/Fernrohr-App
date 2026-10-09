@@ -46,6 +46,10 @@ rmcp = { version = "=3.5.1", default-features = false, features = ["server", "tr
 # The MCP endpoint's per-launch token (`mcp::endpoint`). Already in the build
 # through ahash and rand_core; pinned to that same version.
 getrandom = "=0.3.4"
+# The MCP tools' input schemas, derived from their typed inputs
+# (`mcp::tools::ToolSpec::for_input`). Already in the build through gpui-base
+# and rmcp, with its derive; pinned to that same version.
+schemars = "=1.2.2"
 
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.

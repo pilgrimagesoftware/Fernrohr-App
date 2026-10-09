@@ -1,6 +1,3 @@
-//! `from_kube` is unwired until the cluster tools (section 2) call it, so its
-//! tests here pin the mapping rather than show coverage of a live path.
-
 use super::*;
 use kube::core::response::Status;
 use serde_json::json;
@@ -62,6 +59,14 @@ fn every_code_matches_its_serialized_tag() {
             context: "x".into(),
         },
         ToolError::UnsupportedKind { kind: "x".into() },
+        ToolError::AmbiguousKind {
+            kind: "x".into(),
+            groups: vec![String::new()],
+        },
+        ToolError::UnsupportedOperation {
+            kind: "x".into(),
+            operation: "list".into(),
+        },
         ToolError::Kubernetes {
             status: 500,
             reason: "x".into(),

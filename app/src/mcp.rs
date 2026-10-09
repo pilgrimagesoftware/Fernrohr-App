@@ -22,6 +22,8 @@ mod adapter;
 #[cfg(unix)]
 mod client;
 #[cfg(unix)]
+mod cluster;
+#[cfg(unix)]
 mod endpoint;
 mod entry;
 #[cfg(unix)]
@@ -31,7 +33,11 @@ mod foreground;
 #[cfg(unix)]
 mod frame;
 #[cfg(unix)]
+mod kinds;
+#[cfg(unix)]
 mod protocol;
+#[cfg(unix)]
+mod read;
 #[cfg(unix)]
 mod redact;
 #[cfg(unix)]

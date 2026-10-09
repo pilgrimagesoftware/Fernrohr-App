@@ -44,9 +44,6 @@ impl Foreground {
 
     /// Runs `work` on the main thread and returns what it returned. Fails
     /// only when the main thread no longer takes jobs - the app is quitting.
-    // UNWIRED(#189): the cluster, panel and layout tools (sections 2 and 4)
-    // are its callers.
-    #[allow(dead_code)]
     pub(super) async fn run<R: Send + 'static>(
         &self,
         work: impl FnOnce(&mut App) -> R + Send + 'static,
@@ -67,9 +64,6 @@ impl Foreground {
 
 #[cfg(test)]
 mod tests {
-    //! `run` has no production caller until section 2; these pin the bridge
-    //! the cluster and panel tools will use.
-
     use super::*;
     use gpui_kit::{Global, TestAppContext};
 

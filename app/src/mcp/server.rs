@@ -85,6 +85,7 @@ pub(super) fn start(cx: &mut App, registry: ToolRegistry) {
         owner_uid: endpoint.owner_uid,
         context: ToolContext {
             foreground: Foreground::spawn_on(cx),
+            kubeconfig: None,
         },
     });
     let task = handle.spawn(serve(endpoint.listener, state));

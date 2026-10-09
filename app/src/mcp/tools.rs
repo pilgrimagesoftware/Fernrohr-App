@@ -4,22 +4,25 @@
 //!
 //! Tools live only in the app. The adapter has no tool list of its own: it
 //! asks the app for [`ToolRegistry::specs`] and forwards each call by name, so
-//! adding a tool is one [`ToolRegistry::register`] call in [`ToolRegistry::app`]
-//! and nothing on the adapter side.
+//! adding a tool is one [`ToolRegistry::add`] call, in [`ToolRegistry::app`] or
+//! a module it calls, and nothing on the adapter side.
 //!
-//! A handler takes its own typed input. `register` deserializes the client's
-//! arguments into it before the handler runs and answers a mismatch with
+//! A handler takes its own typed input. `add` publishes that input's JSON
+//! Schema as the tool's, deserializes the client's arguments into it before
+//! the handler runs, and answers a mismatch with
 //! [`ToolError::InvalidArguments`], so no handler ever sees raw JSON.
 
 use super::error::ToolError;
 use super::foreground::Foreground;
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
+use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::future::Future;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// What a tool does, which decides how the endpoint treats a call to it:
@@ -46,6 +49,33 @@ pub(super) struct ToolSpec {
     pub(super) input_schema: Map<String, Value>,
 }
 
+impl ToolSpec {
+    /// A spec whose input schema is `A`'s, so the schema a client sees can't
+    /// drift from what the handler accepts. Doc comments on `A`'s fields become
+    /// their descriptions.
+    pub(super) fn for_input<A: JsonSchema>(
+        name: &str,
+        title: &str,
+        description: &str,
+        kind: ToolKind,
+    ) -> Self {
+        let mut input_schema = match schemars::schema_for!(A).to_value() {
+            Value::Object(schema) => schema,
+            // `schema_for!` of a struct is always an object schema.
+            _ => Map::new(),
+        };
+        // The input's Rust name says nothing to a client.
+        input_schema.remove("title");
+        Self {
+            name: name.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            kind,
+            input_schema,
+        }
+    }
+}
+
 /// A tool's successful result: the structured object the client receives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(super) struct ToolOutput {
@@ -57,8 +87,6 @@ pub(super) struct ToolOutput {
 }
 
 impl ToolOutput {
-    // UNWIRED(#189): tool handlers (sections 2-4) build their results with it.
-    #[allow(dead_code)]
     pub(super) fn new(content: Map<String, Value>) -> Self {
         Self {
             content,
@@ -71,9 +99,11 @@ impl ToolOutput {
 #[derive(Clone)]
 pub(super) struct ToolContext {
     /// The main thread, for any GPUI state the tool reads or changes.
-    // UNWIRED(#189): read by the tool handlers of sections 2-4.
-    #[allow(dead_code)]
     pub(super) foreground: Foreground,
+    /// The kubeconfig whose contexts a client may name: `None` for the one
+    /// the app's cluster picker reads (`$KUBECONFIG` or `~/.kube/config`).
+    /// Tests point it at their own.
+    pub(super) kubeconfig: Option<PathBuf>,
 }
 
 type Handler =
@@ -94,21 +124,42 @@ pub(super) struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// The app's tools. Empty until the cluster (section 2), action
-    /// (section 3) and navigation (section 4) tools register here.
+    /// The app's tools: the cluster read tools (section 2). The action
+    /// (section 3) and navigation (section 4) tools register here too.
     pub(super) fn app() -> Self {
-        Self::default()
+        let mut registry = Self::default();
+        super::read::register(&mut registry);
+        registry
     }
 
-    /// Adds a tool whose handler takes the typed input `A`.
+    /// Adds a tool named `name` whose handler takes the typed input `A`,
+    /// publishing `A`'s schema as its input schema. See [`Self::register`].
+    pub(super) fn add<A, F, Fut>(
+        &mut self,
+        name: &str,
+        title: &str,
+        description: &str,
+        kind: ToolKind,
+        handler: F,
+    ) where
+        A: DeserializeOwned + JsonSchema,
+        F: Fn(A, ToolContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ToolResult> + Send + 'static,
+    {
+        self.register(
+            ToolSpec::for_input::<A>(name, title, description, kind),
+            handler,
+        );
+    }
+
+    /// Adds a tool whose handler takes the typed input `A`, under a spec
+    /// written by hand.
     ///
     /// # Panics
     ///
     /// If a tool of the same name is already registered: tool names are fixed
     /// in code, so a clash is a programming error, caught by any test that
     /// builds the registry.
-    // UNWIRED(#189): sections 2-4 register the app's tools in `app`.
-    #[allow(dead_code)]
     pub(super) fn register<A, F, Fut>(&mut self, spec: ToolSpec, handler: F)
     where
         A: DeserializeOwned,
@@ -161,9 +212,6 @@ impl ToolRegistry {
 
 #[cfg(test)]
 mod tests {
-    //! `register` has no production caller until section 2; these pin the
-    //! contract the app's tools will be added under.
-
     use super::*;
     use crate::mcp::test_support::{echo_spec, echo_tool_registry, object, test_context};
     use serde_json::json;
