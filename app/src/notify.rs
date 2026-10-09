@@ -29,8 +29,9 @@ pub(crate) struct Note {
 /// A notification a [`Backend`] showed.
 pub(crate) enum Posted {
     /// Shown, on a platform that doesn't report what the user did with it.
-    // No Windows backend shows anything; there it is built in tests alone.
-    #[cfg_attr(all(not(unix), not(test)), allow(dead_code))]
+    // Only the macOS backend returns it (D-Bus reports activation, and no
+    // Windows backend shows anything), so elsewhere it is built in tests alone.
+    #[cfg_attr(not(any(test, target_os = "macos")), allow(dead_code))]
     Shown,
     /// Shown; the function blocks until the user acts on it, and says whether
     /// they activated it (rather than dismissing it, or it expiring).
