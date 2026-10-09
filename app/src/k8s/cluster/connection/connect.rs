@@ -306,6 +306,8 @@ impl ClusterConnection {
 }
 
 #[cfg(test)]
+mod manual_e2e_tests;
+#[cfg(test)]
 mod nonblocking_tests;
 #[cfg(test)]
 mod oidc_tests;
