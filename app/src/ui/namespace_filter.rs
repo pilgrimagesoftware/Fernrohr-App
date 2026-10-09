@@ -102,6 +102,12 @@ pub struct NamespaceFilter {
     /// Whether "All namespaces" is listed first - the picker's way to clear a
     /// scope. A set editor has no "all", so it leaves it out.
     pin_all: bool,
+    /// The last row clicked with a plain click (not shift-click), if any.
+    /// Used to determine the range for shift-click range selection.
+    anchor: Rc<Cell<Option<usize>>>,
+    /// If a shift-click is pending, the range of rows from anchor to the
+    /// shift-clicked row. On_confirm reads this and applies it.
+    pending_range: Rc<Cell<Option<(usize, usize)>>>,
 }
 
 impl NamespaceFilter {
@@ -110,6 +116,8 @@ impl NamespaceFilter {
             command: cx.new(|cx| CommandState::new(window, cx)),
             selected: Rc::new(Cell::new(Some(0))),
             pin_all: true,
+            anchor: Rc::new(Cell::new(None)),
+            pending_range: Rc::new(Cell::new(None)),
         }
     }
 
@@ -172,7 +180,7 @@ impl NamespaceFilter {
         let pinned = usize::from(self.pin_all);
         let no_match = listed.len() == pinned && !query.trim().is_empty();
         let muted = cx.theme().muted_foreground;
-        let items = listed.iter().map(|entry| {
+        let items = listed.iter().enumerate().map(|(_row, entry)| {
             let checked = match entry {
                 None => selected.is_empty(),
                 Some(namespace) => selected.contains(namespace),
@@ -215,6 +223,7 @@ impl NamespaceFilter {
         let selected = selected.to_vec();
         let keyboard_row = self.selected.clone();
         let confirmed_row = self.selected.clone();
+        let anchor = self.anchor.clone();
         let command = Command::new(&self.command)
             .items(items)
             .filterable(false)
@@ -239,6 +248,10 @@ impl NamespaceFilter {
                 };
                 // A click chooses its row, as the arrows do.
                 confirmed_row.set(Some(row));
+
+                // Track the anchor for range selection
+                anchor.set(Some(row));
+
                 if let Some(entry) = listed.get(row) {
                     on_pick(toggled(&selected, entry.as_deref()), window, cx);
                 }
