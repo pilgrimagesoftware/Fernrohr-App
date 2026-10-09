@@ -15,7 +15,7 @@ use super::protocol::EndpointToken;
 use crate::util::paths;
 use std::fs::{self, OpenOptions, Permissions};
 use std::io::{self, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use tokio::net::UnixListener;
 
@@ -118,7 +118,15 @@ impl EndpointFiles {
 /// Creates `dir` (and its parents) and makes it owner-only. Refuses a symlink
 /// or a non-directory in its place.
 fn create_private_dir(dir: &Path) -> io::Result<()> {
-    fs::create_dir_all(dir)?;
+    if let Some(parent) = dir.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    // Owner-only from the moment it exists, so there is no window with the
+    // umask's permissions before the `set_permissions` below.
+    match fs::DirBuilder::new().mode(0o700).create(dir) {
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        result => result?,
+    }
     let metadata = fs::symlink_metadata(dir)?;
     if !metadata.is_dir() {
         return Err(io::Error::other(format!(
