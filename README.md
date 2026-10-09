@@ -191,8 +191,9 @@ one of three kinds.
 Fernrohr is an [MCP](https://modelcontextprotocol.io) server, so a coding agent such as Claude
 Code can use the clusters you have open in the app. The agent works through Fernrohr's own
 connections, tunnels and permissions: it never sees your kubeconfig, credentials or tunnel
-secrets, and it can only reach a context that a Fernrohr window already has open. Fernrohr has to
-be running for the agent to get an answer. It doesn't start the app on the agent's behalf.
+secrets, and it can only reach a context that a Fernrohr window has open, or one you let it
+connect. Fernrohr has to be running for the agent to get an answer. It doesn't start the app on
+the agent's behalf.
 
 The agent can:
 
@@ -202,14 +203,22 @@ The agent can:
 - **Navigate**: open or focus a resource list or an object's detail panel in the window holding
   its context, list your saved layouts, and load one in Add or Replace mode. A layout panel for a
   context the window isn't connected to comes back as a placeholder. Loading a layout never
-  connects a context.
+  connects a context. Opening a panel or loading a layout brings Fernrohr to the front with that
+  window focused, so you see what the agent is showing you. Reads and listing layouts never take
+  focus.
+- **Connect** a context from your kubeconfig, only with your approval: Fernrohr adds it to the
+  frontmost window the way the status bar's add-context control does, or opens a window for it
+  when none is open, and brings that window to the front. The agent is told within 20 seconds
+  whether the context connected, is waiting for its tunnel, is waiting for you to confirm a manual
+  tunnel, or failed, and otherwise that it is still connecting. A context the window already has
+  is just brought to the front, without asking.
 - **Act**, only with your approval, on this fixed list: set or remove one ConfigMap key, scale a
   Deployment, StatefulSet or ReplicaSet, restart or roll back a Deployment, StatefulSet or
   DaemonSet, pause or resume a Deployment's rollout, delete 1 to 10 named Pods, trigger a Job
   from a CronJob, and suspend or resume a CronJob. The agent can't create, edit, patch or delete
   anything else, and can't write Secrets.
 
-### Approving actions
+### Approving actions and connections
 
 Every action opens a confirmation in Fernrohr naming the action, context, namespace, kind and
 every object it touches, with the values it changes, such as the replica count before and after,
@@ -224,6 +233,11 @@ action reads the objects first; nothing is written until you allow it.
 - The agent is told whether you allowed the action, denied it, or it timed out, and a denied or
   timed-out action sends nothing to the cluster.
 - Requests are asked one at a time. A second waits until you answer the first.
+
+Connecting a context asks too, naming the context and the tunnel it is bound to, with the
+tunnel's kind, and saying the agent will be able to read it. Connecting changes nothing in the
+cluster and disconnecting undoes it, so Enter allows it. A denied or unanswered request connects
+nothing, and starts no tunnel or sign-in.
 
 Reads and navigation need no approval.
 

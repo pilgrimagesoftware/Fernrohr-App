@@ -36,9 +36,10 @@ pub(crate) fn copy_id(harness_id: &str) -> String {
 pub(crate) const SNIPPET_COPY_ID: &str = "agent-access-copy-opencode-snippet";
 
 /// What the section says before anything else, whatever this platform offers.
-const ABOUT: &str = "Agents that speak MCP can read the clusters you have connected, open \
-     panels here, and run a few everyday actions, each one only once you approve it in \
-     this window. Fernrohr must be running for an agent to reach it.";
+const ABOUT: &str = "Agents that speak MCP can read the clusters you have connected and open \
+     panels here, bringing this window to the front. They can connect another cluster or run \
+     a few everyday actions, each one only once you approve it in this window. Fernrohr must \
+     be running for an agent to reach it.";
 
 /// The section.
 pub(super) fn section(window: &mut Window, cx: &mut App) -> impl IntoElement {
