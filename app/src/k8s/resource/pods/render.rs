@@ -1,8 +1,13 @@
 //! Drawing the Pods panel: its table, hint bar and states.
 
 use super::*;
+use crate::k8s::resource::load_phase::LoadPhase;
 use crate::ui::list_keys::{self, Step};
 use crate::ui::list_search;
+use crate::ui::list_state::{self, TableArea};
+
+/// What the loading and empty states call this list's rows.
+const KIND_LABEL: &str = "Pods";
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
 use gpui_kit::component::input::Input;
@@ -83,9 +88,17 @@ impl Render for PodsPanel {
                 // kept separate from `items` below so an active search narrowing
                 // a non-empty node to nothing still shows the (empty) table
                 // rather than "no pods on this node" (#186).
-                let any_on_node = self.table.read(cx).pods().iter().any(|pod| {
-                    matches_namespaces(pod, namespaces) && matches_node(pod, self.node.as_deref())
-                });
+                let scoped = self
+                    .table
+                    .read(cx)
+                    .pods()
+                    .iter()
+                    .filter(|pod| {
+                        matches_namespaces(pod, namespaces)
+                            && matches_node(pod, self.node.as_deref())
+                    })
+                    .count();
+                let any_on_node = scoped > 0;
                 if self.node.is_some() && !any_on_node {
                     div()
                         .size_full()
@@ -138,6 +151,25 @@ impl Render for PodsPanel {
                             list_search::matches(pods_table::visible_texts(&item.row), &query)
                         })
                         .collect();
+                    // `list-loading-indicator`: the table only once the first
+                    // list is in, else what is loading or why it is empty. A
+                    // node's embedded table keeps its own empty text above.
+                    let area = if self.node.is_some() {
+                        TableArea::Table
+                    } else {
+                        list_state::table_area(
+                            self.table.read(cx).phase(),
+                            scoped,
+                            items.len(),
+                            KIND_LABEL,
+                            Some(&self.scope.namespaces),
+                        )
+                    };
+                    let loading_shown = self.indicators.loading.ready(
+                        matches!(area, TableArea::Loading { .. }),
+                        |this: &mut Self| &mut this.indicators.loading,
+                        cx,
+                    );
                     let table = self.sync_table(items, window, cx);
                     // The shell command's context, only while the selected pod has a
                     // running container (`shell`).
@@ -173,7 +205,13 @@ impl Render for PodsPanel {
                                     )
                                     .with_priority(1)
                                 }))
-                                .child(pods_table::data_table(&table, cx)),
+                                .child(list_state::table_area_element(
+                                    pods_table::data_table(&table, cx).into_any_element(),
+                                    &area,
+                                    KIND_LABEL,
+                                    loading_shown,
+                                    cx,
+                                )),
                         )
                         .child(
                             div()
@@ -193,6 +231,13 @@ impl Render for PodsPanel {
         // namespace by construction - its own context label and namespace
         // picker would only repeat the first and offer a filter the feature
         // doesn't call for, so it draws no header of its own.
+        let refreshing = self.node.is_none()
+            && matches!(self.table.read(cx).phase(), LoadPhase::Refreshing { .. });
+        let refreshing = self.indicators.refreshing.ready(
+            refreshing,
+            |this: &mut Self| &mut this.indicators.refreshing,
+            cx,
+        );
         let header = if self.node.is_none() {
             let this = cx.weak_entity();
             let namespaces = self.namespaces.read(cx).names().to_vec();
@@ -224,6 +269,9 @@ impl Render for PodsPanel {
                         &self.scope,
                         cx.theme().muted_foreground,
                     ))
+                    .when(refreshing, |header| {
+                        header.child(list_state::refreshing(cx))
+                    })
                     .children(namespace_bar),
             )
         } else {

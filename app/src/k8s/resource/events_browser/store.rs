@@ -34,14 +34,22 @@ impl EventsTable {
     }
 
     /// Where the table is in its lists.
-    // UNWIRED(#208): the list panels' loading and refreshing states read it.
-    #[allow(dead_code)]
     pub fn phase(&self) -> LoadPhase {
         self.phase
     }
 
     pub fn set_refused(&mut self, message: String) {
         self.refused = Some(message);
+    }
+
+    /// Test-only: one complete list of `events`, as a watch delivers it.
+    #[cfg(test)]
+    pub fn replace_all(&mut self, events: Vec<K8sEvent>) {
+        self.apply(watcher::Event::Init);
+        for event in events {
+            self.apply(watcher::Event::InitApply(event));
+        }
+        self.apply(watcher::Event::InitDone);
     }
 
     /// Applies one watch event: `Apply`/`InitApply` upsert by uid, `Delete`

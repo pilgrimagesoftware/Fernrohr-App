@@ -69,9 +69,11 @@ fn harness(cx: &mut TestAppContext) -> Harness {
         .update(&mut vcx, |main_window, window, cx| {
             let objects = cx.new(|_| {
                 let mut table = ObjectsTable::default();
+                table.apply(watcher::Event::Init);
                 for name in ["api", "web"] {
-                    table.apply(watcher::Event::Apply(service(name)));
+                    table.apply(watcher::Event::InitApply(service(name)));
                 }
+                table.apply(watcher::Event::InitDone);
                 table
             });
             let scope = PanelScope::new(NavTarget::Kind(services()), "kind-dev".into());

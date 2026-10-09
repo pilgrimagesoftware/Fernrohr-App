@@ -40,8 +40,6 @@ impl PodsTable {
     }
 
     /// Where the table is in its lists.
-    // UNWIRED(#208): the list panels' loading and refreshing states read it.
-    #[allow(dead_code)]
     pub fn phase(&self) -> LoadPhase {
         self.phase
     }

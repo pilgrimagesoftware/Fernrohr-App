@@ -117,10 +117,15 @@ pub(super) fn harness_full(
     };
     let table = cx.update(|cx| {
         cx.new(|_| {
+            // A completed first list, as a watch delivers one: a table still on
+            // its first list shows the loading state, not its rows
+            // (`list-loading-indicator`).
             let mut table = ObjectsTable::default();
+            table.apply(watcher::Event::Init);
             for object in objects {
-                table.apply(watcher::Event::Apply(object));
+                table.apply(watcher::Event::InitApply(object));
             }
+            table.apply(watcher::Event::InitDone);
             if let Some(refused) = refused {
                 table.set_refused(refused.into());
             }
@@ -469,3 +474,4 @@ mod background;
 mod poll;
 mod search;
 mod sort;
+mod states;

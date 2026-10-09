@@ -44,6 +44,8 @@ pub struct EventsPanel {
     /// The sort to start the table with, once it's built - the saved one, or
     /// [`DEFAULT_SORT`].
     pub(super) initial_sort: Option<(EventColumn, ColumnSort)>,
+    /// The loading and refreshing indicators' delays (`list-loading-indicator`).
+    pub(super) indicators: crate::ui::list_state::Indicators,
     /// The type, kind and reason filters, saved with the panel.
     pub(super) filters: EventFilters,
     /// The search box: its lazily built `InputState`, and the text to start
@@ -105,6 +107,7 @@ impl EventsPanel {
             // Resolved when the table is built: the remembered sort, else
             // [`DEFAULT_SORT`] (`remembered-list-sort`).
             initial_sort: None,
+            indicators: Default::default(),
             filters: EventFilters::default(),
             search: ListSearch::new(),
             discovery,

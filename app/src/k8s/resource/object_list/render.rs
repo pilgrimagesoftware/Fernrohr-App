@@ -11,7 +11,9 @@ use super::panel::ObjectListPanel;
 use super::store::ListMode;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
+use crate::k8s::resource::load_phase::LoadPhase;
 use crate::ui::list_search::ListSearch;
+use crate::ui::list_state::{self, TableArea};
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
@@ -77,6 +79,23 @@ impl ObjectListPanel {
         // show every row unfiltered until some later event re-renders.
         let filter = self.filter_input(window, cx);
         let rows = self.visible_rows(cx);
+        // `list-loading-indicator`: the table only once the first list is in,
+        // else what is loading or why it is empty.
+        let kind_label = self.kind.plural_name();
+        let area = list_state::table_area(
+            self.objects.read(cx).phase(),
+            self.scoped_count(cx),
+            rows.len(),
+            &kind_label,
+            self.kind
+                .namespaced
+                .then_some(self.scope.namespaces.as_slice()),
+        );
+        let loading_shown = self.indicators.loading.ready(
+            matches!(area, TableArea::Loading { .. }),
+            |this: &mut Self| &mut this.indicators.loading,
+            cx,
+        );
         let table = self.sync_table(rows, window, cx);
         let mut hints = div()
             .flex()
@@ -176,7 +195,13 @@ impl ObjectListPanel {
                     .min_h_0()
                     .when(!context.is_empty(), |this| this.key_context(context))
                     .on_action(cx.listener(Self::on_action_delete_selected))
-                    .child(data_table(&table, cx))
+                    .child(list_state::table_area_element(
+                        data_table(&table, cx).into_any_element(),
+                        &area,
+                        &kind_label,
+                        loading_shown,
+                        cx,
+                    ))
             })
             .child(
                 div()
@@ -261,10 +286,35 @@ impl ObjectListPanel {
     }
 }
 
+impl ObjectListPanel {
+    /// How many rows are in this panel's namespace scope, before its filter.
+    fn scoped_count(&self, cx: &App) -> usize {
+        let namespaces = &self.scope.namespaces;
+        self.objects
+            .read(cx)
+            .rows()
+            .iter()
+            .filter(|row| {
+                namespaces.is_empty()
+                    || row
+                        .namespace
+                        .as_ref()
+                        .is_some_and(|namespace| namespaces.contains(namespace))
+            })
+            .count()
+    }
+}
+
 impl Render for ObjectListPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
         let content = self.content(window, cx);
+        let refreshing = matches!(self.objects.read(cx).phase(), LoadPhase::Refreshing { .. });
+        let refreshing = self.indicators.refreshing.ready(
+            refreshing,
+            |this: &mut Self| &mut this.indicators.refreshing,
+            cx,
+        );
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names().to_vec();
         // `None` for a cluster-scoped kind: no namespace to pick.
@@ -293,6 +343,9 @@ impl Render for ObjectListPanel {
                 &self.scope,
                 cx.theme().muted_foreground,
             ))
+            .when(refreshing, |header| {
+                header.child(list_state::refreshing(cx))
+            })
             .children(namespace_bar);
         let mut key_context = KeyContext::default();
         key_context.add(PANEL_KEY_CONTEXT);

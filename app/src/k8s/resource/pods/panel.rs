@@ -48,6 +48,8 @@ pub struct PodsPanel {
     pub(super) pod_table: Option<Entity<TableState<PodTableDelegate>>>,
     /// The open quick look over the selected pod, if any (`pod-quick-look`).
     pub(super) quick_look: Option<Entity<super::quick_look::QuickLookPopover>>,
+    /// The loading and refreshing indicators' delays (`list-loading-indicator`).
+    pub(super) indicators: crate::ui::list_state::Indicators,
     /// The last row action the cluster refused, shown above the table until
     /// dismissed or the next action.
     pub(super) action_failure: Option<super::actions::PodActionFailure>,
@@ -122,6 +124,7 @@ impl PodsPanel {
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
             quick_look: None,
+            indicators: Default::default(),
             action_failure: None,
             initial_sort: None,
             filter: ListSearch::new(),
@@ -480,6 +483,8 @@ mod restore_tests;
 mod search_tests;
 #[cfg(test)]
 mod sort_tests;
+#[cfg(test)]
+mod state_tests;
 #[cfg(test)]
 mod test_accessors;
 #[cfg(test)]
