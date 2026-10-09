@@ -127,7 +127,7 @@ pub(super) fn record_closing_layout(window_id: WindowId, window: &mut Window, cx
 
 /// Whether `handle` is a main (workspace or picker) window - one with a
 /// layout worth saving, unlike Settings, Tunnels or About.
-pub(super) fn is_main_window(handle: AnyWindowHandle, cx: &App) -> bool {
+pub(crate) fn is_main_window(handle: AnyWindowHandle, cx: &App) -> bool {
     handle
         .downcast::<Root>()
         .and_then(|root| root.read(cx).ok())

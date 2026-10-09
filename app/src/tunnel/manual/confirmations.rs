@@ -18,9 +18,6 @@ use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 
 /// The user's answer to a pending confirmation.
-// UNWIRED(#195): the prompt surfaces and the Proceed and Cancel commands (section 4)
-// read and resolve confirmations; only tests do until then.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     /// The network path is up: let the waiting connections continue.
@@ -129,9 +126,6 @@ impl ManualConfirmations {
     }
 
     /// Every pending confirmation, oldest first.
-    // UNWIRED(#195): the prompt surfaces and the Proceed and Cancel commands (section 4)
-    // read and resolve confirmations; only tests do until then.
-    #[allow(dead_code)]
     pub fn pending(&self) -> &[PendingConfirmation] {
         &self.pending
     }
@@ -152,9 +146,6 @@ impl ManualConfirmations {
 
     /// Answers `tunnel_id`'s pending confirmation with `decision`, releasing (or
     /// failing) every connection waiting on it. `false` when nothing was waiting.
-    // UNWIRED(#195): the prompt surfaces and the Proceed and Cancel commands (section 4)
-    // read and resolve confirmations; only tests do until then.
-    #[allow(dead_code)]
     pub fn resolve(cx: &mut App, tunnel_id: &str, decision: Decision) -> bool {
         let Some(entity) = Self::entity(cx) else {
             return false;

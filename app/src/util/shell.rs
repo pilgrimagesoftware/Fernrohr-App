@@ -90,7 +90,7 @@ mod window_title;
 pub(crate) use app::register_commands;
 pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
-pub(crate) use layout::{close_window, window_context_count};
+pub(crate) use layout::{close_window, is_main_window, window_context_count};
 pub use main_window::MainWindow;
 pub use persist::open_saved_or_default;
 // `ui::settings::layouts` (`saved-panel-layouts` tasks 6.1) reads saved

@@ -14,8 +14,6 @@ mod confirmations;
 mod handle;
 mod transport;
 
-// UNWIRED(#195): `Decision` and `PendingConfirmation` are for section 4's surfaces.
-#[allow(unused_imports)]
-pub use confirmations::{Decision, ManualConfirmations, PendingConfirmation};
+pub use confirmations::{Decision, ManualConfirmations};
 pub use handle::ManualTunnel;
 pub(crate) use transport::{ManualTransport, ProbeTarget};
