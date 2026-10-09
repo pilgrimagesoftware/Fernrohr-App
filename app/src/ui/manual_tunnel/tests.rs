@@ -210,3 +210,32 @@ async fn each_new_prompt_posts_one_notification(cx: &mut TestAppContext) {
         "Bring its network path up, then choose Proceed in Fernrohr."
     );
 }
+
+/// 4.6: the user docs on manual tunnels name no real infrastructure - no
+/// addresses, hostnames or URLs - only placeholders.
+#[test]
+fn the_manual_tunnel_docs_name_no_infrastructure() {
+    let readme = include_str!("../../../../README.md");
+    let start = readme
+        .find("- **Manual tunnel**")
+        .expect("the README documents manual tunnels");
+    let end = readme[start..]
+        .find("\n## ")
+        .map_or(readme.len(), |end| start + end);
+    let section = &readme[start..end];
+    for key in ["⌘⌥P", "⌘⌥C", "Proceed", "Cancel", "cargo run"] {
+        assert!(section.contains(key), "the docs mention {key}");
+    }
+    for word in section.split(|c: char| c.is_whitespace() || "()\"`,;:".contains(c)) {
+        let word = word.trim_end_matches('.');
+        assert!(!word.contains("://"), "a URL: {word}");
+        let dotted: Vec<&str> = word.split('.').collect();
+        let ip = dotted.len() == 4 && dotted.iter().all(|part| part.parse::<u8>().is_ok());
+        assert!(!ip, "an address: {word}");
+        let host = dotted.len() >= 2
+            && dotted.iter().all(|part| !part.is_empty())
+            && ["com", "net", "org", "io", "internal", "local", "corp"]
+                .contains(dotted.last().unwrap());
+        assert!(!host, "a hostname: {word}");
+    }
+}

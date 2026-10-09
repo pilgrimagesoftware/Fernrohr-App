@@ -125,7 +125,7 @@ scrollback stay to read and copy.
 A kube context can be bound to a tunnel, so Fernrohr reaches its cluster through it. Manage
 tunnels in the Tunnels window (Context → Manage Tunnels…). Bind a context to one with Set Tunnel
 for Context, or with the tunnel selector on the context's row in the cluster picker. A tunnel is
-one of two kinds.
+one of three kinds.
 
 - **SSH tunnel**: Fernrohr runs `ssh -N -L` through a bastion to the context's API server.
 - **Command tunnel**: Fernrohr runs a command you give it, such as a vendor CLI that opens an SSH
@@ -151,6 +151,40 @@ one of two kinds.
   it is ready, then stops it, and shows the command's output if it fails. The command must run
   unattended, so run it once in a terminal first to answer any host-key or login prompts. It is
   stored in plain text in `tunnels.toml`: leave credentials to the tool's own login, not flags.
+
+- **Manual tunnel**: Fernrohr starts nothing. Use it for a cluster you can only reach after
+  bringing up a network path by hand, such as a VPN from a menu-bar client with no command line.
+  When a context bound to it connects, Fernrohr holds that connection and asks you to bring the
+  path up, then waits for your answer, with no timeout:
+  - **Proceed** connects every context waiting on the tunnel.
+  - **Cancel** fails them, saying you cancelled it. Fernrohr never connects them directly
+    instead.
+
+  A manual tunnel has two settings:
+  - **Instruction** (optional): shown in every prompt, for example "Connect the corporate VPN
+    from the menu bar".
+  - **When the API server already answers**:
+    - **Skip the prompt** (the default): before asking, Fernrohr tries a quick connection to
+      the context's API server and goes straight through if it answers. Choose
+      **Always prompt** for an API server that answers without your VPN too.
+
+  You are asked in three places:
+  - a desktop notification;
+  - the waiting context's capsule in the status bar, filled in the warning color, with Proceed
+    and Cancel in its menu;
+  - the cluster picker's status line, while it is connecting that context.
+
+  From the keyboard, Proceed with Manual Tunnel (⌘⌥P, Ctrl+Alt+P off macOS) and Cancel Manual
+  Tunnel (⌘⌥C, Ctrl+Alt+C) answer it. Both are in the command palette and can be rebound in
+  `keymap.toml`. When several tunnels are waiting, they ask which one.
+
+  Every context bound to the same manual tunnel shares one prompt. A context that connects
+  while the tunnel is already confirmed and in use goes straight through. Once the last context
+  using it disconnects, or a connection through it fails, the next connection asks again. Other
+  contexts keep working while one waits.
+
+  On macOS, a development build run with `cargo run` has no app bundle, so the system may not
+  show its notifications. The status bar and the picker still ask.
 
 ## Development
 
