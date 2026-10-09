@@ -111,29 +111,55 @@ impl Render for ClusterPicker {
         let status = self.attempt.as_ref().map(|attempt| {
             let context_name = attempt.context_name.clone();
             let mut report = None;
-            let (text, color) = match &attempt.connection.read(cx).state {
-                ConnectionState::Connecting => (
-                    format!("Connecting to {context_name}..."),
-                    theme.muted_foreground,
-                ),
-                ConnectionState::WaitingForTunnel => (
-                    format!("Waiting for tunnel to {context_name}..."),
-                    theme.muted_foreground,
-                ),
-                ConnectionState::Failed(reason) => {
-                    // The report leaves the context's name out: it goes to a
-                    // public issue.
-                    report = Some(crate::ui::report_issue::ReportError::of(
-                        "Couldn't connect to the cluster",
-                        Some(reason),
-                    ));
-                    (
-                        format!("Could not connect to {context_name}: {reason}"),
-                        theme.danger,
-                    )
-                }
-                ConnectionState::Connected(_) => {
-                    (format!("Connected to {context_name}"), theme.success)
+            let mut answers = None;
+            let state = &attempt.connection.read(cx).state;
+            // Waiting on a manual tunnel the user still has to confirm: say what to
+            // do, and offer Proceed and Cancel right here.
+            let awaiting = matches!(state, ConnectionState::WaitingForTunnel)
+                .then(|| crate::tunnel::manual::ManualConfirmations::entity(cx))
+                .flatten()
+                .and_then(|entity| {
+                    let entry = entity.read(cx).for_context(&context_name)?;
+                    Some((
+                        entry.tunnel_id.clone(),
+                        entry.name.clone(),
+                        entry.message.clone(),
+                    ))
+                });
+            let (text, color) = if let Some((tunnel_id, tunnel, message)) = awaiting {
+                answers = Some(manual_answers(&tunnel_id, window));
+                let instruction = message.unwrap_or_else(|| {
+                    "Bring its network path up, then choose Proceed.".to_string()
+                });
+                (
+                    format!("{context_name} is waiting for you to confirm {tunnel}. {instruction}"),
+                    theme.warning,
+                )
+            } else {
+                match state {
+                    ConnectionState::Connecting => (
+                        format!("Connecting to {context_name}..."),
+                        theme.muted_foreground,
+                    ),
+                    ConnectionState::WaitingForTunnel => (
+                        format!("Waiting for tunnel to {context_name}..."),
+                        theme.muted_foreground,
+                    ),
+                    ConnectionState::Failed(reason) => {
+                        // The report leaves the context's name out: it goes to a
+                        // public issue.
+                        report = Some(crate::ui::report_issue::ReportError::of(
+                            "Couldn't connect to the cluster",
+                            Some(reason),
+                        ));
+                        (
+                            format!("Could not connect to {context_name}: {reason}"),
+                            theme.danger,
+                        )
+                    }
+                    ConnectionState::Connected(_) => {
+                        (format!("Connected to {context_name}"), theme.success)
+                    }
                 }
             };
             // Selectable, so a failure can be copied - and Report… beside a
@@ -146,6 +172,7 @@ impl Render for ClusterPicker {
                 .text_sm()
                 .text_color(color)
                 .child(gpui_kit::base::SelectableText::new(PICKER_STATUS, text))
+                .children(answers)
                 .children(report.map(crate::ui::panel_title::report_button))
         });
 
@@ -179,7 +206,47 @@ impl Render for ClusterPicker {
 }
 
 #[cfg(test)]
+mod manual_tests;
+#[cfg(test)]
 mod tests;
 
 /// The picker's connection status line, for tests.
 pub(crate) const PICKER_STATUS: &str = "picker-status";
+
+/// The status line's Proceed and Cancel buttons.
+pub(crate) const PICKER_PROCEED_ID: &str = "picker-manual-proceed";
+pub(crate) const PICKER_CANCEL_ID: &str = "picker-manual-cancel";
+
+/// Proceed and Cancel for `tunnel_id`, each showing its command's key; each answers
+/// that tunnel, for every context waiting on it.
+fn manual_answers(tunnel_id: &str, window: &mut Window) -> AnyElement {
+    use crate::tunnel::manual::{Decision, ManualConfirmations};
+    use crate::ui::manual_tunnel::{CancelManualTunnel, ProceedManualTunnel};
+    use gpui_kit::component::Sizable as _;
+    use gpui_kit::component::button::{Button, ButtonVariants as _};
+    use gpui_kit::component::kbd::Kbd;
+    let button = |id: &'static str, label: &'static str, decision: Decision| {
+        let tunnel_id = tunnel_id.to_string();
+        let button = Button::new(id).label(label).small();
+        let button = match decision {
+            Decision::Proceed => button.primary(),
+            Decision::Cancel => button.outline(),
+        };
+        button.on_click(move |_event, _window, cx| {
+            ManualConfirmations::resolve(cx, &tunnel_id, decision);
+        })
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(crate::ui::picker_keys::with_key(
+            button(PICKER_PROCEED_ID, "Proceed", Decision::Proceed),
+            Kbd::binding_for_action(&ProceedManualTunnel, None, window),
+        ))
+        .child(crate::ui::picker_keys::with_key(
+            button(PICKER_CANCEL_ID, "Cancel", Decision::Cancel),
+            Kbd::binding_for_action(&CancelManualTunnel, None, window),
+        ))
+        .into_any_element()
+}
