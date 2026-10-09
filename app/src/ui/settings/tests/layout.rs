@@ -209,6 +209,8 @@ async fn sidebar_buttons_span_the_sidebar_with_whole_left_aligned_titles(cx: &mu
         Section::KeyboardShortcuts,
         Section::Appearance,
         Section::Panels,
+        Section::Layouts,
+        Section::AgentAccess,
     ] {
         // The title's natural width, in the font and size the window draws
         // it in, and the button's bounds, from a fresh frame.
