@@ -7,6 +7,7 @@
 use super::tunnel::{self, ForwardKey, TunnelForward, TunnelRoute};
 use crate::forward::managed::{ForwardState, ManagedForward as _};
 use crate::forward::registry::RegistryHandle;
+use crate::forward::supervisor::FailureSlot;
 use gpui_kit::{App, AppContext as _, Context, Entity};
 use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Client, Config};

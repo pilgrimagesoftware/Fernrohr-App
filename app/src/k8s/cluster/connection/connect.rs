@@ -99,6 +99,8 @@ pub(in crate::k8s::cluster) struct ForwardWait {
     pub(in crate::k8s::cluster) state: watch::Receiver<ForwardState>,
     pub(in crate::k8s::cluster) local_addr: SocketAddr,
     pub(in crate::k8s::cluster) route: TunnelRoute,
+    /// Why the forward gave up, once its state channel has closed.
+    pub(in crate::k8s::cluster) failure: FailureSlot,
 }
 
 impl ForwardWait {
@@ -108,6 +110,7 @@ impl ForwardWait {
             state: forward.state(),
             local_addr: forward.local_addr(),
             route: forward.route(),
+            failure: forward.failure(),
         }
     }
 }
@@ -184,6 +187,7 @@ pub(in crate::k8s::cluster) async fn connect_and_probe(
         state: mut state_rx,
         local_addr,
         route,
+        failure,
     }) = forward_wait
     {
         let _ = tx.send(ConnectionState::WaitingForTunnel).await;
@@ -192,11 +196,12 @@ pub(in crate::k8s::cluster) async fn connect_and_probe(
                 break Some((local_addr, route));
             }
             if state_rx.changed().await.is_err() {
-                let _ = tx
-                    .send(ConnectionState::Failed(
-                        "tunnel forward closed before becoming ready".to_string(),
-                    ))
-                    .await;
+                // A transport that gave up (a cancelled manual tunnel) left its
+                // reason; anything else closing the channel has none to give.
+                let reason = failure
+                    .get()
+                    .unwrap_or_else(|| "tunnel forward closed before becoming ready".to_string());
+                let _ = tx.send(ConnectionState::Failed(reason)).await;
                 return;
             }
         }

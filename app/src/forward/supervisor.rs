@@ -5,10 +5,17 @@
 //! `SshTunnel` and `K8sPortForward` (sections 3-4) each supply a [`ForwardTransport`]
 //! (spawn/supervise an `ssh` child, or hold a `kube` port-forward stream) and let this
 //! module own the retry policy so neither has to reimplement it.
+//!
+//! A transport can also give up for good (`manual-confirmation-tunnels` D3: the user
+//! cancelled a manual tunnel): [`ConnectFailure::GiveUp`] ends the supervisor, which
+//! closes the forward's state channel - the only sender is the task's - and leaves the
+//! reason in [`ForwardSupervisor::failure`] for whoever was waiting to report.
 
 use crate::forward::managed::ForwardState;
+use parking_lot::Mutex;
 use std::future::Future;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::watch;
@@ -20,6 +27,48 @@ use tokio::sync::watch;
 pub trait ForwardTransport: Send + 'static {
     fn connect(&mut self) -> impl Future<Output = Result<(), String>> + Send;
     fn health_check(&mut self) -> impl Future<Output = Result<(), String>> + Send;
+
+    /// [`Self::connect`], saying whether a failure may be retried. The supervisor calls
+    /// this; by default every failure is retried with backoff, so only a transport with
+    /// a failure that must not be retried - a user's Cancel - overrides it.
+    fn connect_outcome(&mut self) -> impl Future<Output = Result<(), ConnectFailure>> + Send {
+        async move { self.connect().await.map_err(ConnectFailure::Retry) }
+    }
+}
+
+/// Why a connect failed, and what the supervisor does next.
+// UNWIRED(#195): `GiveUp`'s first producer is the manual tunnel's transport
+// (section 2.2); only tests give up until then.
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConnectFailure {
+    /// Try again after the backoff: the bastion may come back.
+    Retry(String),
+    /// Stop for good: the forward closes, failing everything waiting on it with this
+    /// reason.
+    GiveUp(String),
+}
+
+/// Where a supervisor that gave up leaves its reason, shared with whoever waits on
+/// its state channel so they can report it once the channel closes.
+#[derive(Clone, Debug, Default)]
+pub struct FailureSlot(Arc<Mutex<Option<String>>>);
+
+impl FailureSlot {
+    /// The reason the supervisor gave up, if it did.
+    pub fn get(&self) -> Option<String> {
+        self.0.lock().clone()
+    }
+
+    fn set(&self, reason: String) {
+        *self.0.lock() = Some(reason);
+    }
+
+    /// Fills the slot as a supervisor that gave up would. Test-only.
+    #[cfg(test)]
+    pub fn set_for_test(&self, reason: &str) {
+        self.set(reason.to_string());
+    }
 }
 
 /// How long to wait between reconnect attempts. Doubles per consecutive failure since
@@ -50,7 +99,10 @@ pub struct SupervisorOptions {
 // UNWIRED(#3): SshTunnel and K8sPortForward (sections 3-4) are the first real callers.
 #[allow(dead_code)]
 pub struct ForwardSupervisor {
-    state_tx: watch::Sender<ForwardState>,
+    /// A receiver to subscribe from. The task holds the only sender, so the channel
+    /// closes when the task ends - which it does only after giving up.
+    state_rx: watch::Receiver<ForwardState>,
+    failure: FailureSlot,
     local_addr: SocketAddr,
     task: tokio::task::JoinHandle<()>,
 }
@@ -63,11 +115,12 @@ impl ForwardSupervisor {
         transport: T,
         options: SupervisorOptions,
     ) -> Self {
-        let state_tx = watch::Sender::new(ForwardState::Disconnected);
-        let task_state_tx = state_tx.clone();
-        let task = rt.spawn(run(task_state_tx, transport, options));
+        let (state_tx, state_rx) = watch::channel(ForwardState::Disconnected);
+        let failure = FailureSlot::default();
+        let task = rt.spawn(run(state_tx, transport, options, failure.clone()));
         Self {
-            state_tx,
+            state_rx,
+            failure,
             local_addr,
             task,
         }
@@ -75,7 +128,12 @@ impl ForwardSupervisor {
 
     #[allow(dead_code)]
     pub fn state(&self) -> watch::Receiver<ForwardState> {
-        self.state_tx.subscribe()
+        self.state_rx.clone()
+    }
+
+    /// Where the reason goes if the transport gives up.
+    pub fn failure(&self) -> FailureSlot {
+        self.failure.clone()
     }
 
     #[allow(dead_code)]
@@ -94,6 +152,7 @@ async fn run<T: ForwardTransport>(
     state_tx: watch::Sender<ForwardState>,
     mut transport: T,
     options: SupervisorOptions,
+    failure: FailureSlot,
 ) {
     let mut has_been_up = false;
     let mut attempt: u32 = 0;
@@ -104,10 +163,19 @@ async fn run<T: ForwardTransport>(
             ForwardState::Connecting
         });
 
-        if let Err(_reason) = transport.connect().await {
-            attempt += 1;
-            tokio::time::sleep(options.backoff.delay(attempt)).await;
-            continue;
+        match transport.connect_outcome().await {
+            Ok(()) => {}
+            Err(ConnectFailure::Retry(_reason)) => {
+                attempt += 1;
+                tokio::time::sleep(options.backoff.delay(attempt)).await;
+                continue;
+            }
+            Err(ConnectFailure::GiveUp(reason)) => {
+                // Set before returning drops `state_tx`, so a waiter that sees the
+                // channel close finds the reason already there.
+                failure.set(reason);
+                return;
+            }
         }
 
         has_been_up = true;
@@ -216,6 +284,59 @@ mod tests {
         wait_for(&mut state, ForwardState::Up).await;
 
         assert_eq!(supervisor.local_addr(), addr());
+    }
+
+    /// A transport that gives up on its first connect.
+    struct GivingUp;
+
+    impl ForwardTransport for GivingUp {
+        async fn connect(&mut self) -> Result<(), String> {
+            unreachable!("the supervisor asks for the outcome")
+        }
+
+        async fn health_check(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn connect_outcome(&mut self) -> Result<(), ConnectFailure> {
+            tokio::task::yield_now().await;
+            Err(ConnectFailure::GiveUp("corp-vpn was cancelled".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn giving_up_closes_the_state_channel_and_leaves_the_reason() {
+        let supervisor =
+            ForwardSupervisor::spawn(&Handle::current(), addr(), GivingUp, fast_options());
+        let mut state = supervisor.state();
+        let closed = tokio::time::timeout(Duration::from_secs(2), async {
+            while state.changed().await.is_ok() {}
+        })
+        .await;
+        assert!(closed.is_ok(), "the channel closes");
+        assert_eq!(
+            supervisor.failure().get().as_deref(),
+            Some("corp-vpn was cancelled")
+        );
+        assert_ne!(*state.borrow(), ForwardState::Up, "never reported Up");
+    }
+
+    #[tokio::test]
+    async fn a_retryable_failure_never_closes_the_channel() {
+        let transport = ScriptedTransport::new(vec![Err("down".into())]);
+        let supervisor =
+            ForwardSupervisor::spawn(&Handle::current(), addr(), transport, fast_options());
+        let mut state = supervisor.state();
+        let changed = tokio::time::timeout(Duration::from_millis(80), async {
+            loop {
+                if state.changed().await.is_err() {
+                    return "closed";
+                }
+            }
+        })
+        .await;
+        assert!(changed.is_err(), "still retrying, channel open");
+        assert_eq!(supervisor.failure().get(), None);
     }
 
     #[tokio::test]

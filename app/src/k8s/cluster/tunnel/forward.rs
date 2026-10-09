@@ -4,6 +4,7 @@
 
 use crate::config::tunnels::CommandTunnelMode;
 use crate::forward::managed::{ForwardHandle, ForwardState, ManagedForward};
+use crate::forward::supervisor::FailureSlot;
 use crate::tunnel::command::CommandTunnel;
 use crate::tunnel::ssh::SshTunnel;
 use std::net::SocketAddr;
@@ -34,6 +35,14 @@ impl TunnelForward {
                 CommandTunnelMode::Proxy => TunnelRoute::Proxy,
                 CommandTunnelMode::Forward => TunnelRoute::Rewrite,
             },
+        }
+    }
+
+    /// Where the forward's supervisor leaves its reason if it gives up.
+    pub fn failure(&self) -> FailureSlot {
+        match self {
+            Self::Ssh(tunnel) => tunnel.failure(),
+            Self::Command(tunnel) => tunnel.failure(),
         }
     }
 
