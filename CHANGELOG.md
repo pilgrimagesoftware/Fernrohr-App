@@ -1,4 +1,60 @@
 
+## 0.8.0 - 2026-10-09
+
+### <!-- 0 -->🚀 Features
+- App-local endpoint with token handshake
+- Fernrohr mcp stdio adapter
+- Context and resource-kind read tools
+- List and get resource tools
+- Bounded pod logs and result truncation
+- Allowlisted cluster actions behind in-app approval
+- Panel and saved-layout navigation tools
+- In-app agent setup in Settings and the palette
+- State icon with tooltip, muted bracketed tunnel
+- Default to Name ascending and remember each kind's sort
+- Manual tunnel kind in tunnels.toml
+- Manual tunnel form in the editor
+- A transport can give up, failing its waiters
+- Manual tunnels wait for the user's Proceed or Cancel
+- Desktop notifications through notify-rust
+- A context awaiting confirmation draws attention
+- Proceed and Cancel commands for manual tunnels
+- Proceed and Cancel in a waiting capsule's menu
+- The status line asks to confirm a manual tunnel
+- A desktop notification for each manual tunnel prompt
+- Bring Fernrohr forward after open_panel and load_layout
+- Connect_context tool, approved by the user in the app
+- A shared load phase for the list stores
+- Show loading, empty and refreshing states
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Create the endpoint directory owner-only
+- Allow the unused Shown variant on Linux release builds
+- Readable capsule text in every theme
+
+
+### <!-- 3 -->📚 Documentation
+- Agent access through the MCP server
+- Document manual tunnels
+- Connect_context and bring-to-front in the agent docs
+
+
+### <!-- 6 -->🧪 Testing
+- Check every section's sidebar title, Agent Access included
+- Agent's-eye integration tests through the real adapter
+- A manual tunnel's wait holds up no other context
+- Manual tunnels end to end
+- Give the status-line tests their own contexts
+- Connect_context through the real adapter
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.7.0
+- Deny warnings in the CI build, as packaging does
+
+
+
 ## 0.7.0 - 2026-10-08
 
 ### <!-- 0 -->🚀 Features
