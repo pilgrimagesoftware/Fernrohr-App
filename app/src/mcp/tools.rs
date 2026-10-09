@@ -127,11 +127,12 @@ pub(super) struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// The app's tools: the cluster read tools and the allowlisted actions.
-    /// The navigation tools (section 4) register here too.
+    /// The app's tools: the cluster read tools, the navigation tools, and the
+    /// allowlisted action tools.
     pub(super) fn app() -> Self {
         let mut registry = Self::default();
         super::read::register(&mut registry);
+        super::navigate::register(&mut registry);
         super::actions::register(&mut registry);
         registry
     }
@@ -278,7 +279,7 @@ mod tests {
         let specs: Vec<_> = ToolRegistry::app()
             .specs()
             .into_iter()
-            .filter(|spec| spec.kind != ToolKind::Action)
+            .filter(|spec| spec.kind == ToolKind::Read)
             .collect();
         let names: Vec<_> = specs.iter().map(|spec| spec.name.as_str()).collect();
         assert_eq!(

@@ -20,5 +20,6 @@ pub(super) fn register(registry: &mut ToolRegistry) {
     logs::register(registry);
 }
 
+// `mcp::navigate`'s tests open sessions with these fixtures too.
 #[cfg(test)]
 pub(super) mod test_support;

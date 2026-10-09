@@ -35,6 +35,8 @@ pub(crate) enum ToolError {
     /// The kind exists, but its discovery data doesn't offer this operation
     /// (`list`, say, for a kind that can only be read one at a time).
     UnsupportedOperation { kind: String, operation: String },
+    /// No saved layout has this name.
+    UnknownLayout { name: String },
     /// The Kubernetes API refused the request.
     Kubernetes {
         status: u16,
@@ -88,6 +90,7 @@ impl ToolError {
             Self::UnsupportedKind { .. } => "unsupported_kind",
             Self::AmbiguousKind { .. } => "ambiguous_kind",
             Self::UnsupportedOperation { .. } => "unsupported_operation",
+            Self::UnknownLayout { .. } => "unknown_layout",
             Self::Kubernetes { .. } => "kubernetes",
             Self::ConnectionFailed { .. } => "connection_failed",
             Self::Denied => "denied",
@@ -197,6 +200,7 @@ impl fmt::Display for ToolError {
             Self::UnsupportedOperation { kind, operation } => {
                 write!(f, "{kind} does not support {operation}")
             }
+            Self::UnknownLayout { name } => write!(f, "no saved layout named {name:?}"),
             Self::Kubernetes {
                 status,
                 reason,

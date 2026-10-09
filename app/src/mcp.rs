@@ -6,7 +6,7 @@
 //! - The app ([`server`]) binds the socket in its runtime directory, writes a
 //!   per-launch token beside it ([`endpoint`]), and answers a small internal
 //!   RPC ([`protocol`], framed by [`frame`]) from the tools it registered
-//!   ([`tools`]).
+//!   ([`tools`]; the panel and saved-layout tools are [`navigate`]'s).
 //! - `fernrohr mcp` ([`adapter`]) is the command an MCP client launches. It
 //!   speaks MCP on stdio through `rmcp`, and forwards each request to the
 //!   running app over that socket ([`client`]), one connection per request.
@@ -40,6 +40,8 @@ mod frame;
 mod kinds;
 #[cfg(unix)]
 mod names;
+#[cfg(unix)]
+mod navigate;
 #[cfg(unix)]
 mod protocol;
 #[cfg(unix)]
