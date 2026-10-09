@@ -27,7 +27,7 @@ parking_lot = "=0.12.5"
 percent-encoding = "=2.3.2"
 # Splitting a command tunnel's command line with POSIX quoting (`tunnel::command::argv`).
 # Already in the build through a transitive dependency; pinned to that same version.
-shlex = "=1.3.0"
+shlex = "=2.0.1"
 # Resampling the picker's logo and the About icon to their device resolution
 # (`ui::raster`). Already in the build through gpui, which decodes images with
 # it; pinned to that same version, with only the two decoders those assets need.
