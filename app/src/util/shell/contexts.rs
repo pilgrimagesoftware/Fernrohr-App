@@ -235,4 +235,6 @@ impl MainWindow {
 mod tests;
 
 #[cfg(test)]
+mod awaiting_tests;
+#[cfg(test)]
 mod capsule_tests;

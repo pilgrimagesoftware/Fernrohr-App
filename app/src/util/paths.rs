@@ -28,6 +28,13 @@ pub fn cache_dir() -> PathBuf {
     resolve(dirs::cache_dir())
 }
 
+/// Sockets and other per-launch files: `dirs::runtime_dir()/<app_dir>/` where
+/// the platform has one (`$XDG_RUNTIME_DIR` on Linux), else the cache directory,
+/// since macOS has no per-user runtime directory.
+pub fn runtime_dir() -> PathBuf {
+    resolve(dirs::runtime_dir().or_else(dirs::cache_dir))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,6 +52,11 @@ mod tests {
     #[test]
     fn cache_dir_ends_with_app_dir_name() {
         assert!(cache_dir().ends_with(APP_DIR_NAME));
+    }
+
+    #[test]
+    fn runtime_dir_ends_with_app_dir_name() {
+        assert!(runtime_dir().ends_with(APP_DIR_NAME));
     }
 
     #[test]

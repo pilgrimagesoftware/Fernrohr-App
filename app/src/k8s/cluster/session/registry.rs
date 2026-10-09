@@ -142,6 +142,22 @@ impl ClusterRegistry {
             .map_or(0, |session| session.watchers.refcount(key))
     }
 
+    /// `context_name`'s connection if a session for it is open. Unlike
+    /// [`Self::connection`], never connects: for a reader (`agent-mcp`'s tools)
+    /// that must only use what the user already opened.
+    pub fn existing_connection(cx: &App, context_name: &str) -> Option<Entity<ClusterConnection>> {
+        cx.try_global::<Self>()
+            .and_then(|registry| registry.sessions.get(context_name))
+            .map(|session| session.connection.clone())
+    }
+
+    /// Every context with an open session, in no particular order.
+    pub fn open_contexts(cx: &App) -> Vec<String> {
+        cx.try_global::<Self>()
+            .map(|registry| registry.sessions.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
     /// Returns `context_name`'s cluster connection, connecting lazily on first use.
     pub fn connection(cx: &mut App, context_name: &str) -> Entity<ClusterConnection> {
         Self::ensure_init(cx, context_name);

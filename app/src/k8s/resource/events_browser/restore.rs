@@ -68,8 +68,9 @@ pub(super) fn dump(panel: &EventsPanel, cx: &App) -> Value {
 }
 
 /// The browser a saved panel was, or `None` for state that doesn't name its
-/// cluster. A sort naming a column or order this build doesn't know falls back
-/// to the default sort.
+/// cluster. A sort naming a column or order this build doesn't know counts as
+/// no sort of its own, so the browser starts with the remembered sort or the
+/// default one (`remembered-list-sort`).
 pub(crate) fn from_state(state: &Value) -> Option<SavedEvents> {
     let sort = match &state["sort"] {
         Value::Null => None,
@@ -79,7 +80,7 @@ pub(crate) fn from_state(state: &Value) -> Option<SavedEvents> {
     Some(SavedEvents {
         context_name: state["context_name"].as_str()?.to_string(),
         namespaces: serde_json::from_value(state["namespaces"].clone()).unwrap_or_default(),
-        sort: sort.or(Some(super::table::DEFAULT_SORT)),
+        sort,
         filters: serde_json::from_value(state["filters"].clone()).unwrap_or_default(),
         filter: state["filter"].as_str().map(str::to_string),
     })

@@ -9,11 +9,12 @@ pub(super) fn kind_label(kind: TunnelKind) -> &'static str {
     match kind {
         TunnelKind::Ssh => "SSH",
         TunnelKind::Command => "Command",
+        TunnelKind::Manual => "Manual",
     }
 }
 
-/// The row's second line: where an SSH tunnel goes, or a command tunnel's command -
-/// its first line, shortened - and mode.
+/// The row's second line: where an SSH tunnel goes, a command tunnel's command - its
+/// first line, shortened - and mode, or a manual tunnel's message.
 pub(super) fn tunnel_summary(tunnel: &TunnelConfig) -> String {
     match tunnel.kind {
         TunnelKind::Ssh => format!(
@@ -38,6 +39,23 @@ pub(super) fn tunnel_summary(tunnel: &TunnelConfig) -> String {
                 CommandTunnelMode::Forward => "forward",
             };
             format!("{command} ({mode})")
+        }
+        TunnelKind::Manual => {
+            let message = tunnel
+                .manual
+                .message
+                .as_deref()
+                .map(str::trim)
+                .filter(|message| !message.is_empty());
+            let mut summary: String = message
+                .unwrap_or("Confirmed by hand")
+                .chars()
+                .take(60)
+                .collect();
+            if message.is_some_and(|message| message.chars().count() > 60) {
+                summary.push('\u{2026}');
+            }
+            summary
         }
     }
 }

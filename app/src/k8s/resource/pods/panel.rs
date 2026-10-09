@@ -1,6 +1,7 @@
 //! The Pods dock panel: its state, lifecycle, selection wiring and dock integration. What it draws is `render`'s.
 
 use super::*;
+use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::ui::list_search::ListSearch;
 
 pub fn register_restore(cx: &mut App) {
@@ -47,6 +48,8 @@ pub struct PodsPanel {
     pub(super) pod_table: Option<Entity<TableState<PodTableDelegate>>>,
     /// The open quick look over the selected pod, if any (`pod-quick-look`).
     pub(super) quick_look: Option<Entity<super::quick_look::QuickLookPopover>>,
+    /// The loading and refreshing indicators' delays (`list-loading-indicator`).
+    pub(super) indicators: crate::ui::list_state::Indicators,
     /// The last row action the cluster refused, shown above the table until
     /// dismissed or the next action.
     pub(super) action_failure: Option<super::actions::PodActionFailure>,
@@ -121,6 +124,7 @@ impl PodsPanel {
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             pod_table: None,
             quick_look: None,
+            indicators: Default::default(),
             action_failure: None,
             initial_sort: None,
             filter: ListSearch::new(),
@@ -300,12 +304,20 @@ impl PodsPanel {
         cx: &mut Context<Self>,
     ) -> Entity<TableState<PodTableDelegate>> {
         if self.pod_table.is_none() {
-            let initial_sort = self.initial_sort.clone();
+            let key = crate::ui::list_sort::kind_key(&DiscoveredKind::pods());
+            let ids = crate::k8s::resource::pods_table::list_sort::column_ids();
+            let start = crate::ui::list_sort::starting(
+                self.initial_sort
+                    .clone()
+                    .map(|(column, descending)| (column.into(), descending)),
+                crate::util::shell::SortDefaults::get(cx, &key),
+                &ids,
+                crate::k8s::resource::pods_table::list_sort::default_sort(),
+            );
             let table = cx.new(|cx| {
                 let mut delegate = PodTableDelegate::default();
-                if let Some((column, descending)) = &initial_sort {
-                    delegate.set_sort_state(column, *descending);
-                }
+                delegate.remember_as(key);
+                delegate.set_sort_state(&start.0, start.1);
                 TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
@@ -469,6 +481,10 @@ mod namespace_jump_tests;
 mod restore_tests;
 #[cfg(test)]
 mod search_tests;
+#[cfg(test)]
+mod sort_tests;
+#[cfg(test)]
+mod state_tests;
 #[cfg(test)]
 mod test_accessors;
 #[cfg(test)]

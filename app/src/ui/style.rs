@@ -246,7 +246,7 @@ pub fn apply_overrides(cx: &mut App) {
 }
 
 /// Black or white, whichever reads better on `fill`.
-fn readable_on(fill: Hsla) -> Hsla {
+pub fn readable_on(fill: Hsla) -> Hsla {
     let (white, black) = (hsla(0., 0., 1., 1.), hsla(0., 0., 0., 1.));
     if contrast(white, fill) >= contrast(black, fill) {
         white

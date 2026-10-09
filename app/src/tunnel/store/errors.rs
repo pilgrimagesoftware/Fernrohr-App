@@ -45,6 +45,8 @@ pub(super) fn validate(tunnel: &TunnelConfig) -> Vec<TunnelFieldError> {
     match tunnel.kind {
         TunnelKind::Ssh => validate_ssh(tunnel),
         TunnelKind::Command => validate_command(&tunnel.command),
+        // Every manual setting is valid: an empty message shows only the name.
+        TunnelKind::Manual => Vec::new(),
     }
 }
 

@@ -3,6 +3,7 @@ pub(crate) mod events;
 pub(crate) mod events_browser;
 pub(crate) mod exec;
 pub(crate) mod hpa;
+pub(crate) mod load_phase;
 pub(crate) mod object_detail;
 pub(crate) mod object_list;
 pub(crate) mod pod_detail;

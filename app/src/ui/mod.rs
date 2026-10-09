@@ -1,5 +1,8 @@
 pub mod about_window;
 pub mod accent;
+#[cfg(unix)]
+pub(crate) mod agent_approval;
+pub(crate) mod agent_setup;
 pub mod background_rows;
 pub mod confirm_dialog;
 pub mod confirm_text;
@@ -12,7 +15,10 @@ pub mod icon_tooltip;
 pub mod link;
 pub mod list_keys;
 pub mod list_search;
+pub mod list_sort;
+pub mod list_state;
 pub mod logs_panels;
+pub(crate) mod manual_tunnel;
 pub mod menu;
 pub mod namespace_filter;
 pub mod namespace_jump;

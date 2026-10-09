@@ -14,6 +14,12 @@ pub(crate) const APP_NAME: &str = "Fernrohr";
 /// that entry's name and icon and group them under it.
 pub(crate) const APP_ID: &str = "fernrohr";
 
+/// The macOS bundle identifier (`[package.metadata.packager]`'s `identifier`):
+/// the app desktop notifications are posted as. Without it they would be
+/// posted as Finder.
+#[cfg(target_os = "macos")]
+pub(crate) const BUNDLE_IDENTIFIER: &str = "com.pilgrimagesoftware.fernrohr";
+
 // UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
 // 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
 #[allow(dead_code)]
@@ -33,10 +39,18 @@ pub(crate) const COMMAND_TUNNEL_POLL_INTERVAL: Duration = Duration::from_millis(
 /// How long a stopping command tunnel's process group has between `SIGTERM` and
 /// `SIGKILL`.
 pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
+/// `manual-confirmation-tunnels` D5: how long a manual tunnel's reachability
+/// shortcut waits for the API server to accept a TCP connection before it asks the
+/// user instead.
+pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long a list panel's loading or refreshing indicator waits before it
+/// shows (`list-loading-indicator` D3), so a quick list never flickers one.
+pub(crate) const LIST_INDICATOR_DELAY: Duration = Duration::from_millis(300);
 
 /// How long a copy control - a copy button, a metadata chip - shows that it
 /// copied (#187), its check mark and "Copied" in place of the copy icon.
@@ -225,6 +239,74 @@ pub(crate) const SAVED_LAYOUT_SCHEMA_VERSION: u32 = 1;
 /// fields - the table scrolls within this, rather than growing the whole
 /// detail view with the node's pod count.
 pub(crate) const NODE_PODS_REGION_HEIGHT: gpui_kit::Pixels = gpui_kit::px(320.);
+
+/// `agent-mcp`: the largest frame the app's MCP endpoint reads from the
+/// `fernrohr mcp` adapter - a handshake or one tool call's arguments. Typed tool
+/// inputs are names and small values, so this is generous, and it stops a
+/// client from making the app buffer an arbitrary body.
+pub(crate) const MCP_MAX_REQUEST_BYTES: usize = 1024 * 1024;
+
+/// `agent-mcp`: the largest reply the endpoint sends - a tool list, or one tool
+/// result after its own truncation. A result past this is replaced by a
+/// too-large error rather than sent (design.md Risks: large responses).
+pub(crate) const MCP_MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
+
+/// `agent-mcp`: how long a new endpoint connection has to complete its
+/// handshake before the app drops it, so a client that connects and says
+/// nothing doesn't hold a connection slot.
+pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// `agent-mcp`: how many endpoint connections are served at once. Each tool
+/// call is its own connection, and a call awaiting user approval holds one,
+/// so this bounds the work a misbehaving client can queue up.
+pub(crate) const MCP_MAX_CONNECTIONS: usize = 16;
+
+/// `agent-mcp`: how many objects `list_resources` returns in one page when
+/// the client doesn't say, and the most it may ask for - a page, not a whole
+/// cluster, so one call can't pull every object of a big kind at once.
+pub(crate) const MCP_LIST_DEFAULT_LIMIT: u32 = 100;
+pub(crate) const MCP_LIST_MAX_LIMIT: u32 = 500;
+
+/// `agent-mcp`: the most a read tool puts in one result - a page of objects
+/// or a pod's logs. Well under [`MCP_MAX_REPLY_BYTES`]; a list page past it
+/// is cut short and says so, a single object past it is refused.
+pub(crate) const MCP_RESULT_BUDGET_BYTES: usize = 1024 * 1024;
+
+/// `agent-mcp`: `get_pod_logs`' line window - how many of the newest lines it
+/// asks for when the client doesn't say, and the most it may ask for.
+pub(crate) const MCP_LOG_DEFAULT_TAIL_LINES: i64 = 200;
+pub(crate) const MCP_LOG_MAX_TAIL_LINES: i64 = 5000;
+
+/// `agent-mcp`: how many bytes of logs `get_pod_logs` returns when the client
+/// doesn't say. At most [`MCP_RESULT_BUDGET_BYTES`].
+pub(crate) const MCP_LOG_DEFAULT_BYTES: usize = 256 * 1024;
+
+/// `agent-mcp`: the most log bytes read from the cluster for one call, before
+/// the newest are kept: the line window can hold very long lines, and the app
+/// must not buffer them without bound.
+pub(crate) const MCP_LOG_READ_CAP: usize = 8 * 1024 * 1024;
+
+/// `agent-mcp`: how long an action tool waits for the user to allow or deny
+/// it in the app before it gives up, sending nothing. Long enough to switch to
+/// the app and read the dialog; short enough that an agent left waiting hears
+/// back.
+pub(crate) const MCP_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// `agent-mcp`'s `connect_context`: how long it waits for an approved
+/// connection to settle before reporting it as still connecting
+/// (`mcp-connect-and-focus` D3). The connection carries on after.
+pub(crate) const MCP_CONNECT_SETTLE: Duration = Duration::from_secs(20);
+
+/// How often `connect_context` looks at a connection while it settles.
+pub(crate) const MCP_CONNECT_POLL: Duration = Duration::from_millis(100);
+
+/// `agent-mcp`: the most Pods one `delete_pods` call may name (design.md).
+pub(crate) const MCP_DELETE_PODS_MAX: usize = 10;
+
+/// `agent-mcp`: how many foreground jobs - tool work that needs GPUI state -
+/// may wait for the main thread at once before the tool handlers queueing
+/// them wait too.
+pub(crate) const MCP_FOREGROUND_QUEUE: usize = 32;
 
 #[cfg(test)]
 mod tests {

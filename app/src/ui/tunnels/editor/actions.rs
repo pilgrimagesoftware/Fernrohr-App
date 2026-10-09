@@ -97,6 +97,7 @@ impl TunnelEditor {
             jump_hosts,
             auth: self.auth,
             command: self.command_config(cx),
+            manual: self.manual_config(cx),
         };
 
         let result = match self.editing_id.clone() {
@@ -136,9 +137,14 @@ impl TunnelEditor {
     /// unsaved) field values, on the tokio runtime, without ever touching
     /// `ForwardRegistry` - see `tunnel::ssh::test_connection`.
     pub(super) fn run_test(&mut self, cx: &mut Context<Self>) {
-        if self.kind == TunnelKind::Command {
-            self.run_command_test(cx);
-            return;
+        match self.kind {
+            TunnelKind::Command => {
+                self.run_command_test(cx);
+                return;
+            }
+            // Nothing to start, so nothing to test: the form shows no Test.
+            TunnelKind::Manual => return,
+            TunnelKind::Ssh => {}
         }
         let host = self.host.read(cx).value().to_string();
         let user = self.user.read(cx).value().to_string();

@@ -10,6 +10,7 @@
 //! selected layout to the window this picker opened over.
 
 use super::*;
+use crate::util::shell::LoadMode;
 use gpui_kit::component::WindowExt as _;
 
 impl SavedLayoutsPicker {
@@ -227,18 +228,10 @@ impl SavedLayoutsPicker {
             return;
         };
         window.close_dialog(cx);
-        main_window.update(cx, |main_window, cx| match mode {
-            LoadMode::Replace => main_window.load_replace(layout, window, cx),
-            LoadMode::Add => main_window.load_add(layout, window, cx),
+        main_window.update(cx, |main_window, cx| {
+            main_window.load_layout(layout, mode, window, cx);
         });
     }
-}
-
-/// Which of [`SavedLayoutsPicker::load_selected`]'s two loading actions to
-/// carry out.
-enum LoadMode {
-    Replace,
-    Add,
 }
 
 #[cfg(test)]

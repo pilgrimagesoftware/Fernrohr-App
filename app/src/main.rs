@@ -7,6 +7,8 @@ mod consts;
 mod forward;
 mod k8s;
 mod keymap;
+mod mcp;
+mod notify;
 mod runtime;
 mod ssh_path;
 mod tunnel;
@@ -14,6 +16,13 @@ mod ui;
 mod util;
 
 fn main() {
+    // `fernrohr mcp` is the stdio MCP adapter an agent's client launches: a
+    // short-lived process that talks to the running app, so it starts no
+    // window and must not sweep the running app's tunnels below.
+    if let Some(code) = mcp::run_subcommand(std::env::args_os()) {
+        std::process::exit(code);
+    }
+
     // Crash recovery: reap any `ssh -N -L` forward a previous run left running after
     // being killed or crashing before its own `Drop` could tear it down. Runs before
     // anything else in `main` so it always happens before any tunnel could possibly
@@ -47,5 +56,6 @@ fn main() {
             let keymap_path = util::paths::preference_dir().join("keymap.toml");
             util::shell::init(cx, workspace_path.clone(), &keymap_path);
             util::shell::open_saved_or_default(cx, &workspace_path);
+            mcp::start(cx);
         });
 }

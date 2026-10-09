@@ -1,0 +1,332 @@
+//! The tool surface: what each tool is ([`ToolSpec`]), what it returns
+//! ([`ToolOutput`]), what it may use ([`ToolContext`]), and the
+//! [`ToolRegistry`] the endpoint serves them from.
+//!
+//! Tools live only in the app. The adapter has no tool list of its own: it
+//! asks the app for [`ToolRegistry::specs`] and forwards each call by name, so
+//! adding a tool is one [`ToolRegistry::add`] call, in [`ToolRegistry::app`] or
+//! a module it calls, and nothing on the adapter side.
+//!
+//! A handler takes its own typed input. `add` publishes that input's JSON
+//! Schema as the tool's, deserializes the client's arguments into it before
+//! the handler runs, and answers a mismatch with
+//! [`ToolError::InvalidArguments`], so no handler ever sees raw JSON.
+
+use super::approval::ApprovalGate;
+use super::error::ToolError;
+use super::foreground::Foreground;
+use futures_util::FutureExt;
+use futures_util::future::BoxFuture;
+use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use std::collections::BTreeMap;
+use std::future::Future;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+/// What a tool does, which decides how the endpoint treats a call to it:
+/// actions alone go through the user's confirmation (section 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ToolKind {
+    /// Reads cluster state; changes nothing.
+    Read,
+    /// Opens or focuses something in the app's own UI; changes no cluster.
+    Navigate,
+    /// One of the allowlisted cluster actions.
+    Action,
+}
+
+/// One tool as an MCP client lists it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(super) struct ToolSpec {
+    pub(super) name: String,
+    pub(super) title: String,
+    pub(super) description: String,
+    pub(super) kind: ToolKind,
+    /// The JSON Schema of the tool's arguments: always an `object` schema.
+    pub(super) input_schema: Map<String, Value>,
+}
+
+impl ToolSpec {
+    /// A spec whose input schema is `A`'s, so the schema a client sees can't
+    /// drift from what the handler accepts. Doc comments on `A`'s fields become
+    /// their descriptions.
+    pub(super) fn for_input<A: JsonSchema>(
+        name: &str,
+        title: &str,
+        description: &str,
+        kind: ToolKind,
+    ) -> Self {
+        let mut input_schema = match schemars::schema_for!(A).to_value() {
+            Value::Object(schema) => schema,
+            // `schema_for!` of a struct is always an object schema.
+            _ => Map::new(),
+        };
+        // The input's Rust name says nothing to a client.
+        input_schema.remove("title");
+        Self {
+            name: name.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            kind,
+            input_schema,
+        }
+    }
+}
+
+/// A tool's successful result: the structured object the client receives.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(super) struct ToolOutput {
+    pub(super) content: Map<String, Value>,
+    /// The tool cut its result short to stay under the reply limit; the
+    /// client is told so it can ask for less (section 2.3).
+    #[serde(default)]
+    pub(super) truncated: bool,
+}
+
+impl ToolOutput {
+    pub(super) fn new(content: Map<String, Value>) -> Self {
+        Self {
+            content,
+            truncated: false,
+        }
+    }
+}
+
+/// What a running handler may use. Cloned into every call.
+#[derive(Clone)]
+pub(super) struct ToolContext {
+    /// The main thread, for any GPUI state the tool reads or changes.
+    pub(super) foreground: Foreground,
+    /// The kubeconfig whose contexts a client may name: `None` for the one
+    /// the app's cluster picker reads (`$KUBECONFIG` or `~/.kube/config`).
+    /// Tests point it at their own.
+    pub(super) kubeconfig: Option<PathBuf>,
+    /// Where an action tool asks the user first.
+    pub(super) approvals: ApprovalGate,
+    /// The `tunnels.toml` whose bindings `connect_context` names in its
+    /// question: `None` for the app's own. Tests point it at their own.
+    pub(super) tunnels: Option<PathBuf>,
+    /// How long `connect_context` waits for a connection to settle:
+    /// [`MCP_CONNECT_SETTLE`](crate::consts::MCP_CONNECT_SETTLE) but in tests.
+    pub(super) connect_settle: std::time::Duration,
+}
+
+type Handler =
+    Arc<dyn Fn(Map<String, Value>, ToolContext) -> BoxFuture<'static, ToolResult> + Send + Sync>;
+
+/// A call's result as it crosses the endpoint.
+pub(super) type ToolResult = Result<ToolOutput, ToolError>;
+
+struct Registered {
+    spec: ToolSpec,
+    handler: Handler,
+}
+
+/// Every tool the endpoint serves, by name.
+#[derive(Default)]
+pub(super) struct ToolRegistry {
+    tools: BTreeMap<String, Registered>,
+}
+
+impl ToolRegistry {
+    /// The app's tools: the cluster read tools, the navigation tools, and the
+    /// allowlisted action tools.
+    pub(super) fn app() -> Self {
+        let mut registry = Self::default();
+        super::read::register(&mut registry);
+        super::navigate::register(&mut registry);
+        super::actions::register(&mut registry);
+        registry
+    }
+
+    /// Adds a tool named `name` whose handler takes the typed input `A`,
+    /// publishing `A`'s schema as its input schema. See [`Self::register`].
+    pub(super) fn add<A, F, Fut>(
+        &mut self,
+        name: &str,
+        title: &str,
+        description: &str,
+        kind: ToolKind,
+        handler: F,
+    ) where
+        A: DeserializeOwned + JsonSchema,
+        F: Fn(A, ToolContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ToolResult> + Send + 'static,
+    {
+        self.register(
+            ToolSpec::for_input::<A>(name, title, description, kind),
+            handler,
+        );
+    }
+
+    /// Adds a tool whose handler takes the typed input `A`, under a spec
+    /// written by hand.
+    ///
+    /// # Panics
+    ///
+    /// If a tool of the same name is already registered: tool names are fixed
+    /// in code, so a clash is a programming error, caught by any test that
+    /// builds the registry.
+    pub(super) fn register<A, F, Fut>(&mut self, spec: ToolSpec, handler: F)
+    where
+        A: DeserializeOwned,
+        F: Fn(A, ToolContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ToolResult> + Send + 'static,
+    {
+        let handler = Arc::new(handler);
+        let erased: Handler = Arc::new(move |arguments, cx| {
+            match serde_json::from_value::<A>(Value::Object(arguments)) {
+                Ok(input) => handler(input, cx).boxed(),
+                Err(error) => std::future::ready(Err(ToolError::invalid_arguments(&error))).boxed(),
+            }
+        });
+        let name = spec.name.clone();
+        let previous = self.tools.insert(
+            name.clone(),
+            Registered {
+                spec,
+                handler: erased,
+            },
+        );
+        assert!(previous.is_none(), "tool {name:?} is registered twice");
+    }
+
+    /// Every tool's spec, in name order.
+    pub(super) fn specs(&self) -> Vec<ToolSpec> {
+        self.tools
+            .values()
+            .map(|registered| registered.spec.clone())
+            .collect()
+    }
+
+    /// Runs the tool `name` with `arguments`. The returned future owns
+    /// everything it needs, so the caller may drop it to cancel the call.
+    pub(super) fn call(
+        &self,
+        name: &str,
+        arguments: Map<String, Value>,
+        cx: ToolContext,
+    ) -> BoxFuture<'static, ToolResult> {
+        match self.tools.get(name) {
+            Some(registered) => (registered.handler)(arguments, cx),
+            None => std::future::ready(Err(ToolError::UnknownTool {
+                name: name.to_string(),
+            }))
+            .boxed(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::test_support::{echo_spec, echo_tool_registry, object, test_context};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn a_call_reaches_its_handler_with_typed_input() {
+        let registry = echo_tool_registry();
+        let output = registry
+            .call("echo", object(json!({"text": "hi"})), test_context())
+            .await
+            .unwrap();
+        assert_eq!(output.content, object(json!({"echo": "hi"})));
+    }
+
+    #[tokio::test]
+    async fn arguments_that_dont_fit_the_input_never_reach_the_handler() {
+        let registry = echo_tool_registry();
+        let result = registry
+            .call("echo", object(json!({"text": 3})), test_context())
+            .await;
+        assert!(matches!(result, Err(ToolError::InvalidArguments { .. })));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_tool_is_named_in_its_error() {
+        let result = ToolRegistry::app()
+            .call("nope", Map::new(), test_context())
+            .await;
+        assert_eq!(
+            result,
+            Err(ToolError::UnknownTool {
+                name: "nope".into()
+            })
+        );
+    }
+
+    #[test]
+    fn specs_list_every_tool_in_name_order() {
+        let mut registry = echo_tool_registry();
+        let mut first = echo_spec();
+        first.name = "a_first".into();
+        registry.register(first, |_: Value, _| async {
+            Ok(ToolOutput::new(Map::new()))
+        });
+        let names: Vec<_> = registry.specs().into_iter().map(|s| s.name).collect();
+        assert_eq!(names, ["a_first", "echo"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "registered twice")]
+    fn a_name_cannot_be_registered_twice() {
+        let mut registry = echo_tool_registry();
+        registry.register(echo_spec(), |_: Value, _| async {
+            Ok(ToolOutput::new(Map::new()))
+        });
+    }
+
+    #[test]
+    fn the_app_lists_its_read_tools_with_their_input_schemas() {
+        let specs: Vec<_> = ToolRegistry::app()
+            .specs()
+            .into_iter()
+            .filter(|spec| spec.kind == ToolKind::Read)
+            .collect();
+        let names: Vec<_> = specs.iter().map(|spec| spec.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "get_pod_logs",
+                "get_resource",
+                "list_contexts",
+                "list_resource_kinds",
+                "list_resources",
+            ]
+        );
+        for spec in &specs {
+            assert_eq!(spec.kind, ToolKind::Read, "{}", spec.name);
+            assert_eq!(spec.input_schema["type"], "object", "{}", spec.name);
+            assert!(!spec.input_schema.contains_key("title"), "{}", spec.name);
+        }
+        let list = specs
+            .iter()
+            .find(|spec| spec.name == "list_resources")
+            .unwrap();
+        assert_eq!(list.input_schema["required"], json!(["context", "kind"]));
+        let properties = list.input_schema["properties"].as_object().unwrap();
+        assert!(properties.contains_key("continue"));
+        assert!(
+            properties["label_selector"]["description"]
+                .as_str()
+                .is_some_and(|text| text.contains("label selector"))
+        );
+    }
+
+    #[test]
+    fn the_app_has_no_state_changing_tool_outside_the_allowlist() {
+        // Adding an action means adding it to `actions::ALLOWLIST` (design.md's
+        // table) - this is where it has to be acknowledged.
+        let actions: Vec<_> = ToolRegistry::app()
+            .specs()
+            .into_iter()
+            .filter(|spec| spec.kind == ToolKind::Action)
+            .map(|spec| spec.name)
+            .collect();
+        assert_eq!(actions, crate::mcp::actions::ALLOWLIST);
+    }
+}

@@ -214,6 +214,8 @@ fn the_context_menu_puts_tunnels_last() {
             "---",
             "Set Tunnel for Context",
             "Manage Tunnels…",
+            "Proceed with Manual Tunnel",
+            "Cancel Manual Tunnel",
         ]
     );
 }

@@ -38,6 +38,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 mod actions;
+mod agent;
 mod app;
 mod arrange;
 mod contexts;
@@ -49,6 +50,7 @@ mod logs_open;
 mod main_window;
 mod namespace_defaults;
 mod namespace_sets;
+mod sort_defaults;
 mod warp;
 pub(crate) use exec::OpenExecSession;
 pub(crate) use warp::WarpContextToNamespace;
@@ -90,8 +92,14 @@ mod window_title;
 pub(crate) use app::register_commands;
 pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
-pub(crate) use layout::{close_window, window_context_count};
+pub(crate) use layout::{close_window, is_main_window, window_context_count};
 pub use main_window::MainWindow;
+// The list panels (`k8s::resource`) read and record per-kind sorts.
+pub(crate) use sort_defaults::SortDefaults;
+// `agent-mcp`'s navigation tools (`mcp::navigate`) are the callers.
+pub(crate) use agent::{
+    NavigateError, connect_context, focus_if_held, focus_window, load_layout, open_panel,
+};
 pub use persist::open_saved_or_default;
 // `ui::settings::layouts` (`saved-panel-layouts` tasks 6.1) reads saved
 // layouts to list them, so it needs the same directory `layouts.save`/
@@ -99,7 +107,9 @@ pub use persist::open_saved_or_default;
 // `pub(crate)` (see its own doc comment) just so this one re-export is
 // legal; `SavedLayoutsDir` - the test-override global it reads - and the
 // `saved_layouts` module stay unwidened.
-pub(crate) use saved_layouts::{SavedLayoutsChanged, layouts_dir, note_layouts_changed};
+pub(crate) use saved_layouts::{
+    LoadMode, LoadedLayout, SavedLayoutsChanged, layouts_dir, note_layouts_changed,
+};
 pub(crate) use tabs::close_panel;
 pub(crate) use window::open_window;
 

@@ -11,6 +11,7 @@ use gpui_kit::*;
 use super::pods::{PodRow, PodSelection};
 
 mod columns;
+pub(in crate::k8s::resource) mod list_sort;
 use columns::cell_text;
 pub(super) use columns::{PodColumn, compare};
 
@@ -74,6 +75,9 @@ pub(super) struct PodTableDelegate {
     rows: Vec<PodTableRow>,
     columns: Vec<PodColumn>,
     sort: Option<(PodColumn, ColumnSort)>,
+    /// The key the user's sort is remembered under (`remembered-list-sort`);
+    /// `None` remembers nothing.
+    remember_as: Option<String>,
     /// The pod this table last had selected, by identity. [`TableState`]
     /// only keeps the selected row's index, and the app-wide `SelectedPod`
     /// global is shared by every Pods panel, so each table remembers its own
@@ -101,6 +105,7 @@ impl Default for PodTableDelegate {
             rows: Vec::new(),
             columns: PodColumn::DEFAULT_ORDER.to_vec(),
             sort: None,
+            remember_as: None,
             selected: None,
             widths: Vec::new(),
             header: Default::default(),
@@ -223,6 +228,7 @@ impl PodTableDelegate {
     /// Sets the active sort for the column at `col_ix` and re-derives `rows`
     /// from `natural`, matching [`TableDelegate::perform_sort`]'s contract:
     /// `sort` is the *new* direction to apply, already cycled by the caller.
+    #[cfg(test)]
     pub(super) fn resort(&mut self, col_ix: usize, sort: ColumnSort) {
         self.sort = Some((self.columns[col_ix], sort));
         self.apply_sort();
@@ -419,15 +425,10 @@ impl TableDelegate for PodTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) {
-        self.resort(col_ix, sort);
-        // `TableState::perform_sort` (the caller) is already mid-update on
-        // itself to reach this method, so `cx` here is only
-        // `Context<TableState<Self>>` - there's no `&mut TableState<Self>` to
-        // call `set_selected_row`/`clear_selection` on. Defer to the end of
-        // this update cycle, when the entity is free again, to re-point the
-        // selection at the pod this table selected instead of whatever pod
-        // the sort left at the previously selected index.
-        cx.defer_in(window, |table, _window, cx| reselect(table, cx));
+        // The table's own next step is ignored: `list_sort` decides it, then
+        // re-points the selection at the pod that moved (`after_sort`).
+        let _ = sort;
+        crate::ui::list_sort::header_clicked(self, col_ix, window, cx);
     }
 }
 

@@ -106,7 +106,9 @@ async fn a_service_forwards_its_chosen_port_to_a_running_pod(cx: &mut TestAppCon
         cx.new(|_| {
             let mut table = ObjectsTable::for_kind(&services());
             let object: DynamicObject = serde_json::from_value(service()).unwrap();
-            table.apply(watcher::Event::Apply(object));
+            table.apply(watcher::Event::Init);
+            table.apply(watcher::Event::InitApply(object));
+            table.apply(watcher::Event::InitDone);
             table
         })
     });

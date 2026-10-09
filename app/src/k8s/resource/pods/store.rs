@@ -1,6 +1,7 @@
 //! The live set of pods one watch keeps up to date, including the relist sweep that removes pods deleted while the watch was down.
 
 use super::*;
+use crate::k8s::resource::load_phase::LoadPhase;
 
 /// The live Pods index for one watch, kept up to date by [`PodsTable::apply`]
 /// as `watcher::Event`s arrive off the drain.
@@ -14,10 +15,11 @@ pub struct PodsTable {
     /// simply absent from the relist - so `InitDone` sweeps anything not
     /// seen during the cycle.
     pub(super) relisting: Option<std::collections::HashSet<String>>,
-    /// Whether a list has completed at least once, so an absent pod means gone
-    /// rather than not listed yet - what a detail panel reading its pod from
-    /// here needs to tell apart (`live-detail-panels` D2).
-    synced: bool,
+    /// Where the table is in its lists (`list-loading-indicator`). Once a
+    /// list has completed, an absent pod means gone rather than not listed
+    /// yet - what a detail panel reading its pod from here needs to tell apart
+    /// (`live-detail-panels` D2).
+    phase: LoadPhase,
 }
 
 impl PodsTable {
@@ -34,7 +36,12 @@ impl PodsTable {
 
     /// Whether the table has finished its first list.
     pub fn synced(&self) -> bool {
-        self.synced
+        self.phase.has_loaded()
+    }
+
+    /// Where the table is in its lists.
+    pub fn phase(&self) -> LoadPhase {
+        self.phase
     }
 
     /// The pod named `name` in `namespace`, preferring the one with `uid` when
@@ -69,6 +76,7 @@ impl PodsTable {
                 if let Some(seen) = &mut self.relisting {
                     seen.insert(id.clone());
                 }
+                self.phase.received();
                 self.index.apply_applied(id, pod);
             }
             watcher::Event::Delete(pod) => {
@@ -76,6 +84,7 @@ impl PodsTable {
             }
             watcher::Event::Init => {
                 self.relisting = Some(std::collections::HashSet::new());
+                self.phase.init();
             }
             watcher::Event::InitDone => {
                 let Some(seen) = self.relisting.take() else {
@@ -91,7 +100,7 @@ impl PodsTable {
                 for id in stale {
                     self.index.apply_deleted(&id);
                 }
-                self.synced = true;
+                self.phase.done();
             }
         }
     }

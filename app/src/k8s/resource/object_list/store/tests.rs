@@ -102,3 +102,29 @@ fn a_refusal_is_kept_until_the_list_is_served_again() {
     table.apply(watcher::Event::Init);
     assert_eq!(table.refused(), None);
 }
+
+/// `list-loading-indicator` 1.1: the table's phase follows its lists - a first
+/// list counted row by row until it completes, a later one a refresh.
+#[test]
+fn the_phase_follows_a_first_list_and_a_relist() {
+    use crate::k8s::resource::load_phase::LoadPhase;
+    let mut table = ObjectsTable::default();
+    assert_eq!(table.phase(), LoadPhase::FirstLoad { received: 0 });
+    table.apply(watcher::Event::Init);
+    table.apply(watcher::Event::InitApply(object(
+        "u1",
+        "web",
+        Some("team-a"),
+    )));
+    assert_eq!(table.phase(), LoadPhase::FirstLoad { received: 1 });
+    assert!(!table.synced());
+    table.apply(watcher::Event::InitDone);
+    assert_eq!(table.phase(), LoadPhase::Loaded);
+    assert!(table.synced());
+
+    table.apply(watcher::Event::Init);
+    assert_eq!(table.phase(), LoadPhase::Refreshing { received: 0 });
+    assert_eq!(names(&table), ["web"], "a refresh keeps the rows");
+    table.apply(watcher::Event::InitDone);
+    assert_eq!(table.phase(), LoadPhase::Loaded);
+}

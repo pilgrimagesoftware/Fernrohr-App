@@ -38,22 +38,33 @@ impl Recorder {
         status: &'static str,
         body: serde_json::Value,
     ) -> (Self, kube::Client) {
+        Self::start_answering(handle, move |_| (status, body.clone()))
+    }
+
+    /// [`Self::start`], answering each request with what `answer` gives for
+    /// it - for a client that parses typed objects, whose `kind` must match.
+    pub(crate) fn start_answering(
+        handle: &tokio::runtime::Handle,
+        answer: impl Fn(&Recorded) -> (&'static str, serde_json::Value) + Send + Sync + 'static,
+    ) -> (Self, kube::Client) {
         let recorder = Self {
             requests: Arc::default(),
         };
         let requests = recorder.requests.clone();
+        let answer = Arc::new(answer);
         let addr = handle.block_on(async move {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let addr = listener.local_addr().unwrap();
-            let body = body.to_string();
             tokio::spawn(async move {
                 loop {
                     let Ok((mut stream, _)) = listener.accept().await else {
                         return;
                     };
-                    let (requests, body) = (requests.clone(), body.clone());
+                    let (requests, answer) = (requests.clone(), answer.clone());
                     tokio::spawn(async move {
                         let request = read_request(&mut stream).await;
+                        let (status, body) = answer(&request);
+                        let body = body.to_string();
                         requests.lock().push(request);
                         let response = format!(
                             "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
