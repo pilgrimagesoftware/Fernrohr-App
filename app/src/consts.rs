@@ -226,6 +226,32 @@ pub(crate) const SAVED_LAYOUT_SCHEMA_VERSION: u32 = 1;
 /// detail view with the node's pod count.
 pub(crate) const NODE_PODS_REGION_HEIGHT: gpui_kit::Pixels = gpui_kit::px(320.);
 
+/// `agent-mcp`: the largest frame the app's MCP endpoint reads from the
+/// `fernrohr mcp` adapter - a handshake or one tool call's arguments. Typed tool
+/// inputs are names and small values, so this is generous, and it stops a
+/// client from making the app buffer an arbitrary body.
+pub(crate) const MCP_MAX_REQUEST_BYTES: usize = 1024 * 1024;
+
+/// `agent-mcp`: the largest reply the endpoint sends - a tool list, or one tool
+/// result after its own truncation. A result past this is replaced by a
+/// too-large error rather than sent (design.md Risks: large responses).
+pub(crate) const MCP_MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
+
+/// `agent-mcp`: how long a new endpoint connection has to complete its
+/// handshake before the app drops it, so a client that connects and says
+/// nothing doesn't hold a connection slot.
+pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// `agent-mcp`: how many endpoint connections are served at once. Each tool
+/// call is its own connection, and a call awaiting user approval holds one,
+/// so this bounds the work a misbehaving client can queue up.
+pub(crate) const MCP_MAX_CONNECTIONS: usize = 16;
+
+/// `agent-mcp`: how many foreground jobs - tool work that needs GPUI state -
+/// may wait for the main thread at once before the tool handlers queueing
+/// them wait too.
+pub(crate) const MCP_FOREGROUND_QUEUE: usize = 32;
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.

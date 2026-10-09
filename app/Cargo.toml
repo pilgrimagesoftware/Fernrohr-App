@@ -38,6 +38,9 @@ image = { version = "=0.25.10", default-features = false, features = ["png", "we
 # to those same versions.
 http = "=1.5.0"
 base64 = "=0.23.1"
+# The MCP endpoint's per-launch token (`mcp::endpoint`). Already in the build
+# through ahash and rand_core; pinned to that same version.
+getrandom = "=0.3.4"
 
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.

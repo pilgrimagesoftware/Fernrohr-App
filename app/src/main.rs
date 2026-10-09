@@ -7,6 +7,7 @@ mod consts;
 mod forward;
 mod k8s;
 mod keymap;
+mod mcp;
 mod runtime;
 mod ssh_path;
 mod tunnel;
@@ -47,5 +48,6 @@ fn main() {
             let keymap_path = util::paths::preference_dir().join("keymap.toml");
             util::shell::init(cx, workspace_path.clone(), &keymap_path);
             util::shell::open_saved_or_default(cx, &workspace_path);
+            mcp::start(cx);
         });
 }
