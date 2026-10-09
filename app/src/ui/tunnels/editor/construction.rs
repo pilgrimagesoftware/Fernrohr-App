@@ -80,6 +80,12 @@ impl TunnelEditor {
             .as_ref()
             .map(|tunnel| tunnel.manual.clone())
             .unwrap_or_default();
+        let manual_message = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Connect the corporate VPN in the menu bar")
+        });
+        manual_message.update(cx, |state, cx| {
+            state.set_value(manual.message.clone().unwrap_or_default(), window, cx)
+        });
         command_line.update(cx, |state, cx| {
             state.set_value(command.command_line.clone(), window, cx)
         });
@@ -126,7 +132,8 @@ impl TunnelEditor {
             mode: command.mode,
             local_port,
             startup_timeout,
-            manual,
+            manual_message,
+            skip_when_reachable: manual.skip_when_reachable,
             field_errors: Vec::new(),
             general_error: None,
             bound_contexts,

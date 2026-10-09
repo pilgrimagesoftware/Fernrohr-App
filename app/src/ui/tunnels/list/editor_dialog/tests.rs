@@ -163,7 +163,8 @@ async fn in_a_short_window_tab_reaches_the_command_forms_timeout(cx: &mut TestAp
     let mut h = harness(cx, 360.);
     h.edit();
 
-    h.keys("shift-tab");
+    // Back past Manual, the last kind, to Command.
+    h.keys("shift-tab shift-tab");
     h.press_space();
     assert_eq!(
         h.editor_kind(),
@@ -249,4 +250,82 @@ async fn a_failed_save_stays_open(cx: &mut TestAppContext) {
         1,
         "nothing new was saved"
     );
+}
+
+/// The stored tunnel named `name`.
+fn stored(path: &std::path::Path, name: &str) -> TunnelConfig {
+    let config: crate::config::tunnels::TunnelsConfig = crate::config::load(path);
+    config
+        .tunnels
+        .into_values()
+        .find(|tunnel| tunnel.name == name)
+        .unwrap_or_else(|| panic!("{name} is stored"))
+}
+
+/// `manual-confirmation-tunnels` 1.2: a new tunnel made manual from the keyboard -
+/// the kind switch, the instruction and the reachability choice each reached with
+/// Tab and pressed with Space - saves as a manual tunnel with those settings.
+#[gpui_kit::test]
+async fn a_manual_tunnel_is_created_from_the_keyboard(cx: &mut TestAppContext) {
+    let mut h = harness(cx, 600.);
+    h.click("tunnels-new");
+    assert_eq!(h.focused_field(), Some("Name"));
+    h.vcx.simulate_input("corp-vpn");
+    // The kind switch sits just above Name: Manual is the stop before it.
+    h.keys("shift-tab");
+    h.press_space();
+    assert_eq!(h.editor_kind(), Some(TunnelKind::Manual));
+    let test_shown = h.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(gpui_kit::ElementId::Name("tunnel-test".into()))
+            .is_some()
+    });
+    assert!(!test_shown, "a manual tunnel has nothing to test");
+
+    h.keys("tab tab");
+    assert_eq!(h.focused_field(), Some("Instruction"));
+    h.vcx
+        .simulate_input("Connect the corporate VPN in the menu bar");
+    // Skip the prompt, then Always prompt.
+    h.keys("tab tab");
+    h.press_space();
+    // Back to the instruction, where Enter saves.
+    h.keys("shift-tab shift-tab");
+    assert_eq!(h.focused_field(), Some("Instruction"));
+    h.keys("enter");
+    assert!(!h.dialog_open(), "Enter saves and closes the dialog");
+
+    let tunnel = stored(&h.path, "corp-vpn");
+    assert_eq!(tunnel.kind, TunnelKind::Manual);
+    assert_eq!(
+        tunnel.manual.message.as_deref(),
+        Some("Connect the corporate VPN in the menu bar")
+    );
+    assert!(!tunnel.manual.skip_when_reachable);
+}
+
+/// `manual-confirmation-tunnels` 1.2: an SSH tunnel switched to manual from the
+/// keyboard saves as manual with the defaults, and keeps its SSH settings for a
+/// switch back.
+#[gpui_kit::test]
+async fn an_ssh_tunnel_switches_to_manual_from_the_keyboard(cx: &mut TestAppContext) {
+    let mut h = harness(cx, 600.);
+    h.edit();
+    h.keys("shift-tab");
+    h.press_space();
+    assert_eq!(h.editor_kind(), Some(TunnelKind::Manual));
+    h.keys("tab");
+    assert_eq!(h.focused_field(), Some("Name"));
+    h.keys("enter");
+    assert!(!h.dialog_open());
+
+    let tunnel = TunnelStore::new(h.path.clone())
+        .get(TUNNEL_ID)
+        .expect("still stored under its id");
+    assert_eq!(tunnel.kind, TunnelKind::Manual);
+    assert_eq!(tunnel.manual.message, None);
+    assert!(tunnel.manual.skip_when_reachable, "on by default");
+    assert_eq!(tunnel.bastion_host, "bastion.example.com");
+    assert_eq!(tunnel.bastion_user, "ops");
 }

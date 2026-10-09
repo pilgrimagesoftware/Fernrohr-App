@@ -13,7 +13,6 @@ use gpui_kit::component::scroll::ScrollableElement as _;
 impl Render for TunnelEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
-        let is_ssh = self.kind == TunnelKind::Ssh;
 
         let field = |label: &'static str,
                      input: &Entity<InputState>,
@@ -121,7 +120,7 @@ impl Render for TunnelEditor {
         }
         sections.push(self.render_kind_switch(cx).into_any_element());
         sections.push(field("Name", &self.name, None).into_any_element());
-        if is_ssh {
+        if self.kind == TunnelKind::Ssh {
             sections.push(field("Host", &self.host, host_error).into_any_element());
             sections.push(field("User", &self.user, user_error).into_any_element());
             sections.push(field("Port", &self.port, port_error).into_any_element());
@@ -148,10 +147,14 @@ impl Render for TunnelEditor {
                     .into_any_element(),
             );
             sections.extend(key_field.map(IntoElement::into_any_element));
-        } else {
+        } else if self.kind == TunnelKind::Command {
             sections.extend(self.render_command_form(cx));
+        } else {
+            sections.extend(self.render_manual_form(cx));
         }
-        sections.push(
+        // A manual tunnel starts nothing, so it has nothing to test.
+        let testable = self.kind != TunnelKind::Manual;
+        sections.extend(testable.then(|| {
             div()
                 .flex()
                 .items_center()
@@ -167,8 +170,8 @@ impl Render for TunnelEditor {
                         }),
                 )
                 .children(test_status)
-                .into_any_element(),
-        );
+                .into_any_element()
+        }));
 
         while self.sections.len() < sections.len() {
             self.sections.push(cx.focus_handle());
