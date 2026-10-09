@@ -49,8 +49,9 @@ pub struct ObjectListPanel {
     /// The column layout to start the table with, once it's built.
     pub(super) initial_layout: ColumnLayout,
     /// The sort to start the table with, once it's built - a saved layout's
-    /// column id and direction (`saved-panel-layouts` 1.6), or `None` for the
-    /// table's own default (unsorted) order.
+    /// column id and direction (`saved-panel-layouts` 1.6), or `None` for
+    /// none of its own: the kind's remembered sort, else Name ascending
+    /// (`remembered-list-sort`).
     pub(super) initial_sort: Option<(String, bool)>,
     /// The last delete the cluster refused, shown until dismissed (`delete`).
     pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
@@ -212,14 +213,31 @@ impl ObjectListPanel {
         cx: &mut Context<Self>,
     ) -> Entity<TableState<ObjectTableDelegate>> {
         if self.table.is_none() {
-            let columns = apply_layout(ListColumn::for_kind(&self.kind), &self.initial_layout);
-            let initial_sort = self.initial_sort.clone();
+            let defaults = ListColumn::for_kind(&self.kind);
+            // The kind's first column in its default order - not the user's
+            // dragged one - ascending (`remembered-list-sort` D3).
+            let default_sort = (
+                defaults
+                    .first()
+                    .map_or_else(|| SharedString::from("name"), |column| column.id.clone()),
+                false,
+            );
+            let columns = apply_layout(defaults, &self.initial_layout);
+            let key = crate::ui::list_sort::kind_key(&self.kind);
+            let ids: Vec<SharedString> = columns.iter().map(|column| column.id.clone()).collect();
+            let start = crate::ui::list_sort::starting(
+                self.initial_sort
+                    .clone()
+                    .map(|(column, descending)| (column.into(), descending)),
+                crate::util::shell::SortDefaults::get(cx, &key),
+                &ids,
+                default_sort.clone(),
+            );
             let this = cx.weak_entity();
             let table = cx.new(|cx| {
                 let mut delegate = ObjectTableDelegate::new(columns);
-                if let Some((column, descending)) = &initial_sort {
-                    delegate.set_sort(column, *descending);
-                }
+                delegate.set_sorting(default_sort, key);
+                delegate.set_sort(&start.0, start.1);
                 delegate.set_on_open(move |row_ix, window, cx| {
                     let _ = this.update(cx, |this, cx| this.open_row(row_ix, window, cx));
                 });

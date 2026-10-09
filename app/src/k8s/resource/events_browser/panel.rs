@@ -102,7 +102,9 @@ impl EventsPanel {
             subscribed: false,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
             table: None,
-            initial_sort: Some(DEFAULT_SORT),
+            // Resolved when the table is built: the remembered sort, else
+            // [`DEFAULT_SORT`] (`remembered-list-sort`).
+            initial_sort: None,
             filters: EventFilters::default(),
             search: ListSearch::new(),
             discovery,
@@ -200,9 +202,36 @@ impl EventsPanel {
         cx: &mut Context<Self>,
     ) -> Entity<TableState<EventsTableDelegate>> {
         if self.table.is_none() {
-            let sort = self.initial_sort;
+            let own = self.initial_sort.and_then(|(column, sort)| match sort {
+                ColumnSort::Ascending => Some((column.id().into(), false)),
+                ColumnSort::Descending => Some((column.id().into(), true)),
+                ColumnSort::Default => None,
+            });
+            let ids: Vec<SharedString> = EventColumn::DEFAULT_ORDER
+                .iter()
+                .map(|column| SharedString::from(column.id()))
+                .collect();
+            let key = crate::ui::list_sort::EVENTS_KEY;
+            let (column, descending) = crate::ui::list_sort::starting(
+                own,
+                crate::util::shell::SortDefaults::get(cx, key),
+                &ids,
+                super::table::default_sort(),
+            );
+            let sort = EventColumn::from_id(&column)
+                .map(|column| {
+                    let direction = if descending {
+                        ColumnSort::Descending
+                    } else {
+                        ColumnSort::Ascending
+                    };
+                    (column, direction)
+                })
+                .or(Some(DEFAULT_SORT));
             let table = cx.new(|cx| {
-                TableState::new(EventsTableDelegate::new(sort), window, cx)
+                let mut delegate = EventsTableDelegate::new(sort);
+                delegate.remember_as(key);
+                TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
                     .sortable(true)

@@ -82,12 +82,27 @@ pub(super) fn harness_overriding_keymap(
     refused: Option<&str>,
     overrides: &[(&str, &str)],
 ) -> Harness {
+    harness_full(cx, kind, "kind-dev", objects, refused, overrides, |_| {})
+}
+
+/// [`harness_overriding_keymap`] on `context`, with `setup` run on the panel
+/// before its table is first built - a restored panel's own state.
+pub(super) fn harness_full(
+    cx: &mut TestAppContext,
+    kind: DiscoveredKind,
+    context: &str,
+    objects: Vec<DynamicObject>,
+    refused: Option<&str>,
+    overrides: &[(&str, &str)],
+    setup: impl FnOnce(&mut ObjectListPanel),
+) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_list::register_commands(&mut registry);
+        crate::ui::list_sort::register_commands(&mut registry);
         let mut config = KeymapConfig::default();
         for (id, key) in overrides {
             config.bindings.insert(id.to_string(), key.to_string());
@@ -114,8 +129,12 @@ pub(super) fn harness_overriding_keymap(
     });
     let mut built = None;
     let window = cx.add_window(|window, cx| {
-        let scope = PanelScope::new(NavTarget::Kind(kind.clone()), "kind-dev".into());
-        let panel = cx.new(|cx| ObjectListPanel::with_table(kind, scope, table, client, cx));
+        let scope = PanelScope::new(NavTarget::Kind(kind.clone()), context.into());
+        let panel = cx.new(|cx| {
+            let mut panel = ObjectListPanel::with_table(kind, scope, table, client, cx);
+            setup(&mut panel);
+            panel
+        });
         built = Some(panel.clone());
         Root::new(panel, window, cx)
     });
@@ -449,3 +468,4 @@ async fn double_clicking_a_header_divider_fits_its_column(cx: &mut TestAppContex
 mod background;
 mod poll;
 mod search;
+mod sort;

@@ -10,6 +10,11 @@ pub struct WorkspaceConfig {
     /// scoped to it. A list, so a set of namespaces can be a default too. Absent
     /// from older files, and for any context never warped.
     pub namespace_defaults: std::collections::BTreeMap<String, Vec<String>>,
+    /// The sort the user last chose for each kind of list (`remembered-list-sort`
+    /// D1), keyed by group and kind (`apps/Deployment`, `/Pod`) or `events`, its
+    /// column by id: a new list of that kind starts with it. Absent from older
+    /// files, and for any kind never sorted.
+    pub sort_defaults: std::collections::BTreeMap<String, SortState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -85,6 +90,46 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_file_without_sort_defaults_loads_with_none() {
+        let parsed: WorkspaceConfig = toml::from_str("windows = []\n").unwrap();
+        assert!(parsed.sort_defaults.is_empty());
+    }
+
+    #[test]
+    fn sort_defaults_round_trip_by_group_and_kind() {
+        let config = WorkspaceConfig {
+            sort_defaults: [
+                (
+                    "apps/Deployment".to_string(),
+                    SortState {
+                        column: "age".into(),
+                        ascending: false,
+                    },
+                ),
+                (
+                    "/Pod".to_string(),
+                    SortState {
+                        column: "restarts".into(),
+                        ascending: true,
+                    },
+                ),
+                (
+                    "events".to_string(),
+                    SortState {
+                        column: "reason".into(),
+                        ascending: true,
+                    },
+                ),
+            ]
+            .into(),
+            ..Default::default()
+        };
+        let text = toml::to_string(&config).unwrap();
+        let parsed: WorkspaceConfig = toml::from_str(&text).unwrap();
+        assert_eq!(parsed, config);
+    }
+
+    #[test]
     fn a_file_without_namespace_defaults_loads_with_none() {
         let parsed: WorkspaceConfig = toml::from_str("windows = []\n").unwrap();
         assert!(parsed.namespace_defaults.is_empty());
@@ -94,6 +139,7 @@ mod tests {
     fn namespace_defaults_round_trip() {
         let config = WorkspaceConfig {
             namespace_defaults: [("cluster-a".to_string(), vec!["team-a".to_string()])].into(),
+            sort_defaults: Default::default(),
             ..WorkspaceConfig::default()
         };
         let text = toml::to_string(&config).unwrap();
@@ -105,6 +151,7 @@ mod tests {
     fn round_trips_through_toml() {
         let config = WorkspaceConfig {
             namespace_defaults: Default::default(),
+            sort_defaults: Default::default(),
             windows: vec![WindowLayout {
                 width: 1200.0,
                 height: 900.0,
@@ -133,6 +180,7 @@ mod tests {
     fn round_trips_a_two_context_window() {
         let config = WorkspaceConfig {
             namespace_defaults: Default::default(),
+            sort_defaults: Default::default(),
             windows: vec![WindowLayout {
                 contexts: vec!["kind-dev".into(), "staging".into()],
                 panels: vec![
@@ -175,6 +223,7 @@ mod tests {
     fn round_trips_a_window_whose_second_context_has_no_panels() {
         let config = WorkspaceConfig {
             namespace_defaults: Default::default(),
+            sort_defaults: Default::default(),
             windows: vec![WindowLayout {
                 contexts: vec!["kind-dev".into(), "staging".into()],
                 panels: vec![PanelDescriptor::Pods {

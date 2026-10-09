@@ -9,7 +9,7 @@ use gpui_kit::*;
 
 mod list_model;
 pub(super) use list_model::{ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout};
-use list_model::{FORWARDS, cell_text, compare};
+use list_model::{FORWARDS, NAME, cell_text, compare};
 
 use super::columns;
 
@@ -61,6 +61,12 @@ pub(super) struct ObjectTableDelegate {
     rows: Vec<ListRow>,
     columns: Vec<ListColumn>,
     sort: Option<(SharedString, ColumnSort)>,
+    /// What a third header click or Cycle Sort returns to: the kind's first
+    /// column in its default order, ascending, whatever order the user has
+    /// dragged the columns into.
+    default_sort: crate::ui::list_sort::Sort,
+    /// The key the user's sort is remembered under; `None` remembers nothing.
+    remember_as: Option<String>,
     /// The object this table last had selected, by identity, to re-point its
     /// highlight after a sort or a watch update moves it.
     selected: Option<(Option<String>, String)>,
@@ -76,17 +82,36 @@ pub(super) struct ObjectTableDelegate {
 
 impl ObjectTableDelegate {
     pub(super) fn new(columns: Vec<ListColumn>) -> Self {
+        let default_sort = (
+            columns
+                .first()
+                .map_or_else(|| SharedString::from(NAME), |column| column.id.clone()),
+            false,
+        );
         Self {
             natural: Vec::new(),
             rows: Vec::new(),
             columns,
             sort: None,
+            default_sort,
+            remember_as: None,
             selected: None,
             on_open: None,
             on_open_in_background: None,
             background_click: Default::default(),
             header: Default::default(),
         }
+    }
+
+    /// Sets the sort a third click returns to, and the key the user's sorts
+    /// are remembered under (`remembered-list-sort`).
+    pub(super) fn set_sorting(
+        &mut self,
+        default_sort: crate::ui::list_sort::Sort,
+        remember_as: String,
+    ) {
+        self.default_sort = default_sort;
+        self.remember_as = Some(remember_as);
     }
 
     /// What the row context menu's "Open" does with the row it was raised on.
@@ -162,6 +187,7 @@ impl ObjectTableDelegate {
 
     /// Sorts by the column at `col_ix` in `sort`'s direction (already cycled by
     /// the table).
+    #[cfg(test)]
     pub(super) fn resort(&mut self, col_ix: usize, sort: ColumnSort) {
         self.sort = Some((self.columns[col_ix].id.clone(), sort));
         self.apply_sort();
@@ -345,10 +371,39 @@ impl TableDelegate for ObjectTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) {
-        self.resort(col_ix, sort);
-        // Mid-update on the table here, so re-pointing the selection waits for the
-        // end of this cycle, when the entity is free again.
-        cx.defer_in(window, |table, _window, cx| reselect(table, cx));
+        // The table's own next step is ignored: `list_sort` decides it.
+        let _ = sort;
+        crate::ui::list_sort::header_clicked(self, col_ix, window, cx);
+    }
+}
+
+impl crate::ui::list_sort::SortableTable for ObjectTableDelegate {
+    fn sort_columns(&self) -> Vec<SharedString> {
+        self.columns
+            .iter()
+            .map(|column| column.id.clone())
+            .collect()
+    }
+
+    fn current_sort(&self) -> Option<crate::ui::list_sort::Sort> {
+        self.sort_state()
+            .map(|(column, descending)| (SharedString::from(column.to_string()), descending))
+    }
+
+    fn sort_by(&mut self, (column, descending): &crate::ui::list_sort::Sort) {
+        self.set_sort(column, *descending);
+    }
+
+    fn default_sort(&self) -> crate::ui::list_sort::Sort {
+        self.default_sort.clone()
+    }
+
+    fn remember_as(&self) -> Option<&str> {
+        self.remember_as.as_deref()
+    }
+
+    fn after_sort(table: &mut TableState<Self>, cx: &mut Context<TableState<Self>>) {
+        reselect(table, cx);
     }
 }
 

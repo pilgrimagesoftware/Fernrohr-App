@@ -13,6 +13,7 @@ use crate::consts::BOUNDS_SAVE_DEBOUNCE;
 pub fn open_saved_or_default(cx: &mut App, workspace_path: &Path) {
     let workspace: WorkspaceConfig = config::load(workspace_path);
     super::namespace_defaults::NamespaceDefaults::load(cx, workspace.namespace_defaults.clone());
+    super::sort_defaults::SortDefaults::load(cx, workspace.sort_defaults.clone());
     let layouts = if workspace.windows.is_empty() {
         vec![WindowLayout::default()]
     } else {
@@ -59,11 +60,13 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
     }
     let windows: Vec<WindowLayout> = layouts.into_values().collect();
     let namespace_defaults = super::namespace_defaults::NamespaceDefaults::snapshot(cx);
+    let sort_defaults = super::sort_defaults::SortDefaults::snapshot(cx);
     let _ = config::save(
         workspace_path,
         &WorkspaceConfig {
             windows,
             namespace_defaults,
+            sort_defaults,
         },
     );
 }
