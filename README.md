@@ -152,6 +152,76 @@ one of two kinds.
   unattended, so run it once in a terminal first to answer any host-key or login prompts. It is
   stored in plain text in `tunnels.toml`: leave credentials to the tool's own login, not flags.
 
+## Agents (MCP)
+
+Fernrohr is an [MCP](https://modelcontextprotocol.io) server, so a coding agent such as Claude
+Code can use the clusters you have open in the app. The agent works through Fernrohr's own
+connections, tunnels and permissions: it never sees your kubeconfig, credentials or tunnel
+secrets, and it can only reach a context that a Fernrohr window already has open. Fernrohr has to
+be running for the agent to get an answer. It doesn't start the app on the agent's behalf.
+
+The agent can:
+
+- **Read**: list contexts and whether each is connected, list a context's resource kinds, list
+  and get resources, and read a pod's logs. Secret values come back as their sizes, never their
+  contents. Large results are cut short and say so.
+- **Navigate**: open or focus a resource list or an object's detail panel in the window holding
+  its context, list your saved layouts, and load one in Add or Replace mode. A layout panel for a
+  context the window isn't connected to comes back as a placeholder. Loading a layout never
+  connects a context.
+- **Act**, only with your approval, on this fixed list: set or remove one ConfigMap key, scale a
+  Deployment, StatefulSet or ReplicaSet, restart or roll back a Deployment, StatefulSet or
+  DaemonSet, pause or resume a Deployment's rollout, delete 1 to 10 named Pods, trigger a Job
+  from a CronJob, and suspend or resume a CronJob. The agent can't create, edit, patch or delete
+  anything else, and can't write Secrets.
+
+### Approving actions
+
+Every action opens a confirmation in Fernrohr naming the action, context, namespace, kind and
+every object it touches, with the values it changes, such as the replica count before and after,
+a ConfigMap key's old and new value, or the revision a rollback returns to. To show those, the
+action reads the objects first; nothing is written until you allow it.
+
+- Rolling back and deleting Pods can't be undone, so their confirmation opens on Cancel and Enter
+  cancels. Allow them by clicking, by tabbing to the button, or with `⌘⌫` (`Ctrl-Backspace` off
+  macOS). Other actions can be allowed with Enter.
+- Escape denies. A request you don't answer within 2 minutes is denied, and its dialog closes. It
+  also closes if the agent stops waiting.
+- The agent is told whether you allowed the action, denied it, or it timed out, and a denied or
+  timed-out action sends nothing to the cluster.
+- Requests are asked one at a time. A second waits until you answer the first.
+
+Reads and navigation need no approval.
+
+### Setting up an agent
+
+Open Settings → Agent Access. It has a ready-to-run command for Claude Code, Codex, Gemini CLI and
+OpenCode, each with a copy button. From the keyboard, run **Copy MCP Setup Command** from the
+command palette (⌘⇧P) and pick the agent. Each command registers Fernrohr for your user, so it
+works in every project, and runs this installation's `fernrohr mcp` by its full path:
+
+```
+claude mcp add --scope user fernrohr -- '<path to fernrohr>' mcp
+codex mcp add fernrohr -- '<path to fernrohr>' mcp
+gemini mcp add --scope user fernrohr '<path to fernrohr>' mcp
+opencode mcp add fernrohr --global -- '<path to fernrohr>' mcp
+```
+
+Older OpenCode releases lack `mcp add`, so the section also offers the config entry to paste into
+`opencode.json`: under `mcp.fernrohr` in OpenCode 1.x, or `mcp.servers.fernrohr` in 2.x.
+
+Copy the command from the running app rather than typing it, since the path is the one it is
+running from. If that path won't last, the section explains why instead of offering a command:
+
+- On macOS, an app opened straight from Downloads or a disk image runs from a temporary copy.
+  Move Fernrohr to Applications and open it from there.
+- A development build runs from Cargo's `target` directory, which the next build or
+  `cargo clean` replaces. Install Fernrohr and open the installed app.
+
+The connection between `fernrohr mcp` and the app is a Unix-domain socket in your per-user runtime
+directory, readable only by you and checked against a token that changes every launch. It is never
+a network port. Windows has no agent access yet, and the section says so.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and contribution guidelines.
