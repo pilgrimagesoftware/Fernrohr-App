@@ -6,9 +6,7 @@ use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::context_health::{ContextHealth, Severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::tunnel::manual::{Decision, ManualConfirmations};
-use crate::ui::status_bar::{
-    StatusItem, attention_selector, state_icon_selector, state_tooltip_text,
-};
+use crate::ui::status_bar::{StatusItem, attention_selector, icon_selector};
 use crate::util::shell::test_support::temp_workspace_path;
 use crate::util::shell::{MainWindow, init};
 use gpui_kit::assets::IconName;
@@ -163,17 +161,17 @@ async fn the_state_icons_tooltip_gives_the_state_wait_and_instruction(cx: &mut T
     let mut h = harness(cx, &[("staging", ConnectionState::WaitingForTunnel)]);
     awaiting(&mut h, &["staging"]);
     let item = items(&mut h).remove(0);
-    let tooltip = state_tooltip_text(&item).expect("the awaiting state has a tooltip");
+    let tooltip = item.tooltip();
     assert!(
-        tooltip.starts_with("Awaiting confirmation, waiting "),
+        tooltip.starts_with("Awaiting confirmation for "),
         "{tooltip}"
     );
-    assert!(tooltip.ends_with(MESSAGE), "{tooltip}");
+    assert!(tooltip.ends_with(&format!(": {MESSAGE}")), "{tooltip}");
 
     h.vcx.update(|window, cx| window.render_frame(cx));
     let at = h
         .vcx
-        .debug_bounds(state_icon_selector("staging").leak())
+        .debug_bounds(icon_selector("staging").leak())
         .expect("the state icon is drawn")
         .center();
     h.vcx.simulate_mouse_move(at, None, Modifiers::none());

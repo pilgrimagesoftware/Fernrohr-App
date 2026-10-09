@@ -15,6 +15,10 @@
 //!
 //! Escape cancels in both; Tab reaches both buttons, and Enter or Space presses
 //! the focused one. Owns the dialog; what confirming does is the caller's.
+//!
+//! [`open_with`] adds what a caller asking on someone else's behalf needs
+//! (`agent-mcp`'s action approval): labelled detail rows under the question,
+//! and a callback for every way the dialog is turned down.
 
 use crate::ui::confirm_text::ConfirmText;
 use gpui_kit::component::WindowExt as _;
@@ -83,6 +87,13 @@ pub(crate) fn confirm_id(id_prefix: &str) -> SharedString {
     format!("{id_prefix}-confirm").into()
 }
 
+/// One labelled row under a confirmation's question: "Replicas", "2 → 3".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Detail {
+    pub(crate) label: SharedString,
+    pub(crate) value: SharedString,
+}
+
 /// Asks `confirmation`, running `on_confirm` only if the user confirms - the
 /// confirm button, or the tier's key: Enter when recoverable, the
 /// [`ConfirmIrreversible`] shortcut when not. Cancel, or Escape, does nothing.
@@ -92,7 +103,28 @@ pub(crate) fn open(
     window: &mut Window,
     cx: &mut App,
 ) {
+    open_with(
+        confirmation,
+        Vec::new(),
+        on_confirm,
+        |_window, _cx| {},
+        window,
+        cx,
+    );
+}
+
+/// [`open`], with `details` listed under the question, and `on_cancel` run
+/// when the user turns it down - Cancel, Escape, or Enter on Cancel.
+pub(crate) fn open_with(
+    confirmation: Confirmation,
+    details: Vec<Detail>,
+    on_confirm: impl Fn(&mut Window, &mut App) + 'static,
+    on_cancel: impl Fn(&mut Window, &mut App) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let on_confirm = Rc::new(on_confirm);
+    let on_cancel = Rc::new(on_cancel);
     let Confirmation {
         title,
         body,
@@ -104,6 +136,8 @@ pub(crate) fn open(
     window.open_dialog(cx, move |dialog, window, cx| {
         let (on_ok, on_click) = (on_confirm.clone(), on_confirm.clone());
         let (on_enter, on_shortcut) = (on_confirm.clone(), on_confirm.clone());
+        let (cancel_on_ok, cancel_on_escape) = (on_cancel.clone(), on_cancel.clone());
+        let (cancel_on_enter, cancel_on_click) = (on_cancel.clone(), on_cancel.clone());
         let confirm_key = if irreversible {
             button_key(&ConfirmIrreversible, CONFIRM_IRREVERSIBLE_KEY, window)
         } else {
@@ -112,13 +146,23 @@ pub(crate) fn open(
         dialog
             .title(title.clone())
             .child(body.render(cx))
+            .when(!details.is_empty(), |dialog| {
+                dialog.child(render_details(&details, cx))
+            })
+            // Escape, and the dialog's own close control.
+            .on_cancel(move |_event, window, cx| {
+                cancel_on_escape(window, cx);
+                true
+            })
             // Enter: when recoverable, closes, then acts - the click path's
             // order - and returns false, as the dialog is already closed.
             // Closing after acting would close any dialog the action opened
             // instead of this one. When irreversible, Enter only closes.
             .on_ok(move |_event, window, cx| {
                 window.close_dialog(cx);
-                if !irreversible {
+                if irreversible {
+                    cancel_on_ok(window, cx);
+                } else {
                     on_ok(window, cx);
                 }
                 false
@@ -140,12 +184,18 @@ pub(crate) fn open(
                         // even when recoverable.
                         .child(
                             div()
-                                .on_action(|_: &Confirm, window, cx| window.close_dialog(cx))
+                                .on_action(move |_: &Confirm, window, cx| {
+                                    window.close_dialog(cx);
+                                    cancel_on_enter(window, cx);
+                                })
                                 .child(
                                     Button::new(cancel_id(id_prefix))
                                         .label("Cancel")
                                         .child(button_key(&Cancel, CANCEL_KEY, window))
-                                        .on_click(|_event, window, cx| window.close_dialog(cx)),
+                                        .on_click(move |_event, window, cx| {
+                                            window.close_dialog(cx);
+                                            cancel_on_click(window, cx);
+                                        }),
                                 ),
                         )
                         .child(
@@ -181,6 +231,30 @@ pub(crate) fn open(
             });
         }
     }
+}
+
+/// `details` as label/value rows: labels muted, values as they are, long
+/// ones wrapping.
+fn render_details(details: &[Detail], cx: &App) -> impl IntoElement {
+    use gpui_kit::component::{ActiveTheme as _, v_flex};
+    let muted = cx.theme().muted_foreground;
+    v_flex()
+        .id("confirm-details")
+        .mt_2()
+        .gap_1()
+        .children(details.iter().map(|detail| {
+            h_flex()
+                .gap_3()
+                .items_start()
+                .child(
+                    div()
+                        .w(px(96.))
+                        .flex_none()
+                        .text_color(muted)
+                        .child(detail.label.clone()),
+                )
+                .child(div().flex_1().min_w_0().child(detail.value.clone()))
+        }))
 }
 
 /// Moves focus to the first tab stop inside `dialog`. Tab order runs through

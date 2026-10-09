@@ -36,7 +36,58 @@ use super::*;
 use crate::ui::unrestored::{self, UnrestoredPanel};
 use gpui_kit::component::dock::panel_handle;
 
+/// Which of the two ways to load a saved layout: the picker's Enter and
+/// Secondary-Enter, and `agent-mcp`'s `load_layout` tool's `mode`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LoadMode {
+    /// [`MainWindow::load_replace`].
+    Replace,
+    /// [`MainWindow::load_add`].
+    Add,
+}
+
+/// What a [`MainWindow::load_layout`] restored as placeholders rather than
+/// panels.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct LoadedLayout {
+    /// The context of each saved panel restored as a placeholder because this
+    /// window doesn't hold it, in the layout's own panel order (one entry per
+    /// panel, so a context can repeat).
+    pub(crate) placeholder_contexts: Vec<String>,
+}
+
 impl MainWindow {
+    /// Loads `layout` in `mode`, and reports which of its panels became
+    /// missing-context placeholders. Both modes decide that by the same rule:
+    /// a panel whose key decodes, scoped to a context outside this window's
+    /// `contexts` - so the report is read off the layout before loading it,
+    /// rather than off the dock after. Nothing connects: the window's
+    /// `contexts` are what both modes keep.
+    pub(crate) fn load_layout(
+        &mut self,
+        layout: SavedLayout,
+        mode: LoadMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> LoadedLayout {
+        let WindowMode::Workspace { contexts, .. } = &self.mode else {
+            return LoadedLayout::default();
+        };
+        let placeholder_contexts = restored_panel_leaves(&layout.dock.center)
+            .into_iter()
+            .filter_map(|(_, key)| key)
+            .map(|key| key.context_name)
+            .filter(|context_name| !contexts.contains(context_name))
+            .collect();
+        match mode {
+            LoadMode::Replace => self.load_replace(layout, window, cx),
+            LoadMode::Add => self.load_add(layout, window, cx),
+        }
+        LoadedLayout {
+            placeholder_contexts,
+        }
+    }
+
     /// `saved_layouts.load_replace` (design.md D4): "I asked for *that*
     /// layout" - a wholesale swap, not a content-only merge. Rebuilds this
     /// window's dock from `layout.dock` via [`DockArea::load`], refreshes

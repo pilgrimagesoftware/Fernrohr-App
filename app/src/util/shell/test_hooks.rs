@@ -124,6 +124,16 @@ impl MainWindow {
     /// content keys (which a placeholder has none of) at what the dock
     /// actually built, e.g. `saved-panel-layouts` 5.1's missing-context
     /// placeholder or 5.3's unrecognised-kind one.
+    /// Test-only: the dock's dump, as `layouts.save` captures it - for tests
+    /// outside `util::shell` that need a real saved layout (`mcp::navigate`).
+    #[cfg(test)]
+    pub(crate) fn test_dock_dump(&self, cx: &App) -> gpui_kit::component::dock::DockAreaState {
+        match &self.mode {
+            WindowMode::Workspace { dock_area, .. } => dock_area.read(cx).dump(cx),
+            WindowMode::Picker(_) => panic!("a dock dump needs a workspace window"),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn test_dock_views(
         &self,

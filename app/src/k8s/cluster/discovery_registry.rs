@@ -39,6 +39,17 @@ impl DiscoveryRegistry {
         kinds
     }
 
+    /// `context_name`'s kinds if its discovery has already succeeded. Unlike
+    /// [`Self::kinds`], never starts discovery or a connection.
+    pub fn existing_kinds(cx: &App, context_name: &str) -> Option<Vec<DiscoveredKind>> {
+        cx.try_global::<Self>()?
+            .0
+            .get(context_name)?
+            .read(cx)
+            .kinds()
+            .map(<[DiscoveredKind]>::to_vec)
+    }
+
     /// Makes `kinds` `context_name`'s discovery: the Resource panel's latest result,
     /// newer than any this registry ran itself.
     pub fn publish(cx: &mut App, context_name: &str, kinds: Vec<DiscoveredKind>) {

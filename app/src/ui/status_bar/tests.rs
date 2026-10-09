@@ -103,12 +103,11 @@ async fn closing_the_last_panel_for_a_context_keeps_its_status_item(cx: &mut Tes
     );
 }
 
-/// Section 2.1: the spec's "Readable without color" scenario - every state pairs with a
-/// distinct icon and text, so no two states look alike in a grayscale screenshot.
-#[test]
-fn icon_and_text_differ_per_state() {
-    let now = Instant::now();
-    let healths = [
+/// Every state once. The match below has no wildcard, so a new `ContextHealth`
+/// or `PauseReason` variant fails to compile until it is listed here too, and
+/// can't slip past the tests that use this.
+fn every_state(now: Instant) -> Vec<ContextHealth> {
+    let states = vec![
         ContextHealth::Connected,
         ContextHealth::WaitingForTunnel { since: now },
         ContextHealth::Paused {
@@ -123,16 +122,78 @@ fn icon_and_text_differ_per_state() {
             reason: "boom".to_string(),
             since: now,
         },
+        ContextHealth::AwaitingConfirmation {
+            tunnel_id: "corp-vpn-id".to_string(),
+            tunnel: "corp-vpn".to_string(),
+            message: Some("Connect the corporate VPN".to_string()),
+            since: now,
+        },
     ];
+    for state in &states {
+        match state {
+            ContextHealth::Connected
+            | ContextHealth::WaitingForTunnel { .. }
+            | ContextHealth::Paused {
+                reason: PauseReason::Reconnecting | PauseReason::CredentialRefresh,
+                ..
+            }
+            | ContextHealth::Failed { .. }
+            | ContextHealth::AwaitingConfirmation { .. } => {}
+        }
+    }
+    states
+}
 
+/// `status-capsule-icons` 1.3, the spec's "Readable without color" scenario: the
+/// capsule shows a state by its icon alone, so no two states may share one.
+#[test]
+fn every_state_has_its_own_icon() {
     let mut seen = HashSet::new();
-    for health in &healths {
-        let (icon, text) = StatusBarView::icon_and_text(health);
+    for health in every_state(Instant::now()) {
+        let (icon, _) = StatusBarView::icon_and_text(&health);
         assert!(
-            seen.insert((format!("{icon:?}"), text)),
-            "duplicate icon/text pair for {health:?}"
+            seen.insert(format!("{icon:?}")),
+            "{health:?} shares its icon {icon:?} with another state"
         );
     }
+}
+
+/// And each names itself differently in the icon's tooltip.
+#[test]
+fn every_state_has_its_own_name() {
+    let mut seen = HashSet::new();
+    for health in every_state(Instant::now()) {
+        let (_, text) = StatusBarView::icon_and_text(&health);
+        assert!(seen.insert(text), "{health:?} shares its name {text:?}");
+    }
+}
+
+/// `status-capsule-icons` D2: the icon's tooltip names the state, adds how long
+/// it has lasted unless connected, and a failure's reason.
+#[test]
+fn the_tooltip_names_the_state_its_duration_and_a_failures_reason() {
+    use super::StatusItem;
+    use gpui_kit::assets::IconName;
+    let item = |text, elapsed: Option<u64>, reason: Option<&str>| StatusItem {
+        context_name: "dev".into(),
+        tunnel: None,
+        active: false,
+        health: ContextHealth::Connected,
+        severity: Severity::Muted,
+        icon: IconName::CircleCheck,
+        text,
+        elapsed: elapsed.map(Duration::from_secs),
+        reason: reason.map(str::to_string),
+    };
+    assert_eq!(item("Connected", None, None).tooltip(), "Connected");
+    assert_eq!(
+        item("Reconnecting", Some(42), None).tooltip(),
+        "Reconnecting for 42s"
+    );
+    assert_eq!(
+        item("Connection failed", Some(180), Some("connection refused")).tooltip(),
+        "Connection failed for 3m: connection refused"
+    );
 }
 
 /// Section 2.2: elapsed time advances and escalates past 30 s as the injected clock

@@ -11,6 +11,7 @@ use gpui_kit::{
     Action, App, Entity, KeyContext, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
 };
 
+mod agent_access;
 mod layout;
 mod saved_layouts;
 

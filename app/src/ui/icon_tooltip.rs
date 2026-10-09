@@ -17,21 +17,15 @@ pub fn with_tooltip(
     text: &'static str,
     button: impl IntoElement,
 ) -> Stateful<Div> {
-    div()
-        .id(id.into())
-        .tooltip(move |window, cx| {
-            Tooltip::element(move |_, _| div().debug_selector(move || selector(text)).child(text))
-                .build(window, cx)
-        })
-        .child(button)
+    with_tooltip_text(id, text, button)
 }
 
-/// [`with_tooltip`] for a tooltip whose text is built at render time - a state's
-/// elapsed time, say - rather than a fixed action name.
-pub fn with_text_tooltip(
+/// [`with_tooltip`] for text built at render time, such as a state with how
+/// long it has lasted.
+pub fn with_tooltip_text(
     id: impl Into<ElementId>,
     text: impl Into<SharedString>,
-    child: impl IntoElement,
+    element: impl IntoElement,
 ) -> Stateful<Div> {
     let text: SharedString = text.into();
     div()
@@ -39,10 +33,12 @@ pub fn with_text_tooltip(
         .tooltip(move |window, cx| {
             let text = text.clone();
             Tooltip::element(move |_, _| {
-                let selector = selector(&text);
-                div().debug_selector(move || selector).child(text.clone())
+                let label = text.clone();
+                div()
+                    .debug_selector(move || selector(&label))
+                    .child(text.clone())
             })
             .build(window, cx)
         })
-        .child(child)
+        .child(element)
 }

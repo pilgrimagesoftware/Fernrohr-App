@@ -21,6 +21,8 @@
 
 mod load;
 
+pub(crate) use load::{LoadMode, LoadedLayout};
+
 use super::*;
 use crate::config::saved_layouts::{self, SavedLayout};
 use crate::consts::SAVED_LAYOUT_SCHEMA_VERSION;

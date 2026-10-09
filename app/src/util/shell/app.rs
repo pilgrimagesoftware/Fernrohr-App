@@ -177,6 +177,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::report_issue::register_commands(registry);
     crate::ui::confirm_dialog::register_commands(registry);
     crate::ui::manual_tunnel::register_commands(registry);
+    crate::ui::agent_setup::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to
@@ -211,6 +212,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::ui::logs_panels::register_handlers(cx);
     crate::ui::theme::register_handlers(cx);
     crate::ui::report_issue::register_handler(cx);
+    crate::ui::agent_setup::register_handler(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
     });

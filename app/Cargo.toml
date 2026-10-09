@@ -38,6 +38,18 @@ image = { version = "=0.25.10", default-features = false, features = ["png", "we
 # to those same versions.
 http = "=1.5.0"
 base64 = "=0.23.1"
+# The `fernrohr mcp` stdio adapter (`mcp::adapter`, Fernrohr#189): the official
+# MCP SDK, for protocol negotiation and JSON-RPC framing. Only its server role
+# and stdio transport; its schemars, uuid, chrono and tracing are already in the
+# build, so it adds itself, its macros crate and their proc-macro helpers.
+rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"] }
+# The MCP endpoint's per-launch token (`mcp::endpoint`). Already in the build
+# through ahash and rand_core; pinned to that same version.
+getrandom = "=0.3.4"
+# The MCP tools' input schemas, derived from their typed inputs
+# (`mcp::tools::ToolSpec::for_input`). Already in the build through gpui-base
+# and rmcp, with its derive; pinned to that same version.
+schemars = "=1.2.2"
 
 # Desktop notifications (`notify`, manual-confirmation-tunnels D6): the macOS
 # notification center and the freedesktop D-Bus service. Already in the Linux

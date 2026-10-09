@@ -1,16 +1,29 @@
 //! One status bar capsule per context, and the add control after them
 //! (`toolbar-layout-with-gpui-kit` 1.1-1.3, formerly the context bar's chips): the
-//! capsule draws a [`StatusItem`] - name, tunnel, state icon and text, elapsed time -
-//! and clicking it makes its context the window's active one; its menu offers
-//! Disconnect. Every action asks `MainWindow`, which owns the window's contexts.
+//! capsule draws a [`StatusItem`] as `<context> [<tunnel>] <state icon>`, then the
+//! elapsed time unless connected (`status-capsule-icons`), and clicking it makes
+//! its context the window's active one; its menu offers Disconnect. Every action
+//! asks `MainWindow`, which owns the window's contexts.
+//!
+//! The context name is what a row of capsules is scanned for, so it leads, in the
+//! frame font and the severity tint. The tunnel and elapsed time are secondary:
+//! data font, a size down, muted - brackets included, so they never take the
+//! tint. The state's name is the icon's tooltip.
+//!
+//! A context awaiting a manual tunnel's confirmation (`manual-confirmation-tunnels`
+//! D8) keeps that layout, filled with the theme's warning color and drawn in its
+//! foreground - secondary parts too, so they stay readable on the fill - and its
+//! menu offers Proceed and Cancel above Disconnect.
 
 use super::{StatusBarView, StatusItem};
 use crate::k8s::cluster::context_health::{ContextHealth, Severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::format_age;
 use crate::tunnel::manual::{Decision, ManualConfirmations};
+use crate::ui::icon_tooltip;
 use crate::ui::manual_tunnel::{CancelManualTunnel, ProceedManualTunnel};
 use crate::ui::picker::{ClusterPicker, PickerEvent};
+use crate::ui::typography::TypeRole as _;
 use crate::util::context_lifecycle;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -18,6 +31,24 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Icon, Sizable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+
+/// The tunnel's and elapsed time's size, in rems: one step below the capsule's
+/// own `text_xs` (0.75rem). In rems so it follows the text-size preference.
+const SECONDARY_TEXT_REMS: f32 = 0.625;
+
+/// The debug selectors of a capsule's parts, for `context_name`'s capsule.
+fn name_selector(context_name: &str) -> String {
+    format!("status-item-name-{context_name}")
+}
+fn tunnel_selector(context_name: &str) -> String {
+    format!("status-item-tunnel-{context_name}")
+}
+pub(crate) fn icon_selector(context_name: &str) -> String {
+    format!("status-item-icon-{context_name}")
+}
+fn elapsed_selector(context_name: &str) -> String {
+    format!("status-item-elapsed-{context_name}")
+}
 
 fn color(theme: &gpui_kit::component::Theme, severity: Severity) -> Hsla {
     match severity {
@@ -30,36 +61,16 @@ fn color(theme: &gpui_kit::component::Theme, severity: Severity) -> Hsla {
     }
 }
 
-/// The debug selector of a capsule's state icon.
-pub(crate) fn state_icon_selector(context_name: &str) -> String {
-    format!("status-state-icon-{context_name}")
-}
-
 /// The debug selector a capsule carries while it is filled for attention.
 pub(crate) fn attention_selector(context_name: &str) -> String {
     format!("status-attention-{context_name}")
 }
 
-/// The state icon's tooltip, for a state that has one: the awaiting state's text,
-/// how long it has waited, and the tunnel's instruction.
-pub(crate) fn state_tooltip_text(item: &StatusItem) -> Option<String> {
-    let ContextHealth::AwaitingConfirmation { message, .. } = &item.health else {
-        return None;
-    };
-    let waited = item
-        .elapsed
-        .map(|elapsed| format!(", waiting {}", format_age(elapsed.as_secs() as i64)))
-        .unwrap_or_default();
-    Some(match message {
-        Some(message) => format!("{}{waited}. {message}", item.text),
-        None => format!("{}{waited}", item.text),
-    })
-}
-
 /// `item`'s capsule: its health and identity as one clickable body, then a menu
 /// button offering Disconnect - and, while the context awaits a manual tunnel's
-/// confirmation, Proceed and Cancel above it. Fully rounded and bordered, so the row
-/// reads as a set of contexts; the active one is filled.
+/// confirmation, Proceed and Cancel above it. Fully rounded and bordered, so the
+/// row reads as a set of contexts; the active one is filled, and an awaiting one
+/// is filled for attention.
 pub(super) fn render_capsule(
     item: StatusItem,
     this: WeakEntity<StatusBarView>,
@@ -67,28 +78,31 @@ pub(super) fn render_capsule(
 ) -> AnyElement {
     let tint = color(theme, item.severity);
     let attention = item.severity == Severity::Attention;
-    let tunnel_tint = if attention {
+    let secondary_tint = if attention {
         tint
     } else {
         theme.muted_foreground
     };
-    // The state icon, with its tooltip while it has one to say - the awaiting state's
-    // elapsed wait and instruction, so a long message never widens the bar.
-    let icon_selector = state_icon_selector(&item.context_name);
-    let icon = div()
-        .debug_selector(move || icon_selector)
-        .child(Icon::new(item.icon).size(px(12.)).text_color(tint));
-    let icon = match state_tooltip_text(&item) {
-        Some(text) => crate::ui::icon_tooltip::with_text_tooltip(
-            format!("status-state-{}", item.context_name),
-            text,
-            icon,
-        )
-        .into_any_element(),
-        None => icon.into_any_element(),
-    };
     let selector = format!("status-item-{}", item.context_name);
+    let tooltip = item.tooltip();
+    let context = item.context_name.clone();
+    let secondary = |text: String, selector: String| {
+        div()
+            .debug_selector(move || selector)
+            .data_font()
+            .text_size(rems(SECONDARY_TEXT_REMS))
+            .text_color(secondary_tint)
+            .child(text)
+    };
+    let icon_selector = icon_selector(&context);
+    let icon = icon_tooltip::with_tooltip_text(
+        SharedString::from(icon_selector.clone()),
+        tooltip,
+        Icon::new(item.icon).size(px(12.)).text_color(tint),
+    )
+    .debug_selector(move || icon_selector);
     let name = item.context_name.clone();
+    let name_for_fill = item.context_name.clone();
     let click_target = this.clone();
     let body = Button::new(SharedString::from(format!(
         "context-chip-{}",
@@ -103,16 +117,23 @@ pub(super) fn render_capsule(
             .items_center()
             .gap_1p5()
             .text_color(tint)
-            .child(item.context_name.clone())
+            .child({
+                let selector = name_selector(&context);
+                div()
+                    .debug_selector(move || selector)
+                    .child(item.context_name.clone())
+            })
             .children(
                 item.tunnel
-                    .map(|tunnel| div().text_xs().text_color(tunnel_tint).child(tunnel)),
+                    .map(|tunnel| secondary(format!("[{tunnel}]"), tunnel_selector(&context))),
             )
-            .child(item.text)
-            .children(
-                item.elapsed
-                    .map(|elapsed| format!("({} ago)", format_age(elapsed.as_secs() as i64))),
-            ),
+            .child(icon)
+            .children(item.elapsed.map(|elapsed| {
+                secondary(
+                    format_age(elapsed.as_secs() as i64),
+                    elapsed_selector(&context),
+                )
+            })),
     )
     .on_click({
         let name = name.clone();
@@ -166,11 +187,8 @@ pub(super) fn render_capsule(
             theme.border
         })
         .when(item.active && !attention, |el| el.bg(theme.selection))
-        // The state icon sits before the button rather than in it, so its tooltip
-        // has a hover target of its own.
-        .child(icon)
         .when(attention, |el| {
-            let selector = attention_selector(&item.context_name);
+            let selector = attention_selector(&name_for_fill);
             el.bg(theme.warning).debug_selector(move || selector)
         })
         .child(body)
@@ -302,5 +320,7 @@ impl StatusBarView {
     }
 }
 
+#[cfg(test)]
+mod render_tests;
 #[cfg(test)]
 mod tests;
