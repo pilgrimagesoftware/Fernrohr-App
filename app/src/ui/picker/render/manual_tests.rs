@@ -50,6 +50,10 @@ fn waiting(cx: &mut TestAppContext) -> Harness {
             &["kind-dev"],
         );
         picker.update(cx, |picker, cx| {
+            // The picker's contexts come from the host's kubeconfig, and with none
+            // it draws only "no contexts" - so give it its own, keeping the test
+            // independent of the machine it runs on.
+            picker.contexts = Ok(vec!["kind-dev".to_string()]);
             picker.test_attempt("kind-dev", connection.clone(), cx)
         });
         answer
