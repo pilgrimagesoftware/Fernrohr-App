@@ -13,6 +13,7 @@ use crate::consts::STATUS_TICK_INTERVAL;
 use crate::k8s::cluster::context_health::{ContextHealth, Severity, severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::cluster::watch_registry::PauseReason;
+use crate::k8s::resource::pods::format_age;
 use crate::ui::picker::load_tunnels;
 use crate::ui::picker_tunnel::TunnelChoice;
 use crate::ui::tunnels::TunnelsRevision;
@@ -57,10 +58,30 @@ pub struct StatusItem {
     pub health: ContextHealth,
     pub severity: Severity,
     pub icon: IconName,
+    /// The state's name, shown in the icon's tooltip rather than the capsule.
     pub text: &'static str,
     /// `None` only for `ContextHealth::Connected` - every other state shows how long
     /// it's been in it, per the spec's "Window status bar" requirement.
     pub elapsed: Option<Duration>,
+    /// Why a failed connection failed, for the tooltip.
+    pub reason: Option<String>,
+}
+
+impl StatusItem {
+    /// The state icon's tooltip (`status-capsule-icons` D2): the state, how long
+    /// it has lasted unless connected, and a failure's reason.
+    pub fn tooltip(&self) -> String {
+        let mut tooltip = self.text.to_string();
+        if let Some(elapsed) = self.elapsed {
+            tooltip.push_str(" for ");
+            tooltip.push_str(&format_age(elapsed.as_secs() as i64));
+        }
+        if let Some(reason) = &self.reason {
+            tooltip.push_str(": ");
+            tooltip.push_str(reason);
+        }
+        tooltip
+    }
 }
 
 /// Where "now" comes from for a [`StatusItem`]'s elapsed time and escalation: real time
@@ -283,6 +304,12 @@ impl StatusBarView {
         let health = ClusterRegistry::health(cx, context_name);
         let (icon, text) = Self::icon_and_text(&health);
         let elapsed = Self::elapsed(&health, now);
+        let reason = match &health {
+            ContextHealth::Failed { reason, .. } => Some(reason.clone()),
+            ContextHealth::Connected
+            | ContextHealth::WaitingForTunnel { .. }
+            | ContextHealth::Paused { .. } => None,
+        };
         StatusItem {
             context_name: context_name.to_string(),
             tunnel: None,
@@ -292,6 +319,7 @@ impl StatusBarView {
             icon,
             text,
             elapsed,
+            reason,
         }
     }
 

@@ -1,14 +1,22 @@
 //! One status bar capsule per context, and the add control after them
 //! (`toolbar-layout-with-gpui-kit` 1.1-1.3, formerly the context bar's chips): the
-//! capsule draws a [`StatusItem`] - name, tunnel, state icon and text, elapsed time -
-//! and clicking it makes its context the window's active one; its menu offers
-//! Disconnect. Every action asks `MainWindow`, which owns the window's contexts.
+//! capsule draws a [`StatusItem`] as `<context> [<tunnel>] <state icon>`, then the
+//! elapsed time unless connected (`status-capsule-icons`), and clicking it makes
+//! its context the window's active one; its menu offers Disconnect. Every action
+//! asks `MainWindow`, which owns the window's contexts.
+//!
+//! The context name is what a row of capsules is scanned for, so it leads, in the
+//! frame font and the severity tint. The tunnel and elapsed time are secondary:
+//! data font, a size down, muted - brackets included, so they never take the
+//! tint. The state's name is the icon's tooltip.
 
 use super::{StatusBarView, StatusItem};
 use crate::k8s::cluster::context_health::Severity;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::format_age;
+use crate::ui::icon_tooltip;
 use crate::ui::picker::{ClusterPicker, PickerEvent};
+use crate::ui::typography::TypeRole as _;
 use crate::util::context_lifecycle;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -16,6 +24,24 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Icon, Sizable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+
+/// The tunnel's and elapsed time's size, in rems: one step below the capsule's
+/// own `text_xs` (0.75rem). In rems so it follows the text-size preference.
+const SECONDARY_TEXT_REMS: f32 = 0.625;
+
+/// The debug selectors of a capsule's parts, for `context_name`'s capsule.
+fn name_selector(context_name: &str) -> String {
+    format!("status-item-name-{context_name}")
+}
+fn tunnel_selector(context_name: &str) -> String {
+    format!("status-item-tunnel-{context_name}")
+}
+fn icon_selector(context_name: &str) -> String {
+    format!("status-item-icon-{context_name}")
+}
+fn elapsed_selector(context_name: &str) -> String {
+    format!("status-item-elapsed-{context_name}")
+}
 
 fn color(theme: &gpui_kit::component::Theme, severity: Severity) -> Hsla {
     match severity {
@@ -36,6 +62,23 @@ pub(super) fn render_capsule(
 ) -> AnyElement {
     let tint = color(theme, item.severity);
     let selector = format!("status-item-{}", item.context_name);
+    let tooltip = item.tooltip();
+    let context = item.context_name.clone();
+    let secondary = |text: String, selector: String| {
+        div()
+            .debug_selector(move || selector)
+            .data_font()
+            .text_size(rems(SECONDARY_TEXT_REMS))
+            .text_color(theme.muted_foreground)
+            .child(text)
+    };
+    let icon_selector = icon_selector(&context);
+    let icon = icon_tooltip::with_tooltip_text(
+        SharedString::from(icon_selector.clone()),
+        tooltip,
+        Icon::new(item.icon).size(px(12.)).text_color(tint),
+    )
+    .debug_selector(move || icon_selector);
     let name = item.context_name.clone();
     let click_target = this.clone();
     let body = Button::new(SharedString::from(format!(
@@ -51,19 +94,23 @@ pub(super) fn render_capsule(
             .items_center()
             .gap_1p5()
             .text_color(tint)
-            .child(Icon::new(item.icon).size(px(12.)).text_color(tint))
-            .child(item.context_name.clone())
-            .children(item.tunnel.map(|tunnel| {
+            .child({
+                let selector = name_selector(&context);
                 div()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(tunnel)
-            }))
-            .child(item.text)
+                    .debug_selector(move || selector)
+                    .child(item.context_name.clone())
+            })
             .children(
-                item.elapsed
-                    .map(|elapsed| format!("({} ago)", format_age(elapsed.as_secs() as i64))),
-            ),
+                item.tunnel
+                    .map(|tunnel| secondary(format!("[{tunnel}]"), tunnel_selector(&context))),
+            )
+            .child(icon)
+            .children(item.elapsed.map(|elapsed| {
+                secondary(
+                    format_age(elapsed.as_secs() as i64),
+                    elapsed_selector(&context),
+                )
+            })),
     )
     .on_click({
         let name = name.clone();
@@ -213,5 +260,7 @@ impl StatusBarView {
     }
 }
 
+#[cfg(test)]
+mod render_tests;
 #[cfg(test)]
 mod tests;

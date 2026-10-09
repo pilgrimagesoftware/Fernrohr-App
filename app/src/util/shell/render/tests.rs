@@ -106,8 +106,11 @@ fn a_windows_frame_is_drawn_in_the_frame_family() {
         for (surface, text) in [
             ("a tab", "Pods"),
             ("the Resource panel's heading", "Resources"),
-            ("the context bar", "kind-dev"),
-            ("the status bar", "Connected"),
+            // A capsule's state text is now its icon's tooltip
+            // (`status-capsule-icons`); its context name is the status bar's
+            // frame text, and the tunnel and elapsed time are data text
+            // (`ui/status_bar/capsule/render_tests.rs`).
+            ("the status bar's context name", "kind-dev"),
         ] {
             assert_eq!(
                 recorded.family_of(text).as_ref(),
