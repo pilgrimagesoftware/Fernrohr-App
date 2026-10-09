@@ -5,7 +5,7 @@
 //! Disconnect. Every action asks `MainWindow`, which owns the window's contexts.
 
 use super::{StatusBarView, StatusItem};
-use crate::k8s::cluster::context_health::Severity;
+use crate::k8s::cluster::context_health::{ContextHealth, Severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::format_age;
 use crate::ui::picker::{ClusterPicker, PickerEvent};
@@ -23,7 +23,35 @@ fn color(theme: &gpui_kit::component::Theme, severity: Severity) -> Hsla {
         Severity::Info => theme.info,
         Severity::Warning => theme.warning,
         Severity::Danger => theme.danger,
+        // On the capsule's warning fill.
+        Severity::Attention => theme.warning_foreground,
     }
+}
+
+/// The debug selector of a capsule's state icon.
+pub(crate) fn state_icon_selector(context_name: &str) -> String {
+    format!("status-state-icon-{context_name}")
+}
+
+/// The debug selector a capsule carries while it is filled for attention.
+pub(crate) fn attention_selector(context_name: &str) -> String {
+    format!("status-attention-{context_name}")
+}
+
+/// The state icon's tooltip, for a state that has one: the awaiting state's text,
+/// how long it has waited, and the tunnel's instruction.
+pub(crate) fn state_tooltip_text(item: &StatusItem) -> Option<String> {
+    let ContextHealth::AwaitingConfirmation { message, .. } = &item.health else {
+        return None;
+    };
+    let waited = item
+        .elapsed
+        .map(|elapsed| format!(", waiting {}", format_age(elapsed.as_secs() as i64)))
+        .unwrap_or_default();
+    Some(match message {
+        Some(message) => format!("{}{waited}. {message}", item.text),
+        None => format!("{}{waited}", item.text),
+    })
 }
 
 /// `item`'s capsule: its health and identity as one clickable body, then a menu
@@ -35,6 +63,27 @@ pub(super) fn render_capsule(
     theme: &gpui_kit::component::Theme,
 ) -> AnyElement {
     let tint = color(theme, item.severity);
+    let attention = item.severity == Severity::Attention;
+    let tunnel_tint = if attention {
+        tint
+    } else {
+        theme.muted_foreground
+    };
+    // The state icon, with its tooltip while it has one to say - the awaiting state's
+    // elapsed wait and instruction, so a long message never widens the bar.
+    let icon_selector = state_icon_selector(&item.context_name);
+    let icon = div()
+        .debug_selector(move || icon_selector)
+        .child(Icon::new(item.icon).size(px(12.)).text_color(tint));
+    let icon = match state_tooltip_text(&item) {
+        Some(text) => crate::ui::icon_tooltip::with_text_tooltip(
+            format!("status-state-{}", item.context_name),
+            text,
+            icon,
+        )
+        .into_any_element(),
+        None => icon.into_any_element(),
+    };
     let selector = format!("status-item-{}", item.context_name);
     let name = item.context_name.clone();
     let click_target = this.clone();
@@ -51,14 +100,11 @@ pub(super) fn render_capsule(
             .items_center()
             .gap_1p5()
             .text_color(tint)
-            .child(Icon::new(item.icon).size(px(12.)).text_color(tint))
             .child(item.context_name.clone())
-            .children(item.tunnel.map(|tunnel| {
-                div()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(tunnel)
-            }))
+            .children(
+                item.tunnel
+                    .map(|tunnel| div().text_xs().text_color(tunnel_tint).child(tunnel)),
+            )
             .child(item.text)
             .children(
                 item.elapsed
@@ -99,8 +145,19 @@ pub(super) fn render_capsule(
         .pr_0p5()
         .rounded_full()
         .border_1()
-        .border_color(theme.border)
-        .when(item.active, |el| el.bg(theme.selection))
+        .border_color(if attention {
+            theme.warning
+        } else {
+            theme.border
+        })
+        .when(item.active && !attention, |el| el.bg(theme.selection))
+        // The state icon sits before the button rather than in it, so its tooltip
+        // has a hover target of its own.
+        .child(icon)
+        .when(attention, |el| {
+            let selector = attention_selector(&item.context_name);
+            el.bg(theme.warning).debug_selector(move || selector)
+        })
         .child(body)
         .child(menu_button)
         .into_any_element()

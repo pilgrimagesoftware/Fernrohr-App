@@ -53,9 +53,6 @@ pub(crate) enum ConfirmationEvent {
 }
 
 /// One manual tunnel waiting on the user.
-// UNWIRED(#195): the prompt surfaces and the Proceed and Cancel commands (section 4)
-// read and resolve confirmations; only tests do until then.
-#[allow(dead_code)]
 pub struct PendingConfirmation {
     id: u64,
     /// The tunnel's id in `tunnels.toml`.
@@ -95,6 +92,12 @@ impl ManualConfirmations {
             .map(|confirmations| confirmations.entity.clone())
     }
 
+    /// Starts the app's confirmations at launch, so every surface can observe them
+    /// from the start rather than only once a manual tunnel is first acquired.
+    pub fn init(cx: &mut App) {
+        let _ = Self::events(cx);
+    }
+
     /// The sender a transport publishes through, starting the entity and its
     /// main-thread task on first use.
     pub(crate) fn events(cx: &mut App) -> mpsc::UnboundedSender<ConfirmationEvent> {
@@ -103,13 +106,18 @@ impl ManualConfirmations {
         }
         let entity = cx.new(|_| Self::default());
         let (events, mut rx) = mpsc::unbounded_channel();
-        let applied = entity.clone();
+        // Weak: the task lives as long as the channel, which the global keeps open,
+        // and must not keep the entity alive past the app (or a test) on its own.
+        let applied = entity.downgrade();
         cx.spawn(async move |cx| {
             while let Some(event) = rx.recv().await {
-                applied.update(cx, |this, cx| {
+                let applied = applied.update(cx, |this, cx| {
                     this.apply(event);
                     cx.notify();
                 });
+                if applied.is_err() {
+                    return;
+                }
             }
         })
         .detach();
@@ -136,9 +144,6 @@ impl ManualConfirmations {
     }
 
     /// The pending confirmation `context` is waiting on, if any.
-    // UNWIRED(#195): the prompt surfaces and the Proceed and Cancel commands (section 4)
-    // read and resolve confirmations; only tests do until then.
-    #[allow(dead_code)]
     pub fn for_context(&self, context: &str) -> Option<&PendingConfirmation> {
         self.pending
             .iter()
@@ -194,6 +199,41 @@ impl ManualConfirmations {
             }
             cx.notify();
         });
+    }
+
+    /// Puts up a pending confirmation for `tunnel_id` with `contexts` waiting, as a
+    /// transport would, and returns where its answer arrives. Test-only.
+    #[cfg(test)]
+    pub(crate) fn insert_test_pending(
+        cx: &mut App,
+        tunnel_id: &str,
+        name: &str,
+        message: Option<&str>,
+        contexts: &[&str],
+    ) -> oneshot::Receiver<Decision> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1 << 32);
+        Self::init(cx);
+        let (resolve, answer) = oneshot::channel();
+        let entity = Self::entity(cx).expect("just started");
+        entity.update(cx, |this, cx| {
+            for context in contexts {
+                this.waiting
+                    .entry(tunnel_id.to_string())
+                    .or_default()
+                    .insert(context.to_string());
+            }
+            this.apply(ConfirmationEvent::Pending {
+                request: PendingRequest {
+                    id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                    tunnel_id: tunnel_id.to_string(),
+                    name: name.to_string(),
+                    message: message.map(str::to_string),
+                },
+                resolve,
+            });
+            cx.notify();
+        });
+        answer
     }
 
     fn apply(&mut self, event: ConfirmationEvent) {

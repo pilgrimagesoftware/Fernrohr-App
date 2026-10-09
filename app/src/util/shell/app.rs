@@ -203,6 +203,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     ]));
     super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
+    crate::tunnel::manual::ManualConfirmations::init(cx);
     crate::ui::text_size::register_handlers(cx);
     crate::ui::shortcut_timeout::register_handlers(cx);
     crate::ui::logs_panels::register_handlers(cx);

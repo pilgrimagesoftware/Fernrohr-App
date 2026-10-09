@@ -25,3 +25,24 @@ pub fn with_tooltip(
         })
         .child(button)
 }
+
+/// [`with_tooltip`] for a tooltip whose text is built at render time - a state's
+/// elapsed time, say - rather than a fixed action name.
+pub fn with_text_tooltip(
+    id: impl Into<ElementId>,
+    text: impl Into<SharedString>,
+    child: impl IntoElement,
+) -> Stateful<Div> {
+    let text: SharedString = text.into();
+    div()
+        .id(id.into())
+        .tooltip(move |window, cx| {
+            let text = text.clone();
+            Tooltip::element(move |_, _| {
+                let selector = selector(&text);
+                div().debug_selector(move || selector).child(text.clone())
+            })
+            .build(window, cx)
+        })
+        .child(child)
+}

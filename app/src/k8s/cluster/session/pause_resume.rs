@@ -111,7 +111,9 @@ impl ClusterRegistry {
 
     /// `connection-status-bar` design.md decision 1: `context_name`'s health for the
     /// window status bar, combining its connection state with its watch registry's first
-    /// paused key at precedence failed > paused > waiting for tunnel > connected. A
+    /// paused key at precedence failed > paused > awaiting confirmation > waiting for
+    /// tunnel > connected - a context waiting on a manual tunnel whose confirmation is
+    /// pending is awaiting confirmation (`manual-confirmation-tunnels` D4). A
     /// context with no session yet (no panel has ever subscribed to it) reads as
     /// `Connected` - the bar only ever asks about contexts a window is actually using,
     /// which always has a session by the time it asks.
@@ -133,6 +135,22 @@ impl ClusterRegistry {
             return ContextHealth::Paused { reason, since };
         }
         if let ConnectionState::WaitingForTunnel = &connection.state {
+            // The context's own state decides it is waiting; the pending entry only
+            // says on what - so a context that stopped waiting never reads as this.
+            let confirmation =
+                crate::tunnel::manual::ManualConfirmations::entity(cx).and_then(|entity| {
+                    entity.read(cx).for_context(context_name).map(|entry| {
+                        ContextHealth::AwaitingConfirmation {
+                            tunnel_id: entry.tunnel_id.clone(),
+                            tunnel: entry.name.clone(),
+                            message: entry.message.clone(),
+                            since: entry.since,
+                        }
+                    })
+                });
+            if let Some(confirmation) = confirmation {
+                return confirmation;
+            }
             return ContextHealth::WaitingForTunnel {
                 since: connection.since(),
             };
