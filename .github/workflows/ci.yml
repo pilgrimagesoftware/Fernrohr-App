@@ -31,7 +31,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # Warnings fail the build, as they do in package.yml, whose
+      # actions-rust-lang/setup-rust-toolchain sets CARGO_BUILD_WARNINGS=deny by
+      # default. This non-test build is the one that sees platform-only dead code
+      # (a Linux-only unused variant, say) before a package build trips on it.
       - name: Build
+        env:
+          CARGO_BUILD_WARNINGS: deny
         run: cargo build --workspace --locked
 
       # `--include-ignored` keeps the real-keychain tests (`#[ignore]`d so a plain
