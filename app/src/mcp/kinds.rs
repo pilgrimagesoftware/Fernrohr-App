@@ -12,8 +12,6 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use serde_json::{Value, json};
 
 /// A kind as a client names it.
-// UNWIRED(#189): the resource tools (section 2.2) resolve kinds with it.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct KindQuery {
     /// The kind (`Deployment`), its plural (`deployments`) or its lowercase
@@ -25,8 +23,6 @@ pub(super) struct KindQuery {
 }
 
 /// The one kind in `kinds` that `query` names.
-// UNWIRED(#189): the resource tools (section 2.2) resolve kinds with it.
-#[allow(dead_code)]
 pub(super) fn resolve(
     kinds: &[DiscoveredKind],
     query: &KindQuery,

@@ -110,8 +110,6 @@ impl Session {
 
     /// The kind `query` names in this context, checked against its discovery
     /// before any request goes out.
-    // UNWIRED(#189): the resource tools (section 2.2) resolve kinds with it.
-    #[allow(dead_code)]
     pub(super) async fn kind(
         &self,
         tools: &ToolContext,

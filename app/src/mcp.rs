@@ -35,6 +35,8 @@ mod frame;
 #[cfg(unix)]
 mod kinds;
 #[cfg(unix)]
+mod names;
+#[cfg(unix)]
 mod protocol;
 #[cfg(unix)]
 mod read;

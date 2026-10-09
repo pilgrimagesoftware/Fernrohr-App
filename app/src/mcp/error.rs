@@ -99,8 +99,6 @@ impl ToolError {
 
     /// A `kube` failure for a request against `context`, mapped as the module
     /// docs describe.
-    // UNWIRED(#189): the resource tools (section 2.2) map kube errors with it.
-    #[allow(dead_code)]
     pub(crate) fn from_kube(context: &str, error: &kube::Error) -> Self {
         match error {
             // kube's stand-in for a body that wasn't a `Status`: the "message"

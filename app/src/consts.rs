@@ -247,6 +247,12 @@ pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// so this bounds the work a misbehaving client can queue up.
 pub(crate) const MCP_MAX_CONNECTIONS: usize = 16;
 
+/// `agent-mcp`: how many objects `list_resources` returns in one page when
+/// the client doesn't say, and the most it may ask for - a page, not a whole
+/// cluster, so one call can't pull every object of a big kind at once.
+pub(crate) const MCP_LIST_DEFAULT_LIMIT: u32 = 100;
+pub(crate) const MCP_LIST_MAX_LIMIT: u32 = 500;
+
 /// `agent-mcp`: how many foreground jobs - tool work that needs GPUI state -
 /// may wait for the main thread at once before the tool handlers queueing
 /// them wait too.

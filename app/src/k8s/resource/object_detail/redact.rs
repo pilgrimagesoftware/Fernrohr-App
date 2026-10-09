@@ -15,8 +15,8 @@ use serde_json::Value;
 pub(super) const LAST_APPLIED_ANNOTATION: &str = "kubectl.kubernetes.io/last-applied-configuration";
 
 /// Redacts `object` in place when it is a core Secret; any other kind is left
-/// as it is.
-pub(super) fn redact(kind: &DiscoveredKind, object: &mut DynamicObject) {
+/// as it is. `agent-mcp`'s read tools apply it to every object they return.
+pub(crate) fn redact(kind: &DiscoveredKind, object: &mut DynamicObject) {
     if !(kind.gvk.group.is_empty() && kind.gvk.kind == "Secret") {
         return;
     }
