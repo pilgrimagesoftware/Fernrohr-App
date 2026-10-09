@@ -15,6 +15,7 @@ use crate::consts::{SETTINGS_WINDOW_MIN_SIZE, SETTINGS_WINDOW_SIZE};
 use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::*;
 
+mod agent_access;
 mod appearance;
 mod layouts;
 mod panels;
@@ -35,7 +36,8 @@ actions!(
         ShowKeyboardShortcuts,
         ShowAppearance,
         ShowPanels,
-        ShowLayouts
+        ShowLayouts,
+        ShowAgentAccess
     ]
 );
 
@@ -56,6 +58,9 @@ pub enum Section {
     /// Lists and removes saved panel layouts (`saved-panel-layouts` design.md
     /// D7). Renaming stays in the saved layouts picker.
     Layouts,
+    /// How to register Fernrohr with an agent harness over MCP
+    /// (`agent-mcp`), each command copyable.
+    AgentAccess,
 }
 
 impl Section {
@@ -65,6 +70,7 @@ impl Section {
             Section::Appearance => "Appearance",
             Section::Panels => "Panels",
             Section::Layouts => "Layouts",
+            Section::AgentAccess => "Agent Access",
         }
     }
 
@@ -75,6 +81,7 @@ impl Section {
             Section::Appearance => "settings-section-appearance",
             Section::Panels => "settings-section-panels",
             Section::Layouts => "settings-section-layouts",
+            Section::AgentAccess => "settings-section-agent-access",
         }
     }
 
@@ -85,6 +92,7 @@ impl Section {
             Section::Appearance => "settings-section-appearance-label",
             Section::Panels => "settings-section-panels-label",
             Section::Layouts => "settings-section-layouts-label",
+            Section::AgentAccess => "settings-section-agent-access-label",
         }
     }
 }
@@ -124,6 +132,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             "",
             Box::new(ShowLayouts),
         ),
+        (
+            "settings.show_agent_access",
+            "Settings: Show Agent Access",
+            "",
+            Box::new(ShowAgentAccess),
+        ),
     ] {
         registry.register(Command {
             id,
@@ -142,6 +156,26 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 pub fn init(cx: &mut App) {
     cx.on_action(|_: &OpenSettings, cx: &mut App| open_or_focus(cx));
     cx.bind_keys(shortcuts::list_bindings());
+}
+
+/// Opens Settings (or brings it forward) showing `section` - for a command
+/// elsewhere that sends the user to one.
+pub(crate) fn open_at(section: Section, cx: &mut App) {
+    open_or_focus(cx);
+    // After `open_or_focus`, which may itself defer bringing the window up.
+    cx.defer(move |cx| {
+        let Some(handle) = cx
+            .try_global::<SettingsWindowHandle>()
+            .and_then(|handle| handle.0)
+        else {
+            return;
+        };
+        let _ = handle.update(cx, |root, window, cx| {
+            if let Ok(view) = root.view().clone().downcast::<SettingsWindow>() {
+                view.update(cx, |this, cx| this.show(section, window, cx));
+            }
+        });
+    });
 }
 
 /// The one Settings window, if open.
@@ -198,6 +232,22 @@ pub fn open_or_focus(cx: &mut App) {
     cx.set_global(SettingsWindowHandle(Some(handle)));
 }
 
+/// Test-only: the section the open Settings window shows, if one is open.
+#[cfg(test)]
+pub(crate) fn test_shown_section(cx: &mut App) -> Option<Section> {
+    let handle = test_window(cx)?;
+    handle
+        .update(cx, |root, _window, cx| {
+            root.view()
+                .clone()
+                .downcast::<SettingsWindow>()
+                .ok()
+                .map(|view| view.read(cx).section())
+        })
+        .ok()
+        .flatten()
+}
+
 /// Test-only: the open Settings window, if any.
 #[cfg(test)]
 fn test_window(cx: &App) -> Option<WindowHandle<Root>> {
@@ -213,6 +263,8 @@ pub struct SettingsWindow {
     panels_focus: FocusHandle,
     /// The Layouts section's, likewise.
     layouts_focus: FocusHandle,
+    /// The Agent access section's, likewise.
+    agent_access_focus: FocusHandle,
     /// The saved layouts the Layouts section shows, read off the main thread
     /// (`layouts::LayoutsCache`) - never by rendering.
     layouts: layouts::LayoutsCache,
@@ -234,6 +286,7 @@ impl SettingsWindow {
             appearance_focus: cx.focus_handle(),
             panels_focus: cx.focus_handle(),
             layouts_focus: cx.focus_handle(),
+            agent_access_focus: cx.focus_handle(),
             layouts: layouts::LayoutsCache::default(),
         }
     }
@@ -253,6 +306,7 @@ impl SettingsWindow {
                 window.focus(&self.layouts_focus, cx);
                 self.reload_layouts(cx);
             }
+            Section::AgentAccess => window.focus(&self.agent_access_focus, cx),
         }
         cx.notify();
     }
@@ -318,7 +372,8 @@ impl Render for SettingsWindow {
             .child(self.sidebar_button(Section::KeyboardShortcuts, cx))
             .child(self.sidebar_button(Section::Appearance, cx))
             .child(self.sidebar_button(Section::Panels, cx))
-            .child(self.sidebar_button(Section::Layouts, cx));
+            .child(self.sidebar_button(Section::Layouts, cx))
+            .child(self.sidebar_button(Section::AgentAccess, cx));
         let content = match self.section {
             Section::KeyboardShortcuts => div()
                 .flex_1()
@@ -353,6 +408,14 @@ impl Render for SettingsWindow {
                 .track_focus(&self.layouts_focus)
                 .child(layouts::section(&self.layouts, cx))
                 .into_any_element(),
+            Section::AgentAccess => div()
+                .id("settings-agent-access")
+                .flex_1()
+                .min_w_0()
+                .overflow_y_scroll()
+                .track_focus(&self.agent_access_focus)
+                .child(agent_access::section(window, cx))
+                .into_any_element(),
         };
         div()
             .key_context(KEY_CONTEXT)
@@ -367,6 +430,9 @@ impl Render for SettingsWindow {
             }))
             .on_action(cx.listener(|this, _: &ShowLayouts, window, cx| {
                 this.show(Section::Layouts, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowAgentAccess, window, cx| {
+                this.show(Section::AgentAccess, window, cx)
             }))
             .size_full()
             .flex()

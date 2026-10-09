@@ -66,6 +66,10 @@ impl MainWindow {
     /// keeps the tab it was showing - and moves no focus, nor the window's current
     /// target; for a panel already open it changes nothing at all. Dedup, placement
     /// and the panel's watches are the same either way.
+    ///
+    /// Returns the panel the request landed on, or `None` when it was refused
+    /// (no workspace, or a context this window doesn't hold). Every in-app
+    /// caller ignores it; `agent-mcp`'s open-panel tool reports it.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn open_target_in(
         &mut self,
@@ -76,7 +80,7 @@ impl MainWindow {
         mode: OpenMode,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Option<ShownPanel> {
         let background = mode == OpenMode::Background;
         let WindowMode::Workspace {
             dock_area,
@@ -89,7 +93,7 @@ impl MainWindow {
             ..
         } = &mut self.mode
         else {
-            return;
+            return None;
         };
         let connection_count = contexts.len();
         let context_name = match context_name {
@@ -99,12 +103,9 @@ impl MainWindow {
                     "not opening {target:?}: context {named:?} is not held by this window \
                      ({contexts:?})"
                 );
-                return;
+                return None;
             }
-            None => match pod_scoped_context(&target, contexts.as_slice(), *active, cx) {
-                Some(context_name) => context_name,
-                None => return,
-            },
+            None => pod_scoped_context(&target, contexts.as_slice(), *active, cx)?,
         };
         // Set only when a panel was actually built, so the subscription below
         // is not made for a panel the dock already had.
@@ -124,8 +125,13 @@ impl MainWindow {
         }
         .scoped_to(namespaces);
         let key = PanelKey::from(&scope);
-        let id = match open_panels.iter().find(|open| open.key == key) {
-            Some(_) if background => return,
+        let shown = match open_panels.iter().find(|open| open.key == key) {
+            Some(open) if background => {
+                return Some(ShownPanel {
+                    id: open.id,
+                    created: false,
+                });
+            }
             Some(open) => {
                 let id = open.id;
                 match (open.panel.as_ref(), initial_view) {
@@ -138,7 +144,7 @@ impl MainWindow {
                     _ => {}
                 }
                 dock_area.update(cx, |area, cx| area.select_panel(id, window, cx));
-                id
+                ShownPanel { id, created: false }
             }
             None => {
                 // A panel opened from another one - a double-clicked row, a
@@ -180,7 +186,7 @@ impl MainWindow {
                     _focus_watch: Self::watch_panel_focus(dock_area, id, window, cx),
                 });
                 watch_scope = Some(opened);
-                id
+                ShownPanel { id, created: true }
             }
         };
         if background {
@@ -188,14 +194,14 @@ impl MainWindow {
                 self.watch_scope_changes(opened, window, cx);
             }
             cx.notify();
-            return;
+            return Some(shown);
         }
         // Whichever arm ran, the panel asked for takes keyboard focus: neither
         // `select_panel` nor `add_panel_view` moves it, so without this a panel
         // opened from the keyboard needed a click before its own keys worked.
         // Only user requests come through here - a restored layout is loaded by
         // `DockArea::load`, so relaunching doesn't hop focus panel by panel.
-        if let Some(panel) = dock_area.read(cx).panel(id) {
+        if let Some(panel) = dock_area.read(cx).panel(shown.id) {
             window.focus(&panel.focus_handle(cx), cx);
         }
         **nav = target;
@@ -205,6 +211,7 @@ impl MainWindow {
             self.watch_scope_changes(opened, window, cx);
         }
         cx.notify();
+        Some(shown)
     }
 
     /// Drops bookkeeping for panels the user closed, so re-selecting one later
@@ -219,6 +226,15 @@ impl MainWindow {
         let held: Vec<PanelId> = tree.panels().collect();
         open_panels.retain(|open| held.contains(&open.id));
     }
+}
+
+/// The panel an [`MainWindow::open_target_in`] request landed on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ShownPanel {
+    /// The dock's id for it: the panel entity's own, stable while it stays open.
+    pub(crate) id: PanelId,
+    /// Whether this request built it, rather than finding it already open.
+    pub(crate) created: bool,
 }
 
 /// Each centre group's displayed tab, by group.
