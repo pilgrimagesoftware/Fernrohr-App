@@ -95,7 +95,9 @@ impl PodDetailPanel {
                     let heading = (field.label != "Containers").then_some(field.label);
                     return self.render_containers(heading, containers, cx);
                 }
-                PodFieldValue::ManagedFields(entries) => self.render_managed_fields(entries, cx),
+                PodFieldValue::ManagedFields(entries) => {
+                    return self.render_managed_fields(entries, cx);
+                }
             };
 
         detail::row(field.label, value, cx)

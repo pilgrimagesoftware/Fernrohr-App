@@ -143,3 +143,29 @@ async fn shift_c_copies_the_pod_yaml(cx: &mut TestAppContext) {
         Some(yaml)
     );
 }
+
+/// The Managed Fields tab shows disclosure rows without a redundant
+/// "Managed Fields" label. The rendering still shows the collapse toggles
+/// and summaries correctly; only the label wrapper is gone. Verify the
+/// toggles render (proving rows exist) and can be expanded.
+#[gpui_kit::test]
+async fn managed_fields_tab_renders_rows_without_label_wrapper(cx: &mut TestAppContext) {
+    let h = harness(cx, managed_pod());
+    let mut vcx = VisualTestContext::from_window(h.window.into(), cx);
+    open_tab(&mut vcx, &h);
+
+    vcx.update_window(h.window.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(toggle_id(0))
+            .expect("the kubectl toggle is drawn (rows are rendered)");
+        ()
+    })
+    .unwrap();
+
+    press_by_keyboard(&mut vcx, &h, toggle_id(0));
+    assert!(
+        body_drawn(&mut vcx, &h, 0),
+        "the kubectl row body is revealed when expanded"
+    );
+}
