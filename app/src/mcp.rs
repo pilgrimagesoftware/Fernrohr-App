@@ -50,6 +50,7 @@ mod read;
 mod redact;
 #[cfg(unix)]
 mod server;
+pub(crate) mod setup;
 #[cfg(all(test, unix))]
 mod test_support;
 #[cfg(unix)]
