@@ -14,6 +14,12 @@ pub(crate) const APP_NAME: &str = "Fernrohr";
 /// that entry's name and icon and group them under it.
 pub(crate) const APP_ID: &str = "fernrohr";
 
+/// The macOS bundle identifier (`[package.metadata.packager]`'s `identifier`):
+/// the app desktop notifications are posted as. Without it they would be
+/// posted as Finder.
+#[cfg(target_os = "macos")]
+pub(crate) const BUNDLE_IDENTIFIER: &str = "com.pilgrimagesoftware.fernrohr";
+
 // UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
 // 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
 #[allow(dead_code)]

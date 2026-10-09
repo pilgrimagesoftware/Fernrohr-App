@@ -7,6 +7,7 @@ mod consts;
 mod forward;
 mod k8s;
 mod keymap;
+mod notify;
 mod runtime;
 mod ssh_path;
 mod tunnel;
