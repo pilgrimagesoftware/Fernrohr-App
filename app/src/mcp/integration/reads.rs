@@ -15,7 +15,12 @@ const READS: [&str; 5] = [
     "list_resource_kinds",
     "list_resources",
 ];
-const NAVIGATION: [&str; 3] = ["list_layouts", "load_layout", "open_panel"];
+const NAVIGATION: [&str; 4] = [
+    "connect_context",
+    "list_layouts",
+    "load_layout",
+    "open_panel",
+];
 const ACTIONS: [&str; 8] = [
     "delete_pods",
     "restart_workload",

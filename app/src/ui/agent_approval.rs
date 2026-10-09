@@ -8,7 +8,7 @@
 //! [`withdraw`] when the agent's call goes away first. One question is open at
 //! a time; the gate there sees to that.
 
-use crate::mcp::approval::ApprovalRequest;
+use crate::mcp::approval::{ApprovalRequest, Asking};
 use crate::ui::confirm_dialog::{self, Confirmation, Detail, Severity};
 use crate::ui::confirm_text::ConfirmText;
 use gpui_kit::component::WindowExt as _;
@@ -113,16 +113,22 @@ fn asking_window(cx: &App) -> Option<AnyWindowHandle> {
 }
 
 fn confirmation(request: &ApprovalRequest) -> Confirmation {
-    Confirmation {
-        title: request.title.clone().into(),
-        body: ConfirmText::from("An agent connected to Fernrohr asks to ")
+    let body = match request.asking {
+        Asking::Action { .. } => ConfirmText::from("An agent connected to Fernrohr asks to ")
             .text(&request.confirm.to_lowercase())
             .text(" in ")
             .name(&request.context)
             .text(". Nothing changes unless you allow it."),
+        Asking::Connect => ConfirmText::from("An agent connected to Fernrohr asks to connect ")
+            .name(&request.context)
+            .text(". Once connected, the agent can read this cluster. Nothing connects unless you allow it."),
+    };
+    Confirmation {
+        title: request.title.clone().into(),
+        body,
         confirm: request.confirm.clone().into(),
         id_prefix: ID_PREFIX,
-        severity: if request.irreversible {
+        severity: if request.irreversible() {
             Severity::Irreversible
         } else {
             Severity::Recoverable
@@ -140,9 +146,12 @@ pub(crate) fn details(request: &ApprovalRequest) -> Vec<Detail> {
     let mut rows = vec![
         row("Agent tool", &request.tool),
         row("Context", &request.context),
-        row("Namespace", &request.namespace),
-        row("Kind", &request.kind),
     ];
+    // A connection has no namespace or kind, only its tunnel (a parameter).
+    if let Asking::Action { .. } = request.asking {
+        rows.push(row("Namespace", &request.namespace));
+        rows.push(row("Kind", &request.kind));
+    }
     for (index, target) in request.targets.iter().enumerate() {
         let label = match (index, request.targets.len()) {
             (0, 1) => "Name",

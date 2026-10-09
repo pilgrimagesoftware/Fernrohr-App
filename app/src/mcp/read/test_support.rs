@@ -24,6 +24,9 @@ pub(in crate::mcp) fn tools(cx: &mut TestAppContext, contexts: &[&str]) -> ToolC
         foreground: cx.update(Foreground::spawn_on),
         kubeconfig: Some(kubeconfig_with(contexts)),
         approvals: crate::mcp::approval::scripted::Scripted::deny().gate(),
+        // Never this machine's own `tunnels.toml`.
+        tunnels: Some(crate::util::test_paths::temp_path("mcp-tunnels")),
+        connect_settle: crate::consts::MCP_CONNECT_SETTLE,
     }
 }
 

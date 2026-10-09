@@ -97,7 +97,9 @@ pub use main_window::MainWindow;
 // The list panels (`k8s::resource`) read and record per-kind sorts.
 pub(crate) use sort_defaults::SortDefaults;
 // `agent-mcp`'s navigation tools (`mcp::navigate`) are the callers.
-pub(crate) use agent::{NavigateError, load_layout, open_panel};
+pub(crate) use agent::{
+    NavigateError, connect_context, focus_if_held, focus_window, load_layout, open_panel,
+};
 pub use persist::open_saved_or_default;
 // `ui::settings::layouts` (`saved-panel-layouts` tasks 6.1) reads saved
 // layouts to list them, so it needs the same directory `layouts.save`/

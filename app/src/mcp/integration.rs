@@ -7,10 +7,11 @@
 //!
 //! Each tool's own tests pin its behaviour in detail; these check that it
 //! survives the whole trip: [`reads`], [`actions`] (approved, denied and timed
-//! out), [`navigation`] into real windows, and an app that isn't
+//! out), [`connect`]ing a context, [`navigation`] into real windows, and an app that isn't
 //! [`unavailable`] or stops being so.
 
 mod actions;
+mod connect;
 mod navigation;
 mod reads;
 mod unavailable;

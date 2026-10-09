@@ -107,6 +107,12 @@ pub(super) struct ToolContext {
     pub(super) kubeconfig: Option<PathBuf>,
     /// Where an action tool asks the user first.
     pub(super) approvals: ApprovalGate,
+    /// The `tunnels.toml` whose bindings `connect_context` names in its
+    /// question: `None` for the app's own. Tests point it at their own.
+    pub(super) tunnels: Option<PathBuf>,
+    /// How long `connect_context` waits for a connection to settle:
+    /// [`MCP_CONNECT_SETTLE`](crate::consts::MCP_CONNECT_SETTLE) but in tests.
+    pub(super) connect_settle: std::time::Duration,
 }
 
 type Handler =

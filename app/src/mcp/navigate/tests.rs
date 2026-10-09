@@ -308,7 +308,12 @@ async fn load_layout_names_a_layout_that_does_not_exist(cx: &mut TestAppContext)
 fn the_navigation_tools_are_navigate_tools() {
     use super::super::tools::ToolKind;
     let specs = ToolRegistry::app().specs();
-    for name in [super::OPEN_PANEL, super::LIST_LAYOUTS, super::LOAD_LAYOUT] {
+    for name in [
+        super::OPEN_PANEL,
+        super::LIST_LAYOUTS,
+        super::LOAD_LAYOUT,
+        super::connect::CONNECT_CONTEXT,
+    ] {
         let spec = specs
             .iter()
             .find(|spec| spec.name == name)
@@ -318,3 +323,5 @@ fn the_navigation_tools_are_navigate_tools() {
         assert!(!spec.input_schema.contains_key("title"), "{name}");
     }
 }
+
+mod focus;

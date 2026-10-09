@@ -11,6 +11,7 @@
 //! Reading the layouts directory happens on a blocking thread, so the main
 //! thread does no file I/O for a tool.
 
+mod connect;
 mod request;
 
 use super::cluster::session;
@@ -31,6 +32,7 @@ const LOAD_LAYOUT: &str = "load_layout";
 
 /// Adds the navigation tools to `registry`.
 pub(super) fn register(registry: &mut ToolRegistry) {
+    connect::register(registry);
     registry.add(
         OPEN_PANEL,
         "Open panel",

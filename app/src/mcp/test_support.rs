@@ -65,6 +65,8 @@ pub(super) fn test_context() -> ToolContext {
         foreground,
         kubeconfig: None,
         approvals: super::approval::scripted::Scripted::deny().gate(),
+        tunnels: Some(crate::util::test_paths::temp_path("mcp-tunnels")),
+        connect_settle: crate::consts::MCP_CONNECT_SETTLE,
     }
 }
 

@@ -93,11 +93,7 @@ pub(crate) fn post(
 /// An `on_activate` for [`post`]: brings Fernrohr to the front with `window`
 /// focused, if it is still open.
 pub(crate) fn focus(window: AnyWindowHandle) -> impl FnOnce(&mut App) {
-    move |cx| {
-        cx.activate(true);
-        // A window closed since the notification went up has nothing to focus.
-        let _ = window.update(cx, |_, window, _| window.activate_window());
-    }
+    move |cx| crate::util::shell::focus_window(window, cx)
 }
 
 /// Test-only: makes `backend` the one [`post`] uses.

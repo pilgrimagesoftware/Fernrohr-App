@@ -90,6 +90,8 @@ pub(super) fn start(cx: &mut App, registry: ToolRegistry) {
                 approvals: ApprovalGate::ui(foreground.clone()),
                 foreground,
                 kubeconfig: None,
+                tunnels: None,
+                connect_settle: crate::consts::MCP_CONNECT_SETTLE,
             }
         },
     });

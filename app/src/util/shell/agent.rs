@@ -8,7 +8,9 @@
 //!
 //! The agent's terminal, not Fernrohr, usually has focus when a request
 //! arrives, so "the focused window" is the frontmost main window rather than
-//! only the platform's active one.
+//! only the platform's active one. A tool that changes what a window shows
+//! then brings Fernrohr forward with that window focused ([`focus_window`],
+//! `mcp-connect-and-focus` D4), so the user sees what the agent showed them.
 
 use super::open::ShownPanel;
 use super::*;
@@ -41,7 +43,7 @@ pub(crate) fn open_panel(
         .into_iter()
         .find(|(_, main)| main.read(cx).contexts().contains(&context_name))
         .ok_or(NavigateError::ContextNotHeld)?;
-    handle
+    let shown = handle
         .update(cx, |_, window, cx| {
             main.update(cx, |main, cx| {
                 main.open_target_in(
@@ -57,7 +59,9 @@ pub(crate) fn open_panel(
         })
         // The window closed between the lookup and the update.
         .map_err(|_| NavigateError::NoWindow)?
-        .ok_or(NavigateError::ContextNotHeld)
+        .ok_or(NavigateError::ContextNotHeld)?;
+    focus_window(handle, cx);
+    Ok(shown)
 }
 
 /// Loads `layout` in `mode` into the frontmost workspace window; `None` when
@@ -68,11 +72,65 @@ pub(crate) fn load_layout(
     cx: &mut App,
 ) -> Option<LoadedLayout> {
     let (handle, main) = workspace_windows(cx).into_iter().next()?;
-    handle
+    let loaded = handle
         .update(cx, |_, window, cx| {
             main.update(cx, |main, cx| main.load_layout(layout, mode, window, cx))
         })
-        .ok()
+        .ok()?;
+    focus_window(handle, cx);
+    Some(loaded)
+}
+
+/// `connect_context`'s already-open case (`mcp-connect-and-focus` D1): brings
+/// the frontmost workspace window forward if it holds `context_name`, and says
+/// whether it did. `false` when it doesn't hold it, or no window shows a
+/// workspace.
+pub(crate) fn focus_if_held(context_name: &str, cx: &mut App) -> bool {
+    let Some((handle, main)) = workspace_windows(cx).into_iter().next() else {
+        return false;
+    };
+    if !main
+        .read(cx)
+        .contexts()
+        .iter()
+        .any(|held| held == context_name)
+    {
+        return false;
+    }
+    focus_window(handle, cx);
+    true
+}
+
+/// Connects `context_name` for an agent, once the user has allowed it: adds it
+/// to the frontmost workspace window exactly as the status bar's add-context
+/// control does ([`MainWindow::add_context`] - tunnel binding, a shared
+/// connection, its Pods panel, selected), or opens a window on it when none
+/// shows a workspace, then brings that window forward.
+pub(crate) fn connect_context(context_name: String, cx: &mut App) {
+    let handle = match workspace_windows(cx).into_iter().next() {
+        Some((handle, main)) => {
+            let _ = handle.update(cx, |_, window, cx| {
+                main.update(cx, |main, cx| main.add_context(context_name, window, cx))
+            });
+            handle
+        }
+        None => open_window(
+            cx,
+            WindowLayout {
+                contexts: vec![context_name],
+                ..Default::default()
+            },
+        ),
+    };
+    focus_window(handle, cx);
+}
+
+/// Brings Fernrohr to the front with `window` focused - what a click on one of
+/// its notifications does too (`notify::focus`). A window that has closed is
+/// left alone.
+pub(crate) fn focus_window(window: AnyWindowHandle, cx: &mut App) {
+    cx.activate(true);
+    let _ = window.update(cx, |_, window, _| window.activate_window());
 }
 
 /// Every main window showing a workspace, frontmost first: the platform's
