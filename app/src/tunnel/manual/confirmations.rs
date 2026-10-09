@@ -12,7 +12,7 @@
 //! ([`ManualConfirmations::note_waiting`]), and forgotten when the entry is resolved
 //! or withdrawn.
 
-use gpui_kit::{App, AppContext as _, Entity, Global};
+use gpui_kit::{App, AppContext as _, Entity, EventEmitter, Global};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
@@ -65,6 +65,17 @@ pub struct PendingConfirmation {
     resolve: Option<oneshot::Sender<Decision>>,
 }
 
+/// A new prompt: a tunnel just started waiting on the user. Emitted once per
+/// pending entry - a context joining it emits nothing - so a surface that should
+/// announce a prompt once (the desktop notification) subscribes to this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Prompted {
+    pub tunnel_id: String,
+    pub name: String,
+    pub message: Option<String>,
+    pub contexts: Vec<String>,
+}
+
 /// Every pending manual-tunnel confirmation in the app.
 #[derive(Default)]
 pub struct ManualConfirmations {
@@ -80,6 +91,8 @@ struct Confirmations {
 }
 
 impl Global for Confirmations {}
+
+impl EventEmitter<Prompted> for ManualConfirmations {}
 
 impl ManualConfirmations {
     /// The app's confirmations, if any manual tunnel has ever been acquired - for a
@@ -109,7 +122,9 @@ impl ManualConfirmations {
         cx.spawn(async move |cx| {
             while let Some(event) = rx.recv().await {
                 let applied = applied.update(cx, |this, cx| {
-                    this.apply(event);
+                    if let Some(prompted) = this.apply(event) {
+                        cx.emit(prompted);
+                    }
                     cx.notify();
                 });
                 if applied.is_err() {
@@ -192,6 +207,30 @@ impl ManualConfirmations {
         });
     }
 
+    /// Publishes a pending confirmation for `tunnel_id` through the same channel a
+    /// transport uses - so it is applied on the main thread, and announced, as a
+    /// real one is - and returns where its answer arrives. Test-only.
+    #[cfg(test)]
+    pub(crate) fn publish_test_pending(
+        cx: &mut App,
+        tunnel_id: &str,
+        name: &str,
+        message: Option<&str>,
+    ) -> oneshot::Receiver<Decision> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1 << 40);
+        let (resolve, answer) = oneshot::channel();
+        let _ = Self::events(cx).send(ConfirmationEvent::Pending {
+            request: PendingRequest {
+                id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                tunnel_id: tunnel_id.to_string(),
+                name: name.to_string(),
+                message: message.map(str::to_string),
+            },
+            resolve,
+        });
+        answer
+    }
+
     /// Puts up a pending confirmation for `tunnel_id` with `contexts` waiting, as a
     /// transport would, and returns where its answer arrives. Test-only.
     #[cfg(test)]
@@ -213,7 +252,7 @@ impl ManualConfirmations {
                     .or_default()
                     .insert(context.to_string());
             }
-            this.apply(ConfirmationEvent::Pending {
+            let _ = this.apply(ConfirmationEvent::Pending {
                 request: PendingRequest {
                     id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                     tunnel_id: tunnel_id.to_string(),
@@ -227,14 +266,21 @@ impl ManualConfirmations {
         answer
     }
 
-    fn apply(&mut self, event: ConfirmationEvent) {
+    /// Applies `event`, returning the new prompt if it put one up.
+    fn apply(&mut self, event: ConfirmationEvent) -> Option<Prompted> {
         match event {
             ConfirmationEvent::Pending { request, resolve } => {
-                let contexts = self
+                let contexts: Vec<String> = self
                     .waiting
                     .get(&request.tunnel_id)
                     .map(|contexts| contexts.iter().cloned().collect())
                     .unwrap_or_default();
+                let prompted = Prompted {
+                    tunnel_id: request.tunnel_id.clone(),
+                    name: request.name.clone(),
+                    message: request.message.clone(),
+                    contexts: contexts.clone(),
+                };
                 self.pending.push(PendingConfirmation {
                     id: request.id,
                     tunnel_id: request.tunnel_id,
@@ -244,17 +290,20 @@ impl ManualConfirmations {
                     since: Instant::now(),
                     resolve: Some(resolve),
                 });
+                Some(prompted)
             }
             ConfirmationEvent::Settled { tunnel_id } => {
                 if self.pending_for(&tunnel_id).is_none() {
                     self.waiting.remove(&tunnel_id);
                 }
+                None
             }
             ConfirmationEvent::Withdrawn { id } => {
                 if let Some(index) = self.pending.iter().position(|entry| entry.id == id) {
                     let entry = self.pending.remove(index);
                     self.waiting.remove(&entry.tunnel_id);
                 }
+                None
             }
         }
     }

@@ -52,9 +52,6 @@ impl Global for ActiveBackend {}
 
 /// Posts a notification with `title` and `body`, and runs `on_activate` on
 /// the main thread if the user activates it. Returns at once.
-// UNWIRED(#195): the manual tunnel's pending-confirmation entry (section 4)
-// is the first caller.
-#[allow(dead_code)]
 pub(crate) fn post(
     title: impl Into<String>,
     body: impl Into<String>,
@@ -94,9 +91,6 @@ pub(crate) fn post(
 
 /// An `on_activate` for [`post`]: brings Fernrohr to the front with `window`
 /// focused, if it is still open.
-// UNWIRED(#195): the pending-confirmation entry focuses the window that
-// started the waiting connection (section 4).
-#[allow(dead_code)]
 pub(crate) fn focus(window: AnyWindowHandle) -> impl FnOnce(&mut App) {
     move |cx| {
         cx.activate(true);

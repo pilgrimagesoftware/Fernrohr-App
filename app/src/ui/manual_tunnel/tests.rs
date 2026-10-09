@@ -139,3 +139,74 @@ async fn with_nothing_waiting_the_commands_do_nothing(cx: &mut TestAppContext) {
     press(&mut vcx, super::CANCEL_KEY);
     assert!(!dialog_open(&mut vcx));
 }
+
+/// A notification backend that records what it was asked to show.
+#[derive(Default)]
+struct Recording(parking_lot::Mutex<Vec<crate::notify::Note>>);
+
+impl crate::notify::Backend for Recording {
+    fn post(&self, note: &crate::notify::Note) -> Result<crate::notify::Posted, String> {
+        self.0.lock().push(note.clone());
+        Ok(crate::notify::Posted::Shown)
+    }
+}
+
+fn posted(
+    vcx: &mut VisualTestContext,
+    recording: &Recording,
+    count: usize,
+) -> Vec<crate::notify::Note> {
+    // Posting runs on a blocking task; give it a moment to land.
+    for _ in 0..200 {
+        vcx.run_until_parked();
+        if recording.0.lock().len() >= count {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    recording.0.lock().clone()
+}
+
+/// 4.5: a new prompt posts one notification naming the tunnel, its instruction and
+/// who waits; a context joining it posts nothing; another tunnel's prompt posts its
+/// own.
+#[gpui_kit::test]
+async fn each_new_prompt_posts_one_notification(cx: &mut TestAppContext) {
+    let mut vcx = window(cx);
+    let recording = std::sync::Arc::new(Recording::default());
+    vcx.update(|_, cx| crate::notify::set_backend(recording.clone(), cx));
+
+    vcx.update(|_, cx| {
+        ManualConfirmations::note_waiting(cx, "corp-vpn-id", "dev");
+    });
+    let _corp = vcx.update(|_, cx| {
+        ManualConfirmations::publish_test_pending(
+            cx,
+            "corp-vpn-id",
+            "corp-vpn",
+            Some("Connect the corporate VPN"),
+        )
+    });
+    let notes = posted(&mut vcx, &recording, 1);
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].title, "corp-vpn is waiting for you");
+    assert_eq!(notes[0].body, "Connect the corporate VPN\nWaiting: dev");
+
+    // Another context joins the same prompt: nothing more is posted.
+    vcx.update(|_, cx| ManualConfirmations::note_waiting(cx, "corp-vpn-id", "qa"));
+    vcx.run_until_parked();
+    assert_eq!(posted(&mut vcx, &recording, 1).len(), 1);
+    assert_eq!(pending(&mut vcx), ["corp-vpn"]);
+
+    // A second tunnel gets its own.
+    let _lab = vcx.update(|_, cx| {
+        ManualConfirmations::publish_test_pending(cx, "lab-vpn-id", "lab-vpn", None)
+    });
+    let notes = posted(&mut vcx, &recording, 2);
+    assert_eq!(notes.len(), 2);
+    assert_eq!(notes[1].title, "lab-vpn is waiting for you");
+    assert_eq!(
+        notes[1].body,
+        "Bring its network path up, then choose Proceed in Fernrohr."
+    );
+}

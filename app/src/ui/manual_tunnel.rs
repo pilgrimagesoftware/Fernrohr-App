@@ -8,7 +8,7 @@
 //! every route ends in `ManualConfirmations::resolve`.
 
 use crate::command::{Command, CommandRegistry, ContextGroup, MenuSlot};
-use crate::tunnel::manual::{Decision, ManualConfirmations};
+use crate::tunnel::manual::{Decision, ManualConfirmations, Prompted};
 use gpui_kit::*;
 
 pub(crate) mod picker;
@@ -49,8 +49,15 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     }
 }
 
-/// The app-wide handlers. Called once at startup.
+/// The app-wide handlers, and the desktop notification each new prompt posts.
+/// Called once at startup, after `ManualConfirmations::init`.
 pub fn register_handler(cx: &mut App) {
+    if let Some(confirmations) = ManualConfirmations::entity(cx) {
+        cx.subscribe(&confirmations, |_, prompted: &Prompted, cx| {
+            announce(prompted, cx)
+        })
+        .detach();
+    }
     cx.on_action(|_: &ProceedManualTunnel, cx: &mut App| answer(Decision::Proceed, cx));
     cx.on_action(|_: &CancelManualTunnel, cx: &mut App| answer(Decision::Cancel, cx));
 }
@@ -82,6 +89,38 @@ fn answer(decision: Decision, cx: &mut App) {
             }
         }
     });
+}
+
+/// Posts the one desktop notification a new prompt gets (design.md D6): the tunnel,
+/// its instruction, and who is waiting. Activating it brings Fernrohr forward with
+/// the window to answer in. The status bar and the picker carry the same prompt, so
+/// a notification the platform refuses loses nothing.
+fn announce(prompted: &Prompted, cx: &mut App) {
+    let (title, body) = notification_text(prompted);
+    let window = asking_window(cx);
+    crate::notify::post(
+        title,
+        body,
+        move |cx| match window {
+            Some(window) => crate::notify::focus(window)(cx),
+            None => cx.activate(true),
+        },
+        cx,
+    );
+}
+
+/// A prompt's notification title and body.
+pub(crate) fn notification_text(prompted: &Prompted) -> (String, String) {
+    let title = format!("{} is waiting for you", prompted.name);
+    let instruction = prompted
+        .message
+        .clone()
+        .unwrap_or_else(|| "Bring its network path up, then choose Proceed in Fernrohr.".into());
+    let body = match prompted.contexts.as_slice() {
+        [] => instruction,
+        contexts => format!("{instruction}\nWaiting: {}", contexts.join(", ")),
+    };
+    (title, body)
 }
 
 /// The window to ask in: the active one if it is a main window, else the first.

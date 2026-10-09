@@ -14,6 +14,6 @@ mod confirmations;
 mod handle;
 mod transport;
 
-pub use confirmations::{Decision, ManualConfirmations};
+pub use confirmations::{Decision, ManualConfirmations, Prompted};
 pub use handle::ManualTunnel;
 pub(crate) use transport::{ManualTransport, ProbeTarget};
