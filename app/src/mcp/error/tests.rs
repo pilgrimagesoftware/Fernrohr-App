@@ -67,6 +67,7 @@ fn every_code_matches_its_serialized_tag() {
             kind: "x".into(),
             operation: "list".into(),
         },
+        ToolError::UnknownLayout { name: "x".into() },
         ToolError::Kubernetes {
             status: 500,
             reason: "x".into(),
