@@ -97,6 +97,7 @@ impl TunnelEditor {
             jump_hosts,
             auth: self.auth,
             command: self.command_config(cx),
+            manual: self.manual.clone(),
         };
 
         let result = match self.editing_id.clone() {

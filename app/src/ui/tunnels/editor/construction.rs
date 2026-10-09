@@ -76,6 +76,10 @@ impl TunnelEditor {
             .as_ref()
             .map(|tunnel| tunnel.command.clone())
             .unwrap_or_default();
+        let manual = existing
+            .as_ref()
+            .map(|tunnel| tunnel.manual.clone())
+            .unwrap_or_default();
         command_line.update(cx, |state, cx| {
             state.set_value(command.command_line.clone(), window, cx)
         });
@@ -122,6 +126,7 @@ impl TunnelEditor {
             mode: command.mode,
             local_port,
             startup_timeout,
+            manual,
             field_errors: Vec::new(),
             general_error: None,
             bound_contexts,

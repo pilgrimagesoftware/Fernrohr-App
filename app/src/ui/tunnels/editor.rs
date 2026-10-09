@@ -13,7 +13,8 @@
 
 use super::notify_tunnels_changed;
 use crate::config::tunnels::{
-    CommandTunnelConfig, CommandTunnelMode, TunnelAuth, TunnelConfig, TunnelKind,
+    CommandTunnelConfig, CommandTunnelMode, ManualTunnelConfig, TunnelAuth, TunnelConfig,
+    TunnelKind,
 };
 use crate::tunnel::ssh::{SshTunnelConfig, TransientIdentityFile, test_connection};
 use crate::tunnel::store::{TunnelFieldError, TunnelStore, TunnelStoreError};

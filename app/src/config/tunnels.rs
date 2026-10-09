@@ -16,6 +16,11 @@
 //! still at the top level) or a command tunnel (the `command` table). Both sets of
 //! fields are kept whatever the kind, so a file written before kinds existed loads as
 //! SSH unchanged, and flipping a tunnel's kind in the editor and back loses nothing.
+//!
+//! `manual-confirmation-tunnels` adds a third: a manual tunnel starts nothing, and
+//! holds a bound context's connection until the user confirms the network path they
+//! bring up by hand (a VPN) is there. Its settings are the `manual` table, kept the
+//! same way.
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller;
 // section 6's context binding UI is the first caller of `TunnelStore` itself.
 #![allow(dead_code)]
@@ -49,8 +54,10 @@ pub struct TunnelConfig {
     /// material for `KeychainKey` lives in the OS keychain (`tunnel::secrets`), keyed
     /// by tunnel id, never here.
     pub auth: TunnelAuth,
-    /// A command tunnel's settings - kept, but unused, while `kind` is SSH.
+    /// A command tunnel's settings - kept, but unused, while `kind` is another.
     pub command: CommandTunnelConfig,
+    /// A manual tunnel's settings - kept, but unused, while `kind` is another.
+    pub manual: ManualTunnelConfig,
 }
 
 impl Default for TunnelConfig {
@@ -64,18 +71,22 @@ impl Default for TunnelConfig {
             jump_hosts: Vec::new(),
             auth: TunnelAuth::default(),
             command: CommandTunnelConfig::default(),
+            manual: ManualTunnelConfig::default(),
         }
     }
 }
 
-/// What starts a tunnel: Fernrohr's own `ssh -N -L` to a bastion, or a command the
-/// user supplies.
+/// What starts a tunnel: Fernrohr's own `ssh -N -L` to a bastion, a command the user
+/// supplies, or - for a manual tunnel - the user, by hand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TunnelKind {
     #[default]
     Ssh,
     Command,
+    /// Nothing Fernrohr starts: the user brings the network path up themselves and
+    /// confirms it.
+    Manual,
 }
 
 /// What a command tunnel's local port offers.
@@ -112,6 +123,28 @@ impl Default for CommandTunnelConfig {
             mode: CommandTunnelMode::default(),
             local_port: None,
             startup_timeout_secs: crate::consts::COMMAND_TUNNEL_STARTUP_TIMEOUT_SECS,
+        }
+    }
+}
+
+/// A manual tunnel: what the prompt tells the user to do, and whether a reachable API
+/// server skips the prompt. Carries no command, host, port or credentials.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ManualTunnelConfig {
+    /// Shown in every prompt for this tunnel: "Connect the corporate VPN in the menu
+    /// bar". `None` shows only the tunnel's name.
+    pub message: Option<String>,
+    /// Before prompting, try a short TCP connect to the context's API server, and
+    /// treat the tunnel as confirmed when it answers.
+    pub skip_when_reachable: bool,
+}
+
+impl Default for ManualTunnelConfig {
+    fn default() -> Self {
+        Self {
+            message: None,
+            skip_when_reachable: true,
         }
     }
 }
@@ -262,6 +295,75 @@ prod = "prod-bastion"
         assert_eq!(unset.mode, CommandTunnelMode::Proxy, "proxy is the default");
         assert_eq!(unset.local_port, None);
         assert_eq!(unset.startup_timeout_secs, 30);
+    }
+
+    /// `manual-confirmation-tunnels` 1.1: a manual tunnel's message and its
+    /// skip-when-reachable setting survive a save and a load.
+    #[test]
+    fn a_manual_tunnel_round_trips() {
+        let mut config = sample();
+        config.tunnels.insert(
+            "corp-vpn".to_string(),
+            TunnelConfig {
+                name: "corp-vpn".into(),
+                kind: TunnelKind::Manual,
+                manual: ManualTunnelConfig {
+                    message: Some("Connect the corporate VPN in the menu bar".into()),
+                    skip_when_reachable: false,
+                },
+                ..TunnelConfig::default()
+            },
+        );
+        let text = toml::to_string(&config).unwrap();
+        assert!(text.contains("kind = \"manual\""), "{text}");
+        let parsed: TunnelsConfig = toml::from_str(&text).unwrap();
+        assert_eq!(parsed, config);
+    }
+
+    /// `manual-confirmation-tunnels` 1.1: a file written before the manual kind - no
+    /// `manual` table anywhere - loads with the defaults: no message, and the
+    /// reachability shortcut on.
+    #[test]
+    fn a_file_without_a_manual_table_loads_with_its_defaults() {
+        let before = r#"
+[tunnels.qa-iap]
+name = "QA IAP"
+kind = "command"
+
+[tunnels.qa-iap.command]
+command_line = "gcloud start-iap-tunnel x 443 --local-host-port=localhost:{port}"
+"#;
+        let parsed: TunnelsConfig = toml::from_str(before).unwrap();
+        let tunnel = &parsed.tunnels["qa-iap"];
+        assert_eq!(tunnel.manual, ManualTunnelConfig::default());
+        assert_eq!(tunnel.manual.message, None);
+        assert!(tunnel.manual.skip_when_reachable);
+        let unset: ManualTunnelConfig = toml::from_str("message = \"Up the VPN\"").unwrap();
+        assert!(unset.skip_when_reachable, "on by default");
+    }
+
+    /// `manual-confirmation-tunnels` 1.1: switching kind keeps every other kind's
+    /// settings - an SSH tunnel flipped to manual and back still has its bastion and
+    /// command fields, and the manual fields stay once it is SSH again.
+    #[test]
+    fn switching_kind_keeps_every_kinds_settings() {
+        let original = sample().tunnels["prod-bastion"].clone();
+        let mut tunnel = original.clone();
+        tunnel.kind = TunnelKind::Manual;
+        tunnel.manual.message = Some("Up the VPN".into());
+        let text = toml::to_string(&tunnel).unwrap();
+        let mut back: TunnelConfig = toml::from_str(&text).unwrap();
+        assert_eq!(back.bastion_host, original.bastion_host);
+        assert_eq!(back.jump_hosts, original.jump_hosts);
+        assert_eq!(back.auth, original.auth);
+        assert_eq!(back.command, original.command);
+
+        back.kind = TunnelKind::Ssh;
+        let text = toml::to_string(&back).unwrap();
+        let ssh: TunnelConfig = toml::from_str(&text).unwrap();
+        assert_eq!(ssh.kind, TunnelKind::Ssh);
+        assert_eq!(ssh.manual.message.as_deref(), Some("Up the VPN"));
+        assert_eq!(ssh.bastion_host, original.bastion_host);
     }
 
     /// Guards the design intent documented on the module and struct: a tunnel's

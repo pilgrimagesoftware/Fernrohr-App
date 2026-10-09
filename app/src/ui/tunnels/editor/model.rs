@@ -49,6 +49,9 @@ pub struct TunnelEditor {
     pub(super) mode: CommandTunnelMode,
     pub(super) local_port: Entity<InputState>,
     pub(super) startup_timeout: Entity<InputState>,
+    /// The manual tunnel settings, kept as loaded so a save of another kind
+    /// loses nothing.
+    pub(super) manual: ManualTunnelConfig,
     pub(super) field_errors: Vec<TunnelFieldError>,
     /// A failure `field_errors` can't name (a duplicate id on create, a keychain/io
     /// error) - every other `TunnelStoreError` variant.

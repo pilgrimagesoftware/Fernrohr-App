@@ -182,8 +182,17 @@ pub fn acquire_for_context(
         // failing the connection outright.
         return Ok(None);
     };
-    if config.kind == TunnelKind::Command {
-        return acquire_command(cx, tunnel_id, &config).map(Some);
+    match config.kind {
+        TunnelKind::Command => return acquire_command(cx, tunnel_id, &config).map(Some),
+        // UNWIRED(#195): the confirmation transport is section 2. Until then a manual
+        // tunnel fails its connection rather than connecting without being confirmed.
+        TunnelKind::Manual => {
+            return Err(TunnelAcquireError::Command(format!(
+                "{} is a manual tunnel, and this build can't wait for its confirmation yet",
+                config.name
+            )));
+        }
+        TunnelKind::Ssh => {}
     }
     let secret = store.secret(&tunnel_id)?;
 
