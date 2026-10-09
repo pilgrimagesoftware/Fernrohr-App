@@ -3,107 +3,24 @@
 //! through a real [`Foreground`] into real workspace windows - the same path
 //! an MCP client's request takes after the endpoint.
 //!
-//! Sessions are section 2's fixtures (`read::test_support`): connected to a
+//! Windows and sessions are `navigate::test_support`'s: connected to a
 //! recording fake API server, with the core kinds as their discovery, so
 //! nothing here dials a cluster.
 //!
 //! Named imports rather than `use super::*` plus a `gpui_kit::*` glob: see
 //! `util/shell/open/tests.rs` on the macro-expansion budget.
 
-use super::super::read::test_support::{open, tools};
-use super::super::tools::{ToolContext, ToolRegistry, ToolResult};
-use crate::config::saved_layouts::{self, SavedLayout};
-use crate::k8s::cluster::connection::ConnectionState;
+use super::super::tools::{ToolRegistry, ToolResult};
+use super::test_support::{
+    Harness, harness, harness_with, open_targets, reopen, saved_layout, workspace,
+};
+use crate::config::saved_layouts;
 use crate::k8s::cluster::discovery::DiscoveredKind;
-use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
 use crate::k8s::cluster::session::ClusterRegistry;
-use crate::k8s::test_recorder::Recorder;
 use crate::mcp::error::ToolError;
 use crate::ui::nav::NavTarget;
-use crate::util::shell::MainWindow;
-use crate::util::test_paths::temp_path;
-use gpui_kit::component::Root;
-use gpui_kit::{AppContext as _, Entity, TestAppContext, WindowHandle};
+use gpui_kit::TestAppContext;
 use serde_json::{Map, Value, json};
-use std::path::PathBuf;
-
-struct Harness {
-    tools: ToolContext,
-    layouts_dir: PathBuf,
-    /// The fake API server the sessions' client talks to, kept running.
-    _api: Recorder,
-    client: kube::Client,
-}
-
-/// The app's real `init` with a temp workspace and layouts directory, a
-/// kubeconfig listing `known`, and a connected session for each of `open`
-/// whose discovery holds only the core kinds.
-fn harness_with(cx: &mut TestAppContext, known: &[&str], opened: &[&str]) -> Harness {
-    let tools = tools(cx, known);
-    let layouts_dir = temp_path("mcp-layouts");
-    cx.update(|cx| {
-        crate::util::test_ui::init(cx);
-        crate::util::shell::init(cx, temp_path("mcp-shell"), &temp_path("mcp-keymap"));
-        crate::util::shell::set_layouts_dir_for_test(layouts_dir.clone(), cx);
-    });
-    let runtime = cx.update(|cx| crate::runtime::handle(cx));
-    let (api, client) = Recorder::start(&runtime, "200 OK", json!({}));
-    let h = Harness {
-        tools,
-        layouts_dir,
-        _api: api,
-        client,
-    };
-    reopen(cx, &h, opened);
-    h
-}
-
-/// Opens a connected session on each of `contexts`, discovering the core
-/// kinds - again, for a context whose last window closed and took its session
-/// with it.
-fn reopen(cx: &mut TestAppContext, h: &Harness, contexts: &[&str]) {
-    for context in contexts {
-        open(
-            cx,
-            context,
-            ConnectionState::Connected(h.client.clone()),
-            Some(core_kinds()),
-        );
-    }
-}
-
-fn core_kinds() -> Vec<DiscoveredKind> {
-    vec![DiscoveredKind::pods(), DiscoveredKind::events()]
-}
-
-/// [`harness_with`] where every known context is open.
-fn harness(cx: &mut TestAppContext, contexts: &[&str]) -> Harness {
-    harness_with(cx, contexts, contexts)
-}
-
-/// A workspace window holding `contexts`.
-fn workspace(
-    cx: &mut TestAppContext,
-    contexts: &[&str],
-) -> (WindowHandle<Root>, Entity<MainWindow>) {
-    let contexts: Vec<String> = contexts.iter().map(|c| c.to_string()).collect();
-    let held = contexts.clone();
-    let mut built = None;
-    let window = cx.add_window(|window, cx| {
-        let main = cx.new(|cx| MainWindow::test_workspace(contexts, window, cx));
-        built = Some(main.clone());
-        Root::new(main, window, cx)
-    });
-    cx.run_until_parked();
-    // The window's Resource panel ran discovery against the fake API server,
-    // which serves no kinds; put the fixture's back.
-    cx.update(|cx| {
-        for context in &held {
-            DiscoveryRegistry::insert_test(cx, context, core_kinds());
-        }
-    });
-    (window, built.expect("the window built its MainWindow"))
-}
 
 /// Calls `name` the way the endpoint does: from a task on the tokio runtime.
 async fn call(cx: &mut TestAppContext, h: &Harness, name: &str, arguments: Value) -> ToolResult {
@@ -115,10 +32,6 @@ async fn call(cx: &mut TestAppContext, h: &Harness, name: &str, arguments: Value
     let result = runtime.spawn(call).await.expect("the call ran");
     cx.run_until_parked();
     result
-}
-
-fn open_targets(cx: &mut TestAppContext, main: &Entity<MainWindow>) -> Vec<NavTarget> {
-    cx.update(|cx| main.read(cx).test_open_targets())
 }
 
 fn content(result: ToolResult) -> Map<String, Value> {
@@ -278,53 +191,6 @@ async fn open_panel_with_no_window_reports_the_ui_unavailable(cx: &mut TestAppCo
     )
     .await;
     assert_eq!(result, Err(ToolError::UiUnavailable));
-}
-
-/// A saved layout dumped from a throwaway window holding `contexts`, with
-/// an Events list opened for each of `events_in` - then closed, so it holds
-/// nothing by the time the layout loads.
-fn saved_layout(
-    cx: &mut TestAppContext,
-    name: &str,
-    contexts: &[&str],
-    events_in: &[&str],
-) -> SavedLayout {
-    let (window, main) = workspace(cx, contexts);
-    for context in events_in {
-        let context = context.to_string();
-        window
-            .update(cx, |_, window, cx| {
-                main.update(cx, |main, cx| {
-                    main.open_target_in(
-                        NavTarget::Kind(DiscoveredKind::events()),
-                        None,
-                        Some(context),
-                        Vec::new(),
-                        crate::ui::nav::OpenMode::Foreground,
-                        window,
-                        cx,
-                    )
-                })
-            })
-            .unwrap();
-    }
-    cx.run_until_parked();
-    let dock = cx.update(|cx| main.read(cx).test_dock_dump(cx));
-    window
-        .update(cx, |_, window, _| window.remove_window())
-        .unwrap();
-    cx.run_until_parked();
-    SavedLayout {
-        version: crate::consts::SAVED_LAYOUT_SCHEMA_VERSION,
-        name: name.into(),
-        created_at: "1970-01-01T00:00:00Z".into(),
-        updated_at: "1970-01-01T00:00:00Z".into(),
-        contexts: contexts.iter().map(|c| c.to_string()).collect(),
-        dock,
-        resource_panel_width: Some(300.0),
-        window_width: 900.0,
-        window_height: 600.0,
-    }
 }
 
 #[gpui_kit::test]

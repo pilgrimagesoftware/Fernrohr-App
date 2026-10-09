@@ -48,5 +48,6 @@ pub(super) fn register(registry: &mut ToolRegistry) {
     cronjobs::register(registry);
 }
 
+// `mcp::integration` drives the same fixture cluster through the adapter.
 #[cfg(test)]
-mod tests;
+pub(in crate::mcp) mod tests;

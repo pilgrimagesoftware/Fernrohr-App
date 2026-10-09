@@ -4,4 +4,4 @@
 
 mod approved;
 mod refused;
-mod support;
+pub(in crate::mcp) mod support;

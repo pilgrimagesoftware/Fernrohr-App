@@ -84,7 +84,7 @@ fn kinds() -> Vec<DiscoveredKind> {
 
 /// A connected `dev` context on a recording cluster answering
 /// [`every_answer`], whose user answers by `script` within `timeout`.
-pub(super) fn cluster(
+pub(in crate::mcp) fn cluster(
     cx: &mut TestAppContext,
     script: Script,
     timeout: Duration,
@@ -102,7 +102,7 @@ pub(super) fn cluster(
 }
 
 /// The requests that could change something: everything but reads.
-pub(super) fn writes(recorder: &Recorder) -> Vec<Recorded> {
+pub(in crate::mcp) fn writes(recorder: &Recorder) -> Vec<Recorded> {
     recorder
         .requests()
         .into_iter()
@@ -111,7 +111,7 @@ pub(super) fn writes(recorder: &Recorder) -> Vec<Recorded> {
 }
 
 /// Each action tool, called on `web` in `team-a`.
-pub(super) fn every_action() -> Vec<(&'static str, Value)> {
+pub(in crate::mcp) fn every_action() -> Vec<(&'static str, Value)> {
     let on_web = |extra: Value| {
         let mut arguments = json!({"context": "dev", "namespace": "team-a", "name": "web"});
         arguments

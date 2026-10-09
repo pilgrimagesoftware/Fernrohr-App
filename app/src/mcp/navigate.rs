@@ -215,4 +215,6 @@ fn object(value: Value) -> Map<String, Value> {
 }
 
 #[cfg(test)]
+pub(in crate::mcp) mod test_support;
+#[cfg(test)]
 mod tests;

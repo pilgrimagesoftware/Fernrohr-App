@@ -36,6 +36,8 @@ mod error;
 mod foreground;
 #[cfg(unix)]
 mod frame;
+#[cfg(all(test, unix))]
+mod integration;
 #[cfg(unix)]
 mod kinds;
 #[cfg(unix)]

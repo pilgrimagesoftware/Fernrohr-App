@@ -1,5 +1,6 @@
-//! Fixtures shared by the endpoint, server and adapter tests: a fixture tool,
-//! a scratch endpoint directory, and an app endpoint served in-process.
+//! Fixtures shared by the endpoint, server, adapter and integration tests: a
+//! fixture tool, a scratch endpoint directory, an app endpoint served
+//! in-process, and an MCP client driving a real adapter ([`McpClient`]).
 
 use super::endpoint::{Endpoint, EndpointFiles, EndpointPaths};
 use super::foreground::Foreground;
@@ -13,6 +14,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::task::JoinHandle;
+
+mod mcp_client;
+
+pub(super) use mcp_client::McpClient;
 
 /// A fresh, empty endpoint directory for one test. Short, since a socket path
 /// has to fit `sun_path` (104 bytes on macOS).
@@ -77,14 +82,26 @@ pub(super) struct TestServer {
 }
 
 impl TestServer {
-    /// Binds `paths` and serves `registry` there.
+    /// Binds `paths` and serves `registry` there, with no main thread behind
+    /// its tools ([`test_context`]).
     pub(super) fn start(paths: EndpointPaths, registry: ToolRegistry) -> Self {
+        Self::start_with(paths, registry, test_context())
+    }
+
+    /// [`Self::start`] with the tools' context given: a real main thread, a
+    /// kubeconfig and an approver, for tests that drive the app's own tools
+    /// through the endpoint.
+    pub(super) fn start_with(
+        paths: EndpointPaths,
+        registry: ToolRegistry,
+        context: ToolContext,
+    ) -> Self {
         let endpoint = Endpoint::bind(paths).expect("the test endpoint binds");
         let state = Arc::new(ServerState {
             registry,
             token: endpoint.files.token.clone(),
             owner_uid: endpoint.owner_uid,
-            context: test_context(),
+            context,
         });
         let files = endpoint.files.clone();
         let task = tokio::spawn(serve(endpoint.listener, state));
