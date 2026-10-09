@@ -48,6 +48,48 @@ pub fn entries(namespaces: &[String], query: &str) -> Vec<Option<String>> {
         .collect()
 }
 
+/// Apply a single action (add or remove) to every entry in a range, returning the result.
+/// If the anchor entry is selected, adds all; if unselected, removes all.
+#[allow(dead_code)] // Used in future shift-click range selection
+pub fn apply_range(
+    entries: &[Option<String>],
+    selected: &[String],
+    anchor_row: usize,
+    target_row: usize,
+) -> Vec<String> {
+    let start = anchor_row.min(target_row);
+    let end = anchor_row.max(target_row);
+
+    // Determine the action from the anchor row's state
+    let anchor_entry = entries.get(anchor_row).and_then(|e| e.as_ref());
+    let anchor_is_selected = match anchor_entry {
+        None => selected.is_empty(),
+        Some(ns) => selected.contains(ns),
+    };
+
+    let mut result = selected.to_vec();
+    for i in start..=end {
+        if let Some(entry) = entries.get(i) {
+            match entry {
+                None => result.clear(),
+                Some(namespace) => {
+                    let is_selected = result.contains(namespace);
+                    let should_be_selected = !anchor_is_selected;
+
+                    if should_be_selected && !is_selected {
+                        result.push(namespace.clone());
+                    } else if !should_be_selected && is_selected {
+                        result.retain(|n| n != namespace);
+                    }
+                }
+            }
+        }
+    }
+    result.sort_unstable();
+    result.dedup();
+    result
+}
+
 /// The selection after toggling `entry` in `selected`: "All namespaces"
 /// clears it, a namespace is added (kept sorted) or removed.
 pub fn toggled(selected: &[String], entry: Option<&str>) -> Vec<String> {
@@ -107,6 +149,7 @@ pub struct NamespaceFilter {
     anchor: Rc<Cell<Option<usize>>>,
     /// If a shift-click is pending, the range of rows from anchor to the
     /// shift-clicked row. On_confirm reads this and applies it.
+    #[allow(dead_code)] // Will be used when shift-click detection is integrated
     pending_range: Rc<Cell<Option<(usize, usize)>>>,
 }
 
@@ -180,7 +223,7 @@ impl NamespaceFilter {
         let pinned = usize::from(self.pin_all);
         let no_match = listed.len() == pinned && !query.trim().is_empty();
         let muted = cx.theme().muted_foreground;
-        let items = listed.iter().enumerate().map(|(_row, entry)| {
+        let items = listed.iter().map(|entry| {
             let checked = match entry {
                 None => selected.is_empty(),
                 Some(namespace) => selected.contains(namespace),
