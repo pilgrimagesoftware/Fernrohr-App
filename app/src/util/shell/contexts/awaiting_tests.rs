@@ -197,3 +197,129 @@ async fn proceeding_returns_the_capsule_to_its_usual_look(cx: &mut TestAppContex
     assert!(!drawn(&mut h, attention_selector("staging")));
     assert_ne!(items(&mut h)[0].severity, Severity::Attention);
 }
+
+fn click(h: &mut Harness, id: &'static str) {
+    let center = h.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(id)
+            .unwrap_or_else(|| panic!("{id} is drawn"))
+            .bounds()
+            .center()
+    });
+    h.vcx.simulate_click(center, Modifiers::none());
+    h.vcx.run_until_parked();
+}
+
+fn keys(h: &mut Harness, keys: &str) {
+    h.vcx.simulate_keystrokes(keys);
+    h.vcx.run_until_parked();
+}
+
+fn dialog_open(h: &mut Harness) -> bool {
+    use gpui_kit::component::WindowExt as _;
+    h.vcx.update(|window, cx| window.has_active_dialog(cx))
+}
+
+fn two_waiting(cx: &mut TestAppContext) -> (Harness, oneshot::Receiver<Decision>) {
+    let mut h = harness(
+        cx,
+        &[
+            ("dev", ConnectionState::WaitingForTunnel),
+            ("qa", ConnectionState::WaitingForTunnel),
+        ],
+    );
+    let answer = awaiting(&mut h, &["dev", "qa"]);
+    (h, answer)
+}
+
+fn still_waiting(h: &mut Harness) -> bool {
+    h.vcx.update(|_, cx| {
+        ManualConfirmations::entity(cx)
+            .is_some_and(|entity| entity.read(cx).pending_for("corp-vpn-id").is_some())
+    })
+}
+
+/// 4.2: Proceed leads a waiting capsule's menu - Down reaches it first - and answers the
+/// tunnel for every context sharing it, from whichever capsule it was chosen.
+#[gpui_kit::test]
+async fn proceed_from_either_capsule_answers_the_shared_tunnel(cx: &mut TestAppContext) {
+    let (mut h, mut answer) = two_waiting(cx);
+    click(&mut h, "context-chip-menu-qa");
+    keys(&mut h, "down");
+    keys(&mut h, "enter");
+    assert_eq!(answer.try_recv(), Ok(Decision::Proceed));
+    assert!(!still_waiting(&mut h), "both capsules' tunnel is answered");
+}
+
+/// 4.2: Cancel is the next row down.
+#[gpui_kit::test]
+async fn cancel_is_the_row_after_proceed(cx: &mut TestAppContext) {
+    let (mut h, mut answer) = two_waiting(cx);
+    click(&mut h, "context-chip-menu-dev");
+    keys(&mut h, "down down");
+    keys(&mut h, "enter");
+    assert_eq!(answer.try_recv(), Ok(Decision::Cancel));
+    assert!(!still_waiting(&mut h));
+}
+
+/// 4.2: Disconnect, below them, closes only its own context; the tunnel keeps
+/// waiting for the other.
+#[gpui_kit::test]
+async fn disconnect_on_a_waiting_capsule_closes_only_its_context(cx: &mut TestAppContext) {
+    let (mut h, mut answer) = two_waiting(cx);
+    click(&mut h, "context-chip-menu-dev");
+    // Proceed, Cancel, then - past the separator - Disconnect.
+    keys(&mut h, "down down down");
+    keys(&mut h, "enter");
+    assert!(dialog_open(&mut h), "Disconnect asks first");
+    // Tab past Cancel to Disconnect, then Space.
+    keys(&mut h, "tab tab");
+    let space = gpui_kit::Keystroke::parse("space").expect("valid");
+    h.vcx.simulate_event(gpui_kit::KeyDownEvent {
+        keystroke: space.clone(),
+        is_held: false,
+        prefer_character_input: false,
+    });
+    h.vcx
+        .simulate_event(gpui_kit::KeyUpEvent { keystroke: space });
+    h.vcx.run_until_parked();
+
+    let names: Vec<_> = items(&mut h)
+        .into_iter()
+        .map(|item| item.context_name)
+        .collect();
+    assert_eq!(names, ["qa"], "only dev went");
+    assert_eq!(answer.try_recv(), Err(oneshot::error::TryRecvError::Empty));
+    assert!(still_waiting(&mut h), "qa still waits on the tunnel");
+}
+
+/// A capsule not waiting on anything offers only Disconnect: Enter picks it.
+#[gpui_kit::test]
+async fn a_capsule_not_waiting_offers_only_disconnect(cx: &mut TestAppContext) {
+    let mut h = harness(cx, &[("dev", ConnectionState::Connecting)]);
+    click(&mut h, "context-chip-menu-dev");
+    keys(&mut h, "enter");
+    assert!(dialog_open(&mut h), "the first row is Disconnect");
+}
+
+/// 4.2: the Proceed and Cancel rows show the commands' keys, read from the live
+/// keymap.
+#[test]
+fn the_menu_rows_show_the_commands_keys() {
+    crate::ui::typography::recorder::with_recorded_text(|cx, recorded| {
+        let (mut h, _answer) = two_waiting(cx);
+        click(&mut h, "context-chip-menu-dev");
+        h.vcx.update(|window, cx| window.render_frame(cx));
+        for key in ["secondary-alt-p", "secondary-alt-c"] {
+            let label = gpui_kit::component::kbd::Kbd::format(
+                &gpui_kit::Keystroke::parse(key).expect("valid"),
+            );
+            assert!(
+                recorded.families_of(&label).is_some(),
+                "{key} ({label}) is drawn"
+            );
+        }
+        keys(&mut h, "escape");
+    });
+}

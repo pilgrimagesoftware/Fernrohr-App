@@ -8,6 +8,8 @@ use super::{StatusBarView, StatusItem};
 use crate::k8s::cluster::context_health::{ContextHealth, Severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::format_age;
+use crate::tunnel::manual::{Decision, ManualConfirmations};
+use crate::ui::manual_tunnel::{CancelManualTunnel, ProceedManualTunnel};
 use crate::ui::picker::{ClusterPicker, PickerEvent};
 use crate::util::context_lifecycle;
 use gpui_kit::assets::IconName;
@@ -55,7 +57,8 @@ pub(crate) fn state_tooltip_text(item: &StatusItem) -> Option<String> {
 }
 
 /// `item`'s capsule: its health and identity as one clickable body, then a menu
-/// button whose one item is Disconnect. Fully rounded and bordered, so the row
+/// button offering Disconnect - and, while the context awaits a manual tunnel's
+/// confirmation, Proceed and Cancel above it. Fully rounded and bordered, so the row
 /// reads as a set of contexts; the active one is filled.
 pub(super) fn render_capsule(
     item: StatusItem,
@@ -119,6 +122,11 @@ pub(super) fn render_capsule(
         }
     });
 
+    // While the context waits on a manual tunnel, Proceed and Cancel lead its menu.
+    let awaiting_tunnel = match &item.health {
+        ContextHealth::AwaitingConfirmation { tunnel_id, .. } => Some(tunnel_id.clone()),
+        _ => None,
+    };
     let menu_button = Button::new(SharedString::from(format!(
         "context-chip-menu-{}",
         item.context_name
@@ -129,6 +137,13 @@ pub(super) fn render_capsule(
     .dropdown_menu(move |menu, _window, _cx| {
         let this = this.clone();
         let name = name.clone();
+        let menu = match awaiting_tunnel.clone() {
+            Some(tunnel_id) => menu
+                .item(answer_item(&tunnel_id, Decision::Proceed))
+                .item(answer_item(&tunnel_id, Decision::Cancel))
+                .separator(),
+            None => menu,
+        };
         menu.item(
             PopupMenuItem::new("Disconnect").on_click(move |_event, window, cx| {
                 let name = name.clone();
@@ -161,6 +176,23 @@ pub(super) fn render_capsule(
         .child(body)
         .child(menu_button)
         .into_any_element()
+}
+
+/// A waiting capsule's Proceed or Cancel row: it answers this capsule's own tunnel -
+/// every context sharing it - and shows the matching command's key, which the menu
+/// reads off the row's action. The click handler runs instead of the action, so the
+/// row never asks which tunnel when several are waiting.
+fn answer_item(tunnel_id: &str, decision: Decision) -> PopupMenuItem {
+    let (label, action): (&str, Box<dyn Action>) = match decision {
+        Decision::Proceed => ("Proceed", Box::new(ProceedManualTunnel)),
+        Decision::Cancel => ("Cancel", Box::new(CancelManualTunnel)),
+    };
+    let tunnel_id = tunnel_id.to_string();
+    PopupMenuItem::new(label)
+        .action(action)
+        .on_click(move |_event, _window, cx| {
+            ManualConfirmations::resolve(cx, &tunnel_id, decision);
+        })
 }
 
 /// The add control after the capsules.
