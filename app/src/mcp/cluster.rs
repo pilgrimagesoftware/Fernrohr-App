@@ -129,6 +129,9 @@ pub(super) enum ContextStatus {
     Connecting,
     /// Open, waiting for its tunnel to come up.
     WaitingForTunnel,
+    /// Open, waiting for the user to confirm its manual tunnel in the app - the
+    /// agent can't answer that for them.
+    AwaitingConfirmation,
     /// Open and connected, its watches paused while a tunnel reconnects or
     /// credentials refresh.
     Paused,
@@ -147,6 +150,7 @@ pub(super) fn status(cx: &App, context: &str) -> ContextStatus {
         ContextHealth::Paused { .. } => ContextStatus::Paused,
         ContextHealth::Failed { .. } => ContextStatus::Failed,
         ContextHealth::WaitingForTunnel { .. } => ContextStatus::WaitingForTunnel,
+        ContextHealth::AwaitingConfirmation { .. } => ContextStatus::AwaitingConfirmation,
         ContextHealth::Connected => match &connection.read(cx).state {
             ConnectionState::Connected(_) => ContextStatus::Connected,
             ConnectionState::Connecting => ContextStatus::Connecting,

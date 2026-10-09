@@ -30,6 +30,8 @@ mod chord;
 mod commands;
 mod theme_switch;
 
+#[cfg(test)]
+pub(crate) use capsule::{attention_selector, icon_selector};
 pub(crate) use commands::{AddContext, DisconnectActiveContext, register_commands};
 /// The chord indicator's debug selectors, for tests outside this module.
 #[cfg(test)]
@@ -125,6 +127,7 @@ pub struct StatusBarView {
     // Kept alive for the view's lifetime; never read again once subscribed.
     _registry_observation: Subscription,
     _connection_observations: Vec<Subscription>,
+    _confirmations_observation: Option<Subscription>,
     /// A one-second refresh loop, running only while [`Self::items`] has anything other
     /// than `Connected` (design.md decision 4) - `None` once everything is healthy, so an
     /// idle, fully connected window never wakes on a timer.
@@ -173,6 +176,10 @@ impl StatusBarView {
         let registry_observation =
             cx.observe_global::<ClusterRegistry>(|this, cx| this.refresh(cx));
         let connection_observations = Self::observe_connections(&context_names, cx);
+        // A manual tunnel's prompt appearing or being answered changes a capsule
+        // without its connection changing state.
+        let confirmations_observation = crate::tunnel::manual::ManualConfirmations::entity(cx)
+            .map(|entity| cx.observe(&entity, |this: &mut Self, _, cx| this.refresh(cx)));
         let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
         let (tunnel_choices, tunnel_bindings) = load_tunnels(&tunnels_path);
         let tunnels_observation = cx.observe_global::<TunnelsRevision>(|this, cx| {
@@ -192,6 +199,7 @@ impl StatusBarView {
             clock,
             _registry_observation: registry_observation,
             _connection_observations: connection_observations,
+            _confirmations_observation: confirmations_observation,
             tick: None,
             chord: None,
             _pending_input: None,
@@ -280,8 +288,9 @@ impl StatusBarView {
             .any(|item| item.health != ContextHealth::Connected)
     }
 
-    /// One item per context this window uses, non-connected items first (the spec's
-    /// "Problem items first" scenario), stable otherwise. `self.clock.now()` in
+    /// One item per context this window uses, any awaiting the user's confirmation
+    /// first, then other non-connected items (the spec's "Problem items first"
+    /// scenario), stable otherwise. `self.clock.now()` in
     /// production; tests call this directly after advancing a fake clock, decoupling the
     /// elapsed-time math from whether the tick's own timer has fired yet.
     pub fn items(&self, cx: &App) -> Vec<StatusItem> {
@@ -296,7 +305,14 @@ impl StatusBarView {
                 ..Self::item_for(context_name, cx, now)
             })
             .collect();
-        items.sort_by_key(|item| item.health == ContextHealth::Connected);
+        // Attention first, so a context waiting on the user is never pushed off the
+        // visible end of the row; then everything else not connected.
+        items.sort_by_key(|item| {
+            (
+                item.severity != Severity::Attention,
+                item.health == ContextHealth::Connected,
+            )
+        });
         items
     }
 
@@ -306,6 +322,8 @@ impl StatusBarView {
         let elapsed = Self::elapsed(&health, now);
         let reason = match &health {
             ContextHealth::Failed { reason, .. } => Some(reason.clone()),
+            // The tunnel's instruction: "Awaiting confirmation for 2m: Connect the VPN".
+            ContextHealth::AwaitingConfirmation { message, .. } => message.clone(),
             ContextHealth::Connected
             | ContextHealth::WaitingForTunnel { .. }
             | ContextHealth::Paused { .. } => None,
@@ -338,6 +356,9 @@ impl StatusBarView {
                 ..
             } => (IconName::KeyRound, "Refreshing credentials"),
             ContextHealth::Failed { .. } => (IconName::CircleAlert, "Connection failed"),
+            ContextHealth::AwaitingConfirmation { .. } => {
+                (IconName::BellRing, "Awaiting confirmation")
+            }
         }
     }
 
@@ -346,7 +367,10 @@ impl StatusBarView {
             ContextHealth::Connected => None,
             ContextHealth::WaitingForTunnel { since }
             | ContextHealth::Paused { since, .. }
-            | ContextHealth::Failed { since, .. } => Some(now.saturating_duration_since(*since)),
+            | ContextHealth::Failed { since, .. }
+            | ContextHealth::AwaitingConfirmation { since, .. } => {
+                Some(now.saturating_duration_since(*since))
+            }
         }
     }
 }

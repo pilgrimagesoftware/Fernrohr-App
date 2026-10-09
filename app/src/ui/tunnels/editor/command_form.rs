@@ -88,7 +88,7 @@ impl TunnelEditor {
         .detach();
     }
 
-    /// The SSH / Command switch at the top of the pane.
+    /// The SSH / Command / Manual switch at the top of the pane.
     pub(super) fn render_kind_switch(&self, cx: &Context<Self>) -> impl IntoElement {
         let choice = |id: &'static str, label: &'static str, kind: TunnelKind| {
             let weak = cx.weak_entity();
@@ -110,6 +110,11 @@ impl TunnelEditor {
                 "tunnel-kind-command",
                 "Command tunnel",
                 TunnelKind::Command,
+            ))
+            .child(choice(
+                "tunnel-kind-manual",
+                "Manual tunnel",
+                TunnelKind::Manual,
             ))
     }
 

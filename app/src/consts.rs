@@ -14,6 +14,12 @@ pub(crate) const APP_NAME: &str = "Fernrohr";
 /// that entry's name and icon and group them under it.
 pub(crate) const APP_ID: &str = "fernrohr";
 
+/// The macOS bundle identifier (`[package.metadata.packager]`'s `identifier`):
+/// the app desktop notifications are posted as. Without it they would be
+/// posted as Finder.
+#[cfg(target_os = "macos")]
+pub(crate) const BUNDLE_IDENTIFIER: &str = "com.pilgrimagesoftware.fernrohr";
+
 // UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
 // 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
 #[allow(dead_code)]
@@ -33,6 +39,10 @@ pub(crate) const COMMAND_TUNNEL_POLL_INTERVAL: Duration = Duration::from_millis(
 /// How long a stopping command tunnel's process group has between `SIGTERM` and
 /// `SIGKILL`.
 pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
+/// `manual-confirmation-tunnels` D5: how long a manual tunnel's reachability
+/// shortcut waits for the API server to accept a TCP connection before it asks the
+/// user instead.
+pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.

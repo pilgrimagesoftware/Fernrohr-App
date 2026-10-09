@@ -51,6 +51,13 @@ getrandom = "=0.3.4"
 # and rmcp, with its derive; pinned to that same version.
 schemars = "=1.2.2"
 
+# Desktop notifications (`notify`, manual-confirmation-tunnels D6): the macOS
+# notification center and the freedesktop D-Bus service. Already in the Linux
+# build through gpui, with these default features; pinned to that same
+# version. Unix only: the app posts none on Windows.
+[target.'cfg(unix)'.dependencies]
+notify-rust = "=4.18.1"
+
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.
 [target.'cfg(target_os = "macos")'.dependencies]

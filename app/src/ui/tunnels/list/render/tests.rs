@@ -42,3 +42,30 @@ fn a_row_says_which_kind_and_what_it_runs() {
         "the first line, its continuation backslash dropped, marked as shortened"
     );
 }
+
+/// `manual-confirmation-tunnels` 1.2: a manual tunnel's row says so, and shows its
+/// instruction - shortened past 60 characters - or that it is confirmed by hand.
+#[test]
+fn a_manual_tunnels_row_shows_its_badge_and_instruction() {
+    use crate::config::tunnels::ManualTunnelConfig;
+    assert_eq!(kind_label(TunnelKind::Manual), "Manual");
+    let manual = |message: Option<&str>| TunnelConfig {
+        name: "corp-vpn".into(),
+        kind: TunnelKind::Manual,
+        manual: ManualTunnelConfig {
+            message: message.map(str::to_string),
+            skip_when_reachable: true,
+        },
+        ..TunnelConfig::default()
+    };
+    assert_eq!(
+        tunnel_summary(&manual(Some("Connect the corporate VPN"))),
+        "Connect the corporate VPN"
+    );
+    assert_eq!(tunnel_summary(&manual(None)), "Confirmed by hand");
+    assert_eq!(tunnel_summary(&manual(Some("  "))), "Confirmed by hand");
+    let long = "x".repeat(80);
+    let summary = tunnel_summary(&manual(Some(&long)));
+    assert_eq!(summary.chars().count(), 61);
+    assert!(summary.ends_with('\u{2026}'));
+}

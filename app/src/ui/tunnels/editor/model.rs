@@ -49,6 +49,10 @@ pub struct TunnelEditor {
     pub(super) mode: CommandTunnelMode,
     pub(super) local_port: Entity<InputState>,
     pub(super) startup_timeout: Entity<InputState>,
+    /// The manual form: the prompt's instruction, and whether a reachable API
+    /// server skips the prompt.
+    pub(super) manual_message: Entity<InputState>,
+    pub(super) skip_when_reachable: bool,
     pub(super) field_errors: Vec<TunnelFieldError>,
     /// A failure `field_errors` can't name (a duplicate id on create, a keychain/io
     /// error) - every other `TunnelStoreError` variant.
@@ -90,6 +94,7 @@ impl TunnelEditor {
             ("Private key", &self.key_material),
             ("Local port", &self.local_port),
             ("Startup timeout", &self.startup_timeout),
+            ("Instruction", &self.manual_message),
         ];
         inputs
             .into_iter()

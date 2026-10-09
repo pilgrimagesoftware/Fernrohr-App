@@ -2,8 +2,8 @@
 // would shadow the built-in `#[test]` for these plain synchronous/tokio tests.
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::connection::connect::{
-    ForwardWait, connect_and_probe, resolve_bound_context, resolve_with_fresh_tokens,
-    rewrite_for_tunnel, route_through_tunnel,
+    ForwardWait, connect_and_probe, releases_forward_on, resolve_bound_context,
+    resolve_with_fresh_tokens, rewrite_for_tunnel, route_through_tunnel,
 };
 use crate::k8s::cluster::connection::test_support::{config_for, respond_once, version_info_json};
 use crate::k8s::cluster::tunnel::TunnelRoute;
@@ -109,6 +109,7 @@ mod connect_and_probe_tests {
                 state: state_rx,
                 local_addr: addr,
                 route: TunnelRoute::Rewrite,
+                failure: Default::default(),
             }),
             tx,
         ));
@@ -119,6 +120,38 @@ mod connect_and_probe_tests {
         handle.await.unwrap();
 
         assert_eq!(recv_all(rx).await, vec!["WaitingForTunnel", "Connected"]);
+    }
+
+    /// `manual-confirmation-tunnels` 2.1: a forward that gave up fails the waiting
+    /// connection with the transport's own reason, sending no request.
+    #[tokio::test]
+    async fn a_forward_that_gave_up_fails_with_its_reason() {
+        let (state_tx, state_rx) = watch::channel(ForwardState::Connecting);
+        let failure = crate::forward::supervisor::FailureSlot::default();
+        let (tx, rx) = mpsc::channel(4);
+        let handle = tokio::spawn(connect_and_probe(
+            Ok(config_for("127.0.0.1:1".parse().unwrap())),
+            Some(ForwardWait {
+                state: state_rx,
+                local_addr: "127.0.0.1:1".parse().unwrap(),
+                route: TunnelRoute::Rewrite,
+                failure: failure.clone(),
+            }),
+            tx,
+        ));
+        failure.set_for_test("corp-vpn was cancelled");
+        drop(state_tx);
+        handle.await.unwrap();
+
+        let mut rx = rx;
+        assert!(matches!(
+            rx.recv().await,
+            Some(ConnectionState::WaitingForTunnel)
+        ));
+        match rx.recv().await {
+            Some(ConnectionState::Failed(reason)) => assert_eq!(reason, "corp-vpn was cancelled"),
+            _ => panic!("expected the transport's reason"),
+        }
     }
 
     #[tokio::test]
@@ -134,6 +167,7 @@ mod connect_and_probe_tests {
                 state: state_rx,
                 local_addr: "127.0.0.1:1".parse().unwrap(),
                 route: TunnelRoute::Rewrite,
+                failure: Default::default(),
             }),
             tx,
         ));
@@ -236,4 +270,40 @@ mod routing {
             Some("http://127.0.0.1:53124/")
         );
     }
+}
+
+/// `manual-confirmation-tunnels`: a failed connection lets go of a manual tunnel's
+/// forward, so its confirmation is withdrawn and the next attempt asks again; SSH
+/// and command forwards stay for a retry, and a connection that succeeds keeps any.
+#[test]
+fn only_a_failed_manual_connection_lets_its_forward_go() {
+    let failed = ConnectionState::Failed("connection refused".into());
+    assert!(releases_forward_on(&failed, Some(TunnelRoute::Direct)));
+    for route in [None, Some(TunnelRoute::Rewrite), Some(TunnelRoute::Proxy)] {
+        assert!(!releases_forward_on(&failed, route), "{route:?}");
+    }
+    for state in [
+        ConnectionState::Connecting,
+        ConnectionState::WaitingForTunnel,
+    ] {
+        assert!(!releases_forward_on(&state, Some(TunnelRoute::Direct)));
+    }
+}
+
+/// `manual-confirmation-tunnels`: a manual tunnel's direct route leaves the
+/// client's own address and proxy alone.
+#[test]
+fn a_direct_route_rewrites_nothing() {
+    let mut config = Config::new("https://api.example.com:6443".parse().unwrap());
+    let before = (config.cluster_url.clone(), config.proxy_url.clone());
+    route_through_tunnel(
+        &mut config,
+        "127.0.0.1:0".parse().unwrap(),
+        TunnelRoute::Direct,
+    );
+    assert_eq!(
+        (config.cluster_url.clone(), config.proxy_url.clone()),
+        before
+    );
+    assert_eq!(config.tls_server_name, None);
 }

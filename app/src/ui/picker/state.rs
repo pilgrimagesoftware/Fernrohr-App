@@ -63,6 +63,9 @@ pub struct ClusterPicker {
     pub(super) tunnel_bindings: BTreeMap<String, String>,
     /// Reloads the two caches above whenever any view writes `tunnels.toml`.
     _tunnels_observation: Subscription,
+    /// Redraws the status line when a manual tunnel's prompt appears or is
+    /// answered, which changes no connection's state.
+    _confirmations_observation: Option<Subscription>,
     /// Test-only stand-in for `ClusterRegistry::connection`. Real connections spawn
     /// tokio work on a runtime worker thread, which gpui's test scheduler rejects
     /// as cross-thread nondeterminism - so tests substitute a stub instead of
@@ -81,6 +84,8 @@ impl ClusterPicker {
             this.tunnel_bindings = bindings;
             cx.notify();
         });
+        let confirmations_observation = crate::tunnel::manual::ManualConfirmations::entity(cx)
+            .map(|entity| cx.observe(&entity, |_this: &mut Self, _, cx| cx.notify()));
         let contexts = kubeconfig::list_context_names(None).map_err(|error| error.to_string());
         // Nothing is selected until the user clicks a row: the Connect button stays
         // disabled rather than pointing at a context nobody chose.
@@ -95,6 +100,7 @@ impl ClusterPicker {
             tunnel_choices,
             tunnel_bindings,
             _tunnels_observation: tunnels_observation,
+            _confirmations_observation: confirmations_observation,
             #[cfg(test)]
             connection_factory: None,
         }
@@ -121,6 +127,23 @@ impl ClusterPicker {
         // The `TunnelsRevision` observer reloads this picker's caches along with every
         // other open picker's.
         crate::ui::tunnels::notify_tunnels_changed(cx);
+    }
+
+    /// Shows an attempt on `connection` for `context_name`, as `select` would, without
+    /// connecting. Test-only.
+    #[cfg(test)]
+    pub(super) fn test_attempt(
+        &mut self,
+        context_name: &str,
+        connection: Entity<ClusterConnection>,
+        cx: &mut Context<Self>,
+    ) {
+        self.attempt = Some(Attempt {
+            context_name: context_name.to_string(),
+            connection,
+            connected: false,
+        });
+        cx.notify();
     }
 
     /// The connection a [`Self::select`] attempt should observe. Production always

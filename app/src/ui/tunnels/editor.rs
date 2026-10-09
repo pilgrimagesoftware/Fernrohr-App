@@ -6,14 +6,17 @@
 //!
 //! `command-tunnels` adds a kind switch at the top: the SSH form, or the command form
 //! (`command_form`) - command line, Proxy/Forward mode, optional fixed port, startup
-//! timeout. Both forms keep their values while the other is showing.
+//! timeout. `manual-confirmation-tunnels` adds a third, the manual form
+//! (`manual_form`): the prompt's instruction and the skip-when-reachable choice.
+//! Every form keeps its values while another is showing.
 //!
 //! `TunnelsWindow` (`list.rs`) owns whether the pane is open and for which tunnel;
 //! this module owns what is inside it, reported back through [`TunnelEditorEvent`].
 
 use super::notify_tunnels_changed;
 use crate::config::tunnels::{
-    CommandTunnelConfig, CommandTunnelMode, TunnelAuth, TunnelConfig, TunnelKind,
+    CommandTunnelConfig, CommandTunnelMode, ManualTunnelConfig, TunnelAuth, TunnelConfig,
+    TunnelKind,
 };
 use crate::tunnel::ssh::{SshTunnelConfig, TransientIdentityFile, test_connection};
 use crate::tunnel::store::{TunnelFieldError, TunnelStore, TunnelStoreError};
@@ -28,6 +31,7 @@ use std::path::PathBuf;
 mod actions;
 mod command_form;
 mod construction;
+mod manual_form;
 mod model;
 mod render;
 mod traits;

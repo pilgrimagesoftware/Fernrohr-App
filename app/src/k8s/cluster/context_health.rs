@@ -31,6 +31,17 @@ pub enum ContextHealth {
         reason: String,
         since: Instant,
     },
+    /// Waiting for the user to confirm its manual tunnel (`manual-confirmation-tunnels`
+    /// D8): the network path the tunnel stands for is the user's to bring up.
+    AwaitingConfirmation {
+        /// The tunnel's id, for Proceed and Cancel to resolve.
+        tunnel_id: String,
+        /// The tunnel's display name.
+        tunnel: String,
+        /// The tunnel's instruction, if it has one.
+        message: Option<String>,
+        since: Instant,
+    },
 }
 
 /// The status bar's color for one item, from the spec's color table - a value, not a
@@ -42,17 +53,23 @@ pub enum Severity {
     Info,
     Warning,
     Danger,
+    /// Needs the user to act - a manual tunnel awaiting confirmation. The one
+    /// severity drawn as a fill rather than a text tint, so it stands out from
+    /// everything else in the row.
+    Attention,
 }
 
 /// Maps `health` to its color at `now`, per the spec's table: connected is muted;
 /// waiting for a tunnel or a credential refresh is info; a tunnel reconnecting is
-/// warning; and a failed connection, or any pause lasting longer than
-/// [`STATUS_ESCALATE_AFTER`], is danger.
+/// warning; a failed connection, or any pause lasting longer than
+/// [`STATUS_ESCALATE_AFTER`], is danger; and a manual tunnel awaiting the user's
+/// confirmation is attention, however long it has waited - it has no timeout.
 pub fn severity(health: &ContextHealth, now: Instant) -> Severity {
     match health {
         ContextHealth::Connected => Severity::Muted,
         ContextHealth::WaitingForTunnel { .. } => Severity::Info,
         ContextHealth::Failed { .. } => Severity::Danger,
+        ContextHealth::AwaitingConfirmation { .. } => Severity::Attention,
         ContextHealth::Paused { reason, since } => {
             if now.saturating_duration_since(*since) > STATUS_ESCALATE_AFTER {
                 Severity::Danger
@@ -164,5 +181,21 @@ mod tests {
             ),
             Severity::Danger
         );
+    }
+
+    /// `manual-confirmation-tunnels` 4.1: awaiting confirmation is attention, and
+    /// stays attention however long it waits - it has no timeout to escalate past.
+    #[test]
+    fn awaiting_confirmation_is_attention_at_any_age() {
+        let since = Instant::now();
+        let health = ContextHealth::AwaitingConfirmation {
+            tunnel_id: "t".into(),
+            tunnel: "corp-vpn".into(),
+            message: None,
+            since,
+        };
+        assert_eq!(severity(&health, since), Severity::Attention);
+        let later = since + STATUS_ESCALATE_AFTER * 10;
+        assert_eq!(severity(&health, later), Severity::Attention);
     }
 }

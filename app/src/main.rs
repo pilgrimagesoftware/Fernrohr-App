@@ -8,6 +8,7 @@ mod forward;
 mod k8s;
 mod keymap;
 mod mcp;
+mod notify;
 mod runtime;
 mod ssh_path;
 mod tunnel;

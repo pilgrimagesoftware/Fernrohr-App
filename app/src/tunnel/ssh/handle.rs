@@ -82,6 +82,13 @@ impl SshTunnel {
     }
 }
 
+impl SshTunnel {
+    /// Where the supervisor leaves its reason if it gives up.
+    pub fn failure(&self) -> crate::forward::supervisor::FailureSlot {
+        self.supervisor.failure()
+    }
+}
+
 impl ManagedForward for SshTunnel {
     fn state(&self) -> watch::Receiver<ForwardState> {
         self.supervisor.state()

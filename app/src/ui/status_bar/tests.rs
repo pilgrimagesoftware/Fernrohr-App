@@ -122,6 +122,12 @@ fn every_state(now: Instant) -> Vec<ContextHealth> {
             reason: "boom".to_string(),
             since: now,
         },
+        ContextHealth::AwaitingConfirmation {
+            tunnel_id: "corp-vpn-id".to_string(),
+            tunnel: "corp-vpn".to_string(),
+            message: Some("Connect the corporate VPN".to_string()),
+            since: now,
+        },
     ];
     for state in &states {
         match state {
@@ -131,7 +137,8 @@ fn every_state(now: Instant) -> Vec<ContextHealth> {
                 reason: PauseReason::Reconnecting | PauseReason::CredentialRefresh,
                 ..
             }
-            | ContextHealth::Failed { .. } => {}
+            | ContextHealth::Failed { .. }
+            | ContextHealth::AwaitingConfirmation { .. } => {}
         }
     }
     states

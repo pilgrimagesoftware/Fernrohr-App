@@ -1,6 +1,5 @@
 use super::*;
 use crate::config::tunnels::TunnelConfig;
-use crate::forward::managed::ManagedForward as _;
 use crate::tunnel::store::TunnelStore;
 use std::sync::atomic::{AtomicU64, Ordering};
 

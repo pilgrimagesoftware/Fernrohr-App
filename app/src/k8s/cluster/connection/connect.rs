@@ -99,6 +99,8 @@ pub(in crate::k8s::cluster) struct ForwardWait {
     pub(in crate::k8s::cluster) state: watch::Receiver<ForwardState>,
     pub(in crate::k8s::cluster) local_addr: SocketAddr,
     pub(in crate::k8s::cluster) route: TunnelRoute,
+    /// Why the forward gave up, once its state channel has closed.
+    pub(in crate::k8s::cluster) failure: FailureSlot,
 }
 
 impl ForwardWait {
@@ -108,6 +110,7 @@ impl ForwardWait {
             state: forward.state(),
             local_addr: forward.local_addr(),
             route: forward.route(),
+            failure: forward.failure(),
         }
     }
 }
@@ -120,6 +123,8 @@ impl ForwardWait {
 fn route_through_tunnel(config: &mut Config, local_addr: SocketAddr, route: TunnelRoute) {
     match route {
         TunnelRoute::Rewrite => rewrite_for_tunnel(config, local_addr),
+        // A manual tunnel: once confirmed, the client goes to its own server.
+        TunnelRoute::Direct => {}
         TunnelRoute::Proxy => {
             if let Some(own) = &config.proxy_url {
                 log::debug!("the bound tunnel's proxy overrides the kubeconfig's proxy-url {own}");
@@ -148,6 +153,19 @@ fn name_the_proxy(state: ConnectionState, proxy: SocketAddr) -> ConnectionState 
         }
         other => other,
     }
+}
+
+/// Whether a connection reaching `state` through a forward routed `route` lets the
+/// forward go. Only a manual tunnel's, and only on failure: its confirmation then
+/// lasts only while some *connected* context uses it, so a connection that failed
+/// after Proceed - or because Cancel was chosen - prompts again next time
+/// (`manual-confirmation-tunnels`: Confirmation lifetime). SSH and command forwards
+/// stay, to be reused by a retry.
+pub(in crate::k8s::cluster) fn releases_forward_on(
+    state: &ConnectionState,
+    route: Option<TunnelRoute>,
+) -> bool {
+    matches!(state, ConnectionState::Failed(_)) && route == Some(TunnelRoute::Direct)
 }
 
 /// Points `config.cluster_url` at the tunnel's local forward and pins
@@ -184,6 +202,7 @@ pub(in crate::k8s::cluster) async fn connect_and_probe(
         state: mut state_rx,
         local_addr,
         route,
+        failure,
     }) = forward_wait
     {
         let _ = tx.send(ConnectionState::WaitingForTunnel).await;
@@ -192,11 +211,12 @@ pub(in crate::k8s::cluster) async fn connect_and_probe(
                 break Some((local_addr, route));
             }
             if state_rx.changed().await.is_err() {
-                let _ = tx
-                    .send(ConnectionState::Failed(
-                        "tunnel forward closed before becoming ready".to_string(),
-                    ))
-                    .await;
+                // A transport that gave up (a cancelled manual tunnel) left its
+                // reason; anything else closing the channel has none to give.
+                let reason = failure
+                    .get()
+                    .unwrap_or_else(|| "tunnel forward closed before becoming ready".to_string());
+                let _ = tx.send(ConnectionState::Failed(reason)).await;
                 return;
             }
         }
@@ -256,6 +276,7 @@ impl ClusterConnection {
             }
             let forward = acquired.and_then(Result::ok).flatten();
             let forward_wait = forward.as_ref().map(ForwardWait::of);
+            let route = forward.as_ref().map(|handle| handle.forward().route());
 
             let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
                 let config_result = resolve_config(context_name.as_deref()).await;
@@ -264,6 +285,9 @@ impl ClusterConnection {
             cx.spawn(async move |this, cx| {
                 crate::runtime::drain(rx, |state| {
                     let _ = this.update(cx, |this, cx| {
+                        if releases_forward_on(&state, route) {
+                            this._forward = None;
+                        }
                         this.state = state;
                         this.since = Instant::now();
                         cx.notify();
@@ -281,6 +305,10 @@ impl ClusterConnection {
     }
 }
 
+#[cfg(test)]
+mod manual_e2e_tests;
+#[cfg(test)]
+mod nonblocking_tests;
 #[cfg(test)]
 mod oidc_tests;
 #[cfg(test)]
