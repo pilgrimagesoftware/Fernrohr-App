@@ -270,6 +270,39 @@ mod tests {
     }
 
     #[test]
+    fn the_app_lists_its_read_tools_with_their_input_schemas() {
+        let specs = ToolRegistry::app().specs();
+        let names: Vec<_> = specs.iter().map(|spec| spec.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "get_pod_logs",
+                "get_resource",
+                "list_contexts",
+                "list_resource_kinds",
+                "list_resources",
+            ]
+        );
+        for spec in &specs {
+            assert_eq!(spec.kind, ToolKind::Read, "{}", spec.name);
+            assert_eq!(spec.input_schema["type"], "object", "{}", spec.name);
+            assert!(!spec.input_schema.contains_key("title"), "{}", spec.name);
+        }
+        let list = specs
+            .iter()
+            .find(|spec| spec.name == "list_resources")
+            .unwrap();
+        assert_eq!(list.input_schema["required"], json!(["context", "kind"]));
+        let properties = list.input_schema["properties"].as_object().unwrap();
+        assert!(properties.contains_key("continue"));
+        assert!(
+            properties["label_selector"]["description"]
+                .as_str()
+                .is_some_and(|text| text.contains("label selector"))
+        );
+    }
+
+    #[test]
     fn the_app_has_no_state_changing_tool_outside_the_allowlist() {
         // Section 3 fills in the allowlist; until then the app has no action
         // tool at all, and this is where adding one has to be acknowledged.

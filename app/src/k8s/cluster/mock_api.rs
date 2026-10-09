@@ -78,12 +78,17 @@ fn answer(stream: std::net::TcpStream, routes: &Routes) {
         .nth(1)
         .unwrap_or("")
         .to_string();
-    let (status, body) = routes
-        .lock()
-        .expect("routes lock")
-        .get(&path)
-        .cloned()
-        .unwrap_or((404, "{}".to_string()));
+    // An exact route (query included) wins; otherwise the bare path's, so a
+    // route can serve a request whatever parameters the client adds.
+    let bare = path.split_once('?').map_or(path.as_str(), |(bare, _)| bare);
+    let (status, body) = {
+        let routes = routes.lock().expect("routes lock");
+        routes
+            .get(&path)
+            .or_else(|| routes.get(bare))
+            .cloned()
+            .unwrap_or((404, "{}".to_string()))
+    };
     let response = format!(
         "HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()

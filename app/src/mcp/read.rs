@@ -7,6 +7,7 @@
 //! context doesn't have, fails before any Kubernetes request.
 
 mod contexts;
+mod logs;
 mod resources;
 mod shape;
 
@@ -16,6 +17,7 @@ use super::tools::ToolRegistry;
 pub(super) fn register(registry: &mut ToolRegistry) {
     contexts::register(registry);
     resources::register(registry);
+    logs::register(registry);
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+use crate::consts::MCP_RESULT_BUDGET_BYTES;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::{DiscoveredKind, KindVerbs};
 use crate::k8s::test_cluster::FakeCluster;
@@ -280,4 +281,64 @@ async fn a_page_carries_its_selectors_and_continue_token(cx: &mut TestAppContext
     ] {
         assert!(target.contains(part), "{target} lacks {part}");
     }
+}
+
+/// A pod in `team-c` carrying an annotation of `pad` bytes.
+fn padded_pod(name: &str, pad: usize) -> Value {
+    let mut pod = pod("team-c", name);
+    pod["metadata"]["annotations"] = json!({"pad": "x".repeat(pad)});
+    pod
+}
+
+#[gpui_kit::test]
+async fn an_oversized_page_is_cut_to_the_budget_and_says_so(cx: &mut TestAppContext) {
+    let (tools, cluster) = cluster(cx);
+    // 30 objects of ~50 KiB: half again the budget.
+    for n in 0..30 {
+        cluster.apply(
+            "/api/v1",
+            "pods",
+            padded_pod(&format!("big-{n:02}"), 50 * 1024),
+        );
+    }
+    let output = call(
+        cx,
+        &tools,
+        "list_resources",
+        json!({"context": "dev", "kind": "Pod", "namespace": "team-c"}),
+    )
+    .await
+    .unwrap();
+
+    assert!(output.truncated);
+    assert_eq!(output.content["page_size"], 30);
+    let kept = output.content["items"].as_array().unwrap();
+    assert!(!kept.is_empty() && kept.len() < 30, "{} kept", kept.len());
+    assert_eq!(output.content["count"], kept.len());
+    let size = serde_json::to_vec(kept).unwrap().len();
+    assert!(size <= MCP_RESULT_BUDGET_BYTES, "{size} bytes");
+    assert_eq!(output.content["continue"], Value::Null);
+}
+
+#[gpui_kit::test]
+async fn an_object_larger_than_the_budget_is_refused(cx: &mut TestAppContext) {
+    let (tools, cluster) = cluster(cx);
+    cluster.apply(
+        "/api/v1",
+        "pods",
+        padded_pod("huge", MCP_RESULT_BUDGET_BYTES),
+    );
+    let result = call(
+        cx,
+        &tools,
+        "get_resource",
+        json!({"context": "dev", "kind": "Pod", "namespace": "team-c", "name": "huge"}),
+    )
+    .await;
+    assert_eq!(
+        result,
+        Err(ToolError::ResultTooLarge {
+            limit: MCP_RESULT_BUDGET_BYTES
+        })
+    );
 }

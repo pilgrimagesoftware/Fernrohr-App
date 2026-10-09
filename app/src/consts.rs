@@ -253,6 +253,25 @@ pub(crate) const MCP_MAX_CONNECTIONS: usize = 16;
 pub(crate) const MCP_LIST_DEFAULT_LIMIT: u32 = 100;
 pub(crate) const MCP_LIST_MAX_LIMIT: u32 = 500;
 
+/// `agent-mcp`: the most a read tool puts in one result - a page of objects
+/// or a pod's logs. Well under [`MCP_MAX_REPLY_BYTES`]; a list page past it
+/// is cut short and says so, a single object past it is refused.
+pub(crate) const MCP_RESULT_BUDGET_BYTES: usize = 1024 * 1024;
+
+/// `agent-mcp`: `get_pod_logs`' line window - how many of the newest lines it
+/// asks for when the client doesn't say, and the most it may ask for.
+pub(crate) const MCP_LOG_DEFAULT_TAIL_LINES: i64 = 200;
+pub(crate) const MCP_LOG_MAX_TAIL_LINES: i64 = 5000;
+
+/// `agent-mcp`: how many bytes of logs `get_pod_logs` returns when the client
+/// doesn't say. At most [`MCP_RESULT_BUDGET_BYTES`].
+pub(crate) const MCP_LOG_DEFAULT_BYTES: usize = 256 * 1024;
+
+/// `agent-mcp`: the most log bytes read from the cluster for one call, before
+/// the newest are kept: the line window can hold very long lines, and the app
+/// must not buffer them without bound.
+pub(crate) const MCP_LOG_READ_CAP: usize = 8 * 1024 * 1024;
+
 /// `agent-mcp`: how many foreground jobs - tool work that needs GPUI state -
 /// may wait for the main thread at once before the tool handlers queueing
 /// them wait too.

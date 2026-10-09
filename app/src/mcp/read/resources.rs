@@ -6,8 +6,8 @@
 //! a kind the context lacks, a misplaced namespace or a path-altering name
 //! never reaches the cluster.
 
-use super::shape::{object_json, output};
-use crate::consts::{MCP_LIST_DEFAULT_LIMIT, MCP_LIST_MAX_LIMIT};
+use super::shape::{object_json, output, within_budget};
+use crate::consts::{MCP_LIST_DEFAULT_LIMIT, MCP_LIST_MAX_LIMIT, MCP_RESULT_BUDGET_BYTES};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::resource_actions::api_for;
 use crate::mcp::cluster::session;
@@ -26,8 +26,10 @@ pub(super) fn register(registry: &mut ToolRegistry) {
         "List resources",
         "Lists objects of one resource kind in a connected context: in one \
          namespace, or in all of them when `namespace` is omitted. Pages with \
-         `limit` and the `continue` token a previous page returned. Secret \
-         values are replaced by their sizes.",
+         `limit` and the `continue` token a previous page returned. A page \
+         too large to return whole is cut short and marked `truncated`, with \
+         no `continue` token: ask again with a smaller `limit`. Secret values \
+         are replaced by their sizes.",
         ToolKind::Read,
         list_resources,
     );
@@ -108,20 +110,30 @@ async fn list_resources(input: ListResourcesInput, tools: ToolContext) -> ToolRe
         .await
         .map_err(|error| ToolError::from_kube(&session.context, &error))?;
 
-    let next = list.metadata.continue_.filter(|token| !token.is_empty());
     let items = list
         .items
         .into_iter()
         .map(|object| object_json(&kind, object))
         .collect::<Result<Vec<Value>, ToolError>>()?;
-    Ok(output(json!({
+    let page_size = items.len();
+    let (items, truncated) = within_budget(items, MCP_RESULT_BUDGET_BYTES);
+    // The token continues after the whole page; after a cut one it would
+    // skip the objects left out.
+    let next = list
+        .metadata
+        .continue_
+        .filter(|token| !token.is_empty() && !truncated);
+    let mut result = output(json!({
         "context": session.context,
         "kind": kind_json(&kind),
         "namespace": namespace.as_ref().map(LabelName::as_str),
         "count": items.len(),
+        "page_size": page_size,
         "items": items,
         "continue": next,
-    })))
+    }));
+    result.truncated = truncated;
+    Ok(result)
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -169,9 +181,16 @@ async fn get_resource(input: GetResourceInput, tools: ToolContext) -> ToolResult
         .get(name.as_str())
         .await
         .map_err(|error| ToolError::from_kube(&session.context, &error))?;
+    let object = object_json(&kind, object)?;
+    let size = serde_json::to_vec(&object).map_or(usize::MAX, |bytes| bytes.len());
+    if size > MCP_RESULT_BUDGET_BYTES {
+        return Err(ToolError::ResultTooLarge {
+            limit: MCP_RESULT_BUDGET_BYTES,
+        });
+    }
     Ok(output(json!({
         "context": session.context,
-        "object": object_json(&kind, object)?,
+        "object": object,
     })))
 }
 
