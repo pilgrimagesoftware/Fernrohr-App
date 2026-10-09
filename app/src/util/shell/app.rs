@@ -177,6 +177,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::report_issue::register_commands(registry);
     crate::ui::confirm_dialog::register_commands(registry);
     crate::ui::agent_setup::register_commands(registry);
+    crate::ui::list_sort::register_commands(registry);
 }
 
 /// Builds the command registry, binds its commands' actions - each to

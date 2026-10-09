@@ -50,6 +50,7 @@ mod logs_open;
 mod main_window;
 mod namespace_defaults;
 mod namespace_sets;
+mod sort_defaults;
 mod warp;
 pub(crate) use exec::OpenExecSession;
 pub(crate) use warp::WarpContextToNamespace;
@@ -93,6 +94,8 @@ pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
 pub(crate) use layout::{close_window, is_main_window, window_context_count};
 pub use main_window::MainWindow;
+// The list panels (`k8s::resource`) read and record per-kind sorts.
+pub(crate) use sort_defaults::SortDefaults;
 // `agent-mcp`'s navigation tools (`mcp::navigate`) are the callers.
 pub(crate) use agent::{NavigateError, load_layout, open_panel};
 pub use persist::open_saved_or_default;

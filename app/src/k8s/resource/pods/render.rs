@@ -233,47 +233,49 @@ impl Render for PodsPanel {
         // While a quick look is open its own keys (Escape, Enter) apply too.
         let mut key_context = KeyContext::default();
         key_context.add(PANEL_KEY_CONTEXT);
+        key_context.add(crate::ui::list_sort::KEY_CONTEXT);
         if self.quick_look.is_some() {
             key_context.add(QUICK_LOOK_KEY_CONTEXT);
         }
-        let panel = div()
-            .size_full()
-            .key_context(key_context)
-            .track_focus(&self.focus_handle)
-            .capture_action(cx.listener(Self::capture_cancel))
-            .capture_action(cx.listener(Self::capture_select_down))
-            .capture_action(cx.listener(Self::capture_select_up))
-            .on_action(cx.listener(Self::on_action_focus_filter))
-            .on_action(cx.listener(Self::on_action_warp_namespace))
-            .on_action(cx.listener(Self::on_action_warp_all_to_namespace))
-            .on_action(cx.listener(
-                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
-                    this.namespace_picker.open(window, cx)
-                },
-            ))
-            .on_action(cx.listener(Self::on_action_describe_pod))
-            .on_action(cx.listener(Self::on_action_open_in_background))
-            .on_action(cx.listener(Self::on_action_show_pod_logs))
-            .on_action(cx.listener(Self::on_action_show_pod_logs_flipped))
-            .on_action(cx.listener(Self::on_action_show_pod_yaml))
-            .on_action(cx.listener(Self::on_action_fit_columns))
-            .on_action(cx.listener(Self::on_action_quick_look))
-            .on_action(cx.listener(Self::on_action_delete_pod))
-            .on_action(cx.listener(Self::on_action_kill_pod))
-            .on_action(cx.listener(Self::on_action_shell_pod))
-            .on_action(cx.listener(Self::on_action_port_forward_pod))
-            .on_action(cx.listener(Self::on_action_stop_port_forward))
-            .on_action(cx.listener(Self::on_action_edit_pod))
-            .on_action(cx.listener(Self::on_action_close_quick_look))
-            .on_action(cx.listener(Self::on_action_open_quick_look_details))
-            .child(
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .children(header)
-                    .child(div().flex_1().min_h_0().child(content)),
-            );
+        let panel =
+            crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.pod_table.clone(), cx)
+                .size_full()
+                .key_context(key_context)
+                .track_focus(&self.focus_handle)
+                .capture_action(cx.listener(Self::capture_cancel))
+                .capture_action(cx.listener(Self::capture_select_down))
+                .capture_action(cx.listener(Self::capture_select_up))
+                .on_action(cx.listener(Self::on_action_focus_filter))
+                .on_action(cx.listener(Self::on_action_warp_namespace))
+                .on_action(cx.listener(Self::on_action_warp_all_to_namespace))
+                .on_action(cx.listener(
+                    |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                        this.namespace_picker.open(window, cx)
+                    },
+                ))
+                .on_action(cx.listener(Self::on_action_describe_pod))
+                .on_action(cx.listener(Self::on_action_open_in_background))
+                .on_action(cx.listener(Self::on_action_show_pod_logs))
+                .on_action(cx.listener(Self::on_action_show_pod_logs_flipped))
+                .on_action(cx.listener(Self::on_action_show_pod_yaml))
+                .on_action(cx.listener(Self::on_action_fit_columns))
+                .on_action(cx.listener(Self::on_action_quick_look))
+                .on_action(cx.listener(Self::on_action_delete_pod))
+                .on_action(cx.listener(Self::on_action_kill_pod))
+                .on_action(cx.listener(Self::on_action_shell_pod))
+                .on_action(cx.listener(Self::on_action_port_forward_pod))
+                .on_action(cx.listener(Self::on_action_stop_port_forward))
+                .on_action(cx.listener(Self::on_action_edit_pod))
+                .on_action(cx.listener(Self::on_action_close_quick_look))
+                .on_action(cx.listener(Self::on_action_open_quick_look_details))
+                .child(
+                    div()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .children(header)
+                        .child(div().flex_1().min_h_0().child(content)),
+                );
         // Tab stays in the panel (`ui::panel::focus`) - except embedded in a
         // Node's detail panel (#186), where it is one region among several
         // rather than the whole focus scope, and must let Tab carry on to the

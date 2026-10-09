@@ -294,38 +294,42 @@ impl Render for ObjectListPanel {
                 cx.theme().muted_foreground,
             ))
             .children(namespace_bar);
-        let panel = div()
-            .size_full()
-            .key_context(PANEL_KEY_CONTEXT)
-            .track_focus(&self.focus_handle)
-            .on_action(cx.listener(Self::on_action_focus_filter))
-            .on_action(cx.listener(Self::on_action_open_selected))
-            .on_action(cx.listener(Self::on_action_open_in_background))
-            .capture_action(cx.listener(Self::capture_select_down))
-            .capture_action(cx.listener(Self::capture_select_up))
-            .on_action(cx.listener(Self::on_action_describe_selected))
-            .on_action(cx.listener(Self::on_action_show_selected_yaml))
-            .on_action(cx.listener(Self::on_action_edit_selected))
-            .on_action(cx.listener(Self::on_action_warp_namespace))
-            .on_action(cx.listener(
-                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
-                    this.namespace_picker.open(window, cx)
-                },
-            ))
-            .on_action(cx.listener(Self::on_action_fit_columns))
-            .on_action(cx.listener(Self::on_action_refresh))
-            .on_action(cx.listener(Self::on_action_port_forward_service))
-            .on_action(cx.listener(Self::on_action_stop_port_forward))
-            .child(
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .child(header)
-                    .child(div().flex_1().min_h_0().child(content)),
-            )
-            // Tab stays in the panel: see `ui::panel::focus`.
-            .focus_trap("object-list-panel-tab-trap", &self.focus_handle);
+        let mut key_context = KeyContext::default();
+        key_context.add(PANEL_KEY_CONTEXT);
+        key_context.add(crate::ui::list_sort::KEY_CONTEXT);
+        let panel =
+            crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.table.clone(), cx)
+                .size_full()
+                .key_context(key_context)
+                .track_focus(&self.focus_handle)
+                .on_action(cx.listener(Self::on_action_focus_filter))
+                .on_action(cx.listener(Self::on_action_open_selected))
+                .on_action(cx.listener(Self::on_action_open_in_background))
+                .capture_action(cx.listener(Self::capture_select_down))
+                .capture_action(cx.listener(Self::capture_select_up))
+                .on_action(cx.listener(Self::on_action_describe_selected))
+                .on_action(cx.listener(Self::on_action_show_selected_yaml))
+                .on_action(cx.listener(Self::on_action_edit_selected))
+                .on_action(cx.listener(Self::on_action_warp_namespace))
+                .on_action(cx.listener(
+                    |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                        this.namespace_picker.open(window, cx)
+                    },
+                ))
+                .on_action(cx.listener(Self::on_action_fit_columns))
+                .on_action(cx.listener(Self::on_action_refresh))
+                .on_action(cx.listener(Self::on_action_port_forward_service))
+                .on_action(cx.listener(Self::on_action_stop_port_forward))
+                .child(
+                    div()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .child(header)
+                        .child(div().flex_1().min_h_0().child(content)),
+                )
+                // Tab stays in the panel: see `ui::panel::focus`.
+                .focus_trap("object-list-panel-tab-trap", &self.focus_handle);
         // Namespace quick-jump's context, for a namespaced kind's list - its own
         // frame around the panel, so it's on the focus path with the panel or
         // its table focused.

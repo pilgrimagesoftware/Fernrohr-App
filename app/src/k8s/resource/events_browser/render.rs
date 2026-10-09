@@ -287,9 +287,12 @@ impl Render for EventsPanel {
                 cx.theme().muted_foreground,
             ))
             .children(namespace_bar);
-        div()
+        let mut key_context = KeyContext::default();
+        key_context.add(PANEL_KEY_CONTEXT);
+        key_context.add(crate::ui::list_sort::KEY_CONTEXT);
+        crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.table.clone(), cx)
             .size_full()
-            .key_context(PANEL_KEY_CONTEXT)
+            .key_context(key_context)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_open_involved))
             .on_action(cx.listener(

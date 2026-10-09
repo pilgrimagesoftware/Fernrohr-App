@@ -126,6 +126,7 @@ fn harness_overriding_keymap(
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         super::register_commands(&mut registry);
+        crate::ui::list_sort::register_commands(&mut registry);
         let mut config = KeymapConfig::default();
         for (id, key) in overrides {
             config.bindings.insert(id.to_string(), key.to_string());
@@ -495,3 +496,4 @@ async fn the_type_button_opens_the_type_picker(cx: &mut TestAppContext) {
 /// `list-search` #189's regression: the shared `ListSearch` component behind
 /// this search box, case-insensitivity and the hint row's live key.
 mod search;
+mod sort;

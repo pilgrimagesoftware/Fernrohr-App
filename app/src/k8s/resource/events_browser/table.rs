@@ -19,6 +19,9 @@ pub struct EventsTableDelegate {
     rows: Vec<EventRow>,
     columns: Vec<EventColumn>,
     sort: Option<(EventColumn, ColumnSort)>,
+    /// The key the user's sort is remembered under (`remembered-list-sort`);
+    /// `None` remembers nothing.
+    remember_as: Option<&'static str>,
     widths: Vec<(EventColumn, Pixels)>,
     /// The event this table last had selected, by uid, to re-point the
     /// highlight after a sort or a watch update moves it.
@@ -35,11 +38,17 @@ impl EventsTableDelegate {
             rows: Vec::new(),
             columns: EventColumn::DEFAULT_ORDER.to_vec(),
             sort,
+            remember_as: None,
             widths: Vec::new(),
             selected: None,
             now: Timestamp::now(),
             header: HeaderBounds::default(),
         }
+    }
+
+    /// Remembers the user's sorts under `key`.
+    pub fn remember_as(&mut self, key: &'static str) {
+        self.remember_as = Some(key);
     }
 
     /// Replaces the rows, keeping the active sort applied.
@@ -186,10 +195,56 @@ impl TableDelegate for EventsTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) {
-        self.sort = Some((self.columns[col_ix], sort));
+        // The table's own next step is ignored: `list_sort` decides it.
+        let _ = sort;
+        crate::ui::list_sort::header_clicked(self, col_ix, window, cx);
+    }
+}
+
+/// [`DEFAULT_SORT`] as `ui::list_sort` names a sort.
+pub fn default_sort() -> crate::ui::list_sort::Sort {
+    (SharedString::from(DEFAULT_SORT.0.id()), false)
+}
+
+impl crate::ui::list_sort::SortableTable for EventsTableDelegate {
+    fn sort_columns(&self) -> Vec<SharedString> {
+        self.columns
+            .iter()
+            .map(|column| SharedString::from(column.id()))
+            .collect()
+    }
+
+    fn current_sort(&self) -> Option<crate::ui::list_sort::Sort> {
+        match self.sort? {
+            (column, ColumnSort::Ascending) => Some((column.id().into(), false)),
+            (column, ColumnSort::Descending) => Some((column.id().into(), true)),
+            (_, ColumnSort::Default) => None,
+        }
+    }
+
+    fn sort_by(&mut self, (column, descending): &crate::ui::list_sort::Sort) {
+        let Some(column) = EventColumn::from_id(column) else {
+            return;
+        };
+        let direction = if *descending {
+            ColumnSort::Descending
+        } else {
+            ColumnSort::Ascending
+        };
+        self.sort = Some((column, direction));
         self.apply_sort();
-        // Mid-update on the table here, so re-point the selection once it's free.
-        cx.defer_in(window, |table, _window, cx| reselect(table, cx));
+    }
+
+    fn default_sort(&self) -> crate::ui::list_sort::Sort {
+        default_sort()
+    }
+
+    fn remember_as(&self) -> Option<&str> {
+        self.remember_as
+    }
+
+    fn after_sort(table: &mut TableState<Self>, cx: &mut Context<TableState<Self>>) {
+        reselect(table, cx);
     }
 }
 
