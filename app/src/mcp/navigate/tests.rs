@@ -318,3 +318,5 @@ fn the_navigation_tools_are_navigate_tools() {
         assert!(!spec.input_schema.contains_key("title"), "{name}");
     }
 }
+
+mod focus;

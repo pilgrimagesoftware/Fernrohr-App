@@ -8,7 +8,9 @@
 //!
 //! The agent's terminal, not Fernrohr, usually has focus when a request
 //! arrives, so "the focused window" is the frontmost main window rather than
-//! only the platform's active one.
+//! only the platform's active one. A tool that changes what a window shows
+//! then brings Fernrohr forward with that window focused ([`focus_window`],
+//! `mcp-connect-and-focus` D4), so the user sees what the agent showed them.
 
 use super::open::ShownPanel;
 use super::*;
@@ -41,7 +43,7 @@ pub(crate) fn open_panel(
         .into_iter()
         .find(|(_, main)| main.read(cx).contexts().contains(&context_name))
         .ok_or(NavigateError::ContextNotHeld)?;
-    handle
+    let shown = handle
         .update(cx, |_, window, cx| {
             main.update(cx, |main, cx| {
                 main.open_target_in(
@@ -57,7 +59,9 @@ pub(crate) fn open_panel(
         })
         // The window closed between the lookup and the update.
         .map_err(|_| NavigateError::NoWindow)?
-        .ok_or(NavigateError::ContextNotHeld)
+        .ok_or(NavigateError::ContextNotHeld)?;
+    focus_window(handle, cx);
+    Ok(shown)
 }
 
 /// Loads `layout` in `mode` into the frontmost workspace window; `None` when
@@ -68,11 +72,21 @@ pub(crate) fn load_layout(
     cx: &mut App,
 ) -> Option<LoadedLayout> {
     let (handle, main) = workspace_windows(cx).into_iter().next()?;
-    handle
+    let loaded = handle
         .update(cx, |_, window, cx| {
             main.update(cx, |main, cx| main.load_layout(layout, mode, window, cx))
         })
-        .ok()
+        .ok()?;
+    focus_window(handle, cx);
+    Some(loaded)
+}
+
+/// Brings Fernrohr to the front with `window` focused - what a click on one of
+/// its notifications does too (`notify::focus`). A window that has closed is
+/// left alone.
+pub(crate) fn focus_window(window: AnyWindowHandle, cx: &mut App) {
+    cx.activate(true);
+    let _ = window.update(cx, |_, window, _| window.activate_window());
 }
 
 /// Every main window showing a workspace, frontmost first: the platform's
