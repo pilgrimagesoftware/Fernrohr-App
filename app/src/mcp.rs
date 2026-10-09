@@ -7,9 +7,9 @@
 //!   per-launch token beside it ([`endpoint`]), and answers a small internal
 //!   RPC ([`protocol`], framed by [`frame`]) from the tools it registered
 //!   ([`tools`]).
-//! - `fernrohr mcp` (the adapter) is the command an MCP client launches. It
+//! - `fernrohr mcp` ([`adapter`]) is the command an MCP client launches. It
 //!   speaks MCP on stdio through `rmcp`, and forwards each request to the
-//!   running app over that socket, one connection per request.
+//!   running app over that socket ([`client`]), one connection per request.
 //!
 //! Every failure a client can see is a [`error::ToolError`], built so no
 //! credential, kubeconfig content or upstream detail reaches it ([`redact`]).
@@ -17,6 +17,10 @@
 //! Unix only: the endpoint is a Unix-domain socket. Elsewhere the app serves
 //! nothing and `fernrohr mcp` reports itself unsupported.
 
+#[cfg(unix)]
+mod adapter;
+#[cfg(unix)]
+mod client;
 #[cfg(unix)]
 mod endpoint;
 mod entry;
@@ -37,4 +41,4 @@ mod test_support;
 #[cfg(unix)]
 mod tools;
 
-pub(crate) use entry::start;
+pub(crate) use entry::{run_subcommand, start};

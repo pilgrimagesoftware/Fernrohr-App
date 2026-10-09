@@ -8,6 +8,7 @@
 
 use super::redact::redact;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::fmt;
 
 /// A tool call's failure, as the app reports it to the adapter and the adapter
@@ -116,6 +117,21 @@ impl ToolError {
                 context: context.to_string(),
             },
         }
+    }
+
+    /// The structured form an MCP client receives: the serialized fields plus
+    /// a readable `message`.
+    pub(crate) fn to_json(&self) -> Value {
+        let mut object = match serde_json::to_value(self) {
+            Ok(Value::Object(object)) => object,
+            // A tagged enum of plain fields always serializes to an object;
+            // keep the code if it somehow didn't.
+            _ => Map::from_iter([("code".to_string(), Value::from(self.code()))]),
+        };
+        object
+            .entry("message")
+            .or_insert_with(|| Value::from(self.to_string()));
+        Value::Object(object)
     }
 }
 

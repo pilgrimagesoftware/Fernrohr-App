@@ -17,7 +17,7 @@ fn api_error(code: u16, reason: &str, message: &str) -> kube::Error {
 }
 
 fn assert_secret_free(error: &ToolError) {
-    let shown = [error.to_string(), serde_json::to_string(error).unwrap()];
+    let shown = [error.to_string(), error.to_json().to_string()];
     for text in shown {
         assert!(!text.contains(SECRET), "{text} leaks the secret");
     }
@@ -77,6 +77,17 @@ fn every_code_matches_its_serialized_tag() {
     for error in all {
         assert_eq!(serde_json::to_value(&error).unwrap()["code"], error.code());
     }
+}
+
+#[test]
+fn a_client_sees_the_code_fields_and_a_message() {
+    let json = ToolError::UnknownContext {
+        context: "dev".into(),
+    }
+    .to_json();
+    assert_eq!(json["code"], "unknown_context");
+    assert_eq!(json["context"], "dev");
+    assert_eq!(json["message"], r#"no context named "dev""#);
 }
 
 #[test]
