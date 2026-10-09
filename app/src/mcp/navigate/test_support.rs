@@ -27,7 +27,7 @@ pub(in crate::mcp) struct Harness {
     pub(in crate::mcp) layouts_dir: PathBuf,
     /// The fake API server the sessions' client talks to, kept running.
     _api: Recorder,
-    client: kube::Client,
+    pub(in crate::mcp) client: kube::Client,
 }
 
 /// The app's real `init` with a temp workspace and layouts directory, a

@@ -4,7 +4,7 @@
 use super::flow::{approved, failed, kind_label, preview, resolve};
 use super::inputs::{SetConfigMapValueInput, Target, configmap_key, query};
 use crate::k8s::resource::resource_actions as actions;
-use crate::mcp::approval::{ApprovalRequest, approve};
+use crate::mcp::approval::{ApprovalRequest, Asking, approve};
 use crate::mcp::error::ToolError;
 use crate::mcp::tools::{ToolContext, ToolKind, ToolRegistry, ToolResult};
 use serde_json::json;
@@ -64,7 +64,9 @@ async fn set_configmap_value(input: SetConfigMapValueInput, tools: ToolContext) 
                     preview(input.value.as_deref(), "(removed)"),
                 ),
             ],
-            irreversible: false,
+            asking: Asking::Action {
+                irreversible: false,
+            },
         },
     )
     .await?;

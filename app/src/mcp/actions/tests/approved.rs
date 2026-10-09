@@ -63,7 +63,7 @@ async fn scaling_shows_both_counts_and_patches_only_the_scale(cx: &mut TestAppCo
     assert_eq!(asked.kind, "Deployment (apps)");
     assert_eq!(asked.targets, ["web"]);
     assert_eq!(parameter(&asked, "Replicas"), "2 → 3");
-    assert!(!asked.irreversible);
+    assert!(!asked.irreversible());
 
     let write = only(&writes);
     assert_eq!(write.method, "PATCH");
@@ -144,7 +144,7 @@ async fn a_restart_stamps_only_the_template_annotation(cx: &mut TestAppContext) 
 async fn a_rollback_shows_its_revisions_and_restores_the_older_template(cx: &mut TestAppContext) {
     let (output, asked, writes) =
         allowed(cx, "rollback_workload", json!({"kind": "Deployment"})).await;
-    assert!(asked.irreversible);
+    assert!(asked.irreversible());
     assert_eq!(parameter(&asked, "Revision"), "2 → 1");
 
     let write = only(&writes);
@@ -222,7 +222,7 @@ async fn a_trigger_creates_a_job_owned_by_its_cronjob(cx: &mut TestAppContext) {
 async fn deleting_pods_lists_and_deletes_exactly_the_named_ones(cx: &mut TestAppContext) {
     let (output, asked, writes) =
         allowed(cx, "delete_pods", json!({"names": ["api", "web"]})).await;
-    assert!(asked.irreversible);
+    assert!(asked.irreversible());
     assert_eq!(asked.targets, ["api", "web"]);
     let targets: Vec<(&str, &str)> = writes
         .iter()

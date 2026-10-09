@@ -14,6 +14,7 @@
 
 use super::error::ToolError;
 use super::foreground::Foreground;
+use crate::config::tunnels::TunnelKind;
 use crate::consts::MCP_APPROVAL_TIMEOUT;
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
@@ -21,7 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, oneshot};
 
-/// Everything the user sees before allowing an action.
+/// Everything the user sees before allowing an action, or a connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ApprovalRequest {
     /// The dialog's title: "Scale Deployment?"
@@ -40,9 +41,60 @@ pub(crate) struct ApprovalRequest {
     /// The action's own values, each a label and what it changes:
     /// `("Replicas", "2 → 3")`.
     pub(crate) parameters: Vec<(String, String)>,
-    /// Whether the action can't be taken back - the dialog's irreversible
-    /// tier, where Enter cancels.
-    pub(crate) irreversible: bool,
+    /// What is being asked: an action, or a connection.
+    pub(crate) asking: Asking,
+}
+
+/// What an [`ApprovalRequest`] asks the user to allow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Asking {
+    /// One of the allowlisted cluster actions. `irreversible` for one that
+    /// can't be taken back: the dialog's irreversible tier, where Enter
+    /// cancels.
+    Action { irreversible: bool },
+    /// Connecting a context (`connect_context`), which lets the agent read
+    /// it. It changes nothing in the cluster and disconnecting undoes it, so
+    /// it is the recoverable tier (`mcp-connect-and-focus` D2).
+    Connect,
+}
+
+impl ApprovalRequest {
+    /// Whether the dialog is the irreversible tier.
+    pub(crate) fn irreversible(&self) -> bool {
+        match self.asking {
+            Asking::Action { irreversible } => irreversible,
+            Asking::Connect => false,
+        }
+    }
+
+    /// The question `connect_context` asks before connecting `context`,
+    /// naming the tunnel it is bound to and that tunnel's kind, if any.
+    pub(crate) fn connect(context: &str, tunnel: Option<(&str, TunnelKind)>) -> Self {
+        let tunnel = match tunnel {
+            Some((name, kind)) => format!("{name} ({})", tunnel_kind_name(kind)),
+            None => "None (direct connection)".to_string(),
+        };
+        Self {
+            title: format!("Connect {context}?"),
+            confirm: "Connect".into(),
+            tool: "connect_context".into(),
+            context: context.to_string(),
+            namespace: String::new(),
+            kind: String::new(),
+            targets: Vec::new(),
+            parameters: vec![("Tunnel".into(), tunnel)],
+            asking: Asking::Connect,
+        }
+    }
+}
+
+/// A tunnel kind as the dialog names it.
+fn tunnel_kind_name(kind: TunnelKind) -> &'static str {
+    match kind {
+        TunnelKind::Ssh => "SSH tunnel",
+        TunnelKind::Command => "command tunnel",
+        TunnelKind::Manual => "manual tunnel",
+    }
 }
 
 /// The user's answer.

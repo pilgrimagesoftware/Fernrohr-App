@@ -4,7 +4,7 @@
 use super::flow::{approved, kind_label, resolve};
 use super::inputs::{DeletePodsInput, Target, pod_names, query};
 use crate::k8s::resource::resource_actions::delete_object;
-use crate::mcp::approval::{ApprovalRequest, approve};
+use crate::mcp::approval::{ApprovalRequest, Asking, approve};
 use crate::mcp::error::ToolError;
 use crate::mcp::names::ObjectName;
 use crate::mcp::tools::{ToolContext, ToolKind, ToolRegistry, ToolResult};
@@ -45,7 +45,7 @@ async fn delete_pods(input: DeletePodsInput, tools: ToolContext) -> ToolResult {
                 "Effect".into(),
                 "Deleted now; a controller that owns one may start a replacement".into(),
             )],
-            irreversible: true,
+            asking: Asking::Action { irreversible: true },
         },
     )
     .await?;

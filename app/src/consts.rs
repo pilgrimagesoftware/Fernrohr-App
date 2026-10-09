@@ -288,6 +288,14 @@ pub(crate) const MCP_LOG_READ_CAP: usize = 8 * 1024 * 1024;
 /// back.
 pub(crate) const MCP_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// `agent-mcp`'s `connect_context`: how long it waits for an approved
+/// connection to settle before reporting it as still connecting
+/// (`mcp-connect-and-focus` D3). The connection carries on after.
+pub(crate) const MCP_CONNECT_SETTLE: Duration = Duration::from_secs(20);
+
+/// How often `connect_context` looks at a connection while it settles.
+pub(crate) const MCP_CONNECT_POLL: Duration = Duration::from_millis(100);
+
 /// `agent-mcp`: the most Pods one `delete_pods` call may name (design.md).
 pub(crate) const MCP_DELETE_PODS_MAX: usize = 10;
 

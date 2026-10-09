@@ -2,7 +2,7 @@
 //! keystrokes through the app's keymap, both tiers.
 
 use super::{Question, open_in, withdraw};
-use crate::mcp::approval::ApprovalRequest;
+use crate::mcp::approval::{ApprovalRequest, Asking};
 use crate::ui::typography::recorder::{RecordingTextSystem, with_recorded_text};
 use gpui_kit::component::{Root, WindowExt as _};
 use gpui_kit::{
@@ -32,7 +32,7 @@ fn request(irreversible: bool) -> ApprovalRequest {
         kind: "Pod".into(),
         targets: vec!["api-7d9f".into(), "web-55c2".into()],
         parameters: vec![("Replicas".into(), "2 → 3".into())],
-        irreversible,
+        asking: Asking::Action { irreversible },
     }
 }
 
@@ -151,4 +151,38 @@ fn the_dialog_shows_every_target_and_parameter() {
             assert!(recorded.families_of(text).is_some(), "{text:?} is drawn");
         }
     });
+}
+
+/// `mcp-connect-and-focus` 2.1: connecting a context is the recoverable tier,
+/// so Enter allows it and Escape denies it.
+#[gpui_kit::test]
+async fn enter_allows_a_connection(cx: &mut TestAppContext) {
+    let request = ApprovalRequest::connect(
+        "staging",
+        Some(("qa-bastion", crate::config::tunnels::TunnelKind::Ssh)),
+    );
+    assert_eq!(
+        super::details(&request)
+            .iter()
+            .map(|detail| (detail.label.to_string(), detail.value.to_string()))
+            .collect::<Vec<_>>(),
+        [
+            ("Agent tool".to_string(), "connect_context".to_string()),
+            ("Context".to_string(), "staging".to_string()),
+            ("Tunnel".to_string(), "qa-bastion (SSH tunnel)".to_string()),
+        ],
+        "a connection names its context and tunnel, and no namespace or kind"
+    );
+    let (mut vcx, mut answer, _) = asked(cx, request);
+    press(&mut vcx, "enter");
+    assert!(!dialog_open(&mut vcx));
+    assert_eq!(answer.try_recv(), Ok(true));
+}
+
+#[gpui_kit::test]
+async fn escape_denies_a_connection(cx: &mut TestAppContext) {
+    let (mut vcx, mut answer, _) = asked(cx, ApprovalRequest::connect("staging", None));
+    press(&mut vcx, "escape");
+    assert!(!dialog_open(&mut vcx));
+    assert_eq!(answer.try_recv(), Ok(false));
 }

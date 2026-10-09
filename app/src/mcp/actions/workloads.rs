@@ -6,7 +6,7 @@ use super::inputs::{
     RolloutInput, ScaleWorkloadInput, SetRolloutPausedInput, Target, apps, replicas,
 };
 use crate::k8s::resource::resource_actions as actions;
-use crate::mcp::approval::{ApprovalRequest, approve};
+use crate::mcp::approval::{ApprovalRequest, Asking, approve};
 use crate::mcp::tools::{ToolContext, ToolKind, ToolRegistry, ToolResult};
 use serde_json::json;
 
@@ -66,7 +66,9 @@ async fn scale_workload(input: ScaleWorkloadInput, tools: ToolContext) -> ToolRe
             kind: kind_label(&kind),
             targets: vec![name.into()],
             parameters: vec![("Replicas".into(), format!("{current} → {requested}"))],
-            irreversible: false,
+            asking: Asking::Action {
+                irreversible: false,
+            },
         },
     )
     .await?;
@@ -98,7 +100,9 @@ async fn restart_workload(input: RolloutInput, tools: ToolContext) -> ToolResult
                 "Effect".into(),
                 "Replaces every pod by a rolling update".into(),
             )],
-            irreversible: false,
+            asking: Asking::Action {
+                irreversible: false,
+            },
         },
     )
     .await?;
@@ -133,7 +137,7 @@ async fn rollback_workload(input: RolloutInput, tools: ToolContext) -> ToolResul
                 "Revision".into(),
                 format!("{} → {}", plan.current_revision, plan.target_revision),
             )],
-            irreversible: true,
+            asking: Asking::Action { irreversible: true },
         },
     )
     .await?;
@@ -172,7 +176,9 @@ async fn set_rollout_paused(input: SetRolloutPausedInput, tools: ToolContext) ->
                 "Rollout".into(),
                 format!("{} → {}", state(paused), state(input.paused)),
             )],
-            irreversible: false,
+            asking: Asking::Action {
+                irreversible: false,
+            },
         },
     )
     .await?;

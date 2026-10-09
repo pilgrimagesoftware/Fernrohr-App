@@ -3,7 +3,7 @@
 use super::flow::{approved, failed, kind_label, resolve};
 use super::inputs::{CronJobInput, SetCronJobSuspendedInput, Target, query};
 use crate::k8s::resource::resource_actions as actions;
-use crate::mcp::approval::{ApprovalRequest, approve};
+use crate::mcp::approval::{ApprovalRequest, Asking, approve};
 use crate::mcp::error::ToolError;
 use crate::mcp::tools::{ToolContext, ToolKind, ToolRegistry, ToolResult};
 use serde_json::json;
@@ -45,7 +45,9 @@ async fn trigger_cronjob(input: CronJobInput, tools: ToolContext) -> ToolResult 
             kind: kind_label(&kind),
             targets: vec![name.into()],
             parameters: vec![("New Job".into(), plan.job_name.clone())],
-            irreversible: false,
+            asking: Asking::Action {
+                irreversible: false,
+            },
         },
     )
     .await?;
@@ -81,7 +83,9 @@ async fn set_cronjob_suspended(input: SetCronJobSuspendedInput, tools: ToolConte
                 "Schedule".into(),
                 format!("{} → {}", state(suspended), state(input.suspended)),
             )],
-            irreversible: false,
+            asking: Asking::Action {
+                irreversible: false,
+            },
         },
     )
     .await?;
