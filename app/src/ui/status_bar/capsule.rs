@@ -11,9 +11,15 @@
 //! tint. The state's name is the icon's tooltip.
 //!
 //! A context awaiting a manual tunnel's confirmation (`manual-confirmation-tunnels`
-//! D8) keeps that layout, filled with the theme's warning color and drawn in its
-//! foreground - secondary parts too, so they stay readable on the fill - and its
-//! menu offers Proceed and Cancel above Disconnect.
+//! D8) keeps that layout, filled with the theme's warning color, and its menu
+//! offers Proceed and Cancel above Disconnect.
+//!
+//! Every capsule's colors come from [`capsule_palette`], chosen by contrast rather
+//! than taken from a theme field: the attention fill's text is black or white,
+//! whichever reads better on it (a theme's `warning_foreground` can be as yellow as
+//! the fill), and secondary text is lifted until it reads on the status bar. Every
+//! piece of capsule text reaches the WCAG [`TEXT_CONTRAST`] of 4.5:1, which the
+//! palette's tests hold every bundled theme to.
 
 use super::{StatusBarView, StatusItem};
 use crate::k8s::cluster::context_health::{ContextHealth, Severity};
@@ -23,6 +29,7 @@ use crate::tunnel::manual::{Decision, ManualConfirmations};
 use crate::ui::icon_tooltip;
 use crate::ui::manual_tunnel::{CancelManualTunnel, ProceedManualTunnel};
 use crate::ui::picker::{ClusterPicker, PickerEvent};
+use crate::ui::style::{TEXT_CONTRAST, contrast, meet, over, readable_on};
 use crate::ui::typography::TypeRole as _;
 use crate::util::context_lifecycle;
 use gpui_kit::assets::IconName;
@@ -34,7 +41,59 @@ use gpui_kit::*;
 
 /// The tunnel's and elapsed time's size, in rems: one step below the capsule's
 /// own `text_xs` (0.75rem). In rems so it follows the text-size preference.
-const SECONDARY_TEXT_REMS: f32 = 0.625;
+const SECONDARY_TEXT_REMS: f32 = 0.6875;
+
+/// How much the attention fill's secondary text is faded, to set it back from
+/// the name - kept only where the faded text still reaches [`TEXT_CONTRAST`].
+const ATTENTION_SECONDARY_ALPHA: f32 = 0.8;
+
+/// One capsule's colors.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct CapsulePalette {
+    /// The capsule's own fill, for an attention capsule; `None` draws it on the
+    /// status bar (or, when active, the selection fill).
+    pub(crate) fill: Option<Hsla>,
+    /// The name's and state icon's color.
+    pub(crate) primary: Hsla,
+    /// The tunnel's and elapsed time's color.
+    pub(crate) secondary: Hsla,
+}
+
+/// The colors a capsule of `severity` is drawn in under `theme`.
+pub(crate) fn capsule_palette(
+    theme: &gpui_kit::component::Theme,
+    severity: Severity,
+) -> CapsulePalette {
+    if severity == Severity::Attention {
+        let fill = theme.warning;
+        let primary = readable_on(fill);
+        let faded = primary.opacity(ATTENTION_SECONDARY_ALPHA);
+        let secondary = if contrast(faded, fill) >= TEXT_CONTRAST {
+            faded
+        } else {
+            primary
+        };
+        return CapsulePalette {
+            fill: Some(fill),
+            primary,
+            secondary,
+        };
+    }
+    // Secondary text must read on the bar itself and on an active capsule's
+    // selection fill; `meet` only moves it further from the background, so
+    // meeting both keeps the first met.
+    let surfaces = [theme.background, over(theme.selection, theme.background)];
+    let secondary = surfaces
+        .into_iter()
+        .fold(theme.muted_foreground, |colour, surface| {
+            meet(colour, surface, TEXT_CONTRAST)
+        });
+    CapsulePalette {
+        fill: None,
+        primary: color(theme, severity),
+        secondary,
+    }
+}
 
 /// The debug selectors of a capsule's parts, for `context_name`'s capsule.
 fn name_selector(context_name: &str) -> String {
@@ -56,8 +115,8 @@ fn color(theme: &gpui_kit::component::Theme, severity: Severity) -> Hsla {
         Severity::Info => theme.info,
         Severity::Warning => theme.warning,
         Severity::Danger => theme.danger,
-        // On the capsule's warning fill.
-        Severity::Attention => theme.warning_foreground,
+        // Drawn on the capsule's own fill: see `capsule_palette`.
+        Severity::Attention => readable_on(theme.warning),
     }
 }
 
@@ -76,13 +135,10 @@ pub(super) fn render_capsule(
     this: WeakEntity<StatusBarView>,
     theme: &gpui_kit::component::Theme,
 ) -> AnyElement {
-    let tint = color(theme, item.severity);
-    let attention = item.severity == Severity::Attention;
-    let secondary_tint = if attention {
-        tint
-    } else {
-        theme.muted_foreground
-    };
+    let palette = capsule_palette(theme, item.severity);
+    let tint = palette.primary;
+    let attention = palette.fill.is_some();
+    let secondary_tint = palette.secondary;
     let selector = format!("status-item-{}", item.context_name);
     let tooltip = item.tooltip();
     let context = item.context_name.clone();
@@ -187,9 +243,9 @@ pub(super) fn render_capsule(
             theme.border
         })
         .when(item.active && !attention, |el| el.bg(theme.selection))
-        .when(attention, |el| {
+        .when_some(palette.fill, |el, fill| {
             let selector = attention_selector(&name_for_fill);
-            el.bg(theme.warning).debug_selector(move || selector)
+            el.bg(fill).debug_selector(move || selector)
         })
         .child(body)
         .child(menu_button)
@@ -320,6 +376,8 @@ impl StatusBarView {
     }
 }
 
+#[cfg(test)]
+mod contrast_tests;
 #[cfg(test)]
 mod render_tests;
 #[cfg(test)]
