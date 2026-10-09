@@ -48,6 +48,10 @@ pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long a list panel's loading or refreshing indicator waits before it
+/// shows (`list-loading-indicator` D3), so a quick list never flickers one.
+pub(crate) const LIST_INDICATOR_DELAY: Duration = Duration::from_millis(300);
+
 /// How long a copy control - a copy button, a metadata chip - shows that it
 /// copied (#187), its check mark and "Copied" in place of the copy icon.
 pub(crate) const COPIED_FEEDBACK: Duration = Duration::from_millis(1500);

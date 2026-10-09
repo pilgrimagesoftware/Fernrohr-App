@@ -53,6 +53,8 @@ pub struct ObjectListPanel {
     /// none of its own: the kind's remembered sort, else Name ascending
     /// (`remembered-list-sort`).
     pub(super) initial_sort: Option<(String, bool)>,
+    /// The loading and refreshing indicators' delays (`list-loading-indicator`).
+    pub(super) indicators: crate::ui::list_state::Indicators,
     /// The last delete the cluster refused, shown until dismissed (`delete`).
     pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
 }
@@ -103,6 +105,7 @@ impl ObjectListPanel {
             filter: ListSearch::new(),
             initial_layout: Vec::new(),
             initial_sort: None,
+            indicators: Default::default(),
             refusal: None,
         };
         this.subscribe_if_connected(&connection, cx);
@@ -136,6 +139,7 @@ impl ObjectListPanel {
             filter: ListSearch::new(),
             initial_layout: Vec::new(),
             initial_sort: None,
+            indicators: Default::default(),
             refusal: None,
         }
     }

@@ -11,14 +11,20 @@ use super::panel::EventsPanel;
 use super::row::EventRow;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
+use crate::k8s::resource::load_phase::LoadPhase;
 use crate::ui::list_search::ListSearch;
+use crate::ui::list_state::{self, TableArea};
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+
+/// What the loading and empty states call this list's rows.
+const KIND_LABEL: &str = "events";
 
 impl EventsPanel {
     /// One hint: `action`'s live key (or `fallback`) and what it does.
@@ -182,6 +188,20 @@ impl EventsPanel {
             (true, shown) => format!("{shown} events"),
             (false, shown) => format!("{shown} of {total} events"),
         };
+        // `list-loading-indicator`: the table only once the first list is in,
+        // else what is loading or why it is empty.
+        let area = list_state::table_area(
+            self.events.read(cx).phase(),
+            total,
+            rows.len(),
+            KIND_LABEL,
+            Some(&self.scope.namespaces),
+        );
+        let loading_shown = self.indicators.loading.ready(
+            matches!(area, TableArea::Loading { .. }),
+            |this: &mut Self| &mut this.indicators.loading,
+            cx,
+        );
         let table = self.sync_table(rows, window, cx);
         let strip = self
             .selected_event(cx)
@@ -240,7 +260,18 @@ impl EventsPanel {
                             .child(count),
                     ),
             )
-            .child(div().flex_1().min_h_0().child(data_table(&table, cx)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .child(list_state::table_area_element(
+                        data_table(&table, cx).into_any_element(),
+                        &area,
+                        KIND_LABEL,
+                        loading_shown,
+                        cx,
+                    )),
+            )
             .children(strip)
             .child(
                 div()
@@ -258,6 +289,12 @@ impl Render for EventsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
         let content = self.content(window, cx);
+        let refreshing = matches!(self.events.read(cx).phase(), LoadPhase::Refreshing { .. });
+        let refreshing = self.indicators.refreshing.ready(
+            refreshing,
+            |this: &mut Self| &mut this.indicators.refreshing,
+            cx,
+        );
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names().to_vec();
         let namespace_bar = self.namespace_picker.element(
@@ -286,6 +323,9 @@ impl Render for EventsPanel {
                 &self.scope,
                 cx.theme().muted_foreground,
             ))
+            .when(refreshing, |header| {
+                header.child(list_state::refreshing(cx))
+            })
             .children(namespace_bar);
         let mut key_context = KeyContext::default();
         key_context.add(PANEL_KEY_CONTEXT);

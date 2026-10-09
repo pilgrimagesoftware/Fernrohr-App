@@ -146,9 +146,7 @@ fn harness_overriding_keymap(
     let table = cx.update(|cx| {
         cx.new(|_| {
             let mut table = EventsTable::default();
-            for event in events {
-                table.apply(watcher::Event::Apply(event));
-            }
+            table.replace_all(events);
             table
         })
     });
@@ -497,3 +495,4 @@ async fn the_type_button_opens_the_type_picker(cx: &mut TestAppContext) {
 /// this search box, case-insensitivity and the hint row's live key.
 mod search;
 mod sort;
+mod states;
