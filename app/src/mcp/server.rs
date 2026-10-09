@@ -8,6 +8,7 @@
 //! outcome code and duration only - never its arguments, result or the token
 //! (`agent-mcp`: Credential and error safety).
 
+use super::approval::ApprovalGate;
 use super::endpoint::{BindError, Endpoint, EndpointFiles, EndpointPaths};
 use super::error::ToolError;
 use super::foreground::Foreground;
@@ -83,9 +84,13 @@ pub(super) fn start(cx: &mut App, registry: ToolRegistry) {
         registry,
         token: files.token.clone(),
         owner_uid: endpoint.owner_uid,
-        context: ToolContext {
-            foreground: Foreground::spawn_on(cx),
-            kubeconfig: None,
+        context: {
+            let foreground = Foreground::spawn_on(cx);
+            ToolContext {
+                approvals: ApprovalGate::ui(foreground.clone()),
+                foreground,
+                kubeconfig: None,
+            }
         },
     });
     let task = handle.spawn(serve(endpoint.listener, state));

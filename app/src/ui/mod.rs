@@ -1,5 +1,7 @@
 pub mod about_window;
 pub mod accent;
+#[cfg(unix)]
+pub(crate) mod agent_approval;
 pub mod background_rows;
 pub mod confirm_dialog;
 pub mod confirm_text;

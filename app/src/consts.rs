@@ -272,6 +272,15 @@ pub(crate) const MCP_LOG_DEFAULT_BYTES: usize = 256 * 1024;
 /// must not buffer them without bound.
 pub(crate) const MCP_LOG_READ_CAP: usize = 8 * 1024 * 1024;
 
+/// `agent-mcp`: how long an action tool waits for the user to allow or deny
+/// it in the app before it gives up, sending nothing. Long enough to switch to
+/// the app and read the dialog; short enough that an agent left waiting hears
+/// back.
+pub(crate) const MCP_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// `agent-mcp`: the most Pods one `delete_pods` call may name (design.md).
+pub(crate) const MCP_DELETE_PODS_MAX: usize = 10;
+
 /// `agent-mcp`: how many foreground jobs - tool work that needs GPUI state -
 /// may wait for the main thread at once before the tool handlers queueing
 /// them wait too.

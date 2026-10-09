@@ -18,7 +18,11 @@
 //! nothing and `fernrohr mcp` reports itself unsupported.
 
 #[cfg(unix)]
+mod actions;
+#[cfg(unix)]
 mod adapter;
+#[cfg(unix)]
+pub(crate) mod approval;
 #[cfg(unix)]
 mod client;
 #[cfg(unix)]

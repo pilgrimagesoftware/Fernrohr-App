@@ -12,6 +12,7 @@
 //! the handler runs, and answers a mismatch with
 //! [`ToolError::InvalidArguments`], so no handler ever sees raw JSON.
 
+use super::approval::ApprovalGate;
 use super::error::ToolError;
 use super::foreground::Foreground;
 use futures_util::FutureExt;
@@ -104,6 +105,8 @@ pub(super) struct ToolContext {
     /// the app's cluster picker reads (`$KUBECONFIG` or `~/.kube/config`).
     /// Tests point it at their own.
     pub(super) kubeconfig: Option<PathBuf>,
+    /// Where an action tool asks the user first.
+    pub(super) approvals: ApprovalGate,
 }
 
 type Handler =
@@ -124,11 +127,12 @@ pub(super) struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// The app's tools: the cluster read tools (section 2). The action
-    /// (section 3) and navigation (section 4) tools register here too.
+    /// The app's tools: the cluster read tools and the allowlisted actions.
+    /// The navigation tools (section 4) register here too.
     pub(super) fn app() -> Self {
         let mut registry = Self::default();
         super::read::register(&mut registry);
+        super::actions::register(&mut registry);
         registry
     }
 
@@ -271,7 +275,11 @@ mod tests {
 
     #[test]
     fn the_app_lists_its_read_tools_with_their_input_schemas() {
-        let specs = ToolRegistry::app().specs();
+        let specs: Vec<_> = ToolRegistry::app()
+            .specs()
+            .into_iter()
+            .filter(|spec| spec.kind != ToolKind::Action)
+            .collect();
         let names: Vec<_> = specs.iter().map(|spec| spec.name.as_str()).collect();
         assert_eq!(
             names,
@@ -304,14 +312,14 @@ mod tests {
 
     #[test]
     fn the_app_has_no_state_changing_tool_outside_the_allowlist() {
-        // Section 3 fills in the allowlist; until then the app has no action
-        // tool at all, and this is where adding one has to be acknowledged.
+        // Adding an action means adding it to `actions::ALLOWLIST` (design.md's
+        // table) - this is where it has to be acknowledged.
         let actions: Vec<_> = ToolRegistry::app()
             .specs()
             .into_iter()
             .filter(|spec| spec.kind == ToolKind::Action)
             .map(|spec| spec.name)
             .collect();
-        assert!(actions.is_empty(), "unexpected action tools: {actions:?}");
+        assert_eq!(actions, crate::mcp::actions::ALLOWLIST);
     }
 }

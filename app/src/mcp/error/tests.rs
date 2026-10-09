@@ -75,6 +75,11 @@ fn every_code_matches_its_serialized_tag() {
         ToolError::ConnectionFailed {
             context: "x".into(),
         },
+        ToolError::Denied,
+        ToolError::ApprovalTimedOut,
+        ToolError::Precondition {
+            message: "x".into(),
+        },
         ToolError::ResultTooLarge { limit: 1 },
         ToolError::UiUnavailable,
         ToolError::Internal,

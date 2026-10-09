@@ -42,6 +42,13 @@ impl Foreground {
         foreground
     }
 
+    /// Queues `work` for the main thread without waiting for it - for a
+    /// `Drop`, which can't wait. Dropped if the queue is full or the app is
+    /// quitting.
+    pub(super) fn post(&self, work: impl FnOnce(&mut App) + Send + 'static) {
+        let _ = self.jobs.try_send(Box::new(work));
+    }
+
     /// Runs `work` on the main thread and returns what it returned. Fails
     /// only when the main thread no longer takes jobs - the app is quitting.
     pub(super) async fn run<R: Send + 'static>(

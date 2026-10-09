@@ -44,6 +44,14 @@ pub(crate) enum ToolError {
     /// The request never got an API answer; why is withheld, since the
     /// client-side failure can carry credentials.
     ConnectionFailed { context: String },
+    /// The user turned the action down in the app; nothing was sent.
+    Denied,
+    /// Nobody answered the action's approval in time; nothing was sent.
+    ApprovalTimedOut,
+    /// The target isn't in a state the action applies to (no earlier
+    /// revision to roll back to, a key to remove that isn't there); nothing
+    /// was sent. The message is the app's own.
+    Precondition { message: String },
     /// The tool's result is larger than the endpoint sends.
     ResultTooLarge { limit: usize },
     /// The app has no user interface to serve the request on (quitting, or no
@@ -82,6 +90,9 @@ impl ToolError {
             Self::UnsupportedOperation { .. } => "unsupported_operation",
             Self::Kubernetes { .. } => "kubernetes",
             Self::ConnectionFailed { .. } => "connection_failed",
+            Self::Denied => "denied",
+            Self::ApprovalTimedOut => "approval_timed_out",
+            Self::Precondition { .. } => "precondition",
             Self::ResultTooLarge { .. } => "result_too_large",
             Self::UiUnavailable => "ui_unavailable",
             Self::Internal => "internal",
@@ -117,6 +128,21 @@ impl ToolError {
             },
             _ => Self::ConnectionFailed {
                 context: context.to_string(),
+            },
+        }
+    }
+
+    /// A shared action's failure against `context`: a cluster error mapped
+    /// as [`Self::from_kube`] maps it, or the action's own precondition.
+    pub(crate) fn from_action(
+        context: &str,
+        error: &crate::k8s::resource::resource_actions::ActionError,
+    ) -> Self {
+        use crate::k8s::resource::resource_actions::ActionError;
+        match error {
+            ActionError::Kube(error) => Self::from_kube(context, error),
+            ActionError::Precondition(message) => Self::Precondition {
+                message: message.clone(),
             },
         }
     }
@@ -184,6 +210,11 @@ impl fmt::Display for ToolError {
             Self::ConnectionFailed { context } => {
                 write!(f, "could not reach the cluster for context {context:?}")
             }
+            Self::Denied => f.write_str("the user denied this action in Fernrohr; nothing changed"),
+            Self::ApprovalTimedOut => {
+                f.write_str("nobody approved this action in Fernrohr in time; nothing changed")
+            }
+            Self::Precondition { message } => f.write_str(message),
             Self::ResultTooLarge { limit } => {
                 write!(f, "the result is larger than the {limit}-byte limit")
             }

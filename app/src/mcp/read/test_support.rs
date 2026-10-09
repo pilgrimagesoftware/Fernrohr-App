@@ -23,6 +23,7 @@ pub(in crate::mcp) fn tools(cx: &mut TestAppContext, contexts: &[&str]) -> ToolC
     ToolContext {
         foreground: cx.update(Foreground::spawn_on),
         kubeconfig: Some(kubeconfig_with(contexts)),
+        approvals: crate::mcp::approval::scripted::Scripted::deny().gate(),
     }
 }
 

@@ -59,6 +59,7 @@ pub(super) fn test_context() -> ToolContext {
     ToolContext {
         foreground,
         kubeconfig: None,
+        approvals: super::approval::scripted::Scripted::deny().gate(),
     }
 }
 
