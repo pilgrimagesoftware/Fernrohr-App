@@ -66,3 +66,19 @@ fn reconnect_converges_to_the_post_interruption_state() {
     names.sort();
     assert_eq!(names, vec!["web-2", "web-3", "web-4"]);
 }
+
+/// `list-loading-indicator` 1.1: the Pods table's phase follows its lists.
+#[test]
+fn the_phase_follows_a_first_list_and_a_relist() {
+    use crate::k8s::resource::load_phase::LoadPhase;
+    let mut table = PodsTable::new();
+    table.apply(watcher::Event::Init);
+    table.apply(watcher::Event::InitApply(pod("u1", "web")));
+    table.apply(watcher::Event::InitApply(pod("u2", "api")));
+    assert_eq!(table.phase(), LoadPhase::FirstLoad { received: 2 });
+    table.apply(watcher::Event::InitDone);
+    assert_eq!(table.phase(), LoadPhase::Loaded);
+    table.apply(watcher::Event::Init);
+    assert_eq!(table.phase(), LoadPhase::Refreshing { received: 0 });
+    assert_eq!(table.pods().len(), 2, "a refresh keeps the rows");
+}

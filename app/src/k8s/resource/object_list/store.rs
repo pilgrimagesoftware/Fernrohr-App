@@ -4,6 +4,7 @@
 use super::columns::{self, KindColumns};
 use super::row::ObjectRow;
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::k8s::resource::load_phase::LoadPhase;
 use crate::util::resource_index::ResourceIndex;
 use kube::api::DynamicObject;
 use kube_runtime::watcher;
@@ -27,9 +28,9 @@ pub struct ObjectsTable {
     columns: Option<&'static KindColumns>,
     /// How the rows are kept current: a watch, polling, or not at all.
     mode: ListMode,
-    /// Whether a list has completed at least once, so an absent object means
-    /// gone rather than not listed yet (`live-detail-panels` D2).
-    synced: bool,
+    /// Where the table is in its lists (`list-loading-indicator`); `synced`
+    /// once a list has completed (`live-detail-panels` D2).
+    phase: LoadPhase,
 }
 
 /// How a kind's rows are kept current (`unwatchable-kinds`).
@@ -61,7 +62,14 @@ impl ObjectsTable {
 
     /// Whether the table has finished its first list.
     pub fn synced(&self) -> bool {
-        self.synced
+        self.phase.has_loaded()
+    }
+
+    /// Where the table is in its lists.
+    // UNWIRED(#208): the list panels' loading and refreshing states read it.
+    #[allow(dead_code)]
+    pub fn phase(&self) -> LoadPhase {
+        self.phase
     }
 
     /// The row named `name` in `namespace` (`None` for a cluster-scoped kind),
@@ -140,6 +148,7 @@ impl ObjectsTable {
                 if let Some(seen) = &mut self.relisting {
                     seen.insert(row.uid.clone());
                 }
+                self.phase.received();
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::Delete(object) => {
@@ -149,6 +158,7 @@ impl ObjectsTable {
             watcher::Event::Init => {
                 self.refused = None;
                 self.relisting = Some(HashSet::new());
+                self.phase.init();
             }
             watcher::Event::InitDone => {
                 let Some(seen) = self.relisting.take() else {
@@ -164,7 +174,7 @@ impl ObjectsTable {
                 for uid in stale {
                     self.index.apply_deleted(&uid);
                 }
-                self.synced = true;
+                self.phase.done();
             }
         }
     }
