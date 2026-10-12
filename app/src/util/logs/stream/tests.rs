@@ -77,6 +77,7 @@ fn target(follow: bool, previous: bool) -> super::LogTarget {
         previous,
         tail_lines: None,
         follow,
+        since: None,
     }
 }
 
@@ -229,4 +230,26 @@ fn a_quiet_stream_stops_once_its_receiver_is_gone() {
             .expect("the producer stops once the receiver is gone")
             .expect("and doesn't panic");
     });
+}
+
+/// #238 review: a resumed stream's request asks for what was written since,
+/// not a tail - the API's way to leave out lines the view already shows.
+#[test]
+fn a_resumed_request_asks_since_without_a_tail() {
+    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
+    let (server, client) =
+        crate::k8s::test_recorder::Recorder::start_text(runtime.handle(), "later\n");
+    let mut resumed = target(true, false);
+    resumed.since = Some("2026-10-12T18:00:01Z".parse().unwrap());
+    runtime.block_on(async move {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        super::produce_container_logs(client, resumed, tx).await;
+        while rx.recv().await.is_some() {}
+    });
+    let request = &server.requests()[0].target;
+    assert!(
+        request.contains("sinceTime=2026-10-12T18%3A00%3A01Z"),
+        "{request}"
+    );
+    assert!(!request.contains("tailLines"), "{request}");
 }

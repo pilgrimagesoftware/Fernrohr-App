@@ -282,3 +282,34 @@ fn a_saved_panel_keeps_its_container_filter() {
     let saved = labels_from_state(&state).expect("a label panel");
     assert_eq!(saved.container.as_deref(), Some("sidecar"));
 }
+
+/// #238 review: a stream first started reads its last lines; one the view
+/// showed before and dropped resumes from the second after it stopped, with
+/// no tail, so the lines it already showed aren't added again.
+#[test]
+fn a_resumed_stream_starts_where_it_stopped() {
+    use super::StreamKey;
+    use super::follow::label_target;
+    use crate::consts::LABEL_LOGS_TAIL_LINES;
+    let key = StreamKey {
+        namespace: "shop".into(),
+        pod: "web-1".into(),
+        uid: "uid-web-1".into(),
+        container: "app".into(),
+        restart_count: 0,
+    };
+    let first = label_target(&key, "dev", true, None);
+    assert_eq!(first.tail_lines, Some(LABEL_LOGS_TAIL_LINES));
+    assert_eq!(first.since, None);
+    assert!(first.follow);
+
+    let stopped: jiff::Timestamp = "2026-10-12T18:00:00.400Z".parse().unwrap();
+    let resumed = label_target(&key, "dev", false, Some(stopped));
+    assert_eq!(resumed.tail_lines, None, "no tail replayed");
+    assert_eq!(
+        resumed.since,
+        Some("2026-10-12T18:00:01Z".parse().unwrap()),
+        "from the next whole second"
+    );
+    assert!(!resumed.follow, "a terminated container is read to its end");
+}

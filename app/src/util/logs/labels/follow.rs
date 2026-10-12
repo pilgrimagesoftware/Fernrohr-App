@@ -53,30 +53,62 @@ impl LogsPanel {
         following.matched = matched;
         following.containers = containers;
         let wanted: Vec<Wanted> = wanted.into_iter().take(LABEL_LOGS_MAX_STREAMS).collect();
-        following
-            .streams
-            .retain(|key, _| wanted.iter().any(|want| &want.key == key));
-        for Wanted { key, source } in wanted {
-            if following.streams.contains_key(&key) {
+        let now = jiff::Timestamp::now();
+        let Following {
+            streams, stopped, ..
+        } = following;
+        streams.retain(|key, _| {
+            let keep = wanted.iter().any(|want| &want.key == key);
+            if !keep {
+                stopped.insert(key.clone(), now);
+            }
+            keep
+        });
+        for Wanted {
+            key,
+            source,
+            follow,
+        } in wanted
+        {
+            if streams.contains_key(&key) {
                 continue;
             }
-            let target = LogTarget {
-                namespace: key.namespace.clone(),
-                pod_name: key.pod.clone(),
-                container: key.container.clone(),
-                context_name: context_name.clone(),
-                previous: false,
-                tail_lines: Some(LABEL_LOGS_TAIL_LINES),
-                follow: true,
-            };
+            let target = label_target(&key, &context_name, follow, stopped.remove(&key));
+            #[cfg(test)]
+            let recorded = target.clone();
             let client = client.clone();
-            let stream =
+            let task =
                 start_tagged_stream(view.clone(), cx, LOG_CHANNEL_CAPACITY, source, move |tx| {
                     produce_container_logs(client, target, tx)
                 });
-            following.streams.insert(key, stream);
+            streams.insert(
+                key,
+                Streaming {
+                    #[cfg(test)]
+                    target: recorded,
+                    _task: task,
+                },
+            );
         }
         cx.notify();
+    }
+
+    /// Test-only: each stream's request, by `pod/container`.
+    #[cfg(test)]
+    pub(crate) fn test_targets(&self) -> Vec<(String, LogTarget)> {
+        let mut targets: Vec<(String, LogTarget)> = self
+            .labels
+            .iter()
+            .flat_map(|following| following.streams.iter())
+            .map(|(key, streaming)| {
+                (
+                    format!("{}/{}", key.pod, key.container),
+                    streaming.target.clone(),
+                )
+            })
+            .collect();
+        targets.sort_by(|a, b| a.0.cmp(&b.0));
+        targets
     }
 
     /// Subscribes the panel to its context's shared Pods watch, released with
@@ -130,6 +162,7 @@ impl LogsPanel {
         }
         following.selector = Some((canonical, selector));
         following.streams.clear();
+        following.stopped.clear();
         following.matched = Matched::default();
         let view = cx.new(|_| LogsView::new(Vec::new()));
         self.follow(&view, cx);
@@ -210,5 +243,38 @@ impl LogsPanel {
             .collect();
         streams.sort();
         streams
+    }
+}
+
+/// The request for `key`'s log: its last [`LABEL_LOGS_TAIL_LINES`] lines, then
+/// what follows - or, for a stream the view showed before and dropped at
+/// `stopped`, only what was written since, so lines already shown aren't
+/// added again. `stopped` is rounded up to the next whole second, as the API
+/// reads it: lines in the same second as the drop were shown already, or
+/// are lost rather than repeated.
+pub(super) fn label_target(
+    key: &StreamKey,
+    context_name: &str,
+    follow: bool,
+    stopped: Option<jiff::Timestamp>,
+) -> LogTarget {
+    let since = stopped.map(|stopped| {
+        stopped
+            .round(
+                jiff::TimestampRound::new()
+                    .smallest(jiff::Unit::Second)
+                    .mode(jiff::RoundMode::Ceil),
+            )
+            .unwrap_or(stopped)
+    });
+    LogTarget {
+        namespace: key.namespace.clone(),
+        pod_name: key.pod.clone(),
+        container: key.container.clone(),
+        context_name: context_name.to_string(),
+        previous: false,
+        tail_lines: since.is_none().then_some(LABEL_LOGS_TAIL_LINES),
+        follow,
+        since,
     }
 }

@@ -192,4 +192,14 @@ async fn c_steps_the_container_filter(cx: &mut TestAppContext) {
         None,
         "all containers saves no filter"
     );
+    // #238 review: both came back after being filtered away, so each resumes
+    // where it stopped rather than replaying its tail into the kept view.
+    let targets = vcx.update(|_, cx| panel.read(cx).test_targets());
+    assert_eq!(targets.len(), 2);
+    for (stream, target) in targets {
+        assert!(
+            target.since.is_some() && target.tail_lines.is_none(),
+            "{stream} resumed: {target:?}"
+        );
+    }
 }
