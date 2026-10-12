@@ -272,9 +272,37 @@ impl LogsPanel {
             let at_end = this.scroll_handle.is_scrolled_to_end() != Some(false);
             if at_end && this.view.read(cx).follow_state() == FollowState::Paused {
                 this.view.update(cx, |view, _| view.scroll_to_bottom());
+                this.scroll_to_newest(this.view.read(cx).lines().len());
                 cx.notify();
             }
         });
+    }
+
+    /// Brings the newest of `line_count` lines into view unless the list is
+    /// already at its end: the one meaning of "go to the newest line" for
+    /// Follow, Jump to bottom and resuming on scroll. A list not laid out yet
+    /// (`None`) scrolls. Returns whether it scrolled.
+    pub(super) fn scroll_to_newest(&self, line_count: usize) -> bool {
+        if line_count == 0 || self.scroll_handle.is_scrolled_to_end() == Some(true) {
+            return false;
+        }
+        self.scroll_handle
+            .scroll_to_item(line_count - 1, gpui_kit::ScrollStrategy::Bottom);
+        true
+    }
+
+    /// The Follow toggle. Turned on, it brings the newest line into view at
+    /// once instead of waiting for the next line to arrive; turned off, the
+    /// view stays where it is.
+    pub(super) fn toggle_follow(&mut self, cx: &mut Context<Self>) {
+        match self.view.read(cx).follow_state() {
+            FollowState::Following => self.view.update(cx, |view, _| view.scroll_up()),
+            FollowState::Paused => {
+                self.view.update(cx, |view, _| view.scroll_to_bottom());
+                self.scroll_to_newest(self.view.read(cx).lines().len());
+            }
+        }
+        cx.notify();
     }
 
     /// Restarts the stream on `container`, reusing the current pod/namespace -

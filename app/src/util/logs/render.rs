@@ -268,30 +268,46 @@ pub(super) fn stream_controls(
                 .on_click(move |_event, _window, cx| {
                     let _ = this_bottom.update(cx, |this: &mut LogsPanel, cx| {
                         this.view.update(cx, |view, _| view.scroll_to_bottom());
-                        this.scroll_handle.scroll_to_item(
-                            line_count.saturating_sub(1),
-                            gpui_kit::ScrollStrategy::Bottom,
-                        );
+                        this.scroll_to_newest(line_count);
                         cx.notify();
                     });
                 }),
         )
         .child(
+            // On is the accent fill, like the current choice in Settings;
+            // off is plain. `toggled` keeps the pressed state for assistive
+            // technology.
             Button::new("logs-follow")
                 .label("Follow")
                 .xsmall()
-                .ghost()
+                .when(following, |button| button.primary())
+                .when(!following, |button| button.ghost())
                 .tab_stop(false)
                 .toggled(following)
-                .tooltip("Follow new lines as they arrive")
+                .tooltip(follow_tooltip(following))
+                .debug_selector(move || follow_selector(following).into())
                 .on_click(move |_event, _window, cx| {
                     let _ = this_follow.update(cx, |this: &mut LogsPanel, cx| {
-                        this.view.update(cx, |view, _| match view.follow_state() {
-                            FollowState::Following => view.scroll_up(),
-                            FollowState::Paused => view.scroll_to_bottom(),
-                        });
-                        cx.notify();
+                        this.toggle_follow(cx);
                     });
                 }),
         )
+}
+
+/// The Follow button while following, for tests.
+pub(super) const FOLLOW_ON: &str = "logs-follow-on";
+/// The Follow button while paused, for tests.
+pub(super) const FOLLOW_OFF: &str = "logs-follow-off";
+
+fn follow_selector(following: bool) -> &'static str {
+    if following { FOLLOW_ON } else { FOLLOW_OFF }
+}
+
+/// The Follow button's tooltip names the state it is in and what a click does.
+pub(super) fn follow_tooltip(following: bool) -> &'static str {
+    if following {
+        "Following new lines - click to stop"
+    } else {
+        "Follow new lines as they arrive"
+    }
 }
