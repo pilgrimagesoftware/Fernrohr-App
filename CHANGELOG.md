@@ -1,4 +1,34 @@
 
+## 0.9.0 - 2026-10-12
+
+### <!-- 0 -->🚀 Features
+- Show Follow's state and scroll to the newest line on Follow
+- Toggle Follow command, bound to s
+- Open Logs by Label… in the Window menu
+- Colour each pod's tag in a label Logs panel
+- Container filter for label Logs panels
+- Namespace scope picker for typed label Logs panels
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Keep a stream's lines when it ends
+- Read a terminated container's log to its end
+- Go to the end marker, not the line above it
+- Stop a quiet log stream once nobody listens
+- Resume a re-added label stream instead of replaying its tail
+- Copy a tagged line with its pod tag again
+- Say when no pod has the filtered container; c resets to All
+
+
+### <!-- 6 -->🧪 Testing
+- Pin the typed label panel's selector-logs behaviour
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.8.0
+
+
+
 ## 0.8.0 - 2026-10-09
 
 ### <!-- 0 -->🚀 Features
