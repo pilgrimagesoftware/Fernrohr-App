@@ -13,10 +13,15 @@ pub fn register_restore(cx: &mut App) {
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
             // A label-following panel saves what it follows (#150).
-            if let Some((source, selector)) = super::labels::labels_from_state(state) {
-                let scope = PanelScope::new(NavTarget::LabelLogs(source.clone()), context_name)
-                    .scoped_to(namespaces);
-                let following = super::labels::Following::new(source, selector.as_deref());
+            if let Some(saved) = super::labels::labels_from_state(state) {
+                let scope =
+                    PanelScope::new(NavTarget::LabelLogs(saved.source.clone()), context_name)
+                        .scoped_to(namespaces);
+                let following = super::labels::Following::new(
+                    saved.source,
+                    saved.selector.as_deref(),
+                    saved.container,
+                );
                 return Ok(panel_handle(
                     cx.new(|cx| LogsPanel::build(scope, None, Some(following), cx)),
                 ));
@@ -91,7 +96,7 @@ impl LogsPanel {
     /// for `NavTarget::LabelLogs`; else the shared one.
     pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
         if let NavTarget::LabelLogs(source) = &scope.target {
-            let following = super::labels::Following::new(source.clone(), None);
+            let following = super::labels::Following::new(source.clone(), None, None);
             return Self::build(scope, None, Some(following), cx);
         }
         let pinned = match &scope.target {
@@ -272,9 +277,38 @@ impl LogsPanel {
             let at_end = this.scroll_handle.is_scrolled_to_end() != Some(false);
             if at_end && this.view.read(cx).follow_state() == FollowState::Paused {
                 this.view.update(cx, |view, _| view.scroll_to_bottom());
+                this.scroll_to_newest(this.view.read(cx).row_count());
                 cx.notify();
             }
         });
+    }
+
+    /// Brings the last of `row_count` rows - the newest line, or the end
+    /// marker after it ([`LogsView::row_count`]) - into view unless the list
+    /// is already at its end: the one meaning of "go to the newest line" for
+    /// Follow, Jump to bottom and resuming on scroll. A list not laid out yet
+    /// (`None`) scrolls. Returns whether it scrolled.
+    pub(super) fn scroll_to_newest(&self, row_count: usize) -> bool {
+        if row_count == 0 || self.scroll_handle.is_scrolled_to_end() == Some(true) {
+            return false;
+        }
+        self.scroll_handle
+            .scroll_to_item(row_count - 1, gpui_kit::ScrollStrategy::Bottom);
+        true
+    }
+
+    /// The Follow toggle. Turned on, it brings the newest line into view at
+    /// once instead of waiting for the next line to arrive; turned off, the
+    /// view stays where it is.
+    pub(super) fn toggle_follow(&mut self, cx: &mut Context<Self>) {
+        match self.view.read(cx).follow_state() {
+            FollowState::Following => self.view.update(cx, |view, _| view.scroll_up()),
+            FollowState::Paused => {
+                self.view.update(cx, |view, _| view.scroll_to_bottom());
+                self.scroll_to_newest(self.view.read(cx).row_count());
+            }
+        }
+        cx.notify();
     }
 
     /// Restarts the stream on `container`, reusing the current pod/namespace -
@@ -327,6 +361,18 @@ impl LogsPanel {
         view_model.select_container(&container);
         let view = cx.new(|_| view_model);
         self.follow(&view, cx);
+        // A terminated container's log is complete: read it to its end
+        // rather than follow it (`completed-pod-logs`). Read from the pods
+        // the session already watches, never subscribing for it.
+        let follow = {
+            let pods = crate::k8s::cluster::session::ClusterRegistry::existing_pods(
+                cx,
+                &self.scope.context_name,
+            );
+            let pods = pods.as_ref().map(|pods| pods.read(cx));
+            let pod = pods.and_then(|pods| pods.find(&namespace, &pod_name, None));
+            super::stream::follows(pod, &container)
+        };
         let target = LogTarget {
             namespace,
             pod_name,
@@ -334,6 +380,8 @@ impl LogsPanel {
             context_name: self.scope.context_name.clone(),
             previous: self.previous,
             tail_lines: None,
+            follow,
+            since: None,
         };
         self.stream = Some(stream_container_logs(client, target, view.clone(), cx));
         self.view = view;
@@ -344,7 +392,8 @@ impl LogsPanel {
     pub(super) fn follow(&self, view: &Entity<LogsView>, cx: &mut Context<Self>) {
         cx.observe(view, |this: &mut Self, view, cx| {
             if view.read(cx).follow_state() == FollowState::Following {
-                let last = view.read(cx).lines().len().saturating_sub(1);
+                // The end marker is the last row once there is one.
+                let last = view.read(cx).row_count().saturating_sub(1);
                 this.scroll_handle
                     .scroll_to_item(last, gpui_kit::ScrollStrategy::Bottom);
             }

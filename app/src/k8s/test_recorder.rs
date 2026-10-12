@@ -47,6 +47,25 @@ impl Recorder {
         handle: &tokio::runtime::Handle,
         answer: impl Fn(&Recorded) -> (&'static str, serde_json::Value) + Send + Sync + 'static,
     ) -> (Self, kube::Client) {
+        Self::start_with(handle, move |request| {
+            let (status, body) = answer(request);
+            ("application/json", status, body.to_string())
+        })
+    }
+
+    /// A server answering every request with `body` as plain text, `200 OK` -
+    /// what a pod's log endpoint sends.
+    pub(crate) fn start_text(handle: &tokio::runtime::Handle, body: &str) -> (Self, kube::Client) {
+        let body = body.to_string();
+        Self::start_with(handle, move |_| ("text/plain", "200 OK", body.clone()))
+    }
+
+    /// The server itself: each request answered with the content type, status
+    /// and body `answer` gives for it.
+    fn start_with(
+        handle: &tokio::runtime::Handle,
+        answer: impl Fn(&Recorded) -> (&'static str, &'static str, String) + Send + Sync + 'static,
+    ) -> (Self, kube::Client) {
         let recorder = Self {
             requests: Arc::default(),
         };
@@ -63,11 +82,10 @@ impl Recorder {
                     let (requests, answer) = (requests.clone(), answer.clone());
                     tokio::spawn(async move {
                         let request = read_request(&mut stream).await;
-                        let (status, body) = answer(&request);
-                        let body = body.to_string();
+                        let (content_type, status, body) = answer(&request);
                         requests.lock().push(request);
                         let response = format!(
-                            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                            "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                             body.len()
                         );
                         let _ = stream.write_all(response.as_bytes()).await;

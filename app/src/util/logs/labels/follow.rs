@@ -36,42 +36,79 @@ impl LogsPanel {
         let Some((_, selector)) = following.selector.clone() else {
             return;
         };
+        let filter = following.container.clone();
         let table = match &following.pods {
             Some(table) => table.clone(),
             None => self.subscribe_pods(client.clone(), cx),
         };
         let namespaces = self.label_namespaces();
-        let (wanted, matched) = wanted(table.read(cx).pods(), &selector, &namespaces);
+        let pods = table.read(cx).pods();
+        let (wanted, matched) = wanted(pods, &selector, &namespaces, filter.as_deref());
+        let containers = container_names(pods, &selector, &namespaces);
         let view = self.view.clone();
         let context_name = self.scope.context_name.clone();
         let Some(following) = &mut self.labels else {
             return;
         };
         following.matched = matched;
+        following.containers = containers;
         let wanted: Vec<Wanted> = wanted.into_iter().take(LABEL_LOGS_MAX_STREAMS).collect();
-        following
-            .streams
-            .retain(|key, _| wanted.iter().any(|want| &want.key == key));
-        for Wanted { key, source } in wanted {
-            if following.streams.contains_key(&key) {
+        let now = jiff::Timestamp::now();
+        let Following {
+            streams, stopped, ..
+        } = following;
+        streams.retain(|key, _| {
+            let keep = wanted.iter().any(|want| &want.key == key);
+            if !keep {
+                stopped.insert(key.clone(), now);
+            }
+            keep
+        });
+        for Wanted {
+            key,
+            source,
+            follow,
+        } in wanted
+        {
+            if streams.contains_key(&key) {
                 continue;
             }
-            let target = LogTarget {
-                namespace: key.namespace.clone(),
-                pod_name: key.pod.clone(),
-                container: key.container.clone(),
-                context_name: context_name.clone(),
-                previous: false,
-                tail_lines: Some(LABEL_LOGS_TAIL_LINES),
-            };
+            let target = label_target(&key, &context_name, follow, stopped.remove(&key));
+            #[cfg(test)]
+            let recorded = target.clone();
             let client = client.clone();
-            let stream =
+            let task =
                 start_tagged_stream(view.clone(), cx, LOG_CHANNEL_CAPACITY, source, move |tx| {
                     produce_container_logs(client, target, tx)
                 });
-            following.streams.insert(key, stream);
+            streams.insert(
+                key,
+                Streaming {
+                    #[cfg(test)]
+                    target: recorded,
+                    _task: task,
+                },
+            );
         }
         cx.notify();
+    }
+
+    /// Test-only: each stream's request, by `pod/container`.
+    #[cfg(test)]
+    pub(crate) fn test_targets(&self) -> Vec<(String, LogTarget)> {
+        let mut targets: Vec<(String, LogTarget)> = self
+            .labels
+            .iter()
+            .flat_map(|following| following.streams.iter())
+            .map(|(key, streaming)| {
+                (
+                    format!("{}/{}", key.pod, key.container),
+                    streaming.target.clone(),
+                )
+            })
+            .collect();
+        targets.sort_by(|a, b| a.0.cmp(&b.0));
+        targets
     }
 
     /// Subscribes the panel to its context's shared Pods watch, released with
@@ -125,12 +162,42 @@ impl LogsPanel {
         }
         following.selector = Some((canonical, selector));
         following.streams.clear();
+        following.stopped.clear();
         following.matched = Matched::default();
         let view = cx.new(|_| LogsView::new(Vec::new()));
         self.follow(&view, cx);
         self.view = view;
         self.sync_labels(cx);
         cx.notify();
+    }
+
+    /// Streams only the containers named `container` from each matching pod,
+    /// or - `None` - all of them. Streams the filter excludes are dropped, not
+    /// hidden, so they don't count toward the cap.
+    pub(in crate::util::logs) fn set_container_filter(
+        &mut self,
+        container: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(following) = &mut self.labels else {
+            return;
+        };
+        if following.container == container {
+            return;
+        }
+        following.container = container;
+        self.sync_labels(cx);
+        cx.notify();
+    }
+
+    /// `NextLabelContainer`: the filter's next choice - all containers, then
+    /// each name the matched pods have, then all again.
+    pub(in crate::util::logs) fn next_container_filter(&mut self, cx: &mut Context<Self>) {
+        let Some(following) = &self.labels else {
+            return;
+        };
+        let next = next_filter(following.container.as_deref(), &following.containers);
+        self.set_container_filter(next, cx);
     }
 
     /// Test-only: the selector streamed now, as canonical text.
@@ -143,6 +210,14 @@ impl LogsPanel {
     #[cfg(test)]
     pub(crate) fn test_selector_error(&self) -> Option<String> {
         self.labels.as_ref()?.error.clone()
+    }
+
+    /// Test-only: how many pods and containers the selector matched.
+    #[cfg(test)]
+    pub(crate) fn test_matched(&self) -> (usize, usize) {
+        self.labels.as_ref().map_or((0, 0), |following| {
+            (following.matched.pods, following.matched.containers)
+        })
     }
 
     /// Test-only: the containers streaming now, as `pod/container#restarts@uid`.
@@ -162,4 +237,52 @@ impl LogsPanel {
         streams.sort();
         streams
     }
+}
+
+/// The request for `key`'s log: its last [`LABEL_LOGS_TAIL_LINES`] lines, then
+/// what follows - or, for a stream the view showed before and dropped at
+/// `stopped`, only what was written since, so lines already shown aren't
+/// added again. `stopped` is rounded up to the next whole second, as the API
+/// reads it: lines in the same second as the drop were shown already, or
+/// are lost rather than repeated.
+pub(super) fn label_target(
+    key: &StreamKey,
+    context_name: &str,
+    follow: bool,
+    stopped: Option<jiff::Timestamp>,
+) -> LogTarget {
+    let since = stopped.map(|stopped| {
+        stopped
+            .round(
+                jiff::TimestampRound::new()
+                    .smallest(jiff::Unit::Second)
+                    .mode(jiff::RoundMode::Ceil),
+            )
+            .unwrap_or(stopped)
+    });
+    LogTarget {
+        namespace: key.namespace.clone(),
+        pod_name: key.pod.clone(),
+        container: key.container.clone(),
+        context_name: context_name.to_string(),
+        previous: false,
+        tail_lines: since.is_none().then_some(LABEL_LOGS_TAIL_LINES),
+        follow,
+        since,
+    }
+}
+
+/// The container filter after `current`, among `names`: all containers, then
+/// each name in turn, then all again. A filter naming no container the pods
+/// have - restored before they're seen, or from pods since gone - steps back
+/// to all.
+pub(super) fn next_filter(current: Option<&str>, names: &[String]) -> Option<String> {
+    let next = match current {
+        None => names.first(),
+        Some(current) => names
+            .iter()
+            .position(|name| name == current)
+            .and_then(|at| names.get(at + 1)),
+    };
+    next.cloned()
 }

@@ -84,8 +84,26 @@ impl MainWindow {
         cx: &mut Context<Self>,
     ) {
         let target = NavTarget::LabelLogs(crate::util::logs::LabelLogs::Typed);
-        let existing = self.open_logs_panel(&target, cx);
-        self.open_target(target, window, cx);
+        // The open panel keeps its own scope - it's found by it; a new one
+        // starts on the focused list's namespaces (`selector-logs`).
+        let (existing, namespaces) = match self.open_logs_panel(&target, cx) {
+            Some((panel, namespaces)) => (Some(panel), namespaces),
+            None => (
+                None,
+                self.focused_namespaced(window, cx)
+                    .map(|(_, key)| key.namespaces)
+                    .unwrap_or_default(),
+            ),
+        };
+        self.open_target_in(
+            target,
+            None,
+            None,
+            namespaces,
+            crate::ui::nav::OpenMode::Foreground,
+            window,
+            cx,
+        );
         if let Some(panel) = existing {
             panel.update(cx, |panel, cx| panel.focus_selector(window, cx));
         }
@@ -113,12 +131,12 @@ impl MainWindow {
     }
 
     /// The Logs panel this window has open on `target`, in the context a new
-    /// one would open in.
+    /// one would open in, with the namespaces it's scoped to.
     fn open_logs_panel(
         &self,
         target: &NavTarget,
         cx: &App,
-    ) -> Option<Entity<crate::util::logs::LogsPanel>> {
+    ) -> Option<(Entity<crate::util::logs::LogsPanel>, Vec<String>)> {
         let WindowMode::Workspace {
             open_panels,
             contexts,
@@ -133,7 +151,9 @@ impl MainWindow {
             .iter()
             .find(|open| &open.key.target == target && open.key.context_name == context_name)
             .and_then(|open| match &open.panel {
-                Some(crate::ui::nav::OpenedPanel::Logs(panel)) => Some(panel.clone()),
+                Some(crate::ui::nav::OpenedPanel::Logs(panel)) => {
+                    Some((panel.clone(), open.key.namespaces.clone()))
+                }
                 _ => None,
             })
     }

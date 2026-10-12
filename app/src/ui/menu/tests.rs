@@ -270,12 +270,18 @@ fn the_navigate_menu_holds_only_global_navigation() {
 
 /// `saved-panel-layouts` 7.2: `layouts.save` and `layouts.manage` both show
 /// up under the Window menu, alongside `shell.new_window` - the registry's
-/// own `menu` slot, not a hand-kept list that could drift from it.
+/// own `menu` slot, not a hand-kept list that could drift from it. So does
+/// the typed label Logs panel (`selector-logs`).
 #[test]
 fn the_window_menu_carries_both_layout_commands() {
     assert_eq!(
         structure(TopMenu::Window),
-        ["New Window", "Save Panel Layout…", "Saved Layouts…"]
+        [
+            "New Window",
+            "Save Panel Layout…",
+            "Saved Layouts…",
+            "Open Logs by Label…"
+        ]
     );
 }
 

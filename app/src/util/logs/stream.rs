@@ -34,7 +34,7 @@ pub fn start_tagged_stream<F, Fut>(
     view: gpui_kit::Entity<LogsView>,
     cx: &mut gpui_kit::App,
     capacity: usize,
-    source: String,
+    source: LineSource,
     produce: F,
 ) -> gpui_kit::Task<()>
 where
@@ -99,6 +99,10 @@ fn describe_log_stream_error(
 /// `context_name` names a failure only; the client carries the context.
 /// `tail_lines` starts at the last that many lines rather than the first
 /// line - what a panel streaming many containers at once asks for (#150).
+/// `follow` is false for a container that has terminated: its log is
+/// complete, so it is read to its end rather than followed
+/// (`completed-pod-logs`). `since` starts at the lines written from then on
+/// instead - a stream resumed into a view that already shows its earlier lines.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogTarget {
     pub namespace: String,
@@ -107,18 +111,43 @@ pub struct LogTarget {
     pub context_name: String,
     pub previous: bool,
     pub tail_lines: Option<i64>,
+    pub follow: bool,
+    pub since: Option<jiff::Timestamp>,
 }
 
-/// The log request for `target`: the current instance followed as it grows, or
-/// the previous one's log, which is complete, read to its end.
+/// The log request for `target`: the current instance followed as it grows,
+/// or - for a terminated container, or its previous instance - its complete
+/// log, read to its end.
 pub(super) fn log_params(target: &LogTarget) -> kube::api::LogParams {
     kube::api::LogParams {
         container: Some(target.container.clone()),
-        follow: !target.previous,
+        follow: target.follow && !target.previous,
         previous: target.previous,
         tail_lines: target.tail_lines,
+        since_time: target.since,
         ..Default::default()
     }
+}
+
+/// Whether `container`'s log should be followed (`completed-pod-logs`): not
+/// once it has terminated, or its pod has finished (`Succeeded` or `Failed`),
+/// since its log is complete. A running or waiting container, or one with no
+/// status known yet - `pod` unknown included - is followed, as before.
+pub(super) fn follows(pod: Option<&k8s_openapi::api::core::v1::Pod>, container: &str) -> bool {
+    let Some(status) = pod.and_then(|pod| pod.status.as_ref()) else {
+        return true;
+    };
+    if matches!(status.phase.as_deref(), Some("Succeeded" | "Failed")) {
+        return false;
+    }
+    let terminated = status
+        .container_statuses
+        .iter()
+        .flatten()
+        .find(|status| status.name == container)
+        .and_then(|status| status.state.as_ref())
+        .is_some_and(|state| state.terminated.is_some());
+    !terminated
 }
 
 /// Streams `target`'s logs on `client`, line by line, until the stream ends or
@@ -145,10 +174,28 @@ pub(super) const LOG_CHANNEL_CAPACITY: usize = 64;
 /// The producer behind every container log stream: reads `target`'s logs on
 /// `client` and sends them to `tx` as [`LogEvent`]s, ending with
 /// [`LogEvent::Ended`] or a failure, or as soon as `tx`'s receiver is gone.
+///
+/// "As soon as" includes while it waits - for the request, or for a quiet
+/// container's next line. A dropped receiver would otherwise go unnoticed
+/// until the next send, keeping the HTTP connection and this task alive for
+/// as long as the container stays quiet: every stream a label panel drops,
+/// and every one a closed panel leaves behind.
 pub(super) async fn produce_container_logs(
     client: kube::Client,
     target: LogTarget,
     tx: tokio::sync::mpsc::Sender<LogEvent>,
+) {
+    tokio::select! {
+        () = tx.closed() => {}
+        () = read_container_logs(client, target, &tx) => {}
+    }
+}
+
+/// [`produce_container_logs`]'s reading, which it cancels once nobody listens.
+async fn read_container_logs(
+    client: kube::Client,
+    target: LogTarget,
+    tx: &tokio::sync::mpsc::Sender<LogEvent>,
 ) {
     use futures_util::{AsyncBufReadExt, StreamExt};
     use k8s_openapi::api::core::v1::Pod;

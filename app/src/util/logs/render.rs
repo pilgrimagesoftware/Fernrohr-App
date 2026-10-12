@@ -2,6 +2,7 @@
 //! container picker, and the control bar (jump to top/bottom, follow toggle).
 
 use super::*;
+use crate::consts::LABEL_LOGS_POD_HUES;
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -10,6 +11,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 pub(super) const PREVIOUS_TOGGLE_ID: &str = "logs-previous";
 /// The log lines' list, for tests.
 pub(super) const LINES: &str = "logs-lines";
+/// A tagged line's coloured tag, for tests.
+pub(super) const LINE_TAG: &str = "logs-line-tag";
+/// The end marker's row, for tests.
+pub(super) const END_MARKER: &str = "logs-end-marker";
 
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -34,7 +39,7 @@ impl Render for LogsPanel {
                 .child("Click a pod to view its logs.")
                 .into_any_element()
         } else {
-            self.lines_list(view.lines(), cx)
+            self.lines_list(view.lines(), view.end_marker(), cx)
         };
 
         // A container picker, not a namespace one: this panel streams one
@@ -83,7 +88,8 @@ impl Render for LogsPanel {
         });
         // The bar shows once a pod is picked - in a terminal state too, so the
         // Previous toggle is there to switch back from "no previous instance".
-        let streaming = view.terminal_message().is_none();
+        // An ended stream has nothing left to follow.
+        let streaming = view.terminal_message().is_none() && !view.ended();
         let previous = self.previous;
         let this_previous = cx.weak_entity();
         let previous_key = gpui_kit::component::kbd::Kbd::binding_for_action(
@@ -97,7 +103,8 @@ impl Render for LogsPanel {
             )
         });
         let control_bar = self.current.is_some().then(|| {
-            let line_count = view.lines().len();
+            // Every row, the end marker included, so the bottom is the last.
+            let line_count = view.row_count();
             div()
                 .flex()
                 .items_center()
@@ -132,7 +139,7 @@ impl Render for LogsPanel {
                         ),
                 )
                 .when(streaming, |this| {
-                    this.child(stream_controls(line_count, following, cx))
+                    this.child(stream_controls(line_count, following, window, cx))
                 })
         });
         let control_bar = match label_bar {
@@ -149,6 +156,17 @@ impl Render for LogsPanel {
             .on_action(cx.listener(|this, _: &TogglePreviousLogs, _window, cx| {
                 this.toggle_previous(cx);
             }))
+            .on_action(cx.listener(|this, _: &ToggleFollow, _window, cx| {
+                this.toggle_follow(cx);
+            }))
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.open_scope_picker(window, cx);
+                },
+            ))
+            .on_action(cx.listener(|this, _: &NextLabelContainer, _window, cx| {
+                this.next_container_filter(cx);
+            }))
             .on_action(cx.listener(|this, _: &FocusLabelSelector, window, cx| {
                 this.focus_selector(window, cx);
             }))
@@ -164,10 +182,19 @@ impl Render for LogsPanel {
 
 impl LogsPanel {
     /// The log lines, each selectable, in a list that scrolls itself and
-    /// follows the newest line while following.
-    pub(super) fn lines_list(&self, lines: &[String], cx: &Context<Self>) -> AnyElement {
+    /// follows the newest line while following, then `end_marker` once the
+    /// stream has ended - a muted row of the list's own, so scrolling and
+    /// following reach it like any line (`completed-pod-logs`).
+    pub(super) fn lines_list(
+        &self,
+        lines: &[LogLine],
+        end_marker: Option<&'static str>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
+        let muted = cx.theme().muted_foreground;
+        let tag_colours = pod_tag_colours(cx);
         div()
             .debug_selector(|| LINES.into())
             .on_scroll_wheel(cx.listener(Self::on_lines_scrolled))
@@ -178,25 +205,19 @@ impl LogsPanel {
             .child(
                 uniform_list(
                     "logs-panel-lines",
-                    line_count,
+                    line_count + usize::from(end_marker.is_some()),
                     move |range, _window, _cx| {
                         range
                             .map(|ix| {
-                                // Each line is selectable text in the window's
-                                // selection, ordered by its line number, so a drag
-                                // across lines selects and copies them in reading
-                                // order (#151). One participant per line: runs
-                                // sharing a handle keep only the last one drawn.
-                                div()
-                                    .whitespace_nowrap()
-                                    .child(
-                                        gpui_kit::base::SelectableText::new(
-                                            ("logs-line", ix),
-                                            lines[ix].clone(),
-                                        )
-                                        .document_order(ix as u64),
-                                    )
-                                    .into_any_element()
+                                if ix == line_count {
+                                    return div()
+                                        .debug_selector(|| END_MARKER.into())
+                                        .whitespace_nowrap()
+                                        .text_color(muted)
+                                        .children(end_marker)
+                                        .into_any_element();
+                                }
+                                line_row(ix, &lines[ix], &tag_colours)
                             })
                             .collect()
                     },
@@ -208,13 +229,68 @@ impl LogsPanel {
     }
 }
 
-/// Jump to top, jump to bottom, and the Follow toggle - for a pod's stream and
-/// a label panel's alike.
+/// One line: selectable text in the window's selection, ordered by its line
+/// number, so a drag across lines selects and copies them in reading order
+/// (#151). One participant per line: runs sharing a handle keep only the last
+/// one drawn, and two participants copy as two lines - so a tagged line's
+/// text is the whole `tag │ text`, and its pod's colour (`selector-logs`) is a
+/// copy of the tag drawn over the tag's own glyphs. The code font is
+/// monospaced, so the two line up; the overlay has no mouse handlers, so
+/// selection goes through it to the text beneath.
+fn line_row(ix: usize, line: &LogLine, tag_colours: &[Hsla]) -> AnyElement {
+    let tag = line.source().map(|source| {
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .debug_selector(|| LINE_TAG.into())
+            .text_color(tag_colours[pod_colour(source.pod())])
+            .child(SharedString::from(source.tag().to_string()))
+    });
+    div()
+        .relative()
+        .whitespace_nowrap()
+        .child(
+            gpui_kit::base::SelectableText::new(("logs-line", ix), line.to_string())
+                .document_order(ix as u64),
+        )
+        .children(tag)
+        .into_any_element()
+}
+
+/// The colour each of [`LABEL_LOGS_POD_HUES`] draws a pod's tag in, made to
+/// read as text on the panel's background in either mode.
+pub(super) fn pod_tag_colours(cx: &App) -> Vec<Hsla> {
+    let background = cx.theme().background;
+    let lightness = if cx.theme().mode.is_dark() { 0.65 } else { 0.4 };
+    LABEL_LOGS_POD_HUES
+        .iter()
+        .map(|&hue| {
+            crate::ui::style::meet(
+                hsla(hue, 0.7, lightness, 1.),
+                background,
+                crate::ui::style::TEXT_CONTRAST,
+            )
+        })
+        .collect()
+}
+
+/// Jump to top, jump to bottom, and the Follow toggle with its key - for a
+/// pod's stream and a label panel's alike.
 pub(super) fn stream_controls(
     line_count: usize,
     following: bool,
+    window: &Window,
     cx: &Context<LogsPanel>,
 ) -> impl IntoElement + use<> {
+    let follow_key = gpui_kit::component::kbd::Kbd::binding_for_action(
+        &ToggleFollow,
+        Some(PANEL_KEY_CONTEXT),
+        window,
+    )
+    .unwrap_or_else(|| {
+        gpui_kit::component::kbd::Kbd::new(Keystroke::parse(FOLLOW_KEY).expect("valid keybinding"))
+    });
     let this_top = cx.weak_entity();
     let this_bottom = cx.weak_entity();
     let this_follow = cx.weak_entity();
@@ -248,30 +324,47 @@ pub(super) fn stream_controls(
                 .on_click(move |_event, _window, cx| {
                     let _ = this_bottom.update(cx, |this: &mut LogsPanel, cx| {
                         this.view.update(cx, |view, _| view.scroll_to_bottom());
-                        this.scroll_handle.scroll_to_item(
-                            line_count.saturating_sub(1),
-                            gpui_kit::ScrollStrategy::Bottom,
-                        );
+                        this.scroll_to_newest(line_count);
                         cx.notify();
                     });
                 }),
         )
+        .child(follow_key)
         .child(
+            // On is the accent fill, like the current choice in Settings;
+            // off is plain. `toggled` keeps the pressed state for assistive
+            // technology.
             Button::new("logs-follow")
                 .label("Follow")
                 .xsmall()
-                .ghost()
+                .when(following, |button| button.primary())
+                .when(!following, |button| button.ghost())
                 .tab_stop(false)
                 .toggled(following)
-                .tooltip("Follow new lines as they arrive")
+                .tooltip(follow_tooltip(following))
+                .debug_selector(move || follow_selector(following).into())
                 .on_click(move |_event, _window, cx| {
                     let _ = this_follow.update(cx, |this: &mut LogsPanel, cx| {
-                        this.view.update(cx, |view, _| match view.follow_state() {
-                            FollowState::Following => view.scroll_up(),
-                            FollowState::Paused => view.scroll_to_bottom(),
-                        });
-                        cx.notify();
+                        this.toggle_follow(cx);
                     });
                 }),
         )
+}
+
+/// The Follow button while following, for tests.
+pub(super) const FOLLOW_ON: &str = "logs-follow-on";
+/// The Follow button while paused, for tests.
+pub(super) const FOLLOW_OFF: &str = "logs-follow-off";
+
+fn follow_selector(following: bool) -> &'static str {
+    if following { FOLLOW_ON } else { FOLLOW_OFF }
+}
+
+/// The Follow button's tooltip names the state it is in and what a click does.
+pub(super) fn follow_tooltip(following: bool) -> &'static str {
+    if following {
+        "Following new lines - click to stop"
+    } else {
+        "Follow new lines as they arrive"
+    }
 }

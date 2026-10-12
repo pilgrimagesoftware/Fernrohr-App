@@ -132,8 +132,16 @@ fn open(cx: &mut TestAppContext, restarted: bool) -> Harness {
 
 impl Harness {
     fn lines(&mut self) -> Vec<String> {
-        self.vcx
-            .update(|_, cx| self.panel.read(cx).view.read(cx).lines().to_vec())
+        self.vcx.update(|_, cx| {
+            self.panel
+                .read(cx)
+                .view
+                .read(cx)
+                .lines()
+                .iter()
+                .map(ToString::to_string)
+                .collect()
+        })
     }
 
     fn wait_for_lines(&mut self, expected: &[&str]) {

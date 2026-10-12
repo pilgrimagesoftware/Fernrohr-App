@@ -20,6 +20,9 @@ impl BasePanel for LogsPanel {
             if let Some((selector, _)) = &following.selector {
                 info["selector"] = selector.clone().into();
             }
+            if let Some(container) = &following.container {
+                info["container_filter"] = container.clone().into();
+            }
         }
         // A pod's own panel comes back pinned to its pod, on the container
         // it showed (`register_restore`).

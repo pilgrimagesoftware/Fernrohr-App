@@ -195,10 +195,11 @@ impl OpenedPanel {
             OpenedPanel::Placeholder(panel) => {
                 panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
             }
-            OpenedPanel::Logs(_)
-            | OpenedPanel::PodDetail(_)
-            | OpenedPanel::ObjectDetail(_)
-            | OpenedPanel::Exec(_) => {
+            // Only a typed label panel's namespaces are its own to change.
+            OpenedPanel::Logs(panel) => {
+                return panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx));
+            }
+            OpenedPanel::PodDetail(_) | OpenedPanel::ObjectDetail(_) | OpenedPanel::Exec(_) => {
                 return false;
             }
         }

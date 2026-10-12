@@ -1,7 +1,8 @@
 // Not `use super::*`: `logs.rs` pulls in `gpui_kit::*`, whose own `test`
 // attribute macro would shadow `core::prelude::v1::test` for the plain
 // synchronous tests below.
-use super::{FollowState, LogEvent, LogsView};
+use super::{ENDED_MARKER, FollowState, LogEvent, LogsView, NO_OUTPUT};
+use crate::util::logs::line::LineSource;
 
 #[test]
 fn history_renders_and_new_lines_append() {
@@ -54,11 +55,11 @@ fn multi_container_fixture_switches_streams_on_selection() {
     assert!(!unchanged, "reselecting the current container is a no-op");
 }
 
-/// `1-window-context-bar` bug 2: the terminal state now carries a readable
-/// message *and* the failure's full technical detail, rather than folding the
-/// latter into the former (or discarding it).
+/// `1-window-context-bar` bug 2: a failure carries a readable message *and*
+/// its full technical detail, rather than folding the latter into the former.
+/// A plain end is no longer a terminal message at all (`completed-pod-logs`).
 #[test]
-fn deleted_pod_and_not_started_container_show_distinct_terminal_messages() {
+fn a_failure_is_a_terminal_message_and_an_end_is_not() {
     let mut stream_ended = LogsView::new(vec!["app".into()]);
     stream_ended.apply(LogEvent::Line("some log line".into()));
     stream_ended.apply(LogEvent::Ended);
@@ -69,22 +70,68 @@ fn deleted_pod_and_not_started_container_show_distinct_terminal_messages() {
         detail: "RequestFailed(...)".into(),
     });
 
-    let ended_message = stream_ended.terminal_message().unwrap();
+    assert_eq!(stream_ended.terminal_message(), None);
+    assert!(stream_ended.ended());
     let failed_message = request_failed.terminal_message().unwrap();
-    assert_ne!(ended_message, failed_message);
-    assert!(ended_message.to_lowercase().contains("ended"));
     assert!(
         failed_message
             .to_lowercase()
             .contains("container not started")
     );
-    assert!(
-        stream_ended.terminal_detail().is_none(),
-        "a normal end has no technical detail to show"
-    );
+    assert!(!request_failed.ended());
     assert_eq!(
         request_failed.terminal_detail(),
         Some("RequestFailed(...)"),
         "the full technical detail stays available alongside the readable message"
     );
+}
+
+/// `completed-pod-logs` 1.1: a stream that ends keeps every line it read,
+/// with the end marker after them - a completed Job's output stays readable.
+#[test]
+fn an_ended_stream_keeps_its_lines_with_the_marker_after() {
+    let mut view = LogsView::new(vec!["app".into()]);
+    for line in ["starting", "done"] {
+        view.apply(LogEvent::Line(line.into()));
+    }
+    view.apply(LogEvent::Ended);
+    assert_eq!(view.lines(), ["starting", "done"]);
+    assert_eq!(view.end_marker(), Some(ENDED_MARKER));
+    assert_eq!(view.row_count(), 3, "two lines and the marker");
+}
+
+#[test]
+fn an_ended_stream_with_no_lines_says_it_wrote_nothing() {
+    let mut view = LogsView::new(vec!["app".into()]);
+    view.apply(LogEvent::Ended);
+    assert_eq!(view.end_marker(), Some(NO_OUTPUT));
+    assert_eq!(view.row_count(), 1);
+}
+
+#[test]
+fn a_stream_still_running_has_no_marker() {
+    let mut view = LogsView::new(vec!["app".into()]);
+    view.apply(LogEvent::Line("hello".into()));
+    assert_eq!(view.end_marker(), None);
+    assert_eq!(view.row_count(), 1);
+}
+
+/// `selector-logs-panel` 3.1: a tagged stream's line keeps its source apart
+/// from its text, and counts as a row like any other line - what following
+/// and jumping to the bottom go by.
+#[test]
+fn a_tagged_line_keeps_its_source_apart() {
+    let mut view = LogsView::new(Vec::new());
+    let web = LineSource::new("web-1", "web-1");
+    view.apply_from(&web, LogEvent::Line("ready".into()));
+    view.apply_from(&web, LogEvent::Ended);
+
+    let [ready, ended] = view.lines() else {
+        panic!("two lines: {:?}", view.lines());
+    };
+    assert_eq!(ready.text(), "ready");
+    assert_eq!(ready.source(), Some(&web));
+    assert_eq!(ended.text(), ENDED_MARKER, "one stream's end is a line");
+    assert_eq!(view.row_count(), 2);
+    assert_eq!(view.end_marker(), None, "and not the view's end");
 }
