@@ -196,14 +196,7 @@ impl LogsPanel {
         let Some(following) = &self.labels else {
             return;
         };
-        let choices: Vec<Option<String>> = std::iter::once(None)
-            .chain(following.containers.iter().cloned().map(Some))
-            .collect();
-        let at = choices
-            .iter()
-            .position(|choice| *choice == following.container)
-            .unwrap_or(0);
-        let next = choices[(at + 1) % choices.len()].clone();
+        let next = next_filter(following.container.as_deref(), &following.containers);
         self.set_container_filter(next, cx);
     }
 
@@ -277,4 +270,19 @@ pub(super) fn label_target(
         follow,
         since,
     }
+}
+
+/// The container filter after `current`, among `names`: all containers, then
+/// each name in turn, then all again. A filter naming no container the pods
+/// have - restored before they're seen, or from pods since gone - steps back
+/// to all.
+pub(super) fn next_filter(current: Option<&str>, names: &[String]) -> Option<String> {
+    let next = match current {
+        None => names.first(),
+        Some(current) => names
+            .iter()
+            .position(|name| name == current)
+            .and_then(|at| names.get(at + 1)),
+    };
+    next.cloned()
 }
