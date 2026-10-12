@@ -67,3 +67,117 @@ fn describe_log_stream_error_reads_reason_and_message_for_other_api_errors() {
         "Forbidden: pods is forbidden: User \"x\" cannot list resource"
     );
 }
+
+fn target(follow: bool, previous: bool) -> super::LogTarget {
+    super::LogTarget {
+        namespace: "jobs".into(),
+        pod_name: "migrate-x7k2p".into(),
+        container: "main".into(),
+        context_name: "dev".into(),
+        previous,
+        tail_lines: None,
+        follow,
+    }
+}
+
+/// `completed-pod-logs` 2.1: a running container is followed; a terminated
+/// one, and a previous instance, are read to their end.
+#[test]
+fn log_params_follow_only_a_live_current_instance() {
+    use super::log_params;
+    assert!(
+        log_params(&target(true, false)).follow,
+        "a running container"
+    );
+    assert!(
+        !log_params(&target(false, false)).follow,
+        "a terminated one"
+    );
+    let previous = log_params(&target(true, true));
+    assert!(!previous.follow && previous.previous, "a previous instance");
+}
+
+fn pod(phase: &str, state: Option<&str>) -> k8s_openapi::api::core::v1::Pod {
+    let state = match state {
+        Some("terminated") => serde_json::json!({"terminated": {"exitCode": 0}}),
+        Some("running") => serde_json::json!({"running": {}}),
+        Some("waiting") => serde_json::json!({"waiting": {"reason": "CrashLoopBackOff"}}),
+        _ => serde_json::Value::Null,
+    };
+    let statuses = if state.is_null() {
+        serde_json::json!([])
+    } else {
+        serde_json::json!([{
+            "name": "main", "ready": false, "restartCount": 0,
+            "image": "busybox", "imageID": "", "state": state,
+        }])
+    };
+    serde_json::from_value(serde_json::json!({
+        "metadata": {"name": "migrate-x7k2p", "namespace": "jobs"},
+        "status": {"phase": phase, "containerStatuses": statuses},
+    }))
+    .expect("a valid pod")
+}
+
+/// `completed-pod-logs` 2.2: which containers' logs are followed.
+#[test]
+fn a_terminated_container_or_finished_pod_is_not_followed() {
+    use super::follows;
+    assert!(!follows(Some(&pod("Running", Some("terminated"))), "main"));
+    assert!(!follows(Some(&pod("Succeeded", None)), "main"));
+    assert!(!follows(Some(&pod("Failed", None)), "main"));
+    assert!(follows(Some(&pod("Running", Some("running"))), "main"));
+    assert!(
+        follows(Some(&pod("Running", Some("waiting"))), "main"),
+        "a restart-looping container still streams"
+    );
+    assert!(
+        follows(Some(&pod("Pending", None)), "main"),
+        "no status yet"
+    );
+    assert!(follows(None, "main"), "an unknown pod: today's behaviour");
+    assert!(
+        follows(Some(&pod("Running", Some("terminated"))), "sidecar"),
+        "only the named container's status counts"
+    );
+}
+
+/// `completed-pod-logs` 2.3: a terminated container's log, read without
+/// following, arrives whole - every line - before the stream's end.
+#[test]
+fn a_terminated_containers_whole_log_arrives_before_the_end() {
+    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
+    let (server, client) = crate::k8s::test_recorder::Recorder::start_text(
+        runtime.handle(),
+        "migrating\napplied 3 migrations\ndone\n",
+    );
+    let events = runtime.block_on(async move {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        super::produce_container_logs(client, target(false, false), tx).await;
+        let mut events = Vec::new();
+        while let Some(event) = rx.recv().await {
+            events.push(match event {
+                LogEvent::Line(line) => line,
+                LogEvent::Ended => "<ended>".into(),
+                LogEvent::RequestFailed { message, .. } => format!("<failed: {message}>"),
+                LogEvent::NoPreviousInstance => "<no previous>".into(),
+            });
+        }
+        events
+    });
+    assert_eq!(
+        events,
+        ["migrating", "applied 3 migrations", "done", "<ended>"]
+    );
+    let request = &server.requests()[0];
+    assert!(
+        request.target.contains("/pods/migrate-x7k2p/log"),
+        "{}",
+        request.target
+    );
+    assert!(
+        !request.target.contains("follow=true"),
+        "read to its end, not followed: {}",
+        request.target
+    );
+}

@@ -63,6 +63,7 @@ impl LogsPanel {
                 context_name: context_name.clone(),
                 previous: false,
                 tail_lines: Some(LABEL_LOGS_TAIL_LINES),
+                follow: true,
             };
             let client = client.clone();
             let stream =

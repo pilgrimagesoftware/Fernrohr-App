@@ -10,6 +10,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 pub(super) const PREVIOUS_TOGGLE_ID: &str = "logs-previous";
 /// The log lines' list, for tests.
 pub(super) const LINES: &str = "logs-lines";
+/// The end marker's row, for tests.
+pub(super) const END_MARKER: &str = "logs-end-marker";
 
 impl Render for LogsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -34,7 +36,7 @@ impl Render for LogsPanel {
                 .child("Click a pod to view its logs.")
                 .into_any_element()
         } else {
-            self.lines_list(view.lines(), cx)
+            self.lines_list(view.lines(), view.end_marker(), cx)
         };
 
         // A container picker, not a namespace one: this panel streams one
@@ -83,7 +85,8 @@ impl Render for LogsPanel {
         });
         // The bar shows once a pod is picked - in a terminal state too, so the
         // Previous toggle is there to switch back from "no previous instance".
-        let streaming = view.terminal_message().is_none();
+        // An ended stream has nothing left to follow.
+        let streaming = view.terminal_message().is_none() && !view.ended();
         let previous = self.previous;
         let this_previous = cx.weak_entity();
         let previous_key = gpui_kit::component::kbd::Kbd::binding_for_action(
@@ -97,7 +100,8 @@ impl Render for LogsPanel {
             )
         });
         let control_bar = self.current.is_some().then(|| {
-            let line_count = view.lines().len();
+            // Every row, the end marker included, so the bottom is the last.
+            let line_count = view.row_count();
             div()
                 .flex()
                 .items_center()
@@ -164,10 +168,18 @@ impl Render for LogsPanel {
 
 impl LogsPanel {
     /// The log lines, each selectable, in a list that scrolls itself and
-    /// follows the newest line while following.
-    pub(super) fn lines_list(&self, lines: &[String], cx: &Context<Self>) -> AnyElement {
+    /// follows the newest line while following, then `end_marker` once the
+    /// stream has ended - a muted row of the list's own, so scrolling and
+    /// following reach it like any line (`completed-pod-logs`).
+    pub(super) fn lines_list(
+        &self,
+        lines: &[String],
+        end_marker: Option<&'static str>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
+        let muted = cx.theme().muted_foreground;
         div()
             .debug_selector(|| LINES.into())
             .on_scroll_wheel(cx.listener(Self::on_lines_scrolled))
@@ -178,10 +190,18 @@ impl LogsPanel {
             .child(
                 uniform_list(
                     "logs-panel-lines",
-                    line_count,
+                    line_count + usize::from(end_marker.is_some()),
                     move |range, _window, _cx| {
                         range
                             .map(|ix| {
+                                if ix == line_count {
+                                    return div()
+                                        .debug_selector(|| END_MARKER.into())
+                                        .whitespace_nowrap()
+                                        .text_color(muted)
+                                        .children(end_marker)
+                                        .into_any_element();
+                                }
                                 // Each line is selectable text in the window's
                                 // selection, ordered by its line number, so a drag
                                 // across lines selects and copies them in reading
