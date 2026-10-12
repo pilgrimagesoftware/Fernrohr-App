@@ -217,7 +217,7 @@ impl LogsPanel {
                                         .children(end_marker)
                                         .into_any_element();
                                 }
-                                line_row(ix, &lines[ix], &tag_colours, muted)
+                                line_row(ix, &lines[ix], &tag_colours)
                             })
                             .collect()
                     },
@@ -229,37 +229,32 @@ impl LogsPanel {
     }
 }
 
-/// A tagged line's tag, then its text. Each line's text is selectable text in
-/// the window's selection, ordered by its line number, so a drag across lines
-/// selects and copies them in reading order (#151). One participant per line:
-/// runs sharing a handle keep only the last one drawn, and two participants
-/// copy as two lines - so the tag, drawn in its pod's colour
-/// (`selector-logs`), is not part of the selection.
-fn line_row(ix: usize, line: &LogLine, tag_colours: &[Hsla], separator: Hsla) -> AnyElement {
+/// One line: selectable text in the window's selection, ordered by its line
+/// number, so a drag across lines selects and copies them in reading order
+/// (#151). One participant per line: runs sharing a handle keep only the last
+/// one drawn, and two participants copy as two lines - so a tagged line's
+/// text is the whole `tag │ text`, and its pod's colour (`selector-logs`) is a
+/// copy of the tag drawn over the tag's own glyphs. The code font is
+/// monospaced, so the two line up; the overlay has no mouse handlers, so
+/// selection goes through it to the text beneath.
+fn line_row(ix: usize, line: &LogLine, tag_colours: &[Hsla]) -> AnyElement {
     let tag = line.source().map(|source| {
         div()
-            .flex_none()
+            .absolute()
+            .top_0()
+            .left_0()
             .debug_selector(|| LINE_TAG.into())
-            .child(
-                div()
-                    .text_color(tag_colours[pod_colour(source.pod())])
-                    .child(SharedString::from(source.tag().to_string())),
-            )
-            .child(
-                div()
-                    .text_color(separator)
-                    .child(format!(" {SOURCE_SEPARATOR} ")),
-            )
-            .flex()
+            .text_color(tag_colours[pod_colour(source.pod())])
+            .child(SharedString::from(source.tag().to_string()))
     });
     div()
-        .flex()
+        .relative()
         .whitespace_nowrap()
-        .children(tag)
         .child(
-            gpui_kit::base::SelectableText::new(("logs-line", ix), line.text().to_string())
+            gpui_kit::base::SelectableText::new(("logs-line", ix), line.to_string())
                 .document_order(ix as u64),
         )
+        .children(tag)
         .into_any_element()
 }
 

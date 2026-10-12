@@ -62,7 +62,9 @@ impl LogLine {
         self.source.as_ref()
     }
 
-    /// The line's own text, without its tag.
+    /// The line's own text, without its tag. Only tests read it apart: the
+    /// panel shows and copies the whole line ([`fmt::Display`]).
+    #[cfg(test)]
     pub fn text(&self) -> &str {
         &self.text
     }
