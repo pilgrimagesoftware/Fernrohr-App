@@ -327,6 +327,18 @@ impl LogsPanel {
         view_model.select_container(&container);
         let view = cx.new(|_| view_model);
         self.follow(&view, cx);
+        // A terminated container's log is complete: read it to its end
+        // rather than follow it (`completed-pod-logs`). Read from the pods
+        // the session already watches, never subscribing for it.
+        let follow = {
+            let pods = crate::k8s::cluster::session::ClusterRegistry::existing_pods(
+                cx,
+                &self.scope.context_name,
+            );
+            let pods = pods.as_ref().map(|pods| pods.read(cx));
+            let pod = pods.and_then(|pods| pods.find(&namespace, &pod_name, None));
+            super::stream::follows(pod, &container)
+        };
         let target = LogTarget {
             namespace,
             pod_name,
@@ -334,6 +346,7 @@ impl LogsPanel {
             context_name: self.scope.context_name.clone(),
             previous: self.previous,
             tail_lines: None,
+            follow,
         };
         self.stream = Some(stream_container_logs(client, target, view.clone(), cx));
         self.view = view;

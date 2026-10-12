@@ -151,6 +151,14 @@ impl ClusterRegistry {
             .map(|session| session.connection.clone())
     }
 
+    /// `context_name`'s Pods store if a session for it is open - its pods as
+    /// already watched. Unlike [`Self::subscribe_pods`], never starts a watch.
+    pub fn existing_pods(cx: &App, context_name: &str) -> Option<Entity<PodsTable>> {
+        cx.try_global::<Self>()
+            .and_then(|registry| registry.sessions.get(context_name))
+            .map(|session| session.pods.clone())
+    }
+
     /// Every context with an open session, in no particular order.
     pub fn open_contexts(cx: &App) -> Vec<String> {
         cx.try_global::<Self>()
