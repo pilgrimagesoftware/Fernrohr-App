@@ -1,7 +1,10 @@
 //! Which containers a label selector streams (#150), and that a panel keeps
 //! its streams in step with the pods it matches.
 
-use super::{LabelLogs, Matched, WorkloadRef, labels_from_state, wanted};
+use super::render::counts_text;
+use super::{
+    LabelLogs, Matched, SavedLabels, WorkloadRef, container_names, labels_from_state, wanted,
+};
 use crate::k8s::label_selector::parse;
 use k8s_openapi::api::core::v1::{
     ContainerState, ContainerStateRunning, ContainerStateTerminated, ContainerStateWaiting,
@@ -69,9 +72,12 @@ pub(super) fn pod(
 
 fn sources(pods: &[Pod], selector: &str, namespaces: &[&str]) -> (Vec<String>, Matched) {
     let namespaces: Vec<String> = namespaces.iter().map(|ns| ns.to_string()).collect();
-    let (wanted, matched) = wanted(pods, &parse(selector).unwrap(), &namespaces);
+    let (wanted, matched) = wanted(pods, &parse(selector).unwrap(), &namespaces, None);
     (
-        wanted.into_iter().map(|want| want.source).collect(),
+        wanted
+            .into_iter()
+            .map(|want| want.source.tag().to_string())
+            .collect(),
         matched,
     )
 }
@@ -156,8 +162,8 @@ fn a_restarted_container_is_a_new_stream() {
         vec![container("app", running(), 1)],
     )];
     let selector = parse("app=web").unwrap();
-    let (before, _) = wanted(&before, &selector, &[]);
-    let (after, _) = wanted(&after, &selector, &[]);
+    let (before, _) = wanted(&before, &selector, &[], None);
+    let (after, _) = wanted(&after, &selector, &[], None);
     assert_ne!(before[0].key, after[0].key);
 }
 
@@ -176,7 +182,11 @@ fn a_saved_panel_names_what_it_followed() {
     });
     assert_eq!(
         labels_from_state(&state),
-        Some((workload, Some("app=web".to_string())))
+        Some(SavedLabels {
+            source: workload,
+            selector: Some("app=web".to_string()),
+            container: None,
+        })
     );
     assert_eq!(
         labels_from_state(&serde_json::json!({ "pod_name": "web-1" })),
@@ -198,8 +208,77 @@ fn a_pod_recreated_under_the_same_name_is_a_new_stream() {
     )];
     let mut recreated = before.clone();
     recreated[0].metadata.uid = Some("uid-recreated".into());
-    let (before, _) = wanted(&before, &selector, &[]);
-    let (after, _) = wanted(&recreated, &selector, &[]);
-    assert_eq!(before[0].source, after[0].source, "the same tag");
+    let (before, _) = wanted(&before, &selector, &[], None);
+    let (after, _) = wanted(&recreated, &selector, &[], None);
+    assert_eq!(before[0].source, after[0].source, "the same source");
     assert_ne!(before[0].key, after[0].key);
+}
+
+/// `selector-logs` "More matches than the cap": the bar says how many matched
+/// and, past the cap, that only that many stream.
+#[test]
+fn the_bar_says_when_only_the_cap_streams() {
+    let matched = |pods, containers| Matched { pods, containers };
+    assert_eq!(counts_text(matched(1, 1)), "1 pod · 1 container");
+    assert_eq!(counts_text(matched(20, 20)), "20 pods · 20 containers");
+    assert_eq!(
+        counts_text(matched(25, 25)),
+        "25 pods · 25 containers · streaming 20"
+    );
+}
+
+/// `selector-logs-panel` 4.1: the container filter streams only the named
+/// container from each pod, tagged with the pod alone, and leaves the rest out
+/// of the count; the names it offers are every matched pod's.
+#[test]
+fn the_container_filter_streams_one_container_per_pod() {
+    let pods = vec![
+        pod(
+            "shop",
+            "web-1",
+            &[("app", "web")],
+            vec![
+                container("app", running(), 0),
+                container("sidecar", running(), 0),
+            ],
+        ),
+        pod(
+            "shop",
+            "web-2",
+            &[("app", "web")],
+            vec![container("app", running(), 0)],
+        ),
+    ];
+    let selector = parse("app=web").unwrap();
+    let tags = |filter: Option<&str>| {
+        let (wanted, matched) = wanted(&pods, &selector, &[], filter);
+        let tags: Vec<String> = wanted
+            .iter()
+            .map(|want| want.source.tag().to_string())
+            .collect();
+        (tags, matched.containers)
+    };
+    assert_eq!(
+        tags(None),
+        (
+            vec!["web-1/app".into(), "web-1/sidecar".into(), "web-2".into()],
+            3
+        )
+    );
+    assert_eq!(tags(Some("sidecar")), (vec!["web-1".into()], 1));
+    assert_eq!(tags(Some("app")), (vec!["web-1".into(), "web-2".into()], 2));
+    assert_eq!(container_names(&pods, &selector, &[]), ["app", "sidecar"]);
+}
+
+/// 4.2: a saved panel's container filter comes back with it.
+#[test]
+fn a_saved_panel_keeps_its_container_filter() {
+    let state = serde_json::json!({
+        "context_name": "dev",
+        "label_logs": serde_json::to_value(LabelLogs::Typed).unwrap(),
+        "selector": "app=web",
+        "container_filter": "sidecar",
+    });
+    let saved = labels_from_state(&state).expect("a label panel");
+    assert_eq!(saved.container.as_deref(), Some("sidecar"));
 }

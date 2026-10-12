@@ -5,10 +5,15 @@
 use super::*;
 use crate::consts::LABEL_LOGS_MAX_STREAMS;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 
 /// A typed panel's selector field, for tests.
 pub(in crate::util::logs) const SELECTOR_INPUT: &str = "logs-selector";
+/// The container filter's button, for tests.
+pub(in crate::util::logs) const CONTAINER_FILTER: &str = "logs-label-container";
+/// The container filter's label while it streams every container.
+const ALL_CONTAINERS: &str = "All containers";
 /// What a typed panel's field shows while it's empty.
 const SELECTOR_PLACEHOLDER: &str = "Label selector, such as app=web, tier in (front)";
 
@@ -57,6 +62,9 @@ impl LogsPanel {
     pub(in crate::util::logs) fn key_context(&self) -> KeyContext {
         let mut context = KeyContext::default();
         context.add(PANEL_KEY_CONTEXT);
+        if self.labels.is_some() {
+            context.add(super::super::commands::LABEL_LOGS_KEY_CONTEXT);
+        }
         if self
             .labels
             .as_ref()
@@ -68,7 +76,7 @@ impl LogsPanel {
     }
 
     /// Moves focus to a typed panel's selector field - its `/`, and the
-    /// palette's Follow Labels when the panel is already open.
+    /// palette's or menu's Open Logs by Label… when the panel is already open.
     pub fn focus_selector(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(input) = self.selector_input(window, cx) {
             window.focus(&input.read(cx).focus_handle(cx), cx);
@@ -83,6 +91,7 @@ impl LogsPanel {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let input = self.selector_input(window, cx);
+        let scope_picker = self.scope_picker(window, cx);
         let following = self.labels.as_ref()?;
         let space = crate::ui::space::spacing(cx);
         let muted = cx.theme().muted_foreground;
@@ -116,20 +125,12 @@ impl LogsPanel {
         };
         let matched = following.matched;
         let counts = following.selector.is_some().then(|| {
-            let mut counts = format!(
-                "{} · {}",
-                plural(matched.pods, "pod"),
-                plural(matched.containers, "container")
-            );
-            if matched.containers > LABEL_LOGS_MAX_STREAMS {
-                counts.push_str(&format!(" · streaming {LABEL_LOGS_MAX_STREAMS}"));
-            }
             div()
                 .flex_shrink_0()
                 .text_sm()
                 .text_color(muted)
                 .whitespace_nowrap()
-                .child(counts)
+                .child(counts_text(matched))
         });
         let error = following.error.clone().map(|error| {
             div()
@@ -139,6 +140,10 @@ impl LogsPanel {
                 .text_color(crate::ui::style::status(crate::ui::style::Tone::Bad, cx))
                 .child(error)
         });
+        let container_filter = following
+            .selector
+            .is_some()
+            .then(|| self.container_filter(window, cx));
         let view = self.view.read(cx);
         let line_count = view.row_count();
         let following_lines = view.follow_state() == FollowState::Following;
@@ -158,7 +163,9 @@ impl LogsPanel {
                         .px(space.panel_inset)
                         .py(space.control_gap)
                         .child(div().flex_1().min_w_0().child(what))
+                        .children(scope_picker)
                         .children(counts)
+                        .children(container_filter)
                         .when(streaming, |this| {
                             this.child(super::super::render::stream_controls(
                                 line_count,
@@ -171,6 +178,61 @@ impl LogsPanel {
                 .children(error)
                 .into_any_element(),
         )
+    }
+
+    /// The container filter: its key, then a button reading the filter that
+    /// drops down all containers and each name the matched pods have.
+    fn container_filter(&self, window: &Window, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let following = self.labels.as_ref();
+        let current = following.and_then(|following| following.container.clone());
+        let mut names = following
+            .map(|following| following.containers.clone())
+            .unwrap_or_default();
+        // A restored filter shows even before the pods it names are seen.
+        if let Some(current) = &current
+            && !names.contains(current)
+        {
+            names.push(current.clone());
+        }
+        let key = Kbd::binding_for_action(&NextLabelContainer, Some(PANEL_KEY_CONTEXT), window)
+            .unwrap_or_else(|| {
+                Kbd::new(
+                    Keystroke::parse(super::super::commands::CONTAINER_FILTER_KEY)
+                        .expect("valid keybinding"),
+                )
+            });
+        let this = cx.weak_entity();
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .flex_shrink_0()
+            .child(key)
+            .child(
+                Button::new(CONTAINER_FILTER)
+                    .label(current.clone().unwrap_or_else(|| ALL_CONTAINERS.into()))
+                    .icon(gpui_kit::assets::IconName::ChevronDown)
+                    .xsmall()
+                    .ghost()
+                    .tab_stop(false)
+                    .tooltip("Which containers stream from each pod")
+                    .dropdown_menu(move |menu, _window, _cx| {
+                        let choices = std::iter::once(None).chain(names.iter().cloned().map(Some));
+                        choices.fold(menu, |menu, choice| {
+                            let this = this.clone();
+                            let label = choice.clone().unwrap_or_else(|| ALL_CONTAINERS.into());
+                            menu.item(
+                                gpui_kit::component::menu::PopupMenuItem::new(label)
+                                    .checked(choice == current)
+                                    .on_click(move |_event, _window, cx| {
+                                        let _ = this.update(cx, |this: &mut Self, cx| {
+                                            this.set_container_filter(choice.clone(), cx);
+                                        });
+                                    }),
+                            )
+                        })
+                    }),
+            )
     }
 
     /// What a label-following panel shows in place of lines while it has none
@@ -199,6 +261,20 @@ impl LogsPanel {
             _ => "Waiting for log lines…".into(),
         })
     }
+}
+
+/// What the bar says the selector matched: pods and containers, and - past
+/// the cap - how many of those containers stream.
+pub(super) fn counts_text(matched: Matched) -> String {
+    let mut counts = format!(
+        "{} · {}",
+        plural(matched.pods, "pod"),
+        plural(matched.containers, "container")
+    );
+    if matched.containers > LABEL_LOGS_MAX_STREAMS {
+        counts.push_str(&format!(" · streaming {LABEL_LOGS_MAX_STREAMS}"));
+    }
+    counts
 }
 
 fn plural(count: usize, noun: &str) -> String {

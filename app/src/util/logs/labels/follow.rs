@@ -36,18 +36,22 @@ impl LogsPanel {
         let Some((_, selector)) = following.selector.clone() else {
             return;
         };
+        let filter = following.container.clone();
         let table = match &following.pods {
             Some(table) => table.clone(),
             None => self.subscribe_pods(client.clone(), cx),
         };
         let namespaces = self.label_namespaces();
-        let (wanted, matched) = wanted(table.read(cx).pods(), &selector, &namespaces);
+        let pods = table.read(cx).pods();
+        let (wanted, matched) = wanted(pods, &selector, &namespaces, filter.as_deref());
+        let containers = container_names(pods, &selector, &namespaces);
         let view = self.view.clone();
         let context_name = self.scope.context_name.clone();
         let Some(following) = &mut self.labels else {
             return;
         };
         following.matched = matched;
+        following.containers = containers;
         let wanted: Vec<Wanted> = wanted.into_iter().take(LABEL_LOGS_MAX_STREAMS).collect();
         following
             .streams
@@ -134,6 +138,42 @@ impl LogsPanel {
         cx.notify();
     }
 
+    /// Streams only the containers named `container` from each matching pod,
+    /// or - `None` - all of them. Streams the filter excludes are dropped, not
+    /// hidden, so they don't count toward the cap.
+    pub(in crate::util::logs) fn set_container_filter(
+        &mut self,
+        container: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(following) = &mut self.labels else {
+            return;
+        };
+        if following.container == container {
+            return;
+        }
+        following.container = container;
+        self.sync_labels(cx);
+        cx.notify();
+    }
+
+    /// `NextLabelContainer`: the filter's next choice - all containers, then
+    /// each name the matched pods have, then all again.
+    pub(in crate::util::logs) fn next_container_filter(&mut self, cx: &mut Context<Self>) {
+        let Some(following) = &self.labels else {
+            return;
+        };
+        let choices: Vec<Option<String>> = std::iter::once(None)
+            .chain(following.containers.iter().cloned().map(Some))
+            .collect();
+        let at = choices
+            .iter()
+            .position(|choice| *choice == following.container)
+            .unwrap_or(0);
+        let next = choices[(at + 1) % choices.len()].clone();
+        self.set_container_filter(next, cx);
+    }
+
     /// Test-only: the selector streamed now, as canonical text.
     #[cfg(test)]
     pub(crate) fn test_selector(&self) -> Option<String> {
@@ -144,6 +184,14 @@ impl LogsPanel {
     #[cfg(test)]
     pub(crate) fn test_selector_error(&self) -> Option<String> {
         self.labels.as_ref()?.error.clone()
+    }
+
+    /// Test-only: how many pods and containers the selector matched.
+    #[cfg(test)]
+    pub(crate) fn test_matched(&self) -> (usize, usize) {
+        self.labels.as_ref().map_or((0, 0), |following| {
+            (following.matched.pods, following.matched.containers)
+        })
     }
 
     /// Test-only: the containers streaming now, as `pod/container#restarts@uid`.

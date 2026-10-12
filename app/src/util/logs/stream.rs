@@ -34,7 +34,7 @@ pub fn start_tagged_stream<F, Fut>(
     view: gpui_kit::Entity<LogsView>,
     cx: &mut gpui_kit::App,
     capacity: usize,
-    source: String,
+    source: LineSource,
     produce: F,
 ) -> gpui_kit::Task<()>
 where

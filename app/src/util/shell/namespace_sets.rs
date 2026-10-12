@@ -18,9 +18,9 @@ use gpui_kit::component::dock::PanelId;
 use gpui_kit::*;
 
 impl MainWindow {
-    /// The namespaced list with keyboard focus (anywhere inside it): its dock
-    /// id and key. `None` when focus is elsewhere, or on a detail, logs or
-    /// cluster-scoped panel.
+    /// The namespaced list - or typed label Logs panel - with keyboard focus
+    /// (anywhere inside it): its dock id and key. `None` when focus is
+    /// elsewhere, or on a detail, other logs or cluster-scoped panel.
     pub(super) fn focused_namespaced(
         &self,
         window: &Window,
@@ -41,7 +41,13 @@ impl MainWindow {
                 area.panel(open.id)
                     .is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
             })
-            .filter(|open| matches!(&open.key.target, NavTarget::Kind(kind) if kind.namespaced))
+            .filter(|open| match &open.key.target {
+                NavTarget::Kind(kind) => kind.namespaced,
+                // A typed label Logs panel searches namespaces of its own
+                // (`selector-logs`); a workload's is fixed.
+                NavTarget::LabelLogs(crate::util::logs::LabelLogs::Typed) => true,
+                _ => false,
+            })
             .map(|open| (open.id, open.key.clone()))
     }
 

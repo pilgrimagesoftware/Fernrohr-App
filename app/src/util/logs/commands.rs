@@ -13,7 +13,8 @@ actions!(
         TogglePreviousLogs,
         ToggleFollow,
         ShowLabelLogs,
-        FocusLabelSelector
+        FocusLabelSelector,
+        NextLabelContainer
     ]
 );
 
@@ -36,6 +37,11 @@ const PANEL_KEYS_CONTEXT: &str = "LogsPanel && !Input";
 /// Added beside [`PANEL_KEY_CONTEXT`] in a Logs panel whose selector is typed
 /// into it, so the key that focuses the field means that only there.
 pub const TYPED_LABELS_KEY_CONTEXT: &str = "TypedLabelLogs";
+/// Added beside [`PANEL_KEY_CONTEXT`] in any Logs panel following a label
+/// selector, typed or a workload's, where its container filter's key is bound.
+pub const LABEL_LOGS_KEY_CONTEXT: &str = "LabelLogs";
+/// The container filter's key: `c` for container.
+pub(super) const CONTAINER_FILTER_KEY: &str = "c";
 pub(super) const PREVIOUS_KEY: &str = "p";
 /// k9s's autoscroll toggle in its log view.
 pub(super) const FOLLOW_KEY: &str = "s";
@@ -59,15 +65,30 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ToggleFollow),
         menu: None,
     });
-    // Palette and keymap only, like Show Events.
+    // Global, so it's in the Window menu beside the other ways of opening
+    // something, as well as the palette (`selector-logs`).
     registry.register(Command {
         id: "logs.follow_labels",
-        title: "Logs: Follow Labels\u{2026}",
+        title: "Open Logs by Label\u{2026}",
         default_binding: "",
         context: None,
         action: Box::new(ShowLabelLogs),
+        menu: Some(crate::command::MenuSlot::Window),
+    });
+    registry.register(Command {
+        id: "logs.next_container",
+        title: "Logs: Next Container Filter",
+        default_binding: CONTAINER_FILTER_KEY,
+        context: Some("LabelLogs && !Input"),
+        action: Box::new(NextLabelContainer),
         menu: None,
     });
+    // A typed label panel's namespace scope; a workload's is its workload's.
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "logs.pick_namespaces",
+        "Logs: Pick Namespaces",
+        "TypedLabelLogs && !Input",
+    ));
     registry.register(Command {
         id: "logs.focus_selector",
         title: "Logs: Edit Label Selector",

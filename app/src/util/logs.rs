@@ -8,6 +8,7 @@
 
 mod commands;
 mod labels;
+mod line;
 mod panel;
 mod render;
 mod stream;
@@ -28,13 +29,14 @@ use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::*;
 use std::rc::Rc;
 
+use line::*;
 use stream::*;
 use view::*;
 
 use commands::{FOLLOW_KEY, PREVIOUS_KEY};
 pub use commands::{
-    FocusLabelSelector, OpenWorkloadLogs, PANEL_KEY_CONTEXT, ShowLabelLogs, ToggleFollow,
-    TogglePreviousLogs, register_commands,
+    FocusLabelSelector, NextLabelContainer, OpenWorkloadLogs, PANEL_KEY_CONTEXT, ShowLabelLogs,
+    ToggleFollow, TogglePreviousLogs, register_commands,
 };
 pub(crate) use labels::labels_from_state;
 pub use labels::{LabelLogs, WorkloadRef};

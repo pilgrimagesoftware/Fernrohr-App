@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 mod follow;
 mod render;
+mod scope;
 
 /// Which pods a label-following Logs panel streams - the identity its
 /// `NavTarget::LabelLogs` dedups on.
@@ -63,12 +64,12 @@ pub(super) struct StreamKey {
     pub(super) restart_count: i32,
 }
 
-/// A container to stream, and the tag its lines carry: the pod, plus the
-/// container when the pod has several.
+/// A container to stream, and the source its lines carry: tagged with the
+/// pod, plus the container when the pod has several, in the pod's colour.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Wanted {
     pub(super) key: StreamKey,
-    pub(super) source: String,
+    pub(super) source: LineSource,
 }
 
 /// How much the selector matched: pods, and the containers in them that have
@@ -79,32 +80,45 @@ pub(super) struct Matched {
     pub(super) containers: usize,
 }
 
+/// The pods `selector` picks among `pods` in `namespaces` (all, when empty).
+fn matching<'a>(
+    pods: &'a [Pod],
+    selector: &'a Selector,
+    namespaces: &'a [String],
+) -> impl Iterator<Item = &'a Pod> {
+    pods.iter().filter(move |pod| {
+        crate::k8s::resource::pods::matches_namespaces(pod, namespaces)
+            && label_selector::matches(selector, pod.metadata.labels.as_ref())
+    })
+}
+
+fn statuses(pod: &Pod) -> impl Iterator<Item = &ContainerStatus> {
+    pod.status
+        .as_ref()
+        .and_then(|status| status.container_statuses.as_ref())
+        .into_iter()
+        .flatten()
+}
+
 /// The containers `selector` picks among `pods` in `namespaces` (all, when
-/// empty), in a stable order, with how many pods and containers that is. A
-/// container is streamable once it has started - running, or run and ended -
-/// since a waiting one has no log to read yet; it's picked up on the pod's
-/// next update.
+/// empty) - only those named `container`, when the filter names one - in a
+/// stable order, with how many pods and containers that is. A container is
+/// streamable once it has started - running, or run and ended - since a
+/// waiting one has no log to read yet; it's picked up on the pod's next
+/// update.
 pub(super) fn wanted(
     pods: &[Pod],
     selector: &Selector,
     namespaces: &[String],
+    container: Option<&str>,
 ) -> (Vec<Wanted>, Matched) {
     let mut matched = Matched::default();
     let mut wanted = Vec::new();
-    for pod in pods {
-        if !crate::k8s::resource::pods::matches_namespaces(pod, namespaces)
-            || !label_selector::matches(selector, pod.metadata.labels.as_ref())
-        {
-            continue;
-        }
+    for pod in matching(pods, selector, namespaces) {
         matched.pods += 1;
-        let started: Vec<&ContainerStatus> = pod
-            .status
-            .as_ref()
-            .and_then(|status| status.container_statuses.as_ref())
-            .into_iter()
-            .flatten()
-            .filter(|container| has_started(container))
+        let started: Vec<&ContainerStatus> = statuses(pod)
+            .filter(|status| has_started(status))
+            .filter(|status| container.is_none_or(|name| status.name == name))
             .collect();
         let several = started.len() > 1;
         let namespace = pod.metadata.namespace.clone().unwrap_or_default();
@@ -112,11 +126,12 @@ pub(super) fn wanted(
         let uid = pod.metadata.uid.clone().unwrap_or_default();
         for container in started {
             matched.containers += 1;
-            let source = if several {
+            let tag = if several {
                 format!("{name}/{}", container.name)
             } else {
                 name.clone()
             };
+            let source = LineSource::new(tag, name.as_str());
             wanted.push(Wanted {
                 key: StreamKey {
                     namespace: namespace.clone(),
@@ -131,6 +146,20 @@ pub(super) fn wanted(
     }
     wanted.sort_by(|a, b| a.key.cmp(&b.key));
     (wanted, matched)
+}
+
+/// Every container name among the pods `selector` picks, sorted: what the
+/// container filter offers.
+pub(super) fn container_names(
+    pods: &[Pod],
+    selector: &Selector,
+    namespaces: &[String],
+) -> Vec<String> {
+    let names: std::collections::BTreeSet<&str> = matching(pods, selector, namespaces)
+        .flat_map(statuses)
+        .map(|status| status.name.as_str())
+        .collect();
+    names.into_iter().map(str::to_string).collect()
 }
 
 fn has_started(container: &ContainerStatus) -> bool {
@@ -148,6 +177,12 @@ pub(super) struct Following {
     pub(super) selector: Option<(String, Selector)>,
     /// Why the selector last typed wasn't applied.
     pub(super) error: Option<String>,
+    /// The one container name streamed from each pod; `None` streams all.
+    pub(super) container: Option<String>,
+    /// Every container name among the matched pods, for the filter to offer.
+    pub(super) containers: Vec<String>,
+    /// A typed panel's namespace picker.
+    pub(super) scope: scope::ScopePicker,
     /// A typed panel's selector field, made on its first render.
     pub(super) input: Option<Entity<gpui_kit::component::input::InputState>>,
     /// The context's shared Pods watch, once the panel has subscribed to it.
@@ -158,8 +193,13 @@ pub(super) struct Following {
 
 impl Following {
     /// `source`'s state, streaming `selector` - a workload's own, or a typed
-    /// panel's restored one - when there is one that parses.
-    pub(super) fn new(source: LabelLogs, selector: Option<&str>) -> Self {
+    /// panel's restored one - when there is one that parses, filtered to
+    /// `container` when that names one.
+    pub(super) fn new(
+        source: LabelLogs,
+        selector: Option<&str>,
+        container: Option<String>,
+    ) -> Self {
         let selector = match (&source, selector) {
             (LabelLogs::Workload(workload), _) => Some(workload.selector.as_str()),
             (LabelLogs::Typed, selector) => selector,
@@ -172,6 +212,9 @@ impl Following {
             source,
             selector,
             error: None,
+            container,
+            containers: Vec::new(),
+            scope: Default::default(),
             input: None,
             pods: None,
             streams: HashMap::new(),
@@ -180,12 +223,24 @@ impl Following {
     }
 }
 
-/// A saved Logs panel's label source and the selector it streamed, if it was a
-/// label-following one.
-pub(crate) fn labels_from_state(state: &serde_json::Value) -> Option<(LabelLogs, Option<String>)> {
+/// What a saved label-following Logs panel followed.
+#[derive(Debug, PartialEq)]
+pub(crate) struct SavedLabels {
+    pub(crate) source: LabelLogs,
+    pub(crate) selector: Option<String>,
+    pub(crate) container: Option<String>,
+}
+
+/// A saved Logs panel's label source, the selector it streamed and its
+/// container filter, if it was a label-following one.
+pub(crate) fn labels_from_state(state: &serde_json::Value) -> Option<SavedLabels> {
     let source = serde_json::from_value(state.get("label_logs")?.clone()).ok()?;
-    let selector = state["selector"].as_str().map(str::to_string);
-    Some((source, selector))
+    let text = |key: &str| state[key].as_str().map(str::to_string);
+    Some(SavedLabels {
+        source,
+        selector: text("selector"),
+        container: text("container_filter"),
+    })
 }
 
 #[cfg(test)]
