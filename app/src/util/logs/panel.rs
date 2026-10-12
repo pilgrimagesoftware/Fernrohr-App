@@ -381,6 +381,7 @@ impl LogsPanel {
             previous: self.previous,
             tail_lines: None,
             follow,
+            since: None,
         };
         self.stream = Some(stream_container_logs(client, target, view.clone(), cx));
         self.view = view;

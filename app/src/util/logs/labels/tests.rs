@@ -282,3 +282,77 @@ fn a_saved_panel_keeps_its_container_filter() {
     let saved = labels_from_state(&state).expect("a label panel");
     assert_eq!(saved.container.as_deref(), Some("sidecar"));
 }
+
+/// #238 review: a stream first started reads its last lines; one the view
+/// showed before and dropped resumes from the second after it stopped, with
+/// no tail, so the lines it already showed aren't added again.
+#[test]
+fn a_resumed_stream_starts_where_it_stopped() {
+    use super::StreamKey;
+    use super::follow::label_target;
+    use crate::consts::LABEL_LOGS_TAIL_LINES;
+    let key = StreamKey {
+        namespace: "shop".into(),
+        pod: "web-1".into(),
+        uid: "uid-web-1".into(),
+        container: "app".into(),
+        restart_count: 0,
+    };
+    let first = label_target(&key, "dev", true, None);
+    assert_eq!(first.tail_lines, Some(LABEL_LOGS_TAIL_LINES));
+    assert_eq!(first.since, None);
+    assert!(first.follow);
+
+    let stopped: jiff::Timestamp = "2026-10-12T18:00:00.400Z".parse().unwrap();
+    let resumed = label_target(&key, "dev", false, Some(stopped));
+    assert_eq!(resumed.tail_lines, None, "no tail replayed");
+    assert_eq!(
+        resumed.since,
+        Some("2026-10-12T18:00:01Z".parse().unwrap()),
+        "from the next whole second"
+    );
+    assert!(!resumed.follow, "a terminated container is read to its end");
+}
+
+/// #238 review, optional: `c` steps all → each name → all, and a filter naming
+/// a container the pods don't have steps back to all.
+#[test]
+fn the_container_filter_steps_through_all_then_each_name() {
+    use super::follow::next_filter;
+    let names = ["app".to_string(), "sidecar".to_string()];
+    assert_eq!(next_filter(None, &names).as_deref(), Some("app"));
+    assert_eq!(next_filter(Some("app"), &names).as_deref(), Some("sidecar"));
+    assert_eq!(next_filter(Some("sidecar"), &names), None);
+    assert_eq!(next_filter(Some("gone"), &names), None, "back to all");
+    assert_eq!(next_filter(None, &[]), None);
+}
+
+/// #238 review: a filter no matching pod's container has says so, rather than
+/// that the containers haven't started.
+#[test]
+fn a_filter_naming_no_container_says_so() {
+    use super::Following;
+    use super::render::no_lines_message;
+    let mut following = Following::new(LabelLogs::Typed, Some("app=web"), Some("sidecar".into()));
+    following.matched = Matched {
+        pods: 2,
+        containers: 0,
+    };
+    following.containers = vec!["app".into()];
+    assert_eq!(
+        no_lines_message(&following, "app=web"),
+        "No matching pod has a container named sidecar."
+    );
+
+    following.containers.push("sidecar".into());
+    assert_eq!(
+        no_lines_message(&following, "app=web"),
+        "The matching pods' containers haven't started yet.",
+        "named, just not started"
+    );
+    following.matched.containers = 1;
+    assert_eq!(
+        no_lines_message(&following, "app=web"),
+        "Waiting for log lines…"
+    );
+}

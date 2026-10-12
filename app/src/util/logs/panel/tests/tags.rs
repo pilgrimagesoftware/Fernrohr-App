@@ -80,3 +80,53 @@ fn every_pod_colour_reads_in_both_modes(cx: &mut TestAppContext) {
         });
     }
 }
+
+/// #238 review (#151): copying a tagged line copies its tag too - the
+/// coloured tag is drawn over the selectable `tag │ text`, not instead of it.
+#[gpui_kit::test]
+async fn copying_a_tagged_line_keeps_its_tag(cx: &mut TestAppContext) {
+    use gpui_kit::{Modifiers, MouseButton, point, px};
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+        ClusterRegistry::insert_test_session(cx, "demo", ConnectionState::Connecting);
+    });
+    let window = cx.add_window(|window, cx| {
+        let panel = cx.new(|cx| {
+            let mut panel = LogsPanel::new(PanelScope::new(NavTarget::Logs, "demo".into()), cx);
+            panel.test_show_lines("web-1", "app", &[], cx);
+            let view = panel.view.clone();
+            view.update(cx, |view, _| {
+                let source = LineSource::new("web-1", "web-1");
+                view.apply_from(&source, LogEvent::Line("first".into()));
+                let source = LineSource::new("web-2", "web-2");
+                view.apply_from(&source, LogEvent::Line("second".into()));
+            });
+            panel
+        });
+        Root::new(panel, window, cx)
+    });
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+    vcx.update(|window, cx| {
+        let _ = window.draw(cx);
+    });
+    let list = vcx
+        .debug_bounds(super::super::super::render::LINES)
+        .expect("the lines are drawn");
+    let inset = vcx.update(|_, cx| crate::ui::space::spacing(cx).panel_inset);
+    let start = point(list.left() + inset + px(1.), list.top() + inset + px(4.));
+    let end = point(list.right() - px(1.), list.bottom() - px(1.));
+    vcx.simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+    vcx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::none());
+    vcx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+    vcx.run_until_parked();
+    let selected = vcx.update(|window, cx| {
+        let _ = window.draw(cx);
+        gpui_kit::base::TextSelection::selected_text(window, cx)
+    });
+    assert!(
+        selected.contains("web-1 \u{2502} first") && selected.contains("web-2 \u{2502} second"),
+        "each line copies with its pod: {selected:?}"
+    );
+}

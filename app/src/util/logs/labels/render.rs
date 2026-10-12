@@ -249,17 +249,27 @@ impl LogsPanel {
         if !synced || !self.view.read(cx).lines().is_empty() {
             return None;
         }
-        Some(match (following.matched.pods, &following.source) {
-            (0, LabelLogs::Workload(workload)) => format!(
-                "No pods in {} match {} {}'s selector, {selector}.",
-                workload.namespace, workload.kind, workload.name
-            ),
-            (0, LabelLogs::Typed) => format!("No pods match {selector}."),
-            (_, _) if following.matched.containers == 0 => {
-                "The matching pods' containers haven't started yet.".into()
+        Some(no_lines_message(following, selector))
+    }
+}
+
+/// Why a label panel streaming `selector` shows no lines yet: no pod matches,
+/// none has the container the filter names, their containers haven't
+/// started, or the lines just haven't come.
+pub(super) fn no_lines_message(following: &Following, selector: &str) -> String {
+    match (following.matched.pods, &following.source) {
+        (0, LabelLogs::Workload(workload)) => format!(
+            "No pods in {} match {} {}'s selector, {selector}.",
+            workload.namespace, workload.kind, workload.name
+        ),
+        (0, LabelLogs::Typed) => format!("No pods match {selector}."),
+        _ if following.matched.containers > 0 => "Waiting for log lines…".into(),
+        _ => match &following.container {
+            Some(name) if !following.containers.contains(name) => {
+                format!("No matching pod has a container named {name}.")
             }
-            _ => "Waiting for log lines…".into(),
-        })
+            _ => "The matching pods' containers haven't started yet.".into(),
+        },
     }
 }
 

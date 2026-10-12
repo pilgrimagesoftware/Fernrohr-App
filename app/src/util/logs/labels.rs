@@ -70,6 +70,16 @@ pub(super) struct StreamKey {
 pub(super) struct Wanted {
     pub(super) key: StreamKey,
     pub(super) source: LineSource,
+    /// Whether its log grows still, or - terminated - is read to its end.
+    pub(super) follow: bool,
+}
+
+/// A container streaming into the panel: the task reading it, which stops
+/// when dropped, and - for tests - the request it made.
+pub(super) struct Streaming {
+    #[cfg(test)]
+    pub(super) target: LogTarget,
+    pub(super) _task: Task<()>,
 }
 
 /// How much the selector matched: pods, and the containers in them that have
@@ -132,6 +142,7 @@ pub(super) fn wanted(
                 name.clone()
             };
             let source = LineSource::new(tag, name.as_str());
+            let follow = super::stream::follows(Some(pod), &container.name);
             wanted.push(Wanted {
                 key: StreamKey {
                     namespace: namespace.clone(),
@@ -141,6 +152,7 @@ pub(super) fn wanted(
                     restart_count: container.restart_count,
                 },
                 source,
+                follow,
             });
         }
     }
@@ -187,7 +199,11 @@ pub(super) struct Following {
     pub(super) input: Option<Entity<gpui_kit::component::input::InputState>>,
     /// The context's shared Pods watch, once the panel has subscribed to it.
     pub(super) pods: Option<Entity<crate::k8s::resource::pods::PodsTable>>,
-    pub(super) streams: HashMap<StreamKey, Task<()>>,
+    pub(super) streams: HashMap<StreamKey, Streaming>,
+    /// When each stream this view has shown, and since dropped, stopped - so
+    /// one that comes back resumes from there instead of replaying lines the
+    /// view already holds. Cleared with the view, on a new selector.
+    pub(super) stopped: HashMap<StreamKey, jiff::Timestamp>,
     pub(super) matched: Matched,
 }
 
@@ -218,6 +234,7 @@ impl Following {
             input: None,
             pods: None,
             streams: HashMap::new(),
+            stopped: HashMap::new(),
             matched: Matched::default(),
         }
     }
