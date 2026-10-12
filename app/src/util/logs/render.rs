@@ -159,6 +159,11 @@ impl Render for LogsPanel {
             .on_action(cx.listener(|this, _: &ToggleFollow, _window, cx| {
                 this.toggle_follow(cx);
             }))
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.open_scope_picker(window, cx);
+                },
+            ))
             .on_action(cx.listener(|this, _: &NextLabelContainer, _window, cx| {
                 this.next_container_filter(cx);
             }))

@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 mod follow;
 mod render;
+mod scope;
 
 /// Which pods a label-following Logs panel streams - the identity its
 /// `NavTarget::LabelLogs` dedups on.
@@ -180,6 +181,8 @@ pub(super) struct Following {
     pub(super) container: Option<String>,
     /// Every container name among the matched pods, for the filter to offer.
     pub(super) containers: Vec<String>,
+    /// A typed panel's namespace picker.
+    pub(super) scope: scope::ScopePicker,
     /// A typed panel's selector field, made on its first render.
     pub(super) input: Option<Entity<gpui_kit::component::input::InputState>>,
     /// The context's shared Pods watch, once the panel has subscribed to it.
@@ -211,6 +214,7 @@ impl Following {
             error: None,
             container,
             containers: Vec::new(),
+            scope: Default::default(),
             input: None,
             pods: None,
             streams: HashMap::new(),

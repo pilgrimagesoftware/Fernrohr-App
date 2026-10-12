@@ -83,6 +83,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(NextLabelContainer),
         menu: None,
     });
+    // A typed label panel's namespace scope; a workload's is its workload's.
+    registry.register(crate::ui::namespace_picker::pick_namespaces_command(
+        "logs.pick_namespaces",
+        "Logs: Pick Namespaces",
+        "TypedLabelLogs && !Input",
+    ));
     registry.register(Command {
         id: "logs.focus_selector",
         title: "Logs: Edit Label Selector",
