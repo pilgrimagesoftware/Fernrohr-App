@@ -178,7 +178,7 @@ impl Harness {
         let panel = self.panel.clone();
         self.vcx.update(|_, cx| {
             let panel = panel.read(cx);
-            panel.scroll_to_newest(panel.view.read(cx).lines().len())
+            panel.scroll_to_newest(panel.view.read(cx).row_count())
         })
     }
 }

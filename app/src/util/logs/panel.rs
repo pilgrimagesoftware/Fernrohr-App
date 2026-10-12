@@ -272,22 +272,23 @@ impl LogsPanel {
             let at_end = this.scroll_handle.is_scrolled_to_end() != Some(false);
             if at_end && this.view.read(cx).follow_state() == FollowState::Paused {
                 this.view.update(cx, |view, _| view.scroll_to_bottom());
-                this.scroll_to_newest(this.view.read(cx).lines().len());
+                this.scroll_to_newest(this.view.read(cx).row_count());
                 cx.notify();
             }
         });
     }
 
-    /// Brings the newest of `line_count` lines into view unless the list is
-    /// already at its end: the one meaning of "go to the newest line" for
+    /// Brings the last of `row_count` rows - the newest line, or the end
+    /// marker after it ([`LogsView::row_count`]) - into view unless the list
+    /// is already at its end: the one meaning of "go to the newest line" for
     /// Follow, Jump to bottom and resuming on scroll. A list not laid out yet
     /// (`None`) scrolls. Returns whether it scrolled.
-    pub(super) fn scroll_to_newest(&self, line_count: usize) -> bool {
-        if line_count == 0 || self.scroll_handle.is_scrolled_to_end() == Some(true) {
+    pub(super) fn scroll_to_newest(&self, row_count: usize) -> bool {
+        if row_count == 0 || self.scroll_handle.is_scrolled_to_end() == Some(true) {
             return false;
         }
         self.scroll_handle
-            .scroll_to_item(line_count - 1, gpui_kit::ScrollStrategy::Bottom);
+            .scroll_to_item(row_count - 1, gpui_kit::ScrollStrategy::Bottom);
         true
     }
 
@@ -299,7 +300,7 @@ impl LogsPanel {
             FollowState::Following => self.view.update(cx, |view, _| view.scroll_up()),
             FollowState::Paused => {
                 self.view.update(cx, |view, _| view.scroll_to_bottom());
-                self.scroll_to_newest(self.view.read(cx).lines().len());
+                self.scroll_to_newest(self.view.read(cx).row_count());
             }
         }
         cx.notify();
