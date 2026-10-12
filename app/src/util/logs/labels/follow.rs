@@ -146,6 +146,14 @@ impl LogsPanel {
         self.labels.as_ref()?.error.clone()
     }
 
+    /// Test-only: how many pods and containers the selector matched.
+    #[cfg(test)]
+    pub(crate) fn test_matched(&self) -> (usize, usize) {
+        self.labels.as_ref().map_or((0, 0), |following| {
+            (following.matched.pods, following.matched.containers)
+        })
+    }
+
     /// Test-only: the containers streaming now, as `pod/container#restarts@uid`.
     #[cfg(test)]
     pub(crate) fn test_streams(&self) -> Vec<String> {

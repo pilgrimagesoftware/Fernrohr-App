@@ -1,6 +1,7 @@
 //! Which containers a label selector streams (#150), and that a panel keeps
 //! its streams in step with the pods it matches.
 
+use super::render::counts_text;
 use super::{LabelLogs, Matched, WorkloadRef, labels_from_state, wanted};
 use crate::k8s::label_selector::parse;
 use k8s_openapi::api::core::v1::{
@@ -202,4 +203,17 @@ fn a_pod_recreated_under_the_same_name_is_a_new_stream() {
     let (after, _) = wanted(&recreated, &selector, &[]);
     assert_eq!(before[0].source, after[0].source, "the same tag");
     assert_ne!(before[0].key, after[0].key);
+}
+
+/// `selector-logs` "More matches than the cap": the bar says how many matched
+/// and, past the cap, that only that many stream.
+#[test]
+fn the_bar_says_when_only_the_cap_streams() {
+    let matched = |pods, containers| Matched { pods, containers };
+    assert_eq!(counts_text(matched(1, 1)), "1 pod · 1 container");
+    assert_eq!(counts_text(matched(20, 20)), "20 pods · 20 containers");
+    assert_eq!(
+        counts_text(matched(25, 25)),
+        "25 pods · 25 containers · streaming 20"
+    );
 }

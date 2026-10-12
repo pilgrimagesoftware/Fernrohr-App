@@ -116,20 +116,12 @@ impl LogsPanel {
         };
         let matched = following.matched;
         let counts = following.selector.is_some().then(|| {
-            let mut counts = format!(
-                "{} · {}",
-                plural(matched.pods, "pod"),
-                plural(matched.containers, "container")
-            );
-            if matched.containers > LABEL_LOGS_MAX_STREAMS {
-                counts.push_str(&format!(" · streaming {LABEL_LOGS_MAX_STREAMS}"));
-            }
             div()
                 .flex_shrink_0()
                 .text_sm()
                 .text_color(muted)
                 .whitespace_nowrap()
-                .child(counts)
+                .child(counts_text(matched))
         });
         let error = following.error.clone().map(|error| {
             div()
@@ -199,6 +191,20 @@ impl LogsPanel {
             _ => "Waiting for log lines…".into(),
         })
     }
+}
+
+/// What the bar says the selector matched: pods and containers, and - past
+/// the cap - how many of those containers stream.
+pub(super) fn counts_text(matched: Matched) -> String {
+    let mut counts = format!(
+        "{} · {}",
+        plural(matched.pods, "pod"),
+        plural(matched.containers, "container")
+    );
+    if matched.containers > LABEL_LOGS_MAX_STREAMS {
+        counts.push_str(&format!(" · streaming {LABEL_LOGS_MAX_STREAMS}"));
+    }
+    counts
 }
 
 fn plural(count: usize, noun: &str) -> String {

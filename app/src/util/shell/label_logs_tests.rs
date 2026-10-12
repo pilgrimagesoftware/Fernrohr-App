@@ -270,3 +270,5 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
     vcx.run_until_parked();
     wait_for_streams(&mut vcx, &panel, &["db-1/app#0@uid-db-1"]);
 }
+
+mod selector;
