@@ -116,7 +116,7 @@ fn panel_key(state: &PanelState) -> Option<PanelKey> {
     let target = match state.panel_name.as_str() {
         "Pods" => NavTarget::pods(),
         "Logs" if data.get("label_logs").is_some() => {
-            NavTarget::LabelLogs(crate::util::logs::labels_from_state(data)?.0)
+            NavTarget::LabelLogs(crate::util::logs::labels_from_state(data)?.source)
         }
         "Logs" => match crate::util::logs::pinned_from_state(data, &context_name) {
             Some(pinned) => NavTarget::PodLogs(crate::ui::nav::PodRef {

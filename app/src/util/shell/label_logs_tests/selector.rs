@@ -128,3 +128,68 @@ async fn the_menu_item_opens_the_panel_empty(cx: &mut TestAppContext) {
         Some("app=web".to_string())
     );
 }
+
+/// A `shop` pod labelled `app=web` running `app` and `sidecar`.
+fn two_container_pod(name: &str) -> serde_json::Value {
+    let status = |container: &str| {
+        serde_json::json!({
+            "name": container, "ready": true, "restartCount": 0, "image": container,
+            "imageID": "", "state": { "running": {} },
+        })
+    };
+    serde_json::json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": {
+            "name": name, "namespace": "shop", "uid": format!("uid-{name}"),
+            "labels": { "app": "web" },
+        },
+        "status": {
+            "phase": "Running",
+            "containerStatuses": [status("app"), status("sidecar")],
+        },
+    })
+}
+
+/// `selector-logs-panel` 4.1-4.2 by keyboard: `c` steps the container filter
+/// through each name and back to all, the streams following - a container
+/// filtered out is dropped - and the panel saves the filter it shows.
+#[gpui_kit::test]
+async fn c_steps_the_container_filter(cx: &mut TestAppContext) {
+    let (_cluster, _main, panel, mut vcx) = typed_panel(vec![two_container_pod("web-1")], cx);
+    vcx.simulate_keystrokes("a p p = w e b enter");
+    let both = ["web-1/app#0@uid-web-1", "web-1/sidecar#0@uid-web-1"];
+    wait_for_streams(&mut vcx, &panel, &both);
+    // Out of the selector field, where `c` would type.
+    vcx.update(|window, cx| {
+        use gpui_kit::Focusable as _;
+        let handle = panel.read(cx).focus_handle(cx);
+        window.focus(&handle, cx);
+    });
+    let saved_filter = |vcx: &mut VisualTestContext| {
+        vcx.update(|_, cx| {
+            use gpui_kit::component::dock::{BasePanel as _, PanelInfo};
+            let PanelInfo::Panel(info) = panel.read(cx).dump(cx).info else {
+                panic!("a panel's state");
+            };
+            crate::util::logs::labels_from_state(&info)
+                .expect("a label panel")
+                .container
+        })
+    };
+
+    vcx.simulate_keystrokes("c");
+    wait_for_streams(&mut vcx, &panel, &["web-1/app#0@uid-web-1"]);
+    assert_eq!(saved_filter(&mut vcx).as_deref(), Some("app"));
+
+    vcx.simulate_keystrokes("c");
+    wait_for_streams(&mut vcx, &panel, &["web-1/sidecar#0@uid-web-1"]);
+    assert_eq!(vcx.update(|_, cx| panel.read(cx).test_matched()), (1, 1));
+
+    vcx.simulate_keystrokes("c");
+    wait_for_streams(&mut vcx, &panel, &both);
+    assert_eq!(
+        saved_filter(&mut vcx),
+        None,
+        "all containers saves no filter"
+    );
+}

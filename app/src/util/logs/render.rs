@@ -159,6 +159,9 @@ impl Render for LogsPanel {
             .on_action(cx.listener(|this, _: &ToggleFollow, _window, cx| {
                 this.toggle_follow(cx);
             }))
+            .on_action(cx.listener(|this, _: &NextLabelContainer, _window, cx| {
+                this.next_container_filter(cx);
+            }))
             .on_action(cx.listener(|this, _: &FocusLabelSelector, window, cx| {
                 this.focus_selector(window, cx);
             }))

@@ -35,8 +35,8 @@ use view::*;
 
 use commands::{FOLLOW_KEY, PREVIOUS_KEY};
 pub use commands::{
-    FocusLabelSelector, OpenWorkloadLogs, PANEL_KEY_CONTEXT, ShowLabelLogs, ToggleFollow,
-    TogglePreviousLogs, register_commands,
+    FocusLabelSelector, NextLabelContainer, OpenWorkloadLogs, PANEL_KEY_CONTEXT, ShowLabelLogs,
+    ToggleFollow, TogglePreviousLogs, register_commands,
 };
 pub(crate) use labels::labels_from_state;
 pub use labels::{LabelLogs, WorkloadRef};

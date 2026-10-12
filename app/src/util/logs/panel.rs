@@ -13,10 +13,15 @@ pub fn register_restore(cx: &mut App) {
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
             // A label-following panel saves what it follows (#150).
-            if let Some((source, selector)) = super::labels::labels_from_state(state) {
-                let scope = PanelScope::new(NavTarget::LabelLogs(source.clone()), context_name)
-                    .scoped_to(namespaces);
-                let following = super::labels::Following::new(source, selector.as_deref());
+            if let Some(saved) = super::labels::labels_from_state(state) {
+                let scope =
+                    PanelScope::new(NavTarget::LabelLogs(saved.source.clone()), context_name)
+                        .scoped_to(namespaces);
+                let following = super::labels::Following::new(
+                    saved.source,
+                    saved.selector.as_deref(),
+                    saved.container,
+                );
                 return Ok(panel_handle(
                     cx.new(|cx| LogsPanel::build(scope, None, Some(following), cx)),
                 ));
@@ -91,7 +96,7 @@ impl LogsPanel {
     /// for `NavTarget::LabelLogs`; else the shared one.
     pub fn new(scope: PanelScope, cx: &mut Context<Self>) -> Self {
         if let NavTarget::LabelLogs(source) = &scope.target {
-            let following = super::labels::Following::new(source.clone(), None);
+            let following = super::labels::Following::new(source.clone(), None, None);
             return Self::build(scope, None, Some(following), cx);
         }
         let pinned = match &scope.target {
