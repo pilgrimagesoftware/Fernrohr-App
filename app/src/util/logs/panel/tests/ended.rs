@@ -125,3 +125,38 @@ async fn following_an_ended_stream_lands_on_the_marker(cx: &mut TestAppContext) 
         "following scrolled to the marker, the last row"
     );
 }
+
+/// `logs-follow-controls` with `completed-pod-logs`: the end marker is the
+/// last row, so turning Follow on after the stream ended goes to it, not to
+/// the line above it.
+#[gpui_kit::test]
+async fn turning_follow_on_after_the_end_lands_on_the_marker(cx: &mut TestAppContext) {
+    let lines: Vec<String> = (0..300).map(|n| format!("line {n}")).collect();
+    let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+    let mut h = open(cx, &lines);
+    let panel = h.panel.clone();
+    // Paused at the top, so ending the stream leaves the view there.
+    h.vcx.update(|_, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.toggle_follow(cx);
+            panel
+                .scroll_handle
+                .scroll_to_item(0, gpui_kit::ScrollStrategy::Top);
+        })
+    });
+    h.draw();
+    h.apply(LogEvent::Ended);
+    assert!(h.drawn(END_MARKER).is_none(), "paused at the top");
+
+    h.vcx
+        .update(|_, cx| panel.update(cx, |panel, cx| panel.toggle_follow(cx)));
+    h.draw();
+    assert!(
+        h.drawn(END_MARKER).is_some(),
+        "Follow on scrolled to the marker"
+    );
+    let at_end = h
+        .vcx
+        .update(|_, cx| panel.read(cx).scroll_handle.is_scrolled_to_end());
+    assert_eq!(at_end, Some(true));
+}

@@ -140,7 +140,7 @@ impl LogsPanel {
                 .child(error)
         });
         let view = self.view.read(cx);
-        let line_count = view.lines().len();
+        let line_count = view.row_count();
         let following_lines = view.follow_state() == FollowState::Following;
         let streaming = following.selector.is_some();
         Some(
@@ -163,6 +163,7 @@ impl LogsPanel {
                             this.child(super::super::render::stream_controls(
                                 line_count,
                                 following_lines,
+                                window,
                                 cx,
                             ))
                         }),
