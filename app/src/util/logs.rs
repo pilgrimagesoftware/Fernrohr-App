@@ -31,10 +31,10 @@ use std::rc::Rc;
 use stream::*;
 use view::*;
 
-use commands::PREVIOUS_KEY;
+use commands::{FOLLOW_KEY, PREVIOUS_KEY};
 pub use commands::{
-    FocusLabelSelector, OpenWorkloadLogs, PANEL_KEY_CONTEXT, ShowLabelLogs, TogglePreviousLogs,
-    register_commands,
+    FocusLabelSelector, OpenWorkloadLogs, PANEL_KEY_CONTEXT, ShowLabelLogs, ToggleFollow,
+    TogglePreviousLogs, register_commands,
 };
 pub(crate) use labels::labels_from_state;
 pub use labels::{LabelLogs, WorkloadRef};

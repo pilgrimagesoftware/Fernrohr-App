@@ -1,6 +1,7 @@
 //! The Logs panel's commands: toggling between a container's current logs and
 //! its previous instance's - k9s's `p` (`k9s-remaining-keybindings` 5) - and
-//! following the logs of the pods a label selector picks (#150).
+//! following the logs of the pods a label selector picks (#150), and turning
+//! Follow on and off.
 
 use super::labels::WorkloadRef;
 use crate::command::{Command, CommandRegistry};
@@ -8,7 +9,12 @@ use gpui_kit::{Action, actions};
 
 actions!(
     logs,
-    [TogglePreviousLogs, ShowLabelLogs, FocusLabelSelector]
+    [
+        TogglePreviousLogs,
+        ToggleFollow,
+        ShowLabelLogs,
+        FocusLabelSelector
+    ]
 );
 
 /// Opens (or focuses) a Logs panel following `workload`'s pods in
@@ -31,6 +37,8 @@ const PANEL_KEYS_CONTEXT: &str = "LogsPanel && !Input";
 /// into it, so the key that focuses the field means that only there.
 pub const TYPED_LABELS_KEY_CONTEXT: &str = "TypedLabelLogs";
 pub(super) const PREVIOUS_KEY: &str = "p";
+/// k9s's autoscroll toggle in its log view.
+pub(super) const FOLLOW_KEY: &str = "s";
 /// The lists' filter key, for the field a selector is typed into.
 pub(super) const FOCUS_SELECTOR_KEY: &str = "/";
 
@@ -41,6 +49,14 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: PREVIOUS_KEY,
         context: Some(PANEL_KEYS_CONTEXT),
         action: Box::new(TogglePreviousLogs),
+        menu: None,
+    });
+    registry.register(Command {
+        id: "logs.toggle_follow",
+        title: "Logs: Toggle Follow",
+        default_binding: FOLLOW_KEY,
+        context: Some(PANEL_KEYS_CONTEXT),
+        action: Box::new(ToggleFollow),
         menu: None,
     });
     // Palette and keymap only, like Show Events.

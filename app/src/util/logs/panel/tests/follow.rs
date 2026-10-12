@@ -247,3 +247,37 @@ async fn clicking_follow_on_goes_to_the_newest_line_at_once(cx: &mut TestAppCont
     h.append("line 301");
     assert_eq!(h.scrolled(), newest, "and new lines no longer move it");
 }
+
+/// The keyboard route: `s` (k9s's autoscroll key), bound through the command
+/// registry, toggles Follow while the panel has focus - turning it on goes to
+/// the newest line at once, as the click does.
+#[gpui_kit::test]
+async fn s_toggles_follow_from_the_keyboard(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    let panel = h.panel.clone();
+    h.vcx.update(|window, cx| {
+        let mut registry = crate::command::CommandRegistry::new();
+        crate::util::logs::register_commands(&mut registry);
+        let bindings = crate::keymap::bindings(
+            &registry,
+            &crate::keymap::KeymapConfig::default(),
+            cx.keyboard_mapper().as_ref(),
+        );
+        cx.bind_keys(bindings);
+        window.activate_window();
+        gpui_kit::Focusable::focus_handle(panel.read(cx), cx).focus(window, cx);
+    });
+    h.wheel(10.);
+    assert_eq!(h.at_end(), Some(false));
+
+    h.vcx.simulate_keystrokes("s");
+    h.draw();
+    assert_eq!(h.follow(), FollowState::Following, "s follows");
+    assert!(h.button_on());
+    assert_eq!(h.at_end(), Some(true), "at the newest line");
+
+    h.vcx.simulate_keystrokes("s");
+    h.draw();
+    assert_eq!(h.follow(), FollowState::Paused, "s again stops");
+    assert!(!h.button_on());
+}

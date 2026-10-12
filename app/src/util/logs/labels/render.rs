@@ -163,6 +163,7 @@ impl LogsPanel {
                             this.child(super::super::render::stream_controls(
                                 line_count,
                                 following_lines,
+                                window,
                                 cx,
                             ))
                         }),
