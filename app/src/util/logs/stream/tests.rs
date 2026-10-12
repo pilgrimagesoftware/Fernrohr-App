@@ -181,3 +181,52 @@ fn a_terminated_containers_whole_log_arrives_before_the_end() {
         request.target
     );
 }
+
+/// #238 review: a quiet container's stream - the request answered, no line
+/// coming - stops as soon as nobody listens. It used to notice only at its
+/// next send, so its connection and task outlived the panel's stream.
+#[test]
+fn a_quiet_stream_stops_once_its_receiver_is_gone() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
+    runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let addr = listener.local_addr().expect("an address");
+        let (answered_tx, answered) = tokio::sync::oneshot::channel();
+        // Answers the log request with headers, then holds the connection
+        // open without a line, as a quiet container's log does.
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("the request");
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request).await;
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\
+                      Transfer-Encoding: chunked\r\n\r\n",
+                )
+                .await
+                .expect("the headers");
+            let _ = answered_tx.send(());
+            std::future::pending::<()>().await;
+            drop(socket);
+        });
+        let client = kube::Client::try_from(kube::Config::new(
+            format!("http://{addr}").parse().expect("a url"),
+        ))
+        .expect("a client");
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let producer = tokio::spawn(super::produce_container_logs(
+            client,
+            target(true, false),
+            tx,
+        ));
+        answered.await.expect("the server answered");
+        drop(rx);
+        tokio::time::timeout(std::time::Duration::from_secs(5), producer)
+            .await
+            .expect("the producer stops once the receiver is gone")
+            .expect("and doesn't panic");
+    });
+}

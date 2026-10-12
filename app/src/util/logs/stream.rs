@@ -171,10 +171,28 @@ pub(super) const LOG_CHANNEL_CAPACITY: usize = 64;
 /// The producer behind every container log stream: reads `target`'s logs on
 /// `client` and sends them to `tx` as [`LogEvent`]s, ending with
 /// [`LogEvent::Ended`] or a failure, or as soon as `tx`'s receiver is gone.
+///
+/// "As soon as" includes while it waits - for the request, or for a quiet
+/// container's next line. A dropped receiver would otherwise go unnoticed
+/// until the next send, keeping the HTTP connection and this task alive for
+/// as long as the container stays quiet: every stream a label panel drops,
+/// and every one a closed panel leaves behind.
 pub(super) async fn produce_container_logs(
     client: kube::Client,
     target: LogTarget,
     tx: tokio::sync::mpsc::Sender<LogEvent>,
+) {
+    tokio::select! {
+        () = tx.closed() => {}
+        () = read_container_logs(client, target, &tx) => {}
+    }
+}
+
+/// [`produce_container_logs`]'s reading, which it cancels once nobody listens.
+async fn read_container_logs(
+    client: kube::Client,
+    target: LogTarget,
+    tx: &tokio::sync::mpsc::Sender<LogEvent>,
 ) {
     use futures_util::{AsyncBufReadExt, StreamExt};
     use k8s_openapi::api::core::v1::Pod;
