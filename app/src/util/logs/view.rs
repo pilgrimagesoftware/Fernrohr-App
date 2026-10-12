@@ -3,6 +3,8 @@
 //! history, container selection, and terminal-state handling ([`LogsView`]).
 //! GPUI-free so it's directly unit-testable.
 
+use super::line::{LineSource, LogLine};
+
 /// One event off a pod container's log stream. Kept separate from the
 /// resource-index coalescing path (runtime::drain_coalescing) - logs are
 /// ordered text, not keyed state, so every line must render, in order, with
@@ -39,9 +41,6 @@ pub const ENDED_MARKER: &str = "\u{2014} log stream ended";
 /// log reads differently from a failure.
 pub const NO_OUTPUT: &str = "The container wrote no log output.";
 
-/// Between a tagged line's source and its text (#150).
-pub const SOURCE_SEPARATOR: &str = "\u{2502}";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FollowState {
     Following,
@@ -53,7 +52,7 @@ pub enum FollowState {
 /// View-model for one pod's log panel: line history, follow state, and
 /// container selection. GPUI-free so it's directly unit-testable.
 pub struct LogsView {
-    lines: Vec<String>,
+    lines: Vec<LogLine>,
     follow: FollowState,
     containers: Vec<String>,
     #[allow(dead_code)]
@@ -85,7 +84,7 @@ impl LogsView {
         }
     }
 
-    pub fn lines(&self) -> &[String] {
+    pub fn lines(&self) -> &[LogLine] {
         &self.lines
     }
 
@@ -139,7 +138,7 @@ impl LogsView {
     }
 
     pub fn append_line(&mut self, line: String) {
-        self.lines.push(line);
+        self.lines.push(LogLine::plain(line));
     }
 
     pub fn scroll_up(&mut self) {
@@ -173,7 +172,7 @@ impl LogsView {
     /// (#150): its line tagged with `source`, and its end or failure a line of
     /// its own rather than the view's terminal state - the other containers
     /// keep streaming.
-    pub fn apply_from(&mut self, source: &str, event: LogEvent) {
+    pub fn apply_from(&mut self, source: &LineSource, event: LogEvent) {
         let line = match event {
             LogEvent::Line(line) => line,
             LogEvent::Ended => ENDED_MARKER.to_string(),
@@ -184,7 +183,7 @@ impl LogsView {
             // never makes one.
             LogEvent::NoPreviousInstance => return,
         };
-        self.append_line(format!("{source} {SOURCE_SEPARATOR} {line}"));
+        self.lines.push(LogLine::tagged(source.clone(), line));
     }
 
     pub fn apply(&mut self, event: LogEvent) {

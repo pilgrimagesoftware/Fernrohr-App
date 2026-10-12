@@ -63,12 +63,12 @@ pub(super) struct StreamKey {
     pub(super) restart_count: i32,
 }
 
-/// A container to stream, and the tag its lines carry: the pod, plus the
-/// container when the pod has several.
+/// A container to stream, and the source its lines carry: tagged with the
+/// pod, plus the container when the pod has several, in the pod's colour.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Wanted {
     pub(super) key: StreamKey,
-    pub(super) source: String,
+    pub(super) source: LineSource,
 }
 
 /// How much the selector matched: pods, and the containers in them that have
@@ -112,11 +112,12 @@ pub(super) fn wanted(
         let uid = pod.metadata.uid.clone().unwrap_or_default();
         for container in started {
             matched.containers += 1;
-            let source = if several {
+            let tag = if several {
                 format!("{name}/{}", container.name)
             } else {
                 name.clone()
             };
+            let source = LineSource::new(tag, name.as_str());
             wanted.push(Wanted {
                 key: StreamKey {
                     namespace: namespace.clone(),

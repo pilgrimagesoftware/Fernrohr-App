@@ -2,6 +2,7 @@
 // attribute macro would shadow `core::prelude::v1::test` for the plain
 // synchronous tests below.
 use super::{ENDED_MARKER, FollowState, LogEvent, LogsView, NO_OUTPUT};
+use crate::util::logs::line::LineSource;
 
 #[test]
 fn history_renders_and_new_lines_append() {
@@ -113,4 +114,24 @@ fn a_stream_still_running_has_no_marker() {
     view.apply(LogEvent::Line("hello".into()));
     assert_eq!(view.end_marker(), None);
     assert_eq!(view.row_count(), 1);
+}
+
+/// `selector-logs-panel` 3.1: a tagged stream's line keeps its source apart
+/// from its text, and counts as a row like any other line - what following
+/// and jumping to the bottom go by.
+#[test]
+fn a_tagged_line_keeps_its_source_apart() {
+    let mut view = LogsView::new(Vec::new());
+    let web = LineSource::new("web-1", "web-1");
+    view.apply_from(&web, LogEvent::Line("ready".into()));
+    view.apply_from(&web, LogEvent::Ended);
+
+    let [ready, ended] = view.lines() else {
+        panic!("two lines: {:?}", view.lines());
+    };
+    assert_eq!(ready.text(), "ready");
+    assert_eq!(ready.source(), Some(&web));
+    assert_eq!(ended.text(), ENDED_MARKER, "one stream's end is a line");
+    assert_eq!(view.row_count(), 2);
+    assert_eq!(view.end_marker(), None, "and not the view's end");
 }

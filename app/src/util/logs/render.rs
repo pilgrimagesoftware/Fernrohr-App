@@ -2,6 +2,7 @@
 //! container picker, and the control bar (jump to top/bottom, follow toggle).
 
 use super::*;
+use crate::consts::LABEL_LOGS_POD_HUES;
 use crate::ui::typography::TypeRole as _;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -10,6 +11,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 pub(super) const PREVIOUS_TOGGLE_ID: &str = "logs-previous";
 /// The log lines' list, for tests.
 pub(super) const LINES: &str = "logs-lines";
+/// A tagged line's coloured tag, for tests.
+pub(super) const LINE_TAG: &str = "logs-line-tag";
 /// The end marker's row, for tests.
 pub(super) const END_MARKER: &str = "logs-end-marker";
 
@@ -176,13 +179,14 @@ impl LogsPanel {
     /// following reach it like any line (`completed-pod-logs`).
     pub(super) fn lines_list(
         &self,
-        lines: &[String],
+        lines: &[LogLine],
         end_marker: Option<&'static str>,
         cx: &Context<Self>,
     ) -> AnyElement {
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
         let muted = cx.theme().muted_foreground;
+        let tag_colours = pod_tag_colours(cx);
         div()
             .debug_selector(|| LINES.into())
             .on_scroll_wheel(cx.listener(Self::on_lines_scrolled))
@@ -205,21 +209,7 @@ impl LogsPanel {
                                         .children(end_marker)
                                         .into_any_element();
                                 }
-                                // Each line is selectable text in the window's
-                                // selection, ordered by its line number, so a drag
-                                // across lines selects and copies them in reading
-                                // order (#151). One participant per line: runs
-                                // sharing a handle keep only the last one drawn.
-                                div()
-                                    .whitespace_nowrap()
-                                    .child(
-                                        gpui_kit::base::SelectableText::new(
-                                            ("logs-line", ix),
-                                            lines[ix].clone(),
-                                        )
-                                        .document_order(ix as u64),
-                                    )
-                                    .into_any_element()
+                                line_row(ix, &lines[ix], &tag_colours, muted)
                             })
                             .collect()
                     },
@@ -229,6 +219,57 @@ impl LogsPanel {
             )
             .into_any_element()
     }
+}
+
+/// A tagged line's tag, then its text. Each line's text is selectable text in
+/// the window's selection, ordered by its line number, so a drag across lines
+/// selects and copies them in reading order (#151). One participant per line:
+/// runs sharing a handle keep only the last one drawn, and two participants
+/// copy as two lines - so the tag, drawn in its pod's colour
+/// (`selector-logs`), is not part of the selection.
+fn line_row(ix: usize, line: &LogLine, tag_colours: &[Hsla], separator: Hsla) -> AnyElement {
+    let tag = line.source().map(|source| {
+        div()
+            .flex_none()
+            .debug_selector(|| LINE_TAG.into())
+            .child(
+                div()
+                    .text_color(tag_colours[pod_colour(source.pod())])
+                    .child(SharedString::from(source.tag().to_string())),
+            )
+            .child(
+                div()
+                    .text_color(separator)
+                    .child(format!(" {SOURCE_SEPARATOR} ")),
+            )
+            .flex()
+    });
+    div()
+        .flex()
+        .whitespace_nowrap()
+        .children(tag)
+        .child(
+            gpui_kit::base::SelectableText::new(("logs-line", ix), line.text().to_string())
+                .document_order(ix as u64),
+        )
+        .into_any_element()
+}
+
+/// The colour each of [`LABEL_LOGS_POD_HUES`] draws a pod's tag in, made to
+/// read as text on the panel's background in either mode.
+pub(super) fn pod_tag_colours(cx: &App) -> Vec<Hsla> {
+    let background = cx.theme().background;
+    let lightness = if cx.theme().mode.is_dark() { 0.65 } else { 0.4 };
+    LABEL_LOGS_POD_HUES
+        .iter()
+        .map(|&hue| {
+            crate::ui::style::meet(
+                hsla(hue, 0.7, lightness, 1.),
+                background,
+                crate::ui::style::TEXT_CONTRAST,
+            )
+        })
+        .collect()
 }
 
 /// Jump to top, jump to bottom, and the Follow toggle with its key - for a

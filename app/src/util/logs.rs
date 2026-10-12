@@ -8,6 +8,7 @@
 
 mod commands;
 mod labels;
+mod line;
 mod panel;
 mod render;
 mod stream;
@@ -28,6 +29,7 @@ use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::*;
 use std::rc::Rc;
 
+use line::*;
 use stream::*;
 use view::*;
 

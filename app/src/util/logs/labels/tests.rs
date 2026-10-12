@@ -72,7 +72,10 @@ fn sources(pods: &[Pod], selector: &str, namespaces: &[&str]) -> (Vec<String>, M
     let namespaces: Vec<String> = namespaces.iter().map(|ns| ns.to_string()).collect();
     let (wanted, matched) = wanted(pods, &parse(selector).unwrap(), &namespaces);
     (
-        wanted.into_iter().map(|want| want.source).collect(),
+        wanted
+            .into_iter()
+            .map(|want| want.source.tag().to_string())
+            .collect(),
         matched,
     )
 }
@@ -201,7 +204,7 @@ fn a_pod_recreated_under_the_same_name_is_a_new_stream() {
     recreated[0].metadata.uid = Some("uid-recreated".into());
     let (before, _) = wanted(&before, &selector, &[]);
     let (after, _) = wanted(&recreated, &selector, &[]);
-    assert_eq!(before[0].source, after[0].source, "the same tag");
+    assert_eq!(before[0].source, after[0].source, "the same source");
     assert_ne!(before[0].key, after[0].key);
 }
 

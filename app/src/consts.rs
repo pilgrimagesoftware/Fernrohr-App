@@ -97,6 +97,21 @@ pub(crate) const LABEL_LOGS_TAIL_LINES: i64 = 100;
 /// `--max-log-requests`. The panel says how many more matched.
 pub(crate) const LABEL_LOGS_MAX_STREAMS: usize = 20;
 
+/// `selector-logs`: the hues a label-following Logs panel draws its pods' tags
+/// in, one per pod by its name (`logs::line::pod_colour`). Spread round the
+/// wheel so neighbours differ, with no plain red, which reads as an error.
+/// Each is made to meet the text contrast floor against the background.
+pub(crate) const LABEL_LOGS_POD_HUES: [f32; 8] = [
+    0.58, // blue
+    0.33, // green
+    0.08, // orange
+    0.83, // magenta
+    0.50, // teal
+    0.13, // amber
+    0.72, // violet
+    0.94, // pink
+];
+
 /// `connection-status-bar` design decision 4: how often the status bar refreshes elapsed
 /// time and re-checks the escalation threshold while any item it shows is not connected.
 /// Idle (fully connected) windows run no timer at all, so this only ever wakes a window
