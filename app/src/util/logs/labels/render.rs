@@ -68,7 +68,7 @@ impl LogsPanel {
     }
 
     /// Moves focus to a typed panel's selector field - its `/`, and the
-    /// palette's Follow Labels when the panel is already open.
+    /// palette's or menu's Open Logs by Label… when the panel is already open.
     pub fn focus_selector(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(input) = self.selector_input(window, cx) {
             window.focus(&input.read(cx).focus_handle(cx), cx);

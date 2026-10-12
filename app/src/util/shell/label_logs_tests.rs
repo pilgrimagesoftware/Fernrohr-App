@@ -1,5 +1,5 @@
 //! #150 through a real window: `l` in a Deployment's detail panel opens a Logs
-//! panel following its pods, and Follow Labels opens one whose selector is
+//! panel following its pods, and Open Logs by Label… opens one whose selector is
 //! typed into it - each streaming every started container its selector picks.
 
 use crate::k8s::cluster::connection::ConnectionState;
@@ -196,7 +196,7 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
     cluster.apply("/api/v1", "pods", pod("db-1", "db", 0));
     let (main, mut vcx) = window(ConnectionState::Connected(client), cx);
 
-    // The palette's Follow Labels, dispatched as the palette does.
+    // Open Logs by Label…, dispatched as the palette does.
     vcx.update(|window, cx| {
         let focus = main.read(cx).focus_handle.clone();
         window.focus(&focus, cx);
@@ -257,7 +257,7 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
         ["web-1/app#1@uid-web-1", "web-2/app#0@uid-web-2-again"]
     );
 
-    // Follow Labels again focuses the open panel, and its field.
+    // Open Logs by Label… again focuses the open panel, and its field.
     vcx.update(|window, cx| {
         use gpui_kit::Focusable as _;
         let handle = panel.read(cx).focus_handle(cx);

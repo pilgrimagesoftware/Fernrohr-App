@@ -92,3 +92,39 @@ async fn only_the_cap_streams(cx: &mut TestAppContext) {
     wait_for_streams(&mut vcx, &panel, &expected);
     assert_eq!(vcx.update(|_, cx| panel.read(cx).test_matched()), (25, 25));
 }
+
+/// `selector-logs-panel` 2.1: the Window menu's Open Logs by Label… is the
+/// palette's command, and dispatching it - as the menu does - opens the typed
+/// panel empty, its field focused.
+#[gpui_kit::test]
+async fn the_menu_item_opens_the_panel_empty(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let (_cluster, client) = FakeCluster::start(cx);
+    let (main, mut vcx) = window(ConnectionState::Connected(client), cx);
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    let command = registry
+        .get("logs.follow_labels")
+        .expect("Open Logs by Label is registered");
+    assert_eq!(command.title, "Open Logs by Label\u{2026}");
+    assert_eq!(command.menu, Some(crate::command::MenuSlot::Window));
+
+    let action = command.action.boxed_clone();
+    vcx.update(|window, cx| {
+        let focus = main.read(cx).focus_handle.clone();
+        window.focus(&focus, cx);
+        window.dispatch_action(action, cx)
+    });
+    vcx.run_until_parked();
+    let panel = logs_panel(&main, &NavTarget::LabelLogs(LabelLogs::Typed), &mut vcx);
+    assert_eq!(vcx.update(|_, cx| panel.read(cx).test_selector()), None);
+    assert!(vcx.update(|_, cx| panel.read(cx).test_streams()).is_empty());
+    // The field has focus: what's typed lands in it.
+    vcx.simulate_keystrokes("a p p = w e b enter");
+    vcx.run_until_parked();
+    assert_eq!(
+        vcx.update(|_, cx| panel.read(cx).test_selector()),
+        Some("app=web".to_string())
+    );
+}

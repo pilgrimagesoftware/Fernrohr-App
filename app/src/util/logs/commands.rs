@@ -59,14 +59,15 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ToggleFollow),
         menu: None,
     });
-    // Palette and keymap only, like Show Events.
+    // Global, so it's in the Window menu beside the other ways of opening
+    // something, as well as the palette (`selector-logs`).
     registry.register(Command {
         id: "logs.follow_labels",
-        title: "Logs: Follow Labels\u{2026}",
+        title: "Open Logs by Label\u{2026}",
         default_binding: "",
         context: None,
         action: Box::new(ShowLabelLogs),
-        menu: None,
+        menu: Some(crate::command::MenuSlot::Window),
     });
     registry.register(Command {
         id: "logs.focus_selector",
