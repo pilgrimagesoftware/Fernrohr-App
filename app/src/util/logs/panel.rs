@@ -344,7 +344,8 @@ impl LogsPanel {
     pub(super) fn follow(&self, view: &Entity<LogsView>, cx: &mut Context<Self>) {
         cx.observe(view, |this: &mut Self, view, cx| {
             if view.read(cx).follow_state() == FollowState::Following {
-                let last = view.read(cx).lines().len().saturating_sub(1);
+                // The end marker is the last row once there is one.
+                let last = view.read(cx).row_count().saturating_sub(1);
                 this.scroll_handle
                     .scroll_to_item(last, gpui_kit::ScrollStrategy::Bottom);
             }
