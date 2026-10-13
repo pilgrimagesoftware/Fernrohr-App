@@ -1,0 +1,6 @@
+source "https://rubygems.org"
+
+gem "jekyll", "~> 4.3"
+
+# Validation only: `_scripts/check.rb` uses it to check internal links in the build.
+gem "html-proofer", "~> 5.2"

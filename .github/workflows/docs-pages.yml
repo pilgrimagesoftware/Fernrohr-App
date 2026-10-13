@@ -1,0 +1,66 @@
+name: Publish documentation
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - docs/site/**
+      - .github/workflows/docs-pages.yml
+  pull_request:
+    paths:
+      - docs/site/**
+      - .github/workflows/docs-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Every run checks the site first: a warning-free build, the version manifest
+  # against the pages, and every internal link (`_scripts/check.rb`). Pull
+  # requests stop there. Pushes to master and manual runs then build with the
+  # Pages base path, upload and deploy, so a failed check blocks the deploy.
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          working-directory: docs/site
+      - id: pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+      - name: Check the site
+        run: bundle exec ruby _scripts/check.rb
+        working-directory: docs/site
+      - name: Build for Pages
+        if: github.event_name != 'pull_request'
+        run: bundle exec jekyll build --baseurl "${{ steps.pages.outputs.base_path }}"
+        working-directory: docs/site
+        env:
+          JEKYLL_ENV: production
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/site/_site
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

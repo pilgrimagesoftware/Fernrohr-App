@@ -29,6 +29,11 @@ fn main() {
     // be acquired. See `util::pidfile`'s module docs for the quit-time half of this.
     util::pidfile::sweep_stale();
 
+    // Not under `cfg(test)`: `main` is never the test entry point. The mcp
+    // adapter returned above, so only the real app writes the log.
+    util::app_log::install();
+    log::info!("Fernrohr {} starting", env!("CARGO_PKG_VERSION"));
+
     gpui_kit::application()
         .with_assets(assets::AppAssets)
         .with_quit_mode(QuitMode::LastWindowClosed)

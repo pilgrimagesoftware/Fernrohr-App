@@ -35,9 +35,29 @@ pub fn runtime_dir() -> PathBuf {
     resolve(dirs::runtime_dir().or_else(dirs::cache_dir))
 }
 
+/// Application log: `~/Library/Logs/<app_dir>/` on macOS; on Linux
+/// `dirs::state_dir()/<app_dir>/`, falling back to the cache directory when
+/// there is no state directory.
+#[cfg(target_os = "macos")]
+pub fn log_dir() -> PathBuf {
+    resolve(dirs::home_dir().map(|home| home.join("Library").join("Logs")))
+}
+
+/// Application log: `dirs::state_dir()/<app_dir>/`, falling back to the cache
+/// directory when there is no state directory.
+#[cfg(not(target_os = "macos"))]
+pub fn log_dir() -> PathBuf {
+    resolve(dirs::state_dir().or_else(dirs::cache_dir))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_dir_ends_with_app_dir_name() {
+        assert!(log_dir().ends_with(APP_DIR_NAME));
+    }
 
     #[test]
     fn state_dir_ends_with_app_dir_name() {
