@@ -9,9 +9,42 @@ versions:
     path: /latest/
     pages:
       - index
+      - install
+      - clusters
+      - windows-panels
+      - resources
+      - details
+      - logs-shells
+      - tunnels-forwards
+      - agents
+      - settings
+      - reference/keybindings
+      - reference/mcp-tools
     nav:
       - title: Overview
         path: ""
+      - title: Install
+        path: install/
+      - title: Clusters
+        path: clusters/
+      - title: Windows and panels
+        path: windows-panels/
+      - title: Resources
+        path: resources/
+      - title: Details
+        path: details/
+      - title: Logs and shells
+        path: logs-shells/
+      - title: Tunnels and forwards
+        path: tunnels-forwards/
+      - title: Agents
+        path: agents/
+      - title: Settings
+        path: settings/
+      - title: Keybindings
+        path: reference/keybindings/
+      - title: MCP tools
+        path: reference/mcp-tools/
   - id: v0.9
     label: v0.9
     path: /v0.9/

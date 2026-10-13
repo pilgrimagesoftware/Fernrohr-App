@@ -1,0 +1,86 @@
+---
+title: Settings and app windows
+version: latest
+---
+
+# Settings and app windows
+
+This page covers the settings you can change, the notifications Fernrohr sends, and the small windows that help you report a problem. Keys are shown for macOS. On other platforms <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
+
+## Open Settings
+
+Choose **Settings…** from the App menu, run it from the command palette, or press <kbd>⌘,</kbd>. There is only one Settings window. Opening it again brings the open one to the front.
+
+A sidebar lists the sections: Keyboard Shortcuts, Appearance, Panels, Layouts and Agent Access. Tab to a section and press <kbd>Enter</kbd> or <kbd>Space</kbd> to show it, or click it. Showing a section moves focus into it, so the next <kbd>Tab</kbd> reaches its first control. While the Settings window has focus, the palette also offers **Settings: Show Keyboard Shortcuts**, **Settings: Show Appearance**, **Settings: Show Panels**, **Settings: Show Layouts** and **Settings: Show Agent Access**. They have no default keys.
+
+This page covers Appearance. For Layouts, see {{ '/latest/windows-panels/' | relative_url }}. For Agent Access, see {{ '/latest/agents/' | relative_url }}. For Keyboard Shortcuts, see {{ '/latest/reference/keybindings/' | relative_url }}.
+
+## Text size
+
+One text-size setting scales interface text, data text and code text together, and panel spacing scales with it. The default is 100%. The steps are 85, 90, 100, 110, 120, 130, 140 and 150 percent. At either end, stepping further does nothing.
+
+| Command | Keys |
+| --- | --- |
+| Increase Text Size | <kbd>⌘=</kbd> |
+| Decrease Text Size | <kbd>⌘-</kbd> |
+| Reset Text Size | <kbd>⇧⌘0</kbd> |
+
+Run these from the keyboard, from the command palette, or from the View menu. You can also use the Text Size row in Settings > Appearance. It shows the current percentage with **−**, **+** and **Reset** buttons, and the three keys beside them. The change applies to every open window at once, with no restart, and Fernrohr opens at that size next time.
+
+## Theme and accent
+
+Choose System, Light or Dark in any of these ways:
+
+- the theme switcher at the far end of the status bar;
+- the Theme row in Settings > Appearance;
+- the palette or the View menu: **Theme: Follow System**, **Theme: Light** and **Theme: Dark**.
+
+The choice applies to every window at once and is remembered. With System, Fernrohr follows the operating system when it switches between light and dark, without a restart. The fonts stay the same in both themes.
+
+There is no accent setting. Links, the selected row, the focused tab, focus rings and primary buttons share one accent colour. It is your system accent colour where the platform provides one, and a blue otherwise. If the system accent is too light to read against the background, Fernrohr darkens it. Text meets a 4.5:1 contrast ratio against its background in both themes, and accent and status colours meet 3:1.
+
+In the Pods table, pod status is coloured by health. Running is the good tone, pending the warning tone, failed or crash-looping the bad tone and completed the neutral tone.
+
+## Fonts
+
+Fernrohr ships its own fonts, so nothing needs to be installed. Interface text is set in Adamina and data in tables and detail views in Manrope. YAML and log output use Monaco when it is installed. Otherwise they use a monospace font that is present on your system.
+
+## Settings files
+
+Settings are saved as you change them, and some are plain TOML files you can edit.
+
+- `ui.toml` holds the theme, text size and other Appearance and Panels settings. It lives in the preferences folder: `~/Library/Preferences/com.pilgrimagesoftware.fernrohr/` on macOS, and `~/.config/fernrohr/` on Linux.
+- `keymap.toml` in the same folder holds your key bindings.
+
+```toml
+theme = "dark"
+text_size = 110
+```
+
+The theme is `"system"`, `"light"` or `"dark"`. The text size is a percentage. A hand-edited value between steps, or out of range, loads as the nearest step.
+
+Window state and saved layouts are not meant for hand-editing. They live in Fernrohr's state directory, `~/Library/Application Support/com.pilgrimagesoftware.fernrohr/` on macOS and `~/.local/share/fernrohr/` on Linux.
+
+## Desktop notifications
+
+Fernrohr can post a notification through your operating system's notification center, on macOS and on Linux desktops that have a notification service. It does this when something needs you while you are working in another app. For example, a tunnel waiting for you to bring its network path up and choose Proceed posts one. See {{ '/latest/tunnels-forwards/' | relative_url }}.
+
+There is no setting in Fernrohr to turn notifications on or off. Allow or deny them for Fernrohr in your operating system's notification settings. A notification never stands alone. The same condition stays visible in the app until it is resolved, so if notifications are denied or unavailable, nothing is lost and no error dialog appears.
+
+Where the platform reports a click, clicking a notification brings Fernrohr to the front with the related window focused.
+
+## About Fernrohr
+
+Choose **About Fernrohr** from the App menu, or run it from the palette. It has no default key. The window shows the app icon, its name, the released version and a build identifier with the build date and commit. The identifier says the commit is unknown when Fernrohr was built without git.
+
+Click the version and build text to copy one line to the clipboard with the name, version and build. Paste it into a bug report. Press <kbd>Esc</kbd> to close the window. On platforms other than macOS it also has a **Close** button. Opening About again brings the open window to the front instead of opening a second one.
+
+## Report an issue
+
+Choose **Report Issue** from the Help menu, run it from the palette, or press <kbd>⇧⌘/</kbd>. A dialog opens with a Subject field and a Description field, and it lists your version, build and platform. **Report** is enabled once both fields have text.
+
+Report files the issue with the GitHub CLI (`gh`) if it is installed and signed in. Otherwise it opens a prefilled new-issue page in your browser. The dialog says which one it will use. If `gh` fails, Fernrohr opens the browser page instead. The build commit and date are the same as in the About window, or `unknown` when they aren't available.
+
+Choose **Cancel** to close the dialog without reporting anything.
+
+*Summarizes the capability specs: `typography`, `visual-language`, `desktop-notifications`, `about-window`, `report-issue`.*
