@@ -79,8 +79,23 @@ Click the version and build text to copy one line to the clipboard with the name
 
 Choose **Report Issue** from the Help menu, run it from the palette, or press <kbd>⇧⌘/</kbd>. A dialog opens with a Subject field and a Description field, and it lists your version, build and platform. **Report** is enabled once both fields have text.
 
-Report files the issue with the GitHub CLI (`gh`) if it is installed and signed in. Otherwise it opens a prefilled new-issue page in your browser. The dialog says which one it will use. If `gh` fails, Fernrohr opens the browser page instead. The build commit and date are the same as in the About window, or `unknown` when they aren't available.
+Report files the issue with the GitHub CLI (`gh`) if it is installed and signed in. Otherwise it opens a prefilled new-issue page in your browser. The dialog says which one it will use. If `gh` fails, Fernrohr opens the browser page instead. The version and build are the same as in the About window. The build shows the date the app was built and its commit, or `commit unknown` when the commit wasn't available at build time.
 
 Choose **Cancel** to close the dialog without reporting anything.
+
+### Report an error from where it happened
+
+When a panel can't load what it shows, such as a resource list, a detail view, Events or Logs, it
+shows the error with a **Report…** button below it. So does a failed connection in the
+[cluster picker]({{ '/latest/clusters/' | relative_url }}#errors-and-retrying). Click it, or press
+<kbd>Tab</kbd> to reach it and then <kbd>Enter</kbd> or <kbd>Space</kbd>. It opens the same Report
+Issue dialog with the fields filled in:
+
+- **Subject:** the error message's first line, cut to 80 characters.
+- **Description:** the full message, followed by the error's technical detail in a code block.
+
+Edit either field before you choose **Report**. A report from a failed connection leaves out the
+context's name, because the issue is public, but check the error text for anything private before
+you send it.
 
 *Summarizes the capability specs: `typography`, `visual-language`, `desktop-notifications`, `about-window`, `report-issue`.*
