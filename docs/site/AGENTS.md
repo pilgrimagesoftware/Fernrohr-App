@@ -68,11 +68,13 @@ Install the Ruby pinned in `.ruby-version`, then run this from `docs/site`:
 
 ```sh
 bundle install
-bundle exec jekyll build
+bundle exec ruby _scripts/check.rb
 ```
 
-The build must finish without Liquid or Markdown warnings. Open `_site/index.html`,
-`_site/latest/`, and every path listed in `_data/versions.yml`.
+It builds the site and fails on any build warning, a `versions.yml` entry with
+no page, a page missing from `versions.yml`, or a dead internal link. CI runs the
+same script on every pull request and before every deploy. `PUBLISHING.md` lists
+what it checks. Don't add tests on page wording: the checks cover structure only.
 
 Pushes to `master` publish the site, so documentation merged to `develop` goes
 live with the next release. See `PUBLISHING.md` for the release snapshot steps.
