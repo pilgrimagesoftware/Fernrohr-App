@@ -6,7 +6,6 @@ use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::resource::pods::PodsPanel;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::{PanelScope, REPORT_ERROR_BUTTON};
-use crate::ui::report_issue::LastForm;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, ElementId, Modifiers, TestAppContext, VisualTestContext};
@@ -55,13 +54,9 @@ async fn a_failed_connections_report_files_it_filled_in(cx: &mut TestAppContext)
     vcx.simulate_click(report, Modifiers::none());
     vcx.run_until_parked();
 
-    let (subject, description) = vcx.update(|_, cx| {
-        let form = cx.global::<LastForm>();
-        (
-            form.subject.read(cx).value().to_string(),
-            form.description.read(cx).value().to_string(),
-        )
-    });
+    let (subject, description) = cx
+        .update(crate::ui::report_issue::test_fields)
+        .expect("Report Issue opened");
     assert_eq!(
         subject, "Couldn't connect to the cluster",
         "no context name"

@@ -1,27 +1,34 @@
-//! The "Report Issue" Help-menu command: a dialog for a subject and
-//! description, shown alongside the diagnostics a bug report needs (this
-//! build's version, build identifier, and platform - the same fields the
-//! About window shows, so the two can never drift apart).
+//! Report Issue: a separate, non-modal window for reporting a bug or asking
+//! for a feature (#241), with Subject focused as it opens (#249). Beside the
+//! subject and description it offers the end of the application log (bugs
+//! only, opt-in), screenshots picked from disk, and this build's diagnostics -
+//! the same fields the About window shows, so the two can never drift apart.
 //!
 //! Report files the issue with the GitHub CLI when `gh` is installed and
-//! signed in (#152, [`gh`]) - the dialog checks as it opens and says which way
+//! signed in (#152, [`gh`]) - the window checks as it opens and says which way
 //! it will go - and otherwise opens the browser on a prefilled GitHub issue,
 //! as it does too when `gh` fails, saying why. Nothing is sent until Report.
 //!
-//! Modeled on `app/src/util/shell/tunnel_dialog.rs`'s `WindowExt`
-//! `open_dialog`/`close_dialog` wiring.
+//! - [`window`]: the one window, opening it or raising it, and its state.
+//! - [`render`]: what it draws.
+//! - [`submit`]: Report - through `gh` or the browser - and what follows.
+//! - [`body`]: the report type and the issue body and URL, pure.
+//! - [`screenshots`]: which picked files are kept, and showing them.
 
 use crate::command::{Command, CommandRegistry, MenuSlot};
-use crate::consts::APP_NAME;
-use crate::ui::about_window::{build_identifier, version};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
-use gpui_kit::component::notification::Notification;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, WindowExt as _};
 use gpui_kit::*;
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 
-actions!(report_issue, [ReportIssue]);
+mod body;
+mod gh;
+mod render;
+mod screenshots;
+mod submit;
+mod window;
+
+actions!(
+    report_issue,
+    [ReportIssue, SendReport, CloseReport, AddScreenshots]
+);
 
 /// Opens Report Issue with its fields filled in - a panel error's Report…
 /// (#177), so the error's text reaches the report without copying it there.
@@ -58,10 +65,12 @@ const SUBJECT_LIMIT: usize = 80;
 pub const REPORT_ISSUE_COMMAND_ID: &str = "help.report_issue";
 pub const REPORT_ISSUE_DEFAULT_BINDING: &str = "cmd-shift-/";
 
-const ISSUE_URL_BASE: &str = "https://github.com/pilgrimagesoftware/Fernrohr-App/issues/new";
+/// The Report Issue window's key context: where Report, Close and Add
+/// Screenshots are bound.
+pub(crate) const KEY_CONTEXT: &str = "ReportIssueWindow";
 
-/// `help.report_issue`: a Help-menu item, palette entry, and a default
-/// keybinding - all three dispatch the same action.
+/// `help.report_issue` - a Help-menu item, palette entry and default
+/// keybinding that all open the window - and the window's own commands.
 pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(Command {
         id: REPORT_ISSUE_COMMAND_ID,
@@ -71,56 +80,52 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ReportIssue),
         menu: Some(MenuSlot::Help),
     });
+    for (id, title, default_binding, action) in [
+        (
+            "report_issue.send",
+            "Report Issue: Report",
+            "secondary-enter",
+            Box::new(SendReport) as Box<dyn Action>,
+        ),
+        (
+            "report_issue.close",
+            "Report Issue: Close",
+            "escape",
+            Box::new(CloseReport),
+        ),
+        (
+            "report_issue.add_screenshots",
+            "Report Issue: Add Screenshots…",
+            "secondary-shift-a",
+            Box::new(AddScreenshots),
+        ),
+    ] {
+        registry.register(Command {
+            id,
+            title,
+            default_binding,
+            context: Some(KEY_CONTEXT),
+            action,
+            menu: None,
+        });
+    }
 }
 
-/// Opens the dialog on activation, over whichever window is active. App-wide,
-/// like the other Help items, so this needs `App::active_window` rather than
-/// a window-scoped `on_action` - there is no single window it belongs to.
+/// Opens the window, or raises the open one, on activation. App-wide like the
+/// other Help items: it belongs to no one window.
 pub fn register_handler(cx: &mut App) {
     cx.on_action(|_: &ReportIssue, cx: &mut App| {
-        // Deferred: action dispatch itself runs inside an update of the
-        // active window (so a window-scoped handler can intercept first), so
-        // updating that same window here - to open the dialog - would be a
-        // reentrant update of a window already taken out of its slot, which
-        // fails silently ("window not found") without ever running our
-        // closure. Deferring runs this after that update completes and the
-        // window is back in its slot.
-        cx.defer(|cx| open_report_issue_dialog(None, cx));
+        // Deferred: action dispatch runs inside an update of the active
+        // window, and raising a window from inside that update - the Report
+        // Issue window itself, when the key is pressed there - would be a
+        // reentrant update that fails silently.
+        cx.defer(|cx| window::open_or_raise(None, cx));
     });
     cx.on_action(|report: &ReportError, cx: &mut App| {
         let report = report.clone();
         // Deferred, as above.
-        cx.defer(move |cx| open_report_issue_dialog(Some(report), cx));
+        cx.defer(move |cx| window::open_or_raise(Some(report), cx));
     });
-}
-
-/// Test-only: the last dialog's fields, to read what it was filled in with.
-#[cfg(test)]
-pub(crate) struct LastForm {
-    pub(crate) subject: Entity<InputState>,
-    pub(crate) description: Entity<TextareaState>,
-}
-
-#[cfg(test)]
-impl Global for LastForm {}
-
-/// How Report will file the issue.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Route {
-    /// Still finding out whether `gh` is ready; Report opens the browser
-    /// until it knows.
-    #[default]
-    Checking,
-    Gh,
-    Browser,
-}
-
-/// The dialog's own state beside its fields: the route, and whether a report
-/// is on its way through `gh`.
-#[derive(Default)]
-struct ReportState {
-    route: Route,
-    sending: bool,
 }
 
 /// The `PATH` tests find a fake `gh` on. Without it, a test build never looks
@@ -147,258 +152,38 @@ fn gh_path(cx: &App) -> Option<Option<String>> {
     }
 }
 
+/// The log file tests attach instead of the real one.
+#[cfg(test)]
+pub(super) struct LogPathOverride(pub std::path::PathBuf);
+
+#[cfg(test)]
+impl Global for LogPathOverride {}
+
+/// The application log a report attaches: the real one, or a test's.
+fn log_path(cx: &App) -> std::path::PathBuf {
+    #[cfg(test)]
+    if let Some(path) = cx.try_global::<LogPathOverride>() {
+        return path.0.clone();
+    }
+    let _ = cx;
+    crate::util::app_log::log_path()
+}
+
 fn resolve_path(path: Option<String>) -> String {
     path.unwrap_or_else(|| crate::util::login_env::login_path().to_string())
 }
 
-/// Opens the dialog, its fields filled in from `prefill` when given.
-fn open_report_issue_dialog(prefill: Option<ReportError>, cx: &mut App) {
-    let Some(handle) = cx.active_window() else {
-        return;
-    };
-    let _ = handle.update(cx, |_, window, cx| {
-        let (subject_text, description_text) = prefill
-            .map(|report| (report.subject, report.description))
-            .unwrap_or_default();
-        let subject = cx.new(|cx| {
-            let mut input = InputState::new(window, cx).placeholder("Subject");
-            input.set_value(subject_text, window, cx);
-            input
-        });
-        let description = cx.new(|cx| {
-            let mut input = TextareaState::new(window, cx)
-                .placeholder("Steps to reproduce, and what you expected instead.");
-            input.set_value(description_text, window, cx);
-            input
-        });
-        #[cfg(test)]
-        cx.set_global(LastForm {
-            subject: subject.clone(),
-            description: description.clone(),
-        });
-        let state = cx.new(|_| ReportState::default());
-        check_route(state.clone(), window.window_handle(), cx);
-        let version = version().to_string();
-        let build = build_identifier();
-        let platform = std::env::consts::OS;
-
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            let form = Form {
-                subject: subject.clone(),
-                description: description.clone(),
-                state: state.clone(),
-                version: version.clone(),
-                build: build.clone(),
-                platform,
-            };
-            dialog
-                .title("Report Issue")
-                .w(px(440.))
-                .content(move |content, _window, cx| content.child(form.clone().render(cx)))
-        });
-    });
+/// Test-only: the open Report Issue window's Subject and Description, if one
+/// is open - for tests elsewhere that open it from an error's Report….
+#[cfg(test)]
+pub(crate) fn test_fields(cx: &mut App) -> Option<(String, String)> {
+    let (_, view) = window::test_view(cx)?;
+    let view = view.read(cx);
+    Some((
+        view.subject.read(cx).value().to_string(),
+        view.description.read(cx).value().to_string(),
+    ))
 }
-
-/// Finds out, off the main thread, whether `gh` is ready, and redraws the
-/// dialog to say which way Report will go.
-fn check_route(state: Entity<ReportState>, window: AnyWindowHandle, cx: &mut App) {
-    let Some(path) = gh_path(cx) else {
-        state.update(cx, |state, _| state.route = Route::Browser);
-        return;
-    };
-    let ready = cx.background_spawn(async move { gh::ready(&resolve_path(path)) });
-    cx.spawn(async move |cx| {
-        let route = if ready.await {
-            Route::Gh
-        } else {
-            Route::Browser
-        };
-        state.update(cx, |state, cx| {
-            state.route = route;
-            cx.notify();
-        });
-        let _ = window.update(cx, |_, window, _| window.refresh());
-    })
-    .detach();
-}
-
-/// Section rule from Knot's `add-bug-reporting` proposal: Report is reachable
-/// only once both fields carry more than whitespace.
-fn fields_filled(subject: &str, description: &str) -> bool {
-    !subject.trim().is_empty() && !description.trim().is_empty()
-}
-
-/// The dialog's fields, state and diagnostics.
-#[derive(Clone)]
-struct Form {
-    subject: Entity<InputState>,
-    description: Entity<TextareaState>,
-    state: Entity<ReportState>,
-    version: String,
-    build: String,
-    platform: &'static str,
-}
-
-impl Form {
-    fn render(self, cx: &App) -> AnyElement {
-        let theme = cx.theme().clone();
-        let state = self.state.read(cx);
-        let (route, sending) = (state.route, state.sending);
-        let enabled = !sending
-            && fields_filled(
-                &self.subject.read(cx).value(),
-                &self.description.read(cx).value(),
-            );
-
-        let label = |text: &'static str| {
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .child(text)
-        };
-        let diagnostic_line = |text: String| {
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .child(text)
-        };
-        let route_line = match route {
-            Route::Checking => "Checking for the GitHub CLI\u{2026}",
-            Route::Gh => "Report files the issue with the GitHub CLI (gh).",
-            Route::Browser => "Report opens a prefilled issue in your browser.",
-        };
-
-        div()
-            .flex()
-            .flex_col()
-            .gap(crate::ui::space::spacing(cx).control_gap)
-            .child(label("Subject"))
-            .child(Input::new(&self.subject).w_full())
-            .child(label("Description"))
-            .child(Textarea::new(&self.description).w_full().h(px(120.)))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .p_2()
-                    .rounded(px(6.))
-                    .bg(theme.muted)
-                    .child(diagnostic_line(format!("Version {}", self.version)))
-                    .child(diagnostic_line(format!("Build {}", self.build)))
-                    .child(diagnostic_line(format!("Platform {}", self.platform))),
-            )
-            .child(
-                div()
-                    .id(ROUTE_LINE)
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(route_line),
-            )
-            .child(
-                div()
-                    .flex()
-                    .justify_end()
-                    .gap_2()
-                    .child(
-                        Button::new("report-issue-cancel")
-                            .label("Cancel")
-                            .ghost()
-                            .on_click(|_, window, cx| window.close_dialog(cx)),
-                    )
-                    .child(
-                        Button::new("report-issue-report")
-                            .label(if sending {
-                                "Reporting\u{2026}"
-                            } else {
-                                "Report"
-                            })
-                            .primary()
-                            .disabled(!enabled)
-                            .on_click(move |_, window, cx| self.report(window, cx)),
-                    ),
-            )
-            .into_any_element()
-    }
-
-    /// Report: through `gh` when it's ready, else - or when it fails - in the
-    /// browser.
-    fn report(&self, window: &mut Window, cx: &mut App) {
-        let subject = self.subject.read(cx).value().to_string();
-        let description = self.description.read(cx).value().to_string();
-        if !fields_filled(&subject, &description) || self.state.read(cx).sending {
-            return;
-        }
-        let body = issue_body(&description, &self.version, &self.build, self.platform);
-        let url = build_github_issue_url(&subject, &body);
-        let path = gh_path(cx);
-        let (Route::Gh, Some(path)) = (self.state.read(cx).route, path) else {
-            cx.open_url(&url);
-            window.close_dialog(cx);
-            return;
-        };
-        self.state.update(cx, |state, cx| {
-            state.sending = true;
-            cx.notify();
-        });
-        window.refresh();
-        let filed =
-            cx.background_spawn(async move { gh::create(&resolve_path(path), &subject, &body) });
-        let handle = window.window_handle();
-        cx.spawn(async move |cx| {
-            let filed = filed.await;
-            let _ = handle.update(cx, |_, window, cx| {
-                window.close_dialog(cx);
-                let notification = match filed {
-                    Ok(issue) => {
-                        Notification::success(format!("Filed {issue}")).title("Issue reported")
-                    }
-                    Err(reason) => {
-                        cx.open_url(&url);
-                        Notification::warning(format!(
-                            "The GitHub CLI couldn't file it ({reason}), so it opened in \
-                             your browser instead."
-                        ))
-                        .title("Report Issue")
-                    }
-                };
-                window.push_notification(notification, cx);
-            });
-        })
-        .detach();
-    }
-}
-
-/// The dialog's line saying how Report will file the issue, for tests.
-const ROUTE_LINE: &str = "report-issue-route";
-
-/// The issue body: the user's description, with this build's version, build
-/// identifier, and platform appended so a report always carries the exact
-/// build it came from.
-fn issue_body(description: &str, version: &str, build: &str, platform: &str) -> String {
-    format!(
-        "{description}\n\n\
-        ---\n\
-        **{APP_NAME} version:** {version}\n\
-        **Build:** {build}\n\
-        **Platform:** {platform}\n"
-    )
-}
-
-/// The GitHub new-issue URL for `subject` and `body`.
-fn build_github_issue_url(subject: &str, body: &str) -> String {
-    format!(
-        "{ISSUE_URL_BASE}?title={}&body={}",
-        encode(subject),
-        encode(body)
-    )
-}
-
-fn encode(value: &str) -> String {
-    utf8_percent_encode(value, NON_ALPHANUMERIC).to_string()
-}
-
-mod gh;
 
 #[cfg(test)]
 mod tests;

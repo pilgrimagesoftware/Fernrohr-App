@@ -277,6 +277,14 @@ This list matches the commands registered in `app/src/command.rs`.
 | Remove Shortcut | <kbd>⌫</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.remove` |
 | Filter Shortcuts | <kbd>/</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.filter` |
 
+### Report Issue window
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Report Issue: Report | <kbd>⌘↵</kbd> | `ReportIssueWindow` | — | `report_issue.send` |
+| Report Issue: Close | <kbd>⎋</kbd> | `ReportIssueWindow` | — | `report_issue.close` |
+| Report Issue: Add Screenshots… | <kbd>⌘⇧A</kbd> | `ReportIssueWindow` | — | `report_issue.add_screenshots` |
+
 ### Dialogs, key hints and links
 
 | Command | Default binding | Context | Menu | ID |
