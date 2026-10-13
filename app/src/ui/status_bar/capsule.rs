@@ -28,14 +28,13 @@ use crate::k8s::resource::pods::format_age;
 use crate::tunnel::manual::{Decision, ManualConfirmations};
 use crate::ui::icon_tooltip;
 use crate::ui::manual_tunnel::{CancelManualTunnel, ProceedManualTunnel};
-use crate::ui::picker::{ClusterPicker, PickerEvent};
 use crate::ui::style::{TEXT_CONTRAST, contrast, meet, over, readable_on};
 use crate::ui::typography::TypeRole as _;
 use crate::util::context_lifecycle;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{Icon, Sizable as _, WindowExt as _};
+use gpui_kit::component::{Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -277,7 +276,7 @@ pub(super) fn render_add_button(this: WeakEntity<StatusBarView>) -> impl IntoEle
         .ghost()
         .tooltip("Add a context")
         .on_click(move |_event, window, cx| {
-            let _ = this.update(cx, |bar, cx| bar.open_add_dialog(window, cx));
+            let _ = this.update(cx, |bar, cx| bar.open_add_window(window, cx));
         })
 }
 
@@ -343,36 +342,31 @@ impl StatusBarView {
         );
     }
 
-    /// The add popover: the cluster picker filtered to contexts this window doesn't
-    /// already use, so tunnel labels and connect progress come for free.
-    /// `PickerEvent::Connected` only fires once the chosen context connects, which
-    /// is what makes a failed add open no panel.
-    pub(crate) fn open_add_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let used = self.context_names.clone();
-        let picker = cx.new(|cx| {
-            let mut picker = ClusterPicker::new(window, cx);
-            picker.exclude(&used);
-            picker
-        });
-        let target = self.main_window.clone();
-        cx.subscribe_in(&picker, window, {
-            move |_this: &mut Self, _picker, event, window, cx| {
-                let PickerEvent::Connected { context_name } = event;
-                let context_name = context_name.clone();
-                let _ = target.update(cx, |main_window, cx| {
-                    main_window.add_context(context_name, window, cx);
-                });
-                window.close_dialog(cx);
-            }
-        })
-        .detach();
+    /// The add control: the cluster picker, filtered to contexts this window doesn't
+    /// already use, in its own non-modal window ([`crate::ui::add_context_window`]),
+    /// so a slow connect never blocks this one (#232). One per workspace window:
+    /// asking again raises the open one. Whether it is still open is asked by
+    /// updating it, the About window's single-instance test.
+    pub(crate) fn open_add_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(existing) = self.add_window
+            && existing
+                .update(cx, |_, window, _| window.activate_window())
+                .is_ok()
+        {
+            return;
+        }
+        self.add_window = crate::ui::add_context_window::open(
+            window.window_handle(),
+            self.main_window.clone(),
+            &self.context_names,
+            cx,
+        );
+    }
 
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog
-                .title("Add a context")
-                .w(px(480.))
-                .child(picker.clone())
-        });
+    /// Test-only: the open Add Context window, if this bar opened one.
+    #[cfg(test)]
+    pub(crate) fn add_window(&self) -> Option<AnyWindowHandle> {
+        self.add_window
     }
 }
 

@@ -5,16 +5,30 @@
 
 use super::*;
 
-/// Width of the picker card, matching the app's command-palette chrome.
+/// The picker card's narrowest width, matching the app's command-palette chrome.
 const CARD_WIDTH: f32 = 480.;
+
+/// The widest the card grows with its window: room for a long generated context
+/// name (`gke_<project>_<region>_<cluster>`) beside its tunnel selector, without
+/// the card stretching across a wide window.
+const CARD_MAX_WIDTH: f32 = 800.;
+
+/// The card's debug selector, for tests.
+pub(crate) const CARD_SELECTOR: &str = "picker-card";
 
 /// A centered card matching the app's command-palette chrome (`popover`
 /// surface, `border` outline, `shadow_lg`), so the picker reads as part of
 /// the same design system rather than a bespoke first-run screen.
+///
+/// It fills the column [`super::render`] centres it in, between [`CARD_WIDTH`] and
+/// [`CARD_MAX_WIDTH`], so a wider window gives long context names more room.
 pub(super) fn card(cx: &App) -> Div {
     let theme = cx.theme();
     div()
-        .w(px(CARD_WIDTH))
+        .debug_selector(|| CARD_SELECTOR.into())
+        .w_full()
+        .min_w(px(CARD_WIDTH))
+        .max_w(px(CARD_MAX_WIDTH))
         .rounded_lg()
         .border_1()
         .border_color(theme.border)
@@ -54,9 +68,9 @@ const CARD_LIST_MAX_HEIGHT: f32 = 300.;
 /// Gap between the logo and the card (`gap_6`).
 const PICKER_CONTENT_GAP: f32 = 24.;
 
-/// Breathing room either side of the 480px card, so the minimum does not let it
-/// sit flush against the window edge.
-const PICKER_SIDE_MARGIN: f32 = 40.;
+/// Breathing room either side of the card, so it never sits flush against the
+/// window edge.
+pub(super) const PICKER_SIDE_MARGIN: f32 = 40.;
 
 /// Minimum window size that fits the picker without clipping.
 ///
