@@ -80,7 +80,8 @@ fn conditions_without_a_message_show_no_message_field() {
 
     let sections = sections_for(&deployments(), &deployment);
 
-    assert!(!labels(&sections).contains(&"Message"), "{sections:?}");
+    let labels = labels(&sections);
+    assert!(!labels.contains(&"Message"), "no Message field: {labels:?}");
     assert_eq!(field(&sections, "Conditions").value.text(), "Available");
 }
 
