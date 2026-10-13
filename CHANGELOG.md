@@ -1,4 +1,44 @@
 
+## 0.10.0 - 2026-10-13
+
+### <!-- 0 -->🚀 Features
+- Write an application log file
+- A separate, non-modal Report Issue window
+- Show the log before attaching it
+
+
+### <!-- 10 -->💼 Other
+- Add a one-command site check
+
+
+### <!-- 3 -->📚 Documentation
+- Add versioned Jekyll site with app-derived theme
+- Add site authoring rules and the docs-ship-with-features rule
+- Add the installation page
+- Add a guide per capability area
+- Add keybinding and MCP tool references
+- List every page in the sidebar and on the landing page
+- Move README user documentation to the site
+- Replace the manual pre-merge steps with the check script
+- Fix the build line and document Report… on errors
+- Show the README logo on the landing pages
+- Document the Report Issue window and the application log
+- The log is shown before it is attached
+- Cut the v0.10 documentation snapshot
+- Snapshot releases on develop before Prepare Release
+
+
+### <!-- 6 -->🧪 Testing
+- Drop the docs content test
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.9.0
+- Publish the site to GitHub Pages from master
+- Check the site before every build and deploy
+
+
+
 ## 0.9.0 - 2026-10-12
 
 ### <!-- 0 -->🚀 Features
