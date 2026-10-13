@@ -1,7 +1,9 @@
 //! Projection helpers more than one kind's sections share: label selectors,
-//! resource quantities, and condition badges.
+//! resource quantities, condition badges, and the status message and Ready
+//! field conditions read as (`resource-status-message`).
 
-use super::super::model::FieldValue;
+use super::super::model::{FieldValue, ObjectField};
+use crate::k8s::resource::status_tone;
 use crate::ui::detail::BadgeTone;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
@@ -66,7 +68,79 @@ pub(super) fn condition_badges<'a>(
     (!badges.is_empty()).then_some(FieldValue::Badges(badges))
 }
 
+/// Raw JSON conditions (`status_tone::conditions_of`) as the `(type, status)`
+/// pairs [`condition_badges`] takes - for a kind with no typed form, a CRD's.
+/// A condition with no `type` is skipped; one with no `status` reads as
+/// `Unknown`.
+pub(super) fn json_condition_pairs(
+    conditions: &[serde_json::Value],
+) -> impl Iterator<Item = (&str, &str)> {
+    conditions.iter().filter_map(|condition| {
+        let type_ = condition.get("type")?.as_str()?;
+        let status = condition
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        Some((type_, status))
+    })
+}
+
+/// Typed conditions - a `k8s-openapi` status's `conditions` - back in their
+/// JSON shape, for [`message_field`]: every kind's condition serializes with
+/// the same `type`, `status`, `message` and `lastTransitionTime`.
+pub(super) fn conditions_json<T: serde::Serialize>(
+    conditions: Option<&Vec<T>>,
+) -> Vec<serde_json::Value> {
+    conditions
+        .into_iter()
+        .flatten()
+        .filter_map(|condition| serde_json::to_value(condition).ok())
+        .collect()
+}
+
+/// The Message field: the one message `conditions` read as, in its tone
+/// (`status_tone::condition_message`), or `None` when none has one.
+pub(super) fn message_field(conditions: &[serde_json::Value]) -> Option<ObjectField> {
+    let (text, tone) = status_tone::condition_message(conditions)?;
+    Some(ObjectField::new(
+        "Message",
+        FieldValue::Message { text, tone },
+    ))
+}
+
+/// The Ready field: the `Ready` condition's status, or `None` without one.
+pub(super) fn ready_field(conditions: &[serde_json::Value]) -> Option<ObjectField> {
+    let status = status_tone::ready_status(conditions)?;
+    Some(ObjectField::new("Ready", FieldValue::Ready(status)))
+}
+
 /// `Some(value)` unless `value` is empty.
 pub(super) fn non_empty(value: Option<&str>) -> Option<&str> {
     value.filter(|value| !value.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn badges_read_from_json_conditions() {
+        let conditions = serde_json::json!([
+            { "type": "Ready", "status": "True" },
+            { "type": "Stalled", "status": "False" },
+            { "status": "True" },
+            { "type": "Reconciling" },
+        ]);
+        let conditions = conditions.as_array().unwrap();
+        assert_eq!(
+            condition_badges(json_condition_pairs(conditions), |condition| {
+                condition == "Stalled"
+            }),
+            Some(FieldValue::Badges(vec![
+                ("Ready".into(), BadgeTone::Good),
+                ("Stalled".into(), BadgeTone::Good),
+                ("Reconciling".into(), BadgeTone::Unknown),
+            ]))
+        );
+    }
 }

@@ -3,6 +3,7 @@
 //! `sections` from the fetched object; no `DynamicObject` here.
 
 use crate::k8s::object_ref::ObjectRef;
+use crate::k8s::resource::status_tone::ConditionStatus;
 use crate::ui::detail::BadgeTone;
 use crate::ui::link::GoToEntry;
 use crate::ui::style::Tone;
@@ -68,6 +69,16 @@ pub enum FieldValue {
         text: String,
         tone: Tone,
     },
+    /// The one status message an object's conditions read as
+    /// (`status_tone::condition_message`), in its tone - copyable, as it is
+    /// often longer than the panel is wide.
+    Message {
+        text: String,
+        tone: Tone,
+    },
+    /// A `Ready` condition's status, beside a dot in its tone as a list's
+    /// Ready cell draws it.
+    Ready(ConditionStatus),
     References {
         targets: Vec<ObjectRef>,
         qualified: bool,
@@ -100,7 +111,10 @@ impl FieldValue {
     #[cfg(test)]
     pub fn text(&self) -> String {
         match self {
-            FieldValue::Text(text) | FieldValue::Status { text, .. } => text.clone(),
+            FieldValue::Text(text)
+            | FieldValue::Status { text, .. }
+            | FieldValue::Message { text, .. } => text.clone(),
+            FieldValue::Ready(status) => status.to_string(),
             FieldValue::References { targets, qualified } => targets
                 .iter()
                 .map(|target| {
@@ -147,6 +161,8 @@ pub fn go_to_entries(sections: &[ObjectSection]) -> Vec<GoToEntry> {
                 .collect(),
             FieldValue::Text(_)
             | FieldValue::Status { .. }
+            | FieldValue::Message { .. }
+            | FieldValue::Ready(_)
             | FieldValue::Chips(_)
             | FieldValue::Metadata(_)
             | FieldValue::Badges(_)
