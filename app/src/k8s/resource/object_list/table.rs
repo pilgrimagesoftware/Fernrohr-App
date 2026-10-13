@@ -8,7 +8,9 @@ use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, T
 use gpui_kit::*;
 
 mod list_model;
-pub(super) use list_model::{ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout};
+pub(super) use list_model::{
+    ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout, reconcile,
+};
 use list_model::{FORWARDS, NAME, cell_text, compare};
 
 use super::columns;
@@ -152,6 +154,26 @@ impl ObjectTableDelegate {
                 width: f32::from(column.width),
             })
             .collect()
+    }
+
+    /// Brings the columns to the set `defaults` lists (see [`reconcile`]),
+    /// `saved` the layout the panel was restored with. Whether that changed
+    /// them - the table then needs a `TableState::refresh`.
+    pub(super) fn set_column_set(
+        &mut self,
+        defaults: Vec<ListColumn>,
+        saved: &[SavedColumn],
+    ) -> bool {
+        let same = defaults.len() == self.columns.len()
+            && defaults
+                .iter()
+                .all(|default| self.columns.iter().any(|column| column.id == default.id));
+        if same {
+            return false;
+        }
+        self.columns = reconcile(&self.columns, defaults, saved);
+        self.apply_sort();
+        true
     }
 
     /// Records new widths for every column, left to right - the table's
@@ -318,11 +340,12 @@ impl TableDelegate for ObjectTableDelegate {
             ));
         }
         let text = cell_text(row, column);
-        // A status cell's text takes its tone's colour; a readiness ratio
-        // keeps plain text beside a dot in its tone, as the Pods table's Ready.
+        // A status cell's text takes its tone's colour; a readiness ratio or
+        // a Ready condition keeps plain text beside a dot in its tone, as the
+        // Pods table's Ready.
         let value = row.cell(column);
         match (value, value.and_then(columns::Cell::tone)) {
-            (Some(columns::Cell::Readiness(..)), Some(tone)) => cell
+            (Some(columns::Cell::Readiness(..) | columns::Cell::Condition(_)), Some(tone)) => cell
                 .flex()
                 .items_center()
                 .gap_1()
