@@ -140,7 +140,7 @@ select { background: var(--surface); border: 1px solid var(--border); border-rad
 .sidebar a[aria-current="page"] { background: var(--accent-subtle); }
 main { padding: calc(var(--panel-inset) * 2) calc(var(--panel-inset) * 2.5); }
 
-.landing-icon { display: block; height: 7rem; margin: 0 auto var(--section-gap); width: 7rem; }
+.landing-logo { display: block; height: auto; margin: 0 auto var(--section-gap); max-width: 100%; width: 320px; }
 
 @media (max-width: 760px) {
   .shell { display: block; }

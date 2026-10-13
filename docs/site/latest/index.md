@@ -3,7 +3,7 @@ title: Fernrohr documentation
 version: latest
 ---
 
-<img class="landing-icon" src="{{ '/assets/icons/fernrohr-icon.png' | relative_url }}" alt="Fernrohr application icon">
+<img class="landing-logo" src="{{ '/assets/images/fernrohr-logo.png' | relative_url }}" alt="Fernrohr" width="320">
 
 # Fernrohr documentation
 
