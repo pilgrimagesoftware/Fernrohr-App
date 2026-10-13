@@ -323,6 +323,18 @@ pub(crate) const MCP_DELETE_PODS_MAX: usize = 10;
 /// them wait too.
 pub(crate) const MCP_FOREGROUND_QUEUE: usize = 32;
 
+/// `app-logging`: name of the application log file inside the per-user log directory.
+pub(crate) const LOG_FILE_NAME: &str = "fernrohr.log";
+
+// UNWIRED: read by `app_log::read_tail`, whose first caller is the Report Issue window.
+/// `app-logging`: the most lines `app_log::read_tail` returns.
+#[allow(dead_code)]
+pub(crate) const LOG_TAIL_LINES: usize = 200;
+
+/// `app-logging`: the most bytes `app_log::read_tail` reads from the end of the log.
+#[allow(dead_code)]
+pub(crate) const LOG_TAIL_BYTES: usize = 24 * 1024;
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.
