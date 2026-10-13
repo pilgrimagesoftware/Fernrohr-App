@@ -25,11 +25,24 @@ impl ObjectDetailPanel {
     fn render_field(&self, section: &str, field: &ObjectField, cx: &Context<Self>) -> AnyElement {
         let value = match &field.value {
             FieldValue::Text(text) => div().child(text.clone()).into_any_element(),
-            FieldValue::Status { text, tone } | FieldValue::Message { text, tone } => div()
+            FieldValue::Status { text, tone } => div()
                 .debug_selector(|| format!("object-status-{section}/{}", field.label))
                 .text_color(crate::ui::style::status(*tone, cx))
                 .child(text.clone())
                 .into_any_element(),
+            FieldValue::Message { text, tone } => {
+                let id = format!("copy {section}/{}", field.label);
+                crate::ui::copy::copyable(
+                    div()
+                        .debug_selector(|| format!("object-status-{section}/{}", field.label))
+                        .min_w_0()
+                        .text_color(crate::ui::style::status(*tone, cx))
+                        .child(text.clone()),
+                    ElementId::Name(id.clone().into()),
+                    text.clone(),
+                    id,
+                )
+            }
             FieldValue::Ready(status) => div()
                 .debug_selector(|| format!("object-status-{section}/{}", field.label))
                 .flex()

@@ -1,6 +1,7 @@
 //! `resource-detail-ui-improvements` 3, in the object panel: Copy Resource
-//! Name (`c`), and the copy controls on a ConfigMap's keys and values - by
-//! click, and by Tab and Space.
+//! Name (`c`), and the copy controls on a ConfigMap's keys and values and on
+//! a derived status message (`resource-status-message` 5.1) - by click, and
+//! by Tab and Space.
 
 use super::fixtures::{kind, object, stub_panel, target};
 use crate::command::CommandRegistry;
@@ -13,6 +14,41 @@ use gpui_kit::{
 use serde_json::json;
 
 fn config_map_panel(cx: &mut TestAppContext) -> (WindowHandle<Root>, VisualTestContext) {
+    loaded_panel(
+        cx,
+        kind("", "v1", "ConfigMap", true),
+        json!({
+            "apiVersion": "v1", "kind": "ConfigMap",
+            "metadata": { "name": "app-config", "namespace": "staging" },
+            "data": { "LOG_LEVEL": "debug" },
+        }),
+    )
+}
+
+/// A HelmRelease whose failing `Ready` condition has [`FAILURE`] to say.
+fn helm_release_panel(cx: &mut TestAppContext) -> (WindowHandle<Root>, VisualTestContext) {
+    loaded_panel(
+        cx,
+        kind("helm.toolkit.fluxcd.io", "v2", "HelmRelease", true),
+        json!({
+            "apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease",
+            "metadata": { "name": "app-config", "namespace": "staging" },
+            "status": { "conditions": [
+                { "type": "Ready", "status": "False", "message": FAILURE },
+            ] },
+        }),
+    )
+}
+
+const FAILURE: &str = "Helm install failed for release staging/web: context deadline exceeded";
+
+/// The panel of `kind`'s object `app-config` in `staging`, loaded with
+/// `manifest`, focused, with the registry's real bindings.
+fn loaded_panel(
+    cx: &mut TestAppContext,
+    kind: crate::k8s::cluster::discovery::DiscoveredKind,
+    manifest: serde_json::Value,
+) -> (WindowHandle<Root>, VisualTestContext) {
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
@@ -25,25 +61,15 @@ fn config_map_panel(cx: &mut TestAppContext) -> (WindowHandle<Root>, VisualTestC
         );
         cx.bind_keys(bindings);
     });
-    let config_maps = kind("", "v1", "ConfigMap", true);
     let (window, panel) = stub_panel(
         cx,
-        target(config_maps.clone(), Some("staging"), "app-config"),
-        vec![config_maps],
+        target(kind.clone(), Some("staging"), "app-config"),
+        vec![kind],
     );
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
     window
         .update(&mut vcx, |_, window, cx| {
-            panel.update(cx, |panel, cx| {
-                panel.test_set_loaded(
-                    object(json!({
-                        "apiVersion": "v1", "kind": "ConfigMap",
-                        "metadata": { "name": "app-config", "namespace": "staging" },
-                        "data": { "LOG_LEVEL": "debug" },
-                    })),
-                    cx,
-                )
-            });
+            panel.update(cx, |panel, cx| panel.test_set_loaded(object(manifest), cx));
             panel.read(cx).focus_handle.clone().focus(window, cx);
         })
         .unwrap();
@@ -89,11 +115,18 @@ async fn a_config_map_key_and_value_copy_on_click(cx: &mut TestAppContext) {
     assert_eq!(clipboard(&mut vcx).as_deref(), Some("LOG_LEVEL"));
 }
 
-/// The keyboard reaches a copy control: Tab to the value's, then Space.
+/// Spec: "Copying a status message" - the derived message copies, in full,
+/// from its control.
 #[gpui_kit::test]
-async fn a_copy_control_is_reached_and_pressed_by_keyboard(cx: &mut TestAppContext) {
-    let (window, mut vcx) = config_map_panel(cx);
-    let id = ElementId::Name("copy ConfigMap/Data value 0".into());
+async fn a_status_message_copies_on_click(cx: &mut TestAppContext) {
+    let (window, mut vcx) = helm_release_panel(cx);
+    click(window, &mut vcx, "copy Status/Message");
+    assert_eq!(clipboard(&mut vcx).as_deref(), Some(FAILURE));
+}
+
+/// Tabs to the copy control `id` and presses Space on it.
+fn tab_to_and_press(window: WindowHandle<Root>, vcx: &mut VisualTestContext, id: &str) {
+    let id = ElementId::Name(id.to_string().into());
     let mut focused = false;
     for _ in 0..20 {
         vcx.simulate_keystrokes("tab");
@@ -120,7 +153,22 @@ async fn a_copy_control_is_reached_and_pressed_by_keyboard(cx: &mut TestAppConte
     });
     vcx.simulate_event(gpui_kit::KeyUpEvent { keystroke: space });
     vcx.run_until_parked();
+}
+
+/// The keyboard reaches a copy control: Tab to the value's, then Space.
+#[gpui_kit::test]
+async fn a_copy_control_is_reached_and_pressed_by_keyboard(cx: &mut TestAppContext) {
+    let (window, mut vcx) = config_map_panel(cx);
+    tab_to_and_press(window, &mut vcx, "copy ConfigMap/Data value 0");
     assert_eq!(clipboard(&mut vcx).as_deref(), Some("debug"));
+}
+
+/// 5.1: so does a status message's.
+#[gpui_kit::test]
+async fn a_status_message_copies_by_keyboard(cx: &mut TestAppContext) {
+    let (window, mut vcx) = helm_release_panel(cx);
+    tab_to_and_press(window, &mut vcx, "copy Status/Message");
+    assert_eq!(clipboard(&mut vcx).as_deref(), Some(FAILURE));
 }
 
 /// #187: a copy control shows it copied - a check mark and "Copied" - for a
