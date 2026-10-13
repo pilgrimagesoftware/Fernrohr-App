@@ -34,14 +34,24 @@ The checks look at structure only, never at wording.
 
 ## Cutting a release snapshot
 
-When a release `vX.Y.0` is tagged:
+Cut the snapshot for a release `vX.Y.0` on `develop` before running the Prepare
+Release workflow. The release PR then carries it to `master`, and the release
+deploy publishes it. Snapshotting after the tag would need a second merge to
+`master` to publish it.
 
 1. Copy `latest/` to `vX.Y/`, and change every `version: latest` in it to
    `version: vX.Y`. Rewrite its `/latest/` links to `/vX.Y/`.
-2. Add a `vX.Y` entry to `_data/versions.yml`, after `latest` and before older
+2. In `vX.Y/index.md`, name the release in the title and heading
+   (`Fernrohr vX.Y documentation`), and replace "the latest release" with
+   "the Fernrohr vX.Y release".
+3. Add a `vX.Y` entry to `_data/versions.yml`, after `latest` and before older
    releases, with the same `pages` and `nav` as `latest`.
-3. Run `bundle exec ruby _scripts/check.rb`, then switch between `latest` and
+4. Run `bundle exec ruby _scripts/check.rb`, then switch between `latest` and
    `vX.Y` on a few pages.
+
+If Prepare Release picks a different version than the snapshot assumed, rename
+the directory, its `version:` values and links, and the manifest entry before the
+release PR merges.
 
 ## After a deploy
 
