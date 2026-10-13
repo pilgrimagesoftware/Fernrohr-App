@@ -4,7 +4,7 @@
 //! is being deleted.
 
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
-use super::common::{condition_badges, non_empty, quantities};
+use super::common::{condition_badges, conditions_json, message_field, non_empty, quantities};
 use crate::k8s::resource::status_tone;
 use k8s_openapi::api::core::v1::{Namespace, Node};
 
@@ -29,6 +29,9 @@ pub(super) fn node(node: &Node) -> Vec<ObjectSection> {
     }
     // `Ready` is the one condition that is good news when it holds; the
     // pressure conditions are good news when they don't.
+    fields.extend(message_field(&conditions_json(
+        status.and_then(|status| status.conditions.as_ref()),
+    )));
     let conditions = status
         .into_iter()
         .flat_map(|status| status.conditions.iter().flatten())
@@ -83,6 +86,9 @@ pub(super) fn namespace(namespace: &Namespace) -> Vec<ObjectSection> {
     // Every namespace condition reports something stalling its deletion
     // (`NamespaceContentRemaining`, `NamespaceFinalizersRemaining`, ...), so
     // each is bad news when it holds.
+    fields.extend(message_field(&conditions_json(
+        status.and_then(|status| status.conditions.as_ref()),
+    )));
     let conditions = status
         .into_iter()
         .flat_map(|status| status.conditions.iter().flatten())

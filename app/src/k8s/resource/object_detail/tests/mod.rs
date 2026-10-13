@@ -7,6 +7,7 @@
 
 mod autoscaling;
 mod cluster;
+mod conditions;
 mod copy;
 mod delete;
 mod edit;

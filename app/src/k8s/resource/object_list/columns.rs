@@ -7,13 +7,19 @@
 //! store runs the extractor once per watch event, when it stores the row, by
 //! deserializing the object into its `k8s-openapi` type; nothing here runs per
 //! frame. An object that doesn't deserialize as its kind gets empty cells, and
-//! a kind with no table gets the base columns only.
+//! a kind with no table gets the base columns only - plus, once its objects
+//! report conditions, the generic Ready and Message columns ([`conditions`],
+//! `resource-status-message`).
 
 mod autoscaling;
+mod conditions;
 mod config_network;
 mod storage_cluster;
 mod workloads;
 
+pub use conditions::ConditionsSeen;
+
+use crate::k8s::resource::status_tone::ConditionStatus;
 use crate::ui::style::Tone;
 use jiff::Timestamp;
 use kube::api::DynamicObject;
@@ -36,6 +42,10 @@ pub enum Cell {
     /// Text in its status's tone - a Job's or Node's status, a claim's phase.
     /// Sorts by text.
     Status(String, Tone),
+    /// A `Ready` condition's status, drawn beside a dot in its tone
+    /// (`ConditionStatus::ready_tone`) as `Readiness` is. Sorts False,
+    /// Unknown, True.
+    Condition(ConditionStatus),
     /// Time since a moment (a last schedule), shown like Age.
     Age(Timestamp),
     /// A fixed span in seconds (a finished Job's duration), shown like Age.
@@ -71,6 +81,7 @@ impl Cell {
                 *ready, *desired,
             )),
             Self::Status(_, tone) => Some(*tone),
+            Self::Condition(status) => Some(status.ready_tone()),
             Self::Empty
             | Self::Text(_)
             | Self::Number(_)
@@ -86,6 +97,7 @@ impl Cell {
             Self::Empty => String::new(),
             Self::Text(text) | Self::Status(text, _) => text.clone(),
             Self::Number(number) => number.to_string(),
+            Self::Condition(status) => status.to_string(),
             Self::Ratio(have, want) | Self::Readiness(have, want) => format!("{have}/{want}"),
             Self::Age(since) => crate::k8s::resource::pods::format_age(seconds_since(*since, now)),
             Self::Duration(secs) => crate::k8s::resource::pods::format_age(*secs),
@@ -102,6 +114,7 @@ impl Cell {
             (_, Self::Empty) => Ordering::Greater,
             (Self::Text(a), Self::Text(b)) | (Self::Status(a, _), Self::Status(b, _)) => a.cmp(b),
             (Self::Number(a), Self::Number(b)) => a.cmp(b),
+            (Self::Condition(a), Self::Condition(b)) => a.cmp(b),
             (Self::Ratio(a_have, a_want), Self::Ratio(b_have, b_want))
             | (Self::Readiness(a_have, a_want), Self::Readiness(b_have, b_want)) => {
                 a_have.cmp(b_have).then(a_want.cmp(b_want))
@@ -125,7 +138,8 @@ impl Cell {
             | Self::Number(_)
             | Self::Ratio(..)
             | Self::Readiness(..)
-            | Self::Status(..) => None,
+            | Self::Status(..)
+            | Self::Condition(_) => None,
         }
     }
 }
@@ -163,7 +177,8 @@ impl KindColumns {
 
 /// The extra columns a `group`/`kind` list shows, or `None` for a kind that
 /// shows the base columns only - every kind not in the spec's table, CRDs
-/// included. Pods have their own table and never come here.
+/// included - until its objects report conditions ([`for_rows`]). Pods have
+/// their own table and never come here.
 pub fn for_kind(group: &str, kind: &str) -> Option<&'static KindColumns> {
     Some(match (group, kind) {
         ("apps", "Deployment") => &workloads::DEPLOYMENT,
@@ -192,6 +207,20 @@ pub fn for_kind(group: &str, kind: &str) -> Option<&'static KindColumns> {
         }
         _ => return None,
     })
+}
+
+/// The columns a `group`/`kind` list's rows carry cells for: the kind's own
+/// table, else the generic condition columns (Ready, Message), which the list
+/// shows only once its objects report conditions ([`ConditionsSeen`]).
+pub fn for_rows(group: &str, kind: &str) -> &'static KindColumns {
+    for_kind(group, kind).unwrap_or(&conditions::CONDITIONS)
+}
+
+/// The generic condition columns a list of a kind outside the table shows,
+/// given what its loaded objects have reported - none, Message, or Ready and
+/// Message. Each pairs with its cell's index in [`for_rows`]'s cells.
+pub fn condition_columns(seen: ConditionsSeen) -> impl Iterator<Item = (usize, ColumnDef)> {
+    conditions::visible(seen)
 }
 
 /// `object` deserialized as `T` and projected by `project`, or every column

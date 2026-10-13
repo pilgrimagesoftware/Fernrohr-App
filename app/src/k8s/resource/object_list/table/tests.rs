@@ -31,6 +31,7 @@ fn row(name: &str, namespace: Option<&str>, age_secs: i64, now: Timestamp) -> Li
             namespace: namespace.map(Into::into),
             created: Some(now - SignedDuration::from_secs(age_secs)),
             cells: Vec::new(),
+            conditions: Default::default(),
         },
         now,
     )
@@ -49,7 +50,10 @@ fn names(delegate: &ObjectTableDelegate) -> Vec<&str> {
 #[test]
 fn a_namespaced_kind_has_name_namespace_and_age() {
     assert_eq!(
-        ids(&ListColumn::for_kind(&kind("Event", true))),
+        ids(&ListColumn::for_kind(
+            &kind("Event", true),
+            Default::default()
+        )),
         ["name", "namespace", "age"]
     );
 }
@@ -57,7 +61,10 @@ fn a_namespaced_kind_has_name_namespace_and_age() {
 #[test]
 fn a_cluster_scoped_kind_has_no_namespace_column() {
     assert_eq!(
-        ids(&ListColumn::for_kind(&kind("ComponentStatus", false))),
+        ids(&ListColumn::for_kind(
+            &kind("ComponentStatus", false),
+            Default::default()
+        )),
         ["name", "age"]
     );
 }
@@ -67,7 +74,10 @@ fn a_cluster_scoped_kind_has_no_namespace_column() {
 #[test]
 fn age_sorts_by_seconds_not_by_text() {
     let now = Timestamp::now();
-    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind("Event", true)));
+    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(
+        &kind("Event", true),
+        Default::default(),
+    ));
     delegate.set_rows(vec![
         row("two-hours", Some("a"), 7200, now),
         row("thirty-seconds", Some("a"), 30, now),
@@ -106,7 +116,10 @@ fn age_sorts_by_seconds_not_by_text() {
 #[test]
 fn name_sorts_alphabetically_and_survives_new_rows() {
     let now = Timestamp::now();
-    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind("Node", false)));
+    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(
+        &kind("Node", false),
+        Default::default(),
+    ));
     delegate.set_rows(vec![
         row("node-c", None, 1, now),
         row("node-a", None, 1, now),
@@ -127,7 +140,10 @@ fn name_sorts_alphabetically_and_survives_new_rows() {
 #[test]
 fn the_selection_follows_its_object_across_a_sort() {
     let now = Timestamp::now();
-    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind("Event", true)));
+    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(
+        &kind("Event", true),
+        Default::default(),
+    ));
     delegate.set_rows(vec![
         row("b", Some("x"), 1, now),
         row("a", Some("x"), 1, now),
@@ -148,7 +164,7 @@ fn the_selection_follows_its_object_across_a_sort() {
 
 #[test]
 fn a_saved_layout_restores_order_and_widths_and_tolerates_change() {
-    let columns = ListColumn::for_kind(&kind("Event", true));
+    let columns = ListColumn::for_kind(&kind("Event", true), Default::default());
     let saved = vec![
         SavedColumn {
             id: "age".into(),
@@ -205,6 +221,7 @@ fn deployment_row(name: &str, available: i64, now: Timestamp) -> ListRow {
                 Cell::Number(3),
                 Cell::Number(available),
             ],
+            conditions: Default::default(),
         },
         now,
     )
@@ -215,7 +232,7 @@ fn deployment_row(name: &str, available: i64, now: Timestamp) -> ListRow {
 /// sorting by Available orders by the count, not its text.
 #[test]
 fn a_deployments_list_shows_and_sorts_its_own_columns_numerically() {
-    let columns = ListColumn::for_kind(&deployments());
+    let columns = ListColumn::for_kind(&deployments(), Default::default());
     assert_eq!(
         ids(&columns),
         [
@@ -271,7 +288,10 @@ fn a_layout_saved_before_the_kinds_own_columns_still_restores() {
         },
     ];
 
-    let columns = apply_layout(ListColumn::for_kind(&deployments()), &saved);
+    let columns = apply_layout(
+        ListColumn::for_kind(&deployments(), Default::default()),
+        &saved,
+    );
 
     assert_eq!(
         ids(&columns),
@@ -285,4 +305,121 @@ fn a_layout_saved_before_the_kinds_own_columns_still_restores() {
         ]
     );
     assert_eq!(columns[1].width, px(300.));
+}
+
+fn every_condition() -> crate::k8s::resource::object_list::columns::ConditionsSeen {
+    crate::k8s::resource::object_list::columns::ConditionsSeen {
+        conditions: true,
+        ready: true,
+    }
+}
+
+fn kustomizations() -> DiscoveredKind {
+    DiscoveredKind {
+        gvk: GroupVersionKind::gvk("kustomize.toolkit.fluxcd.io", "v1", "Kustomization"),
+        plural: "kustomizations".into(),
+        namespaced: true,
+        verbs: Default::default(),
+    }
+}
+
+/// `resource-status-message` 2.3: a kind in the per-kind table never gains
+/// the condition columns, whatever its objects report.
+#[test]
+fn a_kind_in_the_table_gains_no_condition_columns() {
+    let jobs = DiscoveredKind {
+        gvk: GroupVersionKind::gvk("batch", "v1", "Job"),
+        plural: "jobs".into(),
+        namespaced: true,
+        verbs: Default::default(),
+    };
+    assert_eq!(
+        ids(&ListColumn::for_kind(&jobs, every_condition())),
+        ids(&ListColumn::for_kind(&jobs, Default::default())),
+    );
+    assert_eq!(
+        ids(&ListColumn::for_kind(&jobs, every_condition())),
+        [
+            "name",
+            "namespace",
+            "status",
+            "completions",
+            "duration",
+            "age"
+        ]
+    );
+}
+
+/// 2.4: the condition columns sort, resize and reorder like any other.
+#[test]
+fn condition_columns_sort_resize_and_reorder() {
+    use crate::k8s::resource::object_list::columns::Cell;
+    use crate::k8s::resource::status_tone::ConditionStatus;
+    use crate::ui::style::Tone;
+    let now = Timestamp::now();
+    let condition_row = |name: &str, message: &str| {
+        let mut listed = row(name, Some("flux-system"), 0, now);
+        listed.object.cells = vec![
+            Cell::Condition(ConditionStatus::True),
+            Cell::status(message, Tone::Good),
+        ];
+        listed
+    };
+    let mut delegate =
+        ObjectTableDelegate::new(ListColumn::for_kind(&kustomizations(), every_condition()));
+    assert_eq!(
+        ids(delegate.columns()),
+        ["name", "namespace", "ready", "message", "age"]
+    );
+    delegate.set_rows(vec![
+        condition_row("a", "Applied revision: main@2"),
+        condition_row("b", "Applied revision: main@1"),
+    ]);
+    delegate.set_sort("message", false);
+    assert_eq!(names(&delegate), ["b", "a"], "sorted by the message's text");
+
+    delegate.reorder_columns(3, 0);
+    delegate.set_widths(&[px(500.), px(200.), px(100.), px(80.), px(60.)]);
+    let layout = delegate.layout();
+    assert_eq!(layout[0].id, "message");
+    assert_eq!(layout[0].width, 500.);
+}
+
+/// The condition columns join a table the user has already arranged at their
+/// default place - right after the column before them - at a saved width if
+/// the restored layout names one, and go again if no longer called for.
+#[test]
+fn condition_columns_join_and_leave_an_arranged_table() {
+    let kind = kustomizations();
+    let mut delegate = ObjectTableDelegate::new(ListColumn::for_kind(&kind, Default::default()));
+    delegate.reorder_columns(2, 0);
+    assert_eq!(ids(delegate.columns()), ["age", "name", "namespace"]);
+    let saved = vec![SavedColumn {
+        id: "message".into(),
+        width: 420.,
+    }];
+
+    let message_only = crate::k8s::resource::object_list::columns::ConditionsSeen {
+        conditions: true,
+        ready: false,
+    };
+    assert!(delegate.set_column_set(ListColumn::for_kind(&kind, message_only), &saved));
+    assert_eq!(
+        ids(delegate.columns()),
+        ["age", "name", "namespace", "message"]
+    );
+    assert_eq!(delegate.columns()[3].width, px(420.));
+
+    assert!(delegate.set_column_set(ListColumn::for_kind(&kind, every_condition()), &saved));
+    assert_eq!(
+        ids(delegate.columns()),
+        ["age", "name", "namespace", "ready", "message"]
+    );
+    assert!(
+        !delegate.set_column_set(ListColumn::for_kind(&kind, every_condition()), &saved),
+        "the same set changes nothing"
+    );
+
+    assert!(delegate.set_column_set(ListColumn::for_kind(&kind, Default::default()), &saved));
+    assert_eq!(ids(delegate.columns()), ["age", "name", "namespace"]);
 }

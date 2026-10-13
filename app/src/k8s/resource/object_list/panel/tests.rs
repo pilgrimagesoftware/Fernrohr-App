@@ -120,7 +120,7 @@ pub(super) fn harness_full(
             // A completed first list, as a watch delivers one: a table still on
             // its first list shows the loading state, not its rows
             // (`list-loading-indicator`).
-            let mut table = ObjectsTable::default();
+            let mut table = ObjectsTable::for_kind(&kind);
             table.apply(watcher::Event::Init);
             for object in objects {
                 table.apply(watcher::Event::InitApply(object));
@@ -471,6 +471,7 @@ async fn double_clicking_a_header_divider_fits_its_column(cx: &mut TestAppContex
 }
 
 mod background;
+mod conditions;
 mod poll;
 mod search;
 mod sort;

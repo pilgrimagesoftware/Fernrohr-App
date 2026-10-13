@@ -1,6 +1,7 @@
 //! The sections a kind gets after Overview, projected from the object's typed
-//! `k8s-openapi` form. A kind not listed here - or an object that doesn't
-//! deserialize as its kind - gets Overview only.
+//! `k8s-openapi` form. A kind not listed here gets the generic Status section
+//! if its object reports conditions ([`conditions`]), else Overview only - as
+//! does an object that doesn't deserialize as its kind.
 //!
 //! This dispatch is where a kind gains a structured viewer; nothing that shows
 //! a reference to it needs to change.
@@ -8,6 +9,7 @@
 mod autoscaling;
 mod cluster;
 mod common;
+mod conditions;
 mod config;
 mod event;
 mod network;
@@ -74,7 +76,7 @@ pub(super) fn sections_for(kind: &DiscoveredKind, object: &DynamicObject) -> Vec
         }
         ("", "Event") => typed(object).map(|event| event::event(&event)),
         ("autoscaling", "HorizontalPodAutoscaler") => autoscaling::hpa(object, namespace),
-        _ => None,
+        _ => conditions::status(object),
     }
     .unwrap_or_default()
 }
