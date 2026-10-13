@@ -152,6 +152,23 @@ fn gh_path(cx: &App) -> Option<Option<String>> {
     }
 }
 
+/// The log file tests attach instead of the real one.
+#[cfg(test)]
+pub(super) struct LogPathOverride(pub std::path::PathBuf);
+
+#[cfg(test)]
+impl Global for LogPathOverride {}
+
+/// The application log a report attaches: the real one, or a test's.
+fn log_path(cx: &App) -> std::path::PathBuf {
+    #[cfg(test)]
+    if let Some(path) = cx.try_global::<LogPathOverride>() {
+        return path.0.clone();
+    }
+    let _ = cx;
+    crate::util::app_log::log_path()
+}
+
 fn resolve_path(path: Option<String>) -> String {
     path.unwrap_or_else(|| crate::util::login_env::login_path().to_string())
 }

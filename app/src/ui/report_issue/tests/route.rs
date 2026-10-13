@@ -2,13 +2,16 @@
 //! script on a scratch `PATH` - labelled for its type, and opens the browser
 //! when `gh` isn't ready, or fails.
 
-use gpui_kit::TestAppContext;
+use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::{ElementId, TestAppContext};
 
-use super::super::GhPathOverride;
 use super::super::body::IssueKind;
+use super::super::body::LogSection;
 use super::super::gh::REPO;
 use super::super::gh::tests::fake_gh;
+use super::super::render::LOG_PREVIEW;
 use super::super::window::Route;
+use super::super::{GhPathOverride, LogPathOverride};
 use super::{fill, is_open, open, setup, wait_until};
 
 /// A fake `gh` that is signed in and records each `issue create`'s arguments
@@ -32,19 +35,40 @@ fn wait_for_route(cx: &mut TestAppContext, opened: &super::Opened, route: Route)
 }
 
 #[gpui_kit::test]
-async fn with_gh_ready_a_bug_is_filed_labelled_with_its_log(cx: &mut TestAppContext) {
+async fn with_gh_ready_a_bug_is_filed_labelled_with_the_log_it_showed(cx: &mut TestAppContext) {
     setup(cx);
     let dir = recording_gh(cx);
+    let log = dir.join("fernrohr.log");
+    std::fs::write(&log, "INFO starting\nWARN watch restarted\n").unwrap();
+    cx.update(|cx| cx.set_global(LogPathOverride(log)));
     let mut opened = open(cx, None);
     wait_for_route(cx, &opened, Route::Gh);
     fill(&mut opened, "Pods panel crashes", "Hit refresh twice.");
     let view = opened.view.clone();
-    opened.vcx.update(|window, cx| {
-        view.update(cx, |view, cx| {
-            view.set_attach_log(true, cx);
-            view.send(window, cx);
-        })
+    opened
+        .vcx
+        .update(|_, cx| view.update(cx, |view, cx| view.set_attach_log(true, cx)));
+    wait_until(cx, |cx| cx.update(|cx| view.read(cx).log_preview.is_some()));
+
+    // What is shown is what will be attached.
+    let shown = cx.update(|cx| view.read(cx).log_preview.clone());
+    assert_eq!(
+        shown,
+        Some(LogSection::Tail(
+            "INFO starting\nWARN watch restarted\n".into()
+        ))
+    );
+    let preview_drawn = opened.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window
+            .try_find(ElementId::Name(LOG_PREVIEW.into()))
+            .is_some()
     });
+    assert!(preview_drawn, "the window shows the log it attaches");
+
+    opened
+        .vcx
+        .update(|window, cx| view.update(cx, |view, cx| view.send(window, cx)));
     wait_until(cx, |_| {
         dir.join("args").exists() && dir.join("body").exists()
     });
@@ -55,7 +79,11 @@ async fn with_gh_ready_a_bug_is_filed_labelled_with_its_log(cx: &mut TestAppCont
     assert!(args.trim_end().ends_with("--label bug"), "{args}");
     let body = std::fs::read_to_string(dir.join("body")).unwrap();
     assert!(body.starts_with("Hit refresh twice."), "{body}");
-    assert!(body.contains("### Logs"), "the log was asked for: {body}");
+    assert!(body.contains("<details>"), "{body}");
+    assert!(
+        body.contains("WARN watch restarted"),
+        "the log it showed: {body}"
+    );
     assert_eq!(
         cx.opened_url(),
         None,

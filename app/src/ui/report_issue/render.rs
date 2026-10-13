@@ -10,7 +10,7 @@ use gpui_kit::component::radio::{Radio, RadioGroup};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _};
 use gpui_kit::*;
 
-use super::body::{IssueKind, file_name};
+use super::body::{IssueKind, LogSection, file_name};
 use super::window::{ReportIssueWindow, Route, close};
 use super::{AddScreenshots, CloseReport, KEY_CONTEXT, SendReport};
 use crate::consts::REPORT_MAX_SCREENSHOTS;
@@ -19,6 +19,7 @@ use crate::consts::REPORT_MAX_SCREENSHOTS;
 pub(super) const REPORT_BUTTON: &str = "report-issue-report";
 pub(super) const CLOSE_BUTTON: &str = "report-issue-close";
 pub(super) const LOG_CHECKBOX: &str = "report-issue-attach-log";
+pub(super) const LOG_PREVIEW: &str = "report-issue-log-preview";
 pub(super) const ROUTE_LINE: &str = "report-issue-route";
 
 impl Render for ReportIssueWindow {
@@ -71,7 +72,7 @@ impl Render for ReportIssueWindow {
             .children(
                 self.kind
                     .offers_log()
-                    .then(|| log_option(&entity, self.attach_log, &theme)),
+                    .then(|| log_option(&entity, self, &theme)),
             )
             .child(screenshots_section(&entity, self, &theme))
             .child(
@@ -113,10 +114,47 @@ fn kind_selector(entity: &Entity<ReportIssueWindow>, selected: IssueKind) -> Rad
 
 fn log_option(
     entity: &Entity<ReportIssueWindow>,
-    checked: bool,
+    report: &ReportIssueWindow,
     theme: &gpui_kit::component::Theme,
 ) -> Div {
     let entity = entity.clone();
+    let muted = |text: SharedString| {
+        div()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .child(text)
+    };
+    // Checked, the option shows exactly what it attaches.
+    let preview = report.attach_log.then(|| match &report.log_preview {
+        None => muted("Reading the log\u{2026}".into()).into_any_element(),
+        Some(LogSection::Path(path)) => muted(
+            format!(
+                "The log couldn't be read, so the report names {} instead.",
+                path.display()
+            )
+            .into(),
+        )
+        .into_any_element(),
+        Some(LogSection::Tail(tail)) => div()
+            .id(LOG_PREVIEW)
+            .test_support()
+            .max_h(px(160.))
+            .overflow_y_scroll()
+            .p_2()
+            .rounded(px(6.))
+            .bg(theme.muted)
+            .font_family(theme.mono_font_family.clone())
+            .text_xs()
+            .child(gpui_kit::base::SelectableText::new(
+                "report-issue-log-preview-text",
+                if tail.trim().is_empty() {
+                    "(The log is empty.)".to_string()
+                } else {
+                    tail.clone()
+                },
+            ))
+            .into_any_element(),
+    });
     div()
         .flex()
         .flex_col()
@@ -124,16 +162,17 @@ fn log_option(
         .child(
             Checkbox::new(LOG_CHECKBOX)
                 .label("Attach the application log")
-                .checked(checked)
+                .checked(report.attach_log)
                 .on_click(move |checked, _, cx| {
                     entity.update(cx, |this, cx| this.set_attach_log(*checked, cx));
                 }),
         )
-        .child(
-            div().text_xs().text_color(theme.muted_foreground).child(
-                "Attaches the end of the log. Logs can include context names, hosts and paths.",
-            ),
-        )
+        .child(muted(
+            "Attaches the end of the log, shown below once checked. Logs can include context \
+             names, hosts and paths."
+                .into(),
+        ))
+        .children(preview)
 }
 
 /// The chosen screenshots by name, each removable, the add control, and a

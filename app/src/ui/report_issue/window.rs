@@ -9,9 +9,10 @@ use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::*;
 
 use super::ReportError;
-use super::body::{Diagnostics, IssueKind};
+use super::body::{Diagnostics, IssueKind, LogSection};
 use super::screenshots;
 use crate::consts::{REPORT_WINDOW_MIN_SIZE, REPORT_WINDOW_SIZE};
+use crate::util::app_log;
 
 /// The open Report Issue window, if one is.
 struct ReportWindowHandle(Option<WindowHandle<Root>>);
@@ -109,6 +110,10 @@ pub(super) struct ReportIssueWindow {
     /// Whether a bug report attaches the end of the application log. Off
     /// until the reporter turns it on: logs can name contexts and hosts.
     pub(super) attach_log: bool,
+    /// What the log option attaches, read when it is checked and shown under
+    /// it: the report carries exactly this, never text the reporter hasn't
+    /// seen. `None` while it is being read, or while the option is off.
+    pub(super) log_preview: Option<LogSection>,
     pub(super) screenshots: Vec<PathBuf>,
     /// How many files the last pick skipped, to say so; cleared once the list
     /// changes again.
@@ -141,6 +146,7 @@ impl ReportIssueWindow {
             subject,
             description,
             attach_log: false,
+            log_preview: None,
             screenshots: Vec::new(),
             skipped: 0,
             route: Route::Checking,
@@ -168,9 +174,36 @@ impl ReportIssueWindow {
         cx.notify();
     }
 
+    /// Turns the log option on or off. On, it reads the end of the log off
+    /// the main thread, to show it and to attach just that.
     pub(super) fn set_attach_log(&mut self, attach: bool, cx: &mut Context<Self>) {
         self.attach_log = attach;
+        self.log_preview = None;
         cx.notify();
+        if !attach {
+            return;
+        }
+        let path = super::log_path(cx);
+        let read = cx.background_spawn(async move {
+            match app_log::read_tail(&path) {
+                Ok(tail) => LogSection::Tail(tail),
+                Err(error) => {
+                    log::warn!("couldn't read {} for a report: {error}", path.display());
+                    LogSection::Path(path)
+                }
+            }
+        });
+        cx.spawn(async move |this, cx| {
+            let preview = read.await;
+            let _ = this.update(cx, |this, cx| {
+                // Unchecked again while it was read: drop it.
+                if this.attach_log {
+                    this.log_preview = Some(preview);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     pub(super) fn add_screenshots(&mut self, picked: Vec<PathBuf>, cx: &mut Context<Self>) {

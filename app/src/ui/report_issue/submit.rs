@@ -8,8 +8,7 @@ use gpui_kit::*;
 
 use super::body::{LogSection, fields_filled, github_issue_url, issue_body};
 use super::window::{ReportIssueWindow, Route, close};
-use super::{gh, gh_path, resolve_path, screenshots};
-use crate::util::app_log;
+use super::{gh, gh_path, log_path, resolve_path, screenshots};
 
 /// Finds out, off the main thread, whether `gh` is ready, and redraws the
 /// window to say which way Report will go.
@@ -58,10 +57,15 @@ impl ReportIssueWindow {
         let kind = self.kind;
         let shots = self.screenshots.clone();
         let diagnostics = self.diagnostics.clone();
-        let log_path = (self.attach_log && kind.offers_log()).then(app_log::log_path);
-
+        // The log goes as it was shown; if it hasn't been read yet, only
+        // where it is - never text the reporter hasn't seen.
+        let log = (self.attach_log && kind.offers_log()).then(|| {
+            self.log_preview
+                .clone()
+                .unwrap_or_else(|| LogSection::Path(log_path(cx)))
+        });
         // The browser page can't carry the log's text, only where it is.
-        let browser_log = log_path.clone().map(LogSection::Path);
+        let browser_log = log.as_ref().map(|_| LogSection::Path(log_path(cx)));
         let browser_body = issue_body(&description, &shots, browser_log.as_ref(), &diagnostics);
         let browser_url = github_issue_url(&subject, &browser_body, kind);
 
@@ -75,19 +79,9 @@ impl ReportIssueWindow {
         self.sending = true;
         cx.notify();
         let has_shots = !shots.is_empty();
-        let filed = cx.background_spawn({
-            let shots = shots.clone();
-            async move {
-                let log = log_path.map(|path| match app_log::read_tail(&path) {
-                    Ok(tail) => LogSection::Tail(tail),
-                    Err(error) => {
-                        log::warn!("couldn't read {} for a report: {error}", path.display());
-                        LogSection::Path(path)
-                    }
-                });
-                let body = issue_body(&description, &shots, log.as_ref(), &diagnostics);
-                gh::create_labeled(&resolve_path(path), &subject, &body, kind.github_label())
-            }
+        let body = issue_body(&description, &shots, log.as_ref(), &diagnostics);
+        let filed = cx.background_spawn(async move {
+            gh::create_labeled(&resolve_path(path), &subject, &body, kind.github_label())
         });
         cx.spawn_in(window, async move |_, cx| {
             let filed = filed.await;
