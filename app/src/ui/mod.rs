@@ -1,5 +1,6 @@
 pub mod about_window;
 pub mod accent;
+pub(crate) mod add_context_window;
 #[cfg(unix)]
 pub(crate) mod agent_approval;
 pub(crate) mod agent_setup;

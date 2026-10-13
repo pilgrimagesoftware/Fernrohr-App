@@ -117,6 +117,9 @@ pub struct StatusBarView {
     /// the Resource panel's cluster dropdown follows too. Invalid for a bar built
     /// outside a window ([`Self::new`]), where those actions do nothing.
     main_window: WeakEntity<MainWindow>,
+    /// The Add Context window this bar last opened, which may since have closed -
+    /// [`Self::open_add_window`] checks.
+    add_window: Option<AnyWindowHandle>,
     tunnels_path: PathBuf,
     /// Every configured tunnel and every context's binding, for each capsule's tunnel
     /// label - loaded at construction and refreshed only on [`TunnelsRevision`].
@@ -192,6 +195,7 @@ impl StatusBarView {
             context_names,
             active: 0,
             main_window,
+            add_window: None,
             tunnels_path,
             tunnel_choices,
             tunnel_bindings,

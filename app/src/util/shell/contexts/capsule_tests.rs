@@ -114,20 +114,37 @@ async fn the_capsules_are_in_the_status_bar_at_the_bottom(cx: &mut TestAppContex
     }
 }
 
-/// 1.2: the add control after the capsules, and its palette command, each open the
-/// add popover.
+/// 1.2 and `add-context-window`: the add control after the capsules, and its
+/// palette command, each open the Add Context window - a window of its own, with no
+/// dialog over this one - and asking again raises it rather than opening another.
 #[gpui_kit::test]
-async fn the_add_control_and_command_open_the_add_popover(cx: &mut TestAppContext) {
+async fn the_add_control_and_command_open_one_add_context_window(cx: &mut TestAppContext) {
     let mut h = harness(cx, &["kind-dev"]);
+    let before = h.vcx.update(|_, cx| cx.windows().len());
     click(&mut h, "context-bar-add");
-    assert!(dialog_open(&mut h), "the control opens it");
-    h.vcx.update(|window, cx| window.close_all_dialogs(cx));
-    h.vcx.run_until_parked();
+    assert!(!dialog_open(&mut h), "nothing blocks the workspace window");
+    let after_click = h.vcx.update(|_, cx| cx.windows().len());
+    assert_eq!(after_click, before + 1, "the control opens a window");
+    let opened = add_window(&mut h).expect("the bar keeps the window it opened");
 
     h.vcx.dispatch_action(AddContext);
     h.vcx.run_until_parked();
-    assert!(dialog_open(&mut h), "the command opens it");
-    h.vcx.update(|window, cx| window.close_all_dialogs(cx));
+    assert!(!dialog_open(&mut h), "nor does the command");
+    let after_command = h.vcx.update(|_, cx| cx.windows().len());
+    assert_eq!(
+        after_command, after_click,
+        "the command raised the open one"
+    );
+    assert_eq!(add_window(&mut h), Some(opened), "the same window");
+}
+
+fn add_window(h: &mut Harness) -> Option<gpui_kit::AnyWindowHandle> {
+    h.vcx.update(|_, cx| {
+        h.main
+            .read(cx)
+            .test_status_bar()
+            .and_then(|bar| bar.read(cx).add_window())
+    })
 }
 
 /// 1.3: Disconnect, by its command, asks first; confirming removes the capsule,
