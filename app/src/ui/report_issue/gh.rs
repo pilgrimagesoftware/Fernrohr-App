@@ -23,22 +23,45 @@ pub(super) fn ready(path: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-/// Files an issue titled `title` with `body` against [`REPO`], returning the
-/// new issue's URL - or why `gh` couldn't, in its own words. The body goes
-/// over stdin, so no length or quoting limit applies.
-pub(super) fn create(path: &str, title: &str, body: &str) -> Result<String, String> {
+/// Files the issue labelled `label`, and again without the label if that
+/// fails: most reporters can't label issues in the repository, and `gh`
+/// refuses the whole issue rather than dropping the label. The error is the
+/// unlabelled attempt's.
+pub(super) fn create_labeled(
+    path: &str,
+    title: &str,
+    body: &str,
+    label: &str,
+) -> Result<String, String> {
+    create(path, title, body, Some(label)).or_else(|_| create(path, title, body, None))
+}
+
+/// Files an issue titled `title` with `body` against [`REPO`], labelled
+/// `label` when given, returning the new issue's URL - or why `gh` couldn't,
+/// in its own words. The body goes over stdin, so no length or quoting limit
+/// applies.
+pub(super) fn create(
+    path: &str,
+    title: &str,
+    body: &str,
+    label: Option<&str>,
+) -> Result<String, String> {
+    let mut args = vec![
+        "issue",
+        "create",
+        "--repo",
+        REPO,
+        "--title",
+        title,
+        "--body-file",
+        "-",
+    ];
+    if let Some(label) = label {
+        args.extend(["--label", label]);
+    }
     let mut child = Command::new("gh")
         .env("PATH", path)
-        .args([
-            "issue",
-            "create",
-            "--repo",
-            REPO,
-            "--title",
-            title,
-            "--body-file",
-            "-",
-        ])
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

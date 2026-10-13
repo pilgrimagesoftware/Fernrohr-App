@@ -1,11 +1,13 @@
-//! #177: an error's Report… opens Report Issue with the error's text filled
-//! in - reached by focus moving to it, as Tab moves it, and pressed with Enter.
+//! #177: an error's Report… opens the Report Issue window with the error's
+//! text filled in - and never replaces a report the user has started.
 
-use super::super::{LastForm, ReportError, register_handler};
-use crate::ui::panel_title::{REPORT_ERROR_BUTTON, error_content};
-use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, ElementId, TestAppContext, VisualTestContext};
+
+use super::super::ReportError;
+use super::super::window;
+use super::{fill, open, setup};
+use crate::ui::panel_title::{REPORT_ERROR_BUTTON, error_content};
 
 #[test]
 fn a_reports_subject_is_the_errors_first_line_and_its_body_both() {
@@ -22,6 +24,43 @@ fn a_reports_subject_is_the_errors_first_line_and_its_body_both() {
     let long = ReportError::of(&"x".repeat(200), None);
     assert_eq!(long.subject, format!("{}\u{2026}", "x".repeat(80)));
     assert_eq!(long.description, format!("{}\n", "x".repeat(200)));
+}
+
+fn fields(cx: &mut TestAppContext) -> (String, String) {
+    let (_, view) = cx.update(window::test_view).expect("the window is open");
+    cx.update(|cx| {
+        let view = view.read(cx);
+        (
+            view.subject.read(cx).value().to_string(),
+            view.description.read(cx).value().to_string(),
+        )
+    })
+}
+
+#[gpui_kit::test]
+async fn an_error_opens_the_window_filled_in(cx: &mut TestAppContext) {
+    setup(cx);
+    open(
+        cx,
+        Some(ReportError::of("Couldn't list pods", Some("403 Forbidden"))),
+    );
+    let (subject, description) = fields(cx);
+    assert_eq!(subject, "Couldn't list pods");
+    assert!(description.contains("403 Forbidden"), "{description}");
+}
+
+#[gpui_kit::test]
+async fn an_error_never_replaces_a_report_in_progress(cx: &mut TestAppContext) {
+    setup(cx);
+    let mut opened = open(cx, None);
+    fill(&mut opened, "My own subject", "");
+
+    cx.update(|cx| window::open_or_raise(Some(ReportError::of("Couldn't list pods", None)), cx));
+    cx.run_until_parked();
+
+    let (subject, description) = fields(cx);
+    assert_eq!(subject, "My own subject");
+    assert!(description.is_empty());
 }
 
 /// A panel showing a connection failure.
@@ -43,11 +82,7 @@ impl gpui_kit::Render for Failure {
 
 #[gpui_kit::test]
 async fn tab_and_enter_on_report_open_it_filled_in(cx: &mut TestAppContext) {
-    cx.executor().allow_parking();
-    cx.update(|cx| {
-        crate::util::test_ui::init(cx);
-        register_handler(cx);
-    });
+    setup(cx);
     let window = cx.update(|cx| {
         gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |_, cx| {
             cx.new(|_| Failure)
@@ -88,25 +123,10 @@ async fn tab_and_enter_on_report_open_it_filled_in(cx: &mut TestAppContext) {
     vcx.simulate_event(gpui_kit::KeyUpEvent { keystroke: enter });
     vcx.run_until_parked();
 
-    assert!(
-        window
-            .update(cx, |_, window, cx| window.has_active_dialog(cx))
-            .unwrap(),
-        "Report Issue opened"
-    );
-    let (subject, description) = cx.update(|cx| {
-        let form = cx.global::<LastForm>();
-        (
-            form.subject.read(cx).value().to_string(),
-            form.description.read(cx).value().to_string(),
-        )
-    });
+    let (subject, description) = fields(cx);
     assert_eq!(subject, "Couldn't connect to dev");
     assert!(
         description.contains("unable to run auth exec: No such file or directory"),
         "{description}"
     );
-    window
-        .update(cx, |_, window, cx| window.close_all_dialogs(cx))
-        .unwrap();
 }

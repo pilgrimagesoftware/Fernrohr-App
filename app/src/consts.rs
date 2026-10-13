@@ -326,14 +326,23 @@ pub(crate) const MCP_FOREGROUND_QUEUE: usize = 32;
 /// `app-logging`: name of the application log file inside the per-user log directory.
 pub(crate) const LOG_FILE_NAME: &str = "fernrohr.log";
 
-// UNWIRED: read by `app_log::read_tail`, whose first caller is the Report Issue window.
 /// `app-logging`: the most lines `app_log::read_tail` returns.
-#[allow(dead_code)]
 pub(crate) const LOG_TAIL_LINES: usize = 200;
 
 /// `app-logging`: the most bytes `app_log::read_tail` reads from the end of the log.
-#[allow(dead_code)]
 pub(crate) const LOG_TAIL_BYTES: usize = 24 * 1024;
+
+/// `report-issue`: the Report Issue window's starting size, roomy enough for
+/// the form without scrolling.
+pub(crate) const REPORT_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(560.), gpui_kit::px(720.));
+
+/// `report-issue`: the smallest the Report Issue window can be made.
+pub(crate) const REPORT_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(420.), gpui_kit::px(480.));
+
+/// `report-issue`: how many screenshots a report can name.
+pub(crate) const REPORT_MAX_SCREENSHOTS: usize = 5;
 
 #[cfg(test)]
 mod tests {

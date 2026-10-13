@@ -15,8 +15,6 @@ use parking_lot::Mutex;
 use crate::consts::{LOG_FILE_NAME, LOG_TAIL_BYTES, LOG_TAIL_LINES};
 use crate::util::paths::log_dir;
 
-// UNWIRED: the Report Issue window is the first caller.
-#[allow(dead_code)]
 /// Where the application log is written.
 pub fn log_path() -> PathBuf {
     log_dir().join(LOG_FILE_NAME)
@@ -36,8 +34,6 @@ pub fn install() {
     }
 }
 
-// UNWIRED: the Report Issue window is the first caller.
-#[allow(dead_code)]
 /// The last `LOG_TAIL_LINES` lines of the file, from at most `LOG_TAIL_BYTES`
 /// bytes. When the file is larger than the byte budget the partial first line
 /// is dropped.
