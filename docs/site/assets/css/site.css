@@ -1,0 +1,148 @@
+/*
+ * Theme layer. Every token traces to the application:
+ * - Base palette: gpui-component's Default Light / Default Dark theme
+ *   (background, foreground, muted, border, blue, green/cyan/yellow/red).
+ * - Surfaces, accent and status tones: app/src/ui/style.rs. Raised and card
+ *   surfaces step the background's lightness by 0.035 and 0.0525. The accent
+ *   and status tones are adjusted with `meet` until they reach 3:1 (text 4.5:1)
+ *   against the card surface, the strictest surface they sit on here.
+ * - Spacing: app/src/ui/space.rs at the default text size.
+ * - Fonts: app/src/ui/typography.rs and app/assets/fonts/ (Adamina for frame
+ *   text, Manrope for content); the code stack is MONO_FONT_ALTERNATES in
+ *   app/src/ui/theme.rs.
+ */
+
+@font-face { font-family: Adamina; src: url("../fonts/Adamina-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: Manrope; src: url("../fonts/Manrope-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: Manrope; src: url("../fonts/Manrope-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+
+:root {
+  --surface: #ffffff;
+  --raised: #f6f6f6;
+  --card: #f2f2f2;
+  --text: #0a0a0a;
+  --muted: #6d6d6d;
+  --border: #e5e5e5;
+  --accent: #2563eb;
+  --accent-subtle: rgb(37 99 235 / 22%);
+  --accent-hover: rgb(37 99 235 / 10%);
+  --good: #1a9a49;
+  --info: #0596af;
+  --warning: #ac8406;
+  --bad: #ef4444;
+
+  --panel-inset: 16px;
+  --card-padding: 12px;
+  --row-height: 36px;
+  --section-gap: 16px;
+  --control-gap: 10px;
+
+  --frame-font: Adamina, Georgia, serif;
+  --data-font: Manrope, -apple-system, "Segoe UI", sans-serif;
+  --code-font: Monaco, Menlo, "Cascadia Mono", "Noto Sans Mono", "Liberation Mono", "Ubuntu Mono", "Courier New", monospace;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --surface: #0a0a0a;
+  --raised: #131313;
+  --card: #171717;
+  --text: #fafafa;
+  --muted: #a3a3a3;
+  --border: #262626;
+  --accent: #60a5fa;
+  --accent-subtle: rgb(96 165 250 / 22%);
+  --accent-hover: rgb(96 165 250 / 10%);
+  --good: #4ade80;
+  --info: #22d3ee;
+  --warning: #facc15;
+  --bad: #f87171;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    --surface: #0a0a0a;
+    --raised: #131313;
+    --card: #171717;
+    --text: #fafafa;
+    --muted: #a3a3a3;
+    --border: #262626;
+    --accent: #60a5fa;
+    --accent-subtle: rgb(96 165 250 / 22%);
+    --accent-hover: rgb(96 165 250 / 10%);
+    --good: #4ade80;
+    --info: #22d3ee;
+    --warning: #facc15;
+    --bad: #f87171;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--data-font);
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4, h5, h6, .brand, .sidebar, .picker { font-family: var(--frame-font); font-weight: 400; }
+h1 { font-size: 2rem; margin-top: 0; }
+h2 { margin-top: calc(var(--section-gap) * 2); }
+
+a { color: var(--accent); }
+a:hover { background: var(--accent-hover); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+code, pre, kbd { font-family: var(--code-font); font-size: .9em; }
+code, kbd { background: var(--card); border-radius: 4px; padding: .1rem .3rem; }
+pre { background: var(--card); border-radius: 6px; overflow-x: auto; padding: var(--card-padding); }
+pre code { background: none; padding: 0; }
+
+table { border-collapse: collapse; margin: var(--section-gap) 0; width: 100%; }
+th { background: var(--raised); font-family: var(--frame-font); font-weight: 400; text-align: left; }
+th, td { border-bottom: 1px solid var(--border); padding: calc(var(--card-padding) / 2) var(--card-padding); }
+
+blockquote { background: var(--card); border-left: 3px solid var(--accent); margin: var(--section-gap) 0; padding: var(--card-padding) var(--panel-inset); }
+blockquote.warning { border-left-color: var(--warning); }
+blockquote > :first-child { margin-top: 0; }
+blockquote > :last-child { margin-bottom: 0; }
+
+.skip-link { left: -9999px; position: absolute; }
+.skip-link:focus { background: var(--surface); left: var(--panel-inset); padding: .5rem; top: var(--panel-inset); z-index: 2; }
+.visually-hidden { clip: rect(0 0 0 0); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+
+.site-header {
+  align-items: center;
+  background: var(--raised);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--control-gap);
+  justify-content: space-between;
+  min-height: calc(var(--row-height) + var(--panel-inset));
+  padding: 0 var(--panel-inset);
+}
+.brand { align-items: center; color: var(--text); display: flex; font-size: 1.2rem; gap: var(--control-gap); text-decoration: none; }
+.brand:hover { background: none; }
+.brand-icon { height: 32px; width: 32px; }
+.version-badge { background: var(--accent-subtle); border-radius: 999px; font-family: var(--data-font); font-size: .75rem; font-weight: 600; padding: .1rem .55rem; }
+.pickers { display: flex; flex-wrap: wrap; gap: var(--panel-inset); }
+.picker { color: var(--muted); font-size: .85rem; }
+select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--data-font); margin-left: .4rem; padding: .3rem; }
+.version-links { display: flex; gap: var(--control-gap); }
+
+.shell { display: grid; grid-template-columns: 15rem minmax(0, 50rem); min-height: calc(100vh - var(--row-height) - var(--panel-inset)); }
+.sidebar { background: var(--raised); display: flex; flex-direction: column; gap: 2px; padding: var(--panel-inset); }
+.sidebar a { border-radius: 6px; color: var(--text); display: block; padding: .3rem .6rem; text-decoration: none; }
+.sidebar a[aria-current="page"] { background: var(--accent-subtle); }
+main { padding: calc(var(--panel-inset) * 2) calc(var(--panel-inset) * 2.5); }
+
+.landing-icon { display: block; height: 7rem; margin: 0 auto var(--section-gap); width: 7rem; }
+
+@media (max-width: 760px) {
+  .shell { display: block; }
+  main { padding: var(--panel-inset); }
+}

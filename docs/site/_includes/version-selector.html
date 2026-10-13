@@ -1,0 +1,17 @@
+<label class="picker" for="version-select">Version
+  <select id="version-select" aria-describedby="version-note" onchange="window.location.href=this.value">
+    {%- for version in site.data.versions.versions %}
+      {%- include version-target.html version=version %}
+      <option value="{{ target | relative_url }}"{% if version.id == current_version.id %} selected{% endif %}>{{ version.label }}</option>
+    {%- endfor %}
+  </select>
+</label>
+<span id="version-note" class="visually-hidden">Opens the same page in the selected version, or its overview when that version doesn't have the page.</span>
+<noscript>
+  <nav class="version-links" aria-label="Documentation versions">
+    {%- for version in site.data.versions.versions %}
+      {%- include version-target.html version=version %}
+      <a href="{{ target | relative_url }}"{% if version.id == current_version.id %} aria-current="true"{% endif %}>{{ version.label }}</a>
+    {%- endfor %}
+  </nav>
+</noscript>

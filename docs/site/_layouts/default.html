@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if page.title %}{{ page.title }} - {% endif %}{{ site.title }}</title>
+    <link rel="icon" type="image/png" href="{{ '/assets/icons/favicon.png' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+    <script>document.documentElement.dataset.theme = localStorage.getItem("fernrohr-docs-theme") || "system";</script>
+  </head>
+  <body>
+    {%- assign current_version = site.data.versions.versions | where: "id", site.data.versions.latest | first -%}
+    {%- if page.version -%}
+      {%- assign current_version = site.data.versions.versions | where: "id", page.version | first -%}
+    {%- endif -%}
+    {%- assign page_key = page.url | remove_first: current_version.path | split: "/" | join: "/" -%}
+    {%- if page_key == "" -%}{%- assign page_key = "index" -%}{%- endif %}
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="{{ current_version.path | relative_url }}" aria-label="Fernrohr documentation home">
+        <img class="brand-icon" src="{{ '/assets/icons/fernrohr-icon.png' | relative_url }}" alt="">
+        <span>Fernrohr</span>
+        <span class="version-badge">{{ current_version.label }}</span>
+      </a>
+      <div class="pickers">
+        {% include version-selector.html %}
+        <label class="picker" for="appearance-select">Appearance
+          <select id="appearance-select">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+      </div>
+    </header>
+    <div class="shell">
+      <nav class="sidebar" aria-label="Documentation">
+        {%- for item in current_version.nav %}
+          {%- assign item_url = current_version.path | append: item.path %}
+          <a href="{{ item_url | relative_url }}"{% if item_url == page.url %} aria-current="page"{% endif %}>{{ item.title }}</a>
+        {%- endfor %}
+      </nav>
+      <main id="content">{{ content }}</main>
+    </div>
+    <script>
+      const appearance = document.getElementById("appearance-select");
+      appearance.value = document.documentElement.dataset.theme;
+      appearance.addEventListener("change", () => {
+        document.documentElement.dataset.theme = appearance.value;
+        localStorage.setItem("fernrohr-docs-theme", appearance.value);
+      });
+    </script>
+  </body>
+</html>

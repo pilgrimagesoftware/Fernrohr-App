@@ -1,0 +1,17 @@
+title: Fernrohr Documentation
+description: Documentation for Fernrohr, the keyboard-first Kubernetes desktop client.
+url: ""
+baseurl: ""
+markdown: kramdown
+permalink: pretty
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - AGENTS.md
+  - PUBLISHING.md
+  - vendor
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
