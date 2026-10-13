@@ -48,6 +48,9 @@ pub(super) fn context_row(
             .id(format!("picker-row-{context_name}"))
             .flex()
             .flex_1()
+            // Without it the row's minimum is its content's width, so a long name
+            // never ellipsizes and pushes the tunnel selector out of the card (#232).
+            .min_w_0()
             .items_center()
             .justify_between()
             .gap_2()
@@ -97,9 +100,22 @@ pub(super) fn context_row(
                             })
                     }),
             )
-            .child(div().flex_shrink_0().child(selector))
+            .child(
+                div()
+                    .debug_selector({
+                        let context_name = context_name.clone();
+                        move || row_tunnel_selector(&context_name)
+                    })
+                    .flex_shrink_0()
+                    .child(selector),
+            )
             .into_any_element()
     }
+}
+
+/// The debug selector of `context_name`'s tunnel selector, for tests.
+pub(crate) fn row_tunnel_selector(context_name: &str) -> String {
+    format!("picker-row-tunnel-{context_name}")
 }
 
 /// Section 4.1/design.md decision 5: the picker's own way to reach the Tunnels
