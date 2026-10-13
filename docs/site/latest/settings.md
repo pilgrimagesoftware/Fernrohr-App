@@ -87,8 +87,9 @@ Report Issue again brings it to the front with your text as it was.
 2. Fill in **Subject** and **Description**. **Report** is enabled once both have text. Enter in
    Description starts a new line.
 3. For a bug, you can check **Attach the application log**. It's off until you turn it on, because
-   logs can include context names, hosts and paths. The report then carries the log's last 200 lines
-   in a collapsed section.
+   logs can include context names, hosts and paths, and Fernrohr doesn't remove them. Once it's
+   checked, the window shows the log's last 200 lines, and the report carries exactly that text in a
+   collapsed section. Read it before you report, and uncheck it if it holds something private.
 4. To include screenshots, choose **Add Screenshots…** (<kbd>⇧⌘A</kbd>) and pick up to five PNG,
    JPEG or GIF files. Remove one with the × beside its name.
 5. Choose **Report** or press <kbd>⌘↵</kbd>.
