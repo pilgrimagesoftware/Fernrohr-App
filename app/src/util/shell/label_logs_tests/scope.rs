@@ -148,3 +148,110 @@ async fn the_namespace_scope_decides_which_pods_stream(cx: &mut TestAppContext) 
     );
     assert!(typed_scope(&main, &mut vcx).is_empty(), "all namespaces");
 }
+
+/// #213 regression: opened from the menu while a Pods list on all namespaces
+/// has focus, the typed panel searches every namespace - a selector copied
+/// from a pod outside `default` matches it.
+#[gpui_kit::test]
+async fn opened_from_an_all_namespaces_list_it_matches_any_namespace(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let (cluster, client) = FakeCluster::start(cx);
+    cluster.apply("/api/v1", "pods", web_pod("blog", "web-2"));
+    let (main, mut vcx) = window(ConnectionState::Connected(client), cx);
+    vcx.update(|_, cx| {
+        let names = cx.new(|_| NamespaceList::with_names(&["blog", "default", "shop"]));
+        NamespaceRegistry::set_for_test(cx, "demo", names);
+    });
+    vcx.update(|window, cx| {
+        main.update(cx, |main, cx| {
+            main.open_target_in(
+                NavTarget::pods(),
+                None,
+                None,
+                Vec::new(),
+                crate::ui::nav::OpenMode::Foreground,
+                window,
+                cx,
+            );
+        });
+    });
+    vcx.run_until_parked();
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    let action = registry
+        .get("logs.follow_labels")
+        .expect("Open Logs by Label is registered")
+        .action
+        .boxed_clone();
+    vcx.update(|window, cx| window.dispatch_action(action, cx));
+    vcx.run_until_parked();
+    let typed = NavTarget::LabelLogs(LabelLogs::Typed);
+    let panel = logs_panel(&main, &typed, &mut vcx);
+    assert!(typed_scope(&main, &mut vcx).is_empty(), "all namespaces");
+    vcx.simulate_keystrokes("a p p = w e b enter");
+    wait_for_streams(&mut vcx, &panel, &["web-2/app#0@uid-web-2"]);
+}
+
+/// #213 regression: in a window holding two contexts, the typed panel opens in
+/// the context of the list it was opened from - not the window's active one,
+/// whose cluster doesn't have the pod the selector was copied from.
+#[gpui_kit::test]
+async fn it_opens_in_the_focused_lists_context_not_the_active_one(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let (cluster, client) = FakeCluster::start(cx);
+    cluster.apply("/api/v1", "pods", web_pod("blog", "web-2"));
+    let (_other_cluster, other_client) = FakeCluster::start(cx);
+    let (main, mut vcx) = window(ConnectionState::Connected(client), cx);
+    vcx.update(|window, cx| {
+        crate::k8s::cluster::session::ClusterRegistry::insert_test_session(
+            cx,
+            "other",
+            ConnectionState::Connected(other_client),
+        );
+        main.update(cx, |main, cx| {
+            if let WindowMode::Workspace { contexts, .. } = &mut main.mode {
+                contexts.push("other".into());
+            }
+            // `demo`'s Pods list, on all namespaces, has focus while `other`
+            // - added later - is the active context.
+            main.open_target_in(
+                NavTarget::pods(),
+                None,
+                Some("demo".into()),
+                Vec::new(),
+                crate::ui::nav::OpenMode::Foreground,
+                window,
+                cx,
+            );
+            main.set_active_context("other", window, cx);
+        });
+    });
+    vcx.run_until_parked();
+    assert_eq!(
+        vcx.update(|_, cx| main.read(cx).test_active_context_name()),
+        Some("other".to_string())
+    );
+
+    vcx.update(|window, cx| window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx));
+    vcx.run_until_parked();
+    let typed = NavTarget::LabelLogs(LabelLogs::Typed);
+    let context = vcx.update(|_, cx| {
+        let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
+            return None;
+        };
+        open_panels
+            .iter()
+            .find(|open| open.key.target == typed)
+            .map(|open| open.key.context_name.clone())
+    });
+    assert_eq!(
+        context.as_deref(),
+        Some("demo"),
+        "the focused list's context"
+    );
+    let panel = logs_panel(&main, &typed, &mut vcx);
+    vcx.simulate_keystrokes("a p p = w e b enter");
+    wait_for_streams(&mut vcx, &panel, &["web-2/app#0@uid-web-2"]);
+}
