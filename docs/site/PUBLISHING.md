@@ -10,9 +10,27 @@ build stops before the deploy job, and the live site stays as it was.
 
 ## Before merging
 
-From `docs/site`, run `bundle install` and `bundle exec jekyll build`. Confirm
-that `_site/index.html` redirects to `latest/` and that every path in
-`_data/versions.yml` exists under `_site/`.
+The workflow checks every pull request that touches the site, and every deploy
+runs the same checks first, so a failure blocks the deploy. To run them locally,
+from `docs/site`:
+
+```sh
+bundle install
+bundle exec ruby _scripts/check.rb
+```
+
+The script:
+
+1. Builds the site with an empty base URL. Any build warning fails the check, and
+   so does an unknown Liquid filter (`strict_filters` in `_config.yml`).
+2. Checks `_data/versions.yml` (`_scripts/check-manifest.rb`). Every `pages`
+   entry needs a source file and a built page, every `nav` path needs to be in its
+   version's `pages`, every page under a version directory needs to be listed,
+   and every version directory needs to be in the manifest.
+3. Checks every internal link and anchor in `_site` with html-proofer. External
+   links aren't checked.
+
+The checks look at structure only, never at wording.
 
 ## Cutting a release snapshot
 
@@ -22,7 +40,8 @@ When a release `vX.Y.0` is tagged:
    `version: vX.Y`. Rewrite its `/latest/` links to `/vX.Y/`.
 2. Add a `vX.Y` entry to `_data/versions.yml`, after `latest` and before older
    releases, with the same `pages` and `nav` as `latest`.
-3. Build locally and switch between `latest` and `vX.Y` on a few pages.
+3. Run `bundle exec ruby _scripts/check.rb`, then switch between `latest` and
+   `vX.Y` on a few pages.
 
 ## After a deploy
 

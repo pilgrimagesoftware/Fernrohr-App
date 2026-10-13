@@ -9,9 +9,13 @@ exclude:
   - Gemfile.lock
   - AGENTS.md
   - PUBLISHING.md
+  - _scripts
   - vendor
 defaults:
   - scope:
       path: ""
     values:
       layout: default
+liquid:
+  error_mode: strict
+  strict_filters: true
