@@ -73,8 +73,9 @@ menu, or with the Proceed with Manual Tunnel and Cancel Manual Tunnel commands.
 
 A failed attempt leaves the picker on screen with the reason, such as the unreachable API server's
 name, the error output of a credential plugin that exited with an error, or the reason a bound
-tunnel didn't come up. You can select the text and copy it. The Report button next to a failure
-files the error as an issue with the text filled in.
+tunnel didn't come up. You can select the text and copy it. The **Report…** button below a failure
+opens Report Issue with the error filled in. See
+[Report an error from where it happened]({{ '/latest/settings/' | relative_url }}#report-an-error-from-where-it-happened).
 
 To retry, press <kbd>Enter</kbd> or click Connect again, on the same context or another. Choosing
 a different context needs no reset.
