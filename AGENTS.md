@@ -60,6 +60,24 @@ mouse. A feature that only one of them can reach isn't done.
 The full rule, which the meta repo loads for agents automatically, is
 `.claude/rules/keyboard-first.md` in the parent Fernrohr repo.
 
+## Documentation
+
+User documentation is the Jekyll site under `docs/site/`, published to GitHub Pages from `master`.
+`docs/site/AGENTS.md` has the authoring rules.
+
+- A new user-facing feature MUST ship with its documentation in the same change, with clear,
+  concise examples. Don't write contrived tutorials.
+- A bug fix that changes documented behavior MUST update the page that describes it, and so must a
+  fix that shows a page to be wrong.
+- Keep the site logically organized: one page per capability area, with reference pages for
+  commands and MCP tools.
+- Published documentation is versioned, with the latest release shown by default. Each release
+  gets a snapshot (`docs/site/PUBLISHING.md`).
+- The installation page MUST cover each platform's gotchas, caveats and workarounds, such as the
+  macOS quarantine on downloaded builds and the Linux packages' runtime dependencies.
+- Examples use placeholders only. Never use real cluster or context names, hosts, IPs, bastions or
+  cloud project IDs.
+
 ## Running Checks Locally
 
 ### Build
