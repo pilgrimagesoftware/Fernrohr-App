@@ -1,0 +1,10 @@
+{%- comment -%}
+Sets `target` to the current page's counterpart in `include.version`, or that
+version's landing page when the version doesn't carry the page.
+{%- endcomment -%}
+{%- assign target = include.version.path -%}
+{%- if include.version.pages contains page_key -%}
+  {%- unless page_key == "index" -%}
+    {%- assign target = include.version.path | append: page_key | append: "/" -%}
+  {%- endunless -%}
+{%- endif -%}

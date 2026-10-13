@@ -1,0 +1,22 @@
+# Supported documentation versions, in display order. `pages` lists every page
+# a version carries (version-relative, without the trailing slash; `index` is
+# the landing page), so the version selector can map the current page across
+# versions. `nav` is the version's sidebar, in reading order.
+latest: latest
+versions:
+  - id: latest
+    label: Latest
+    path: /latest/
+    pages:
+      - index
+    nav:
+      - title: Overview
+        path: ""
+  - id: v0.9
+    label: v0.9
+    path: /v0.9/
+    pages:
+      - index
+    nav:
+      - title: Overview
+        path: ""
