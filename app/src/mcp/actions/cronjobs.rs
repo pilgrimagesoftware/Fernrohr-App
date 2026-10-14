@@ -31,9 +31,14 @@ async fn trigger_cronjob(input: CronJobInput, tools: ToolContext) -> ToolResult 
     let target = Target::parse(&input.context, &input.namespace, &input.name)?;
     let (session, kind) = resolve(&tools, &target, query("CronJob", "batch")).await?;
     let (namespace, name) = (target.namespace.as_str(), target.name.as_str());
-    let plan = actions::plan_trigger(session.client.clone(), namespace, name, &job_suffix()?)
-        .await
-        .map_err(failed(&session))?;
+    let plan = actions::plan_trigger(
+        session.client.clone(),
+        namespace,
+        name,
+        &actions::job_suffix().ok_or(ToolError::Internal)?,
+    )
+    .await
+    .map_err(failed(&session))?;
     approve(
         &tools.approvals,
         ApprovalRequest {
@@ -64,7 +69,7 @@ async fn set_cronjob_suspended(input: SetCronJobSuspendedInput, tools: ToolConte
     let target = Target::parse(&input.context, &input.namespace, &input.name)?;
     let (session, kind) = resolve(&tools, &target, query("CronJob", "batch")).await?;
     let (namespace, name) = (target.namespace.as_str(), target.name.as_str());
-    let suspended = actions::cronjob_suspended(session.client.clone(), &kind, namespace, name)
+    let suspended = actions::suspended(session.client.clone(), &kind, namespace, name)
         .await
         .map_err(failed(&session))?;
     let state = |suspended: bool| if suspended { "suspended" } else { "active" };
@@ -89,12 +94,13 @@ async fn set_cronjob_suspended(input: SetCronJobSuspendedInput, tools: ToolConte
         },
     )
     .await?;
-    actions::set_cronjob_suspended(
+    actions::set_suspended(
         session.client.clone(),
         &kind,
         namespace,
         name,
         input.suspended,
+        None,
     )
     .await
     .map_err(failed(&session))?;
@@ -102,16 +108,4 @@ async fn set_cronjob_suspended(input: SetCronJobSuspendedInput, tools: ToolConte
         "context": session.context, "namespace": namespace,
         "name": name, "suspended": input.suspended,
     })))
-}
-
-/// Five random lowercase letters and digits, for a manual Job's name - as
-/// `kubectl` and k9s suffix theirs.
-fn job_suffix() -> Result<String, ToolError> {
-    const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-    let mut bytes = [0u8; 5];
-    getrandom::fill(&mut bytes).map_err(|_| ToolError::Internal)?;
-    Ok(bytes
-        .iter()
-        .map(|byte| ALPHABET[usize::from(*byte) % ALPHABET.len()] as char)
-        .collect())
 }

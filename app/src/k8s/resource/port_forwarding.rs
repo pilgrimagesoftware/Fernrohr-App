@@ -18,6 +18,9 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 
+mod service;
+pub(crate) use service::forward_service;
+
 /// One port a resource offers, and how the picker names it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PortChoice {
