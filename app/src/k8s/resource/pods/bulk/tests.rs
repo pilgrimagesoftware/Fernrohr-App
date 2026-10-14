@@ -11,8 +11,8 @@ use gpui_kit::{Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, TestAppCont
 
 /// The bulk actions' keys for these tests.
 const KEYMAP: &str = r#"[bindings]
-"bulk.delete" = "ctrl-alt-d"
-"bulk.copy_names" = "ctrl-alt-c"
+"bulk.delete" = "f13"
+"bulk.copy_names" = "f14"
 "#;
 
 fn open(cx: &mut TestAppContext, count: usize) -> Harness {
@@ -196,7 +196,7 @@ async fn bulk_delete_asks_then_deletes_every_checked_pod(cx: &mut TestAppContext
     harness.press("down");
     harness.press("x");
 
-    harness.press("ctrl-alt-d");
+    harness.press("f13");
     assert!(dialog_open(&mut harness), "Delete asks first");
     crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
     harness.press("enter");
@@ -205,7 +205,7 @@ async fn bulk_delete_asks_then_deletes_every_checked_pod(cx: &mut TestAppContext
         "Enter is Cancel's: an irreversible confirmation opens on Cancel"
     );
 
-    harness.press("ctrl-alt-d");
+    harness.press("f13");
     crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
     harness.press("secondary-backspace");
     assert_eq!(wait_for_deletes(&mut harness, 2), ["web-0", "web-1"]);
@@ -223,7 +223,7 @@ async fn canceling_bulk_delete_sends_nothing_and_keeps_the_rows_checked(cx: &mut
     harness.press("x");
     harness.press("down");
     harness.press("x");
-    harness.press("ctrl-alt-d");
+    harness.press("f13");
     harness.press("escape");
     assert!(!dialog_open(&mut harness));
     assert!(harness.cluster.deletes().is_empty());
@@ -260,7 +260,7 @@ async fn copy_names_copies_one_name_per_line_without_asking(cx: &mut TestAppCont
     harness.press("x");
     harness.press("down");
     harness.press("x");
-    harness.press("ctrl-alt-c");
+    harness.press("f14");
     assert!(!dialog_open(&mut harness), "no confirmation");
     let copied = harness
         .vcx

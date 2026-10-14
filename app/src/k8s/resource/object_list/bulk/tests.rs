@@ -54,7 +54,7 @@ async fn a_configmap_offers_no_rollout_scale_or_node_action(cx: &mut TestAppCont
 async fn restart_rollout_stamps_every_checked_deployment(cx: &mut TestAppContext) {
     let mut harness = deployments(cx, &["api", "web", "worker"]);
     harness.check_first(2);
-    harness.press("ctrl-alt-r");
+    harness.press("f15");
     assert!(harness.dialog_open(), "it asks first");
     assert!(harness.cluster.patches().is_empty());
     harness.press("enter");
@@ -80,7 +80,7 @@ async fn restart_rollout_stamps_every_checked_deployment(cx: &mut TestAppContext
 async fn scale_takes_a_count_then_scales_every_checked_deployment(cx: &mut TestAppContext) {
     let mut harness = deployments(cx, &["api", "web"]);
     harness.check_first(2);
-    harness.press("ctrl-alt-s");
+    harness.press("f16");
     assert!(harness.dialog_open(), "the prompt is open");
     harness.vcx.simulate_input("three");
     harness.press("enter");
@@ -90,7 +90,7 @@ async fn scale_takes_a_count_then_scales_every_checked_deployment(cx: &mut TestA
     );
     assert!(harness.cluster.patches().is_empty());
 
-    harness.press("cmd-a backspace");
+    harness.press("secondary-a backspace");
     harness.vcx.simulate_input("3");
     harness.press("enter");
     assert!(harness.dialog_open(), "the confirmation follows");
@@ -109,7 +109,7 @@ async fn scale_takes_a_count_then_scales_every_checked_deployment(cx: &mut TestA
 async fn cordon_marks_every_checked_node_unschedulable(cx: &mut TestAppContext) {
     let mut harness = nodes(cx);
     harness.check_first(2);
-    harness.press("ctrl-alt-o");
+    harness.press("f17");
     harness.press("enter");
     let patches = harness.patches(2);
     let names: Vec<&str> = patches.iter().map(|(name, _)| name.as_str()).collect();
@@ -127,13 +127,13 @@ async fn cordon_marks_every_checked_node_unschedulable(cx: &mut TestAppContext) 
 async fn drain_confirms_only_by_the_deliberate_shortcut(cx: &mut TestAppContext) {
     let mut harness = nodes(cx);
     harness.check_first(2);
-    harness.press("ctrl-alt-n");
+    harness.press("f18");
     crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
     harness.press("enter");
     assert!(!harness.dialog_open());
     assert!(harness.cluster.patches().is_empty(), "Enter cancelled");
 
-    harness.press("ctrl-alt-n");
+    harness.press("f18");
     crate::ui::confirm_dialog::deliver_first_frame(&mut harness.vcx);
     harness.press("secondary-backspace");
     let patches = harness.patches(2);
@@ -152,7 +152,7 @@ async fn a_refused_batch_names_each_failure(cx: &mut TestAppContext) {
             "reason": "Forbidden", "code": 403, "message": "nodes is forbidden" }),
     );
     harness.check_first(2);
-    harness.press("ctrl-alt-o");
+    harness.press("f17");
     harness.press("enter");
     assert_eq!(harness.outcome(), "Cordon: 0 succeeded, 2 failed");
     let failed = harness.vcx.update(|_, cx| {
@@ -178,7 +178,7 @@ async fn label_sets_the_key_on_every_checked_object(cx: &mut TestAppContext) {
         &["flags", "settings"],
     );
     harness.check_first(2);
-    harness.press("ctrl-alt-l");
+    harness.press("f19");
     harness.vcx.simulate_input("team");
     harness.press("tab");
     harness.vcx.simulate_input("platform");
@@ -204,7 +204,7 @@ async fn copy_yaml_copies_every_manifest_without_asking(cx: &mut TestAppContext)
         &["flags", "settings"],
     );
     harness.check_first(2);
-    harness.press("ctrl-alt-y");
+    harness.press("f20");
     assert!(!harness.dialog_open(), "no confirmation");
     harness.wait_for("copied", |harness| {
         harness

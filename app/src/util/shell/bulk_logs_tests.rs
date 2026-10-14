@@ -13,7 +13,7 @@ use gpui_kit::component::{Root, WindowExt as _};
 use gpui_kit::{AppContext as _, Entity, TestAppContext, VisualTestContext};
 use serde_json::json;
 
-const VIEW_LOGS_KEY: &str = "ctrl-alt-v";
+const VIEW_LOGS_KEY: &str = "f12";
 
 struct Harness {
     main: Entity<MainWindow>,

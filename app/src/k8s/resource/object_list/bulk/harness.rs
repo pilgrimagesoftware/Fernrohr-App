@@ -21,14 +21,15 @@ use serde_json::{Value, json};
 
 const CONTEXT: &str = "kind-dev";
 
-/// The keys the tests press for the bulk actions, which have none by default.
+/// The keys the tests press for the bulk actions, which have none by default:
+/// function keys, which no default binding uses on any platform.
 const BULK_KEYS: [(&str, &str); 6] = [
-    ("bulk.restart_rollout", "ctrl-alt-r"),
-    ("bulk.scale", "ctrl-alt-s"),
-    ("bulk.cordon", "ctrl-alt-o"),
-    ("bulk.drain", "ctrl-alt-n"),
-    ("bulk.label", "ctrl-alt-l"),
-    ("bulk.copy_yaml", "ctrl-alt-y"),
+    ("bulk.restart_rollout", "f15"),
+    ("bulk.scale", "f16"),
+    ("bulk.cordon", "f17"),
+    ("bulk.drain", "f18"),
+    ("bulk.label", "f19"),
+    ("bulk.copy_yaml", "f20"),
 ];
 
 pub(super) fn kind(group: &str, kind: &str, plural: &str, namespaced: bool) -> DiscoveredKind {
