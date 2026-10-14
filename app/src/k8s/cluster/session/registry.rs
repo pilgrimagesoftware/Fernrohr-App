@@ -66,6 +66,46 @@ impl ClusterRegistry {
         Self::insert_session(cx, context_name, connection);
     }
 
+    /// [`Self::connection`] for an explicit attempt to connect - the picker's
+    /// Connect - which, after a failure, is a retry (#198): a session whose
+    /// connection failed, and that no window holds, is dropped and connected
+    /// afresh rather than handed back with its old failure. A failed session a
+    /// window holds stays - its panels observe that connection. Readers that
+    /// only look at a context's connection keep using [`Self::connection`],
+    /// which never re-dials.
+    pub fn connection_retrying(cx: &mut App, context_name: &str) -> Entity<ClusterConnection> {
+        let name = context_name.to_string();
+        Self::retry_with(cx, context_name, move |cx| {
+            ClusterConnection::connect(cx, Some(name))
+        })
+    }
+
+    /// [`Self::connection_retrying`] with the connect it starts injected - the
+    /// seam tests use instead of a real kubeconfig and cluster.
+    pub(super) fn retry_with(
+        cx: &mut App,
+        context_name: &str,
+        connect: impl FnOnce(&mut App) -> Entity<ClusterConnection>,
+    ) -> Entity<ClusterConnection> {
+        let stale = cx
+            .try_global::<Self>()
+            .and_then(|registry| registry.sessions.get(context_name))
+            .is_some_and(|session| {
+                session.holders.is_empty()
+                    && matches!(
+                        session.connection.read(cx).state,
+                        ConnectionState::Failed(_)
+                    )
+            });
+        if stale {
+            cx.global_mut::<Self>().sessions.remove(context_name);
+            let connection = connect(cx);
+            Self::insert_session(cx, context_name, connection.clone());
+            return connection;
+        }
+        Self::connection(cx, context_name)
+    }
+
     /// Registers `context_name`'s session around an already-built `connection`,
     /// driving pause/resume off its forward's state when it has one.
     fn insert_session(cx: &mut App, context_name: &str, connection: Entity<ClusterConnection>) {
@@ -174,3 +214,7 @@ impl ClusterRegistry {
             .clone()
     }
 }
+
+#[cfg(test)]
+#[path = "retry_tests.rs"]
+mod retry_tests;

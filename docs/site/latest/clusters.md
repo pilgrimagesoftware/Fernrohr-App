@@ -91,6 +91,24 @@ opens Report Issue with the error filled in. See
 To retry, press <kbd>Enter</kbd> or click Connect again, on the same context or another. Choosing
 a different context needs no reset.
 
+### When the connection times out
+
+If the API server doesn't answer within 30 seconds, the reason says what timed out and what to
+check, for example:
+
+```text
+Timed out after 30s connecting to the API server at api.my-cluster.example:443. Check that this
+machine can reach that address: any VPN, tunnel or bastion the cluster needs is connected, and the
+kubeconfig's server address is right.
+```
+
+When the connection goes through a proxy or a tunnel, the reason names that instead. Fernrohr
+uses a proxy the same way `kubectl` does: the cluster's `proxy-url` from the kubeconfig if it has
+one, otherwise `HTTPS_PROXY` from the environment, except for hosts that `NO_PROXY` names. A
+context bound to an SSH tunnel never sends its tunnel's local port through a proxy. An app opened
+from the Dock or Finder doesn't see proxy variables exported in your shell, so set `proxy-url` in
+the kubeconfig for a cluster that needs a proxy.
+
 > An unreachable API server or a failing credential plugin is a problem outside Fernrohr. Check
 > that the cluster is up, that you can reach it, and that the plugin works in a terminal first.
 {: .warning}

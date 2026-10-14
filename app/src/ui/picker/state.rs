@@ -157,7 +157,8 @@ impl ClusterPicker {
         if let Some(factory) = self.connection_factory {
             return factory(cx, context_name);
         }
-        ClusterRegistry::connection(cx, context_name)
+        // A retry after a failure dials again (#198).
+        ClusterRegistry::connection_retrying(cx, context_name)
     }
 
     pub(crate) fn select(&mut self, context_name: String, cx: &mut Context<Self>) {
