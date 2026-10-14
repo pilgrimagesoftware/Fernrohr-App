@@ -45,7 +45,8 @@ async fn resolve_with_fresh_tokens(
     files: &[std::path::PathBuf],
 ) -> Result<Config, String> {
     oidc::refresh_expired(&mut kubeconfig, context, files).await?;
-    Config::from_custom_kubeconfig(
+    let own_proxy = super::proxy_env::kubeconfig_proxy(&kubeconfig, context).is_some();
+    let mut config = Config::from_custom_kubeconfig(
         kubeconfig,
         &KubeConfigOptions {
             context: context.map(str::to_string),
@@ -53,7 +54,11 @@ async fn resolve_with_fresh_tokens(
         },
     )
     .await
-    .map_err(|error| error_chain(&error))
+    .map_err(|error| error_chain(&error))?;
+    // `kube` takes `HTTPS_PROXY` but not `NO_PROXY` (#198).
+    let no_proxy = super::proxy_env::env_no_proxy();
+    super::proxy_env::apply_no_proxy(&mut config, own_proxy, no_proxy.as_deref());
+    Ok(config)
 }
 
 /// `config` with its exec plugin, if any, pointed at the login shell's `PATH`.
@@ -122,11 +127,20 @@ impl ForwardWait {
 /// environment, so other contexts and the app's other requests don't use it.
 fn route_through_tunnel(config: &mut Config, local_addr: SocketAddr, route: TunnelRoute) {
     match route {
-        TunnelRoute::Rewrite => rewrite_for_tunnel(config, local_addr),
+        TunnelRoute::Rewrite => {
+            rewrite_for_tunnel(config, local_addr);
+            // The forward is on this machine: no proxy - the kubeconfig's, or
+            // one `kube` took from `HTTPS_PROXY` - can reach it (#198).
+            if let Some(proxy) = config.proxy_url.take() {
+                let proxy = super::proxy_env::redacted(&proxy);
+                log::debug!("not sending the tunnel's local port through the proxy {proxy}");
+            }
+        }
         // A manual tunnel: once confirmed, the client goes to its own server.
         TunnelRoute::Direct => {}
         TunnelRoute::Proxy => {
             if let Some(own) = &config.proxy_url {
+                let own = super::proxy_env::redacted(own);
                 log::debug!("the bound tunnel's proxy overrides the kubeconfig's proxy-url {own}");
             }
             config.proxy_url = Some(
@@ -229,10 +243,18 @@ pub(in crate::k8s::cluster) async fn connect_and_probe(
             if let Some((local_addr, route)) = rewrite {
                 route_through_tunnel(&mut config, local_addr, route);
             }
-            let state = probe(config).await;
-            match rewrite {
-                Some((local_addr, TunnelRoute::Proxy)) => name_the_proxy(state, local_addr),
-                _ => state,
+            let through_tunnel = matches!(rewrite, Some((_, TunnelRoute::Rewrite)));
+            let dialled = super::timeout::Dialled::of(&config, through_tunnel);
+            match probe(config).await {
+                // A timeout says what timed out and what to check (#198) - the
+                // tunnel's proxy among them, when it's the one dialled.
+                ConnectionState::Failed(reason) if super::timeout::is_connect_timeout(&reason) => {
+                    ConnectionState::Failed(super::timeout::explain(reason, &dialled))
+                }
+                state => match rewrite {
+                    Some((local_addr, TunnelRoute::Proxy)) => name_the_proxy(state, local_addr),
+                    _ => state,
+                },
             }
         }
         Err(error) => ConnectionState::Failed(error),
