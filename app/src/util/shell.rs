@@ -51,10 +51,14 @@ mod logs_open;
 mod main_window;
 mod namespace_defaults;
 mod namespace_sets;
+mod new_instance;
 mod sort_defaults;
+mod tab_menu;
 mod warp;
 pub(crate) use exec::OpenExecSession;
 pub(crate) use warp::WarpContextToNamespace;
+#[cfg(test)]
+mod bulk_logs_tests;
 #[cfg(test)]
 mod chord_precedence_tests;
 #[cfg(test)]
@@ -94,6 +98,7 @@ pub(crate) use app::register_commands;
 pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
 pub(crate) use layout::{close_window, is_main_window, window_context_count, window_contexts};
+pub(crate) use logs_open::open_pods_logs;
 pub use main_window::MainWindow;
 // The list panels (`k8s::resource`) read and record per-kind sorts.
 pub(crate) use sort_defaults::SortDefaults;

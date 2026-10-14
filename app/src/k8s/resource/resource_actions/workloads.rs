@@ -91,8 +91,9 @@ pub(crate) async fn set_rollout_paused(
     namespace: &str,
     name: &str,
     paused: bool,
+    uid: Option<&str>,
 ) -> Result<(), ActionError> {
-    let patch = json!({ "spec": { "paused": paused } });
+    let patch = super::with_uid(json!({ "spec": { "paused": paused } }), uid);
     api_for(client, kind, Some(namespace))
         .patch(name, &patch_params(), &Patch::Merge(&patch))
         .await?;

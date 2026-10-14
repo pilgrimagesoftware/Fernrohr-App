@@ -94,18 +94,33 @@ pub(in crate::k8s::resource::pods) struct Harness {
 /// A Pods panel over a fake cluster holding crash-looping `web-1` (with a
 /// `BackOff` warning) and healthy `web-2`, focused, with `web-1` selected.
 pub(in crate::k8s::resource::pods) fn open(cx: &mut TestAppContext) -> Harness {
+    open_with(cx, &[("u1", "web-1", true), ("u2", "web-2", false)], "")
+}
+
+/// A Pods panel over `pods` (uid, name, crashing), with `keymap` - a
+/// `keymap.toml`'s text, empty for the defaults - and the first pod selected.
+pub(in crate::k8s::resource::pods) fn open_with(
+    cx: &mut TestAppContext,
+    pods: &[(&str, &str, bool)],
+    keymap: &str,
+) -> Harness {
     cx.executor().allow_parking();
     let details_opened = Rc::new(Cell::new(0));
+    let keymap_path = temp_path();
+    if !keymap.is_empty() {
+        std::fs::write(&keymap_path, keymap).expect("the test keymap is written");
+    }
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
-        crate::util::shell::init(cx, temp_path(), &temp_path());
+        crate::util::shell::init(cx, temp_path(), &keymap_path);
         let opened = details_opened.clone();
         cx.on_action(move |_: &crate::ui::nav::ShowPodDetail, _| opened.set(opened.get() + 1));
     });
     let (cluster, client) = FakeCluster::start(cx);
-    cluster.apply(PODS.0, PODS.1, pod("u1", "web-1", true));
-    cluster.apply(PODS.0, PODS.1, pod("u2", "web-2", false));
+    for (uid, name, crashing) in pods {
+        cluster.apply(PODS.0, PODS.1, pod(uid, name, *crashing));
+    }
     cluster.apply("/api/v1", "events", warning("web-1", "u1", "BackOff"));
     cx.update(|cx| {
         ClusterRegistry::insert_test_session(
@@ -142,11 +157,12 @@ pub(in crate::k8s::resource::pods) fn open(cx: &mut TestAppContext) -> Harness {
         vcx,
         details_opened,
     };
-    harness.wait_for("listed both pods", |panel, cx| {
-        panel.table.read(cx).pods().len() == 2
+    let count = pods.len();
+    harness.wait_for("listed every pod", |panel, cx| {
+        panel.table.read(cx).pods().len() == count
     });
     harness.press("down");
-    assert_eq!(harness.selected().as_deref(), Some("web-1"));
+    assert_eq!(harness.selected().as_deref(), pods.first().map(|pod| pod.1));
     harness
 }
 

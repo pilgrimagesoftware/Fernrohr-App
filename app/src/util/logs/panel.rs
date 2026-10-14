@@ -16,7 +16,8 @@ pub fn register_restore(cx: &mut App) {
             if let Some(saved) = super::labels::labels_from_state(state) {
                 let scope =
                     PanelScope::new(NavTarget::LabelLogs(saved.source.clone()), context_name)
-                        .scoped_to(namespaces);
+                        .scoped_to(namespaces)
+                        .restored_from(state);
                 let following = super::labels::Following::new(
                     saved.source,
                     saved.selector.as_deref(),
@@ -35,14 +36,16 @@ pub fn register_restore(cx: &mut App) {
                         name: pinned.name.clone(),
                     };
                     let scope = PanelScope::new(NavTarget::PodLogs(pod), context_name)
-                        .scoped_to(namespaces);
+                        .scoped_to(namespaces)
+                        .restored_from(state);
                     Ok(panel_handle(
                         cx.new(|cx| LogsPanel::build(scope, Some(pinned), None, cx)),
                     ))
                 }
                 None => {
-                    let scope =
-                        PanelScope::new(NavTarget::Logs, context_name).scoped_to(namespaces);
+                    let scope = PanelScope::new(NavTarget::Logs, context_name)
+                        .scoped_to(namespaces)
+                        .restored_from(state);
                     Ok(panel_handle(cx.new(|cx| LogsPanel::new(scope, cx))))
                 }
             }
@@ -423,3 +426,5 @@ impl EventEmitter<ScopeEvent> for LogsPanel {}
 
 #[cfg(test)]
 mod tests;
+
+crate::scoped_panel!(LogsPanel);

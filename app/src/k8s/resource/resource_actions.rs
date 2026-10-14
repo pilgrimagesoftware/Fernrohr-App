@@ -23,7 +23,7 @@ mod rollback;
 mod workloads;
 pub(crate) use apply::{apply, edit_text, parse_manifest};
 pub(crate) use configmaps::{configmap_value, set_configmap_value};
-pub(crate) use cronjobs::{cronjob_suspended, plan_trigger, set_cronjob_suspended, trigger};
+pub(crate) use cronjobs::{job_suffix, plan_trigger, set_suspended, suspended, trigger};
 pub(crate) use rollback::{plan_rollback, rollback};
 pub(crate) use workloads::{
     current_replicas, deployment_paused, restart, scale, set_rollout_paused,
@@ -68,6 +68,21 @@ pub(super) fn patch_params() -> kube::api::PatchParams {
         field_manager: Some(apply::FIELD_MANAGER.to_string()),
         ..kube::api::PatchParams::default()
     }
+}
+
+/// What an action reports when the object it was asked about has changed, or
+/// been recreated under the same name, since it was read.
+pub(crate) const RECREATED: &str = "Not changed: the object changed, or was recreated under the \
+                                     same name, since it was read. Look again and retry.";
+
+/// `patch` that applies only to the object with `uid`, when it is known: the API
+/// server refuses to change an object's UID, so a patch carrying one fails on
+/// an object recreated under the same name since it was read.
+pub(crate) fn with_uid(mut patch: serde_json::Value, uid: Option<&str>) -> serde_json::Value {
+    if let Some(uid) = uid {
+        patch["metadata"]["uid"] = serde_json::Value::String(uid.to_string());
+    }
+    patch
 }
 
 /// The API for `kind`'s objects in `namespace` - all namespaces for a

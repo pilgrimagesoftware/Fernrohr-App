@@ -96,6 +96,13 @@ This list matches the commands registered in `app/src/command.rs`.
 | Select Tab 7 | <kbd>⌃7</kbd> | Global | Navigate > Select Tab | `tab.select_7` |
 | Select Tab 8 | <kbd>⌃8</kbd> | Global | Navigate > Select Tab | `tab.select_8` |
 | Select Last Tab | <kbd>⌃9</kbd> | Global | Navigate > Select Tab | `tab.select_9` |
+| Open in New Panel | <kbd>⇧⌘D</kbd> | Global | View | `panel.open_new_instance` |
+| Move to New Window | — | Global | View | `tab.move_to_new_window` |
+| Close Tab | — | Global | — | `tab.close` |
+| Close Other Tabs | — | Global | — | `tab.close_others` |
+| Close Tabs to the Right | — | Global | — | `tab.close_right` |
+| Pin Tab | — | Global | — | `tab.pin` |
+| Unpin Tab | — | Global | — | `tab.unpin` |
 | Maximize/Restore Panel | — | Global | View | `panel.toggle_zoom` |
 
 ### Panel groups
@@ -115,6 +122,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Panels: Merge Group Up | <kbd>⌘K</kbd> <kbd>⌥↑</kbd> | `Dock && !Input` | — | `panel.merge_up` |
 | Panels: Merge Group Down | <kbd>⌘K</kbd> <kbd>⌥↓</kbd> | `Dock && !Input` | — | `panel.merge_down` |
 | Panels: Close Group | <kbd>⌘K</kbd> <kbd>W</kbd> | `Dock && !Input` | — | `panel.close_group` |
+| Open Tab Menu | <kbd>⌘K</kbd> <kbd>M</kbd> | `Dock && !Input` | — | `tab.menu` |
 
 ### Resource panel
 
@@ -145,6 +153,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Pods: Filter to Selected Pod's Namespace | <kbd>W</kbd> | `PodsPanel && !Input` | — | `pods.warp_namespace` |
 | Pods: Warp All to Selected Pod's Namespace | <kbd>⇧W</kbd> | `PodsPanel && !Input` | — | `pods.warp_all_namespace` |
 | Pods: Open Selected Pod in Background | <kbd>⌘↵</kbd> | `PodsPanel && !Input` | — | `pods.open_in_background` |
+| Pods: Open Selected Pod in New Panel | <kbd>⇧↵</kbd> | `PodsPanel && !Input` | — | `pods.open_new_panel` |
 | Pods: Describe Selected Pod | <kbd>D</kbd> | `PodsPanel && !Input` | — | `pods.describe` |
 | Pods: Show Selected Pod's Logs | <kbd>L</kbd> | `PodsPanel && !Input` | — | `pods.logs` |
 | Pods: Show Selected Pod's Logs (Other Panel Mode) | <kbd>⇧L</kbd> | `PodsPanel && !Input` | — | `pods.logs_flipped` |
@@ -214,6 +223,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | List: Focus Filter | <kbd>/</kbd> | `ObjectListPanel && !Input` | — | `object_list.focus_filter` |
 | List: Open Selected Object | <kbd>↵</kbd> | `ObjectListPanel && !Input` | — | `object_list.open` |
 | List: Open Selected Object in Background | <kbd>⌘↵</kbd> | `ObjectListPanel && !Input` | — | `object_list.open_in_background` |
+| List: Open Selected Object in New Panel | <kbd>⇧↵</kbd> | `ObjectListPanel && !Input` | — | `object_list.open_new_panel` |
 | List: Describe Selected Object | <kbd>D</kbd> | `ObjectListPanel && !Input` | — | `object_list.describe` |
 | List: Show Selected Object's YAML | <kbd>Y</kbd> | `ObjectListPanel && !Input` | — | `object_list.yaml` |
 | List: Filter to Selected Object's Namespace | <kbd>W</kbd> | `ObjectListPanel && !Input` | — | `object_list.warp_namespace` |
@@ -223,6 +233,51 @@ This list matches the commands registered in `app/src/command.rs`.
 | Sort by Next Column | <kbd>⇧.</kbd> | `SortableList && !Input` | — | `list.sort_next_column` |
 | Sort by Previous Column | <kbd>⇧,</kbd> | `SortableList && !Input` | — | `list.sort_previous_column` |
 | Cycle Sort | <kbd>O</kbd> | `SortableList && !Input` | — | `list.cycle_sort` |
+
+### Checked rows
+
+Every list panel, the Pods panel included, adds `CheckableList`, and adds
+`CheckedRows` while any row is checked. Each bulk action's context is added only
+while every checked row's kind takes that action.
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| List: Check or Uncheck Selected Row | <kbd>X</kbd> | `CheckableList && !Input` | — | `bulk.toggle_checked` |
+| List: Check Rows Up to Selected | <kbd>⇧X</kbd> | `CheckableList && !Input` | — | `bulk.check_range` |
+| Checked: Uncheck All | — | `CheckedRows && !Input` | — | `bulk.clear_checked` |
+| Checked: View Logs | — | `BulkViewLogs && !Input` | — | `bulk.view_logs` |
+| Checked: Restart Rollout… | — | `BulkRestartRollout && !Input` | — | `bulk.restart_rollout` |
+| Checked: Rollback Rollout… | — | `BulkRollbackRollout && !Input` | — | `bulk.rollback_rollout` |
+| Checked: Scale… | — | `BulkScale && !Input` | — | `bulk.scale` |
+| Checked: Cordon… | — | `BulkCordon && !Input` | — | `bulk.cordon` |
+| Checked: Uncordon… | — | `BulkUncordon && !Input` | — | `bulk.uncordon` |
+| Checked: Drain… | — | `BulkDrain && !Input` | — | `bulk.drain` |
+| Checked: Label… | — | `BulkLabel && !Input` | — | `bulk.label` |
+| Checked: Annotate… | — | `BulkAnnotate && !Input` | — | `bulk.annotate` |
+| Checked: Copy Names | — | `BulkCopyNames && !Input` | — | `bulk.copy_names` |
+| Checked: Copy YAML | — | `BulkCopyYaml && !Input` | — | `bulk.copy_yaml` |
+| Checked: Delete… | — | `BulkDelete && !Input` | — | `bulk.delete` |
+
+### Kind actions
+
+A list adds an action's context while its selected row is offered that action,
+and a detail panel while its object is. A Services list keeps its own
+`services.port_forward`, so only a Service's detail panel adds
+`KindForwardService`.
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Service: Port Forward… | <kbd>⇧F</kbd> | `KindForwardService && !Input` | — | `kind.port_forward_service` |
+| CronJob: Trigger Now… | <kbd>T</kbd> | `KindTriggerNow && !Input` | — | `kind.trigger_now` |
+| Suspend… | <kbd>P</kbd> | `KindSuspend && !Input` | — | `kind.suspend` |
+| Resume… | <kbd>⇧P</kbd> | `KindResume && !Input` | — | `kind.resume` |
+| Deployment: Pause Rollout… | <kbd>P</kbd> | `KindPauseRollout && !Input` | — | `kind.pause_rollout` |
+| Deployment: Resume Rollout… | <kbd>⇧P</kbd> | `KindResumeRollout && !Input` | — | `kind.resume_rollout` |
+| PersistentVolumeClaim: Expand… | <kbd>⇧E</kbd> | `KindExpand && !Input` | — | `kind.expand` |
+| Node: Add Taint… | <kbd>⇧T</kbd> | `KindAddTaint && !Input` | — | `kind.add_taint` |
+| Node: Remove Taint… | <kbd>⌥⇧T</kbd> | `KindRemoveTaint && !Input` | — | `kind.remove_taint` |
+| ServiceAccount: Create Token | <kbd>⇧K</kbd> | `KindCreateToken && !Input` | — | `kind.create_token` |
+| Ingress: Open Host in Browser | <kbd>⇧O</kbd> | `KindOpenHost && !Input` | — | `kind.open_host` |
 
 ### Object detail panel
 

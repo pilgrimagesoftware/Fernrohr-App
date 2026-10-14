@@ -105,6 +105,7 @@ resource tab shows the kind only, and hovering the tab shows its API group.
 | Open the object's detail | <kbd>Enter</kbd> or <kbd>D</kbd> | Double-click the row |
 | Open it on its YAML | <kbd>Y</kbd> | Choose it from the command palette |
 | Open it as an inactive tab | <kbd>⌘Enter</kbd> | <kbd>⌘</kbd>-click or middle-click the row |
+| Open it in a new panel, even if it's open | <kbd>⇧Enter</kbd> | <kbd>⌥</kbd>-click the row, or choose **Open in New Panel** from its menu |
 
 Opening in the background leaves focus and the selection in the list. See
 {{ '/latest/details/' | relative_url }} for what the detail panel shows.
@@ -114,8 +115,103 @@ a popover on the selected pod showing its phase, ready containers, restarts,
 age, node, IP, owner, each container's image and state, and its latest warning.
 <kbd>↓</kbd> and <kbd>↑</kbd> move to the next or previous pod without closing
 it, <kbd>Enter</kbd> opens the pod's detail, and <kbd>Esc</kbd> closes it.
-Right-clicking a row selects it and opens a menu with Quick Look, Open Details,
+Right-clicking a row selects it and opens a menu with Quick Look, Open Details, Open in New Panel,
 Logs and YAML.
+
+## Act on several objects
+
+Check rows to act on several objects at once. Checking a row doesn't move the
+selection, and the single-row commands such as <kbd>⌃D</kbd> keep acting on the
+selected row alone, whatever else is checked.
+
+| Action | Keyboard | Mouse |
+| --- | --- | --- |
+| Check or uncheck the selected row | <kbd>X</kbd> | Click the row's checkbox |
+| Check every row from the last one checked | <kbd>⇧X</kbd> | <kbd>⇧</kbd>-click a checkbox |
+| Uncheck all | **Checked: Uncheck All** in the command palette | The bar's ✕ button |
+
+While rows are checked, a bar above the list counts them and offers each action
+that every checked row's kind takes. The bar's buttons are icons, and hovering
+one names its action. The same actions are in the command palette as
+**Checked: …** commands. They have no default keys, and you can bind any of them
+in `keymap.toml`.
+
+| Action | Offered for | What it does |
+| --- | --- | --- |
+| View Logs | Pods | Opens a Logs panel for each pod. Past five pods it asks first. |
+| Restart Rollout | Deployments, DaemonSets, StatefulSets | Restarts each rollout, as `kubectl rollout restart` does. |
+| Rollback Rollout | Deployments, DaemonSets, StatefulSets | Goes back to each one's previous revision, as `kubectl rollout undo` does. |
+| Scale | Deployments, StatefulSets, ReplicaSets | Asks for one replica count and sets it on each. |
+| Cordon, Uncordon | Nodes | Marks each node unschedulable, or schedulable again. |
+| Drain | Nodes | Cordons each node, then evicts its pods. |
+| Label, Annotate | Any kind | Asks for a key and a value and sets them on each. An empty value removes the key. The key must be a valid Kubernetes key, such as `team` or `example.com/team`. |
+| Copy Names | Any kind | Copies the names, one per line. |
+| Copy YAML | Any kind | Copies the manifests, separated by `---`. A Secret's values stay hidden. |
+| Delete | Any kind | Deletes each object. |
+
+Every action that changes the cluster asks first, naming how many objects of
+which kind, and any value it will set:
+
+```text
+Scale 2 Deployments to 3 replicas?
+Set label team=platform on 3 ConfigMaps?
+```
+
+Delete and Drain can't be undone, so their question opens on Cancel and
+<kbd>Enter</kbd> cancels. Confirm with <kbd>⌘⌫</kbd> (<kbd>Ctrl+Backspace</kbd>
+off macOS), or <kbd>Tab</kbd> to the button. The others confirm with
+<kbd>Enter</kbd>. <kbd>Esc</kbd> always cancels.
+
+When the action finishes, a line above the list says how many objects it
+succeeded for, and names each one that failed with the cluster's reason. One
+failure never stops the rest. Dismiss the line with its ✕ button. A delete
+unchecks what it deleted, and any other action leaves the rows checked.
+
+Drain works like `kubectl drain` with no extra flags. It leaves DaemonSet pods and
+static (mirror) pods alone. It doesn't evict two kinds of pod that `kubectl drain`
+also refuses to: a pod no controller manages, because nothing would recreate it,
+and a pod with an `emptyDir` volume, whose data would be lost. Each is reported as
+not evicted. A PodDisruptionBudget can refuse an eviction, and Fernrohr keeps
+retrying for 30 seconds before it reports that pod as not evicted. The node stays
+cordoned, and its other pods are still evicted. If the node's pods can't be
+listed, the report says the node is cordoned anyway.
+
+Delete and Drain act only on the objects you checked. If one is deleted and
+recreated under the same name before the request arrives, the new one is left
+alone and reported. An object that is already gone is reported as already gone.
+
+## Act on one object of a kind
+
+Some actions mean something only for one kind. Select a row and press its key,
+choose it from the row's right-click menu, or use the buttons in the object's
+detail panel. Each is also in the command palette while that row or panel has
+focus, and you can rebind any of them in `keymap.toml`. The hint row shows the
+keys for whatever the selected object is offered.
+
+| Kind | Action | Key | What it does |
+| --- | --- | --- | --- |
+| Pod, Service | Port Forward… | <kbd>⇧F</kbd> | Forwards one of its ports, asking which when it has several. Only a Running pod can be forwarded. |
+| CronJob | Trigger Now… | <kbd>T</kbd> | Creates a Job from its job template now, as `kubectl create job --from=cronjob/my-cronjob` does. Its schedule is unchanged. |
+| Job, CronJob | Suspend… / Resume… | <kbd>P</kbd> / <kbd>⇧P</kbd> | Sets or clears `spec.suspend`. Only the one that applies is offered. |
+| Deployment | Pause Rollout… / Resume Rollout… | <kbd>P</kbd> / <kbd>⇧P</kbd> | Sets or clears `spec.paused`. Not offered for DaemonSets or StatefulSets. |
+| PersistentVolumeClaim | Expand… | <kbd>⇧E</kbd> | Asks for a new size, larger than the current one, and sets it. |
+| Node | Add Taint… | <kbd>⇧T</kbd> | Asks for a key, an optional value and an effect: `NoSchedule`, `PreferNoSchedule` or `NoExecute`. |
+| Node | Remove Taint… | <kbd>⌥⇧T</kbd> | Asks which taint to remove when the node has several. |
+| ServiceAccount | Create Token | <kbd>⇧K</kbd> | Requests a new token and shows it once. |
+| Ingress | Open Host in Browser | <kbd>⇧O</kbd> | Opens the first rule's host, such as `https://app.example.com`. A wildcard host such as `*.example.com` names no one site, so it's passed over, and an Ingress with no other host isn't offered the action. |
+
+Every action that changes the cluster asks first, naming the object. Expand
+can't be undone, because a claim can't be made smaller again, so its question
+opens on Cancel and confirms with <kbd>⌘⌫</kbd>. The others confirm with
+<kbd>Enter</kbd>. If the cluster refuses, the panel shows its reason. A
+StorageClass that doesn't allow expansion is reported in the cluster's own
+words. Each change applies only to the object you selected: if it was deleted
+and recreated under the same name, the change is refused rather than applied to
+the new one.
+
+A token from Create Token is shown once, the same way a revealed Secret value is.
+Copy it before you hide it or close the dialog, because it isn't kept anywhere,
+written to disk or logged. To get another, choose Create Token again.
 
 ## Icons and status
 
@@ -219,4 +315,4 @@ Sorting works like any list. The browser remembers the last sort you chose,
 across contexts, windows and restarts, and a new browser starts with it. Until
 you choose one, the sort is age ascending, which puts the newest events first.
 
-*Summarizes the capability specs: `resource-browser`, `resource-group-navigation`, `resource-icons`, `namespace-sets`, `events-browser`.*
+*Summarizes the capability specs: `resource-browser`, `resource-group-navigation`, `resource-icons`, `namespace-sets`, `events-browser`, `bulk-object-actions`, `resource-specific-actions`.*

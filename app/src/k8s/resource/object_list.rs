@@ -4,9 +4,11 @@
 //! and re-exports; each submodule owns one concern.
 
 mod background;
+mod bulk;
 mod columns;
 mod commands;
 mod delete;
+mod kind_actions;
 mod panel;
 mod poll;
 mod port_forward;
@@ -15,6 +17,8 @@ pub(crate) mod restore;
 mod row;
 mod store;
 mod table;
+#[cfg(test)]
+mod test_harness;
 mod watch;
 
 #[cfg(test)]

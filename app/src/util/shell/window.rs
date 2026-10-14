@@ -113,6 +113,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
                         cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
                     ),
                     focus_handle: cx.focus_handle(),
+                    tab_menu: Default::default(),
                 };
                 let WindowMode::Picker(picker) = &view.mode else {
                     unreachable!("just constructed a picker-mode window")

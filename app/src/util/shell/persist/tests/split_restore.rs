@@ -38,6 +38,7 @@ async fn a_nested_split_round_trips_its_sizes(cx: &mut TestAppContext) {
                         cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
                     ),
                     focus_handle: cx.focus_handle(),
+                    tab_menu: Default::default(),
                 };
                 main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
                 main_window

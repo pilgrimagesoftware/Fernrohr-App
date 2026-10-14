@@ -11,7 +11,9 @@ pub fn register_restore(cx: &mut App) {
                 crate::ui::unrestored::required_str(state, "context_name")?.to_string();
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
-            let scope = PanelScope::new(NavTarget::pods(), context_name).scoped_to(namespaces);
+            let scope = PanelScope::new(NavTarget::pods(), context_name)
+                .scoped_to(namespaces)
+                .restored_from(state);
             let sort = sort_from_state(state);
             let filter = filter::filter_from_state(state);
             Ok(panel_handle(cx.new(|cx| {
@@ -53,6 +55,8 @@ pub struct PodsPanel {
     /// The last row action the cluster refused, shown above the table until
     /// dismissed or the next action.
     pub(super) action_failure: Option<super::actions::PodActionFailure>,
+    /// The last bulk action's outcome, shown above the table until dismissed.
+    pub(super) bulk_outcome: Option<crate::ui::bulk::BatchOutcome>,
     /// The sort to start the table with, once it's built - a saved layout's
     /// column id and direction (`saved-panel-layouts` 1.6), or `None` for the
     /// table's own default (unsorted) order.
@@ -126,6 +130,7 @@ impl PodsPanel {
             quick_look: None,
             indicators: Default::default(),
             action_failure: None,
+            bulk_outcome: None,
             initial_sort: None,
             filter: ListSearch::new(),
             node: None,
@@ -438,12 +443,15 @@ impl BasePanel for PodsPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(serde_json::json!({
-                "context_name": self.scope.context_name,
-                "namespaces": self.scope.namespaces,
-                "sort": sort,
-                "filter": filter,
-            })),
+            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(
+                &self.scope,
+                serde_json::json!({
+                    "context_name": self.scope.context_name,
+                    "namespaces": self.scope.namespaces,
+                    "sort": sort,
+                    "filter": filter,
+                }),
+            )),
         }
     }
 }
@@ -457,6 +465,7 @@ impl Panel for PodsPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -489,3 +498,5 @@ mod state_tests;
 mod test_accessors;
 #[cfg(test)]
 mod tests;
+
+crate::scoped_panel!(PodsPanel);

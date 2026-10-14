@@ -30,7 +30,7 @@ pub fn register_restore(cx: &mut gpui_kit::App) {
             let namespace = required_str(state, "pod_namespace")?.to_string();
             let name = required_str(state, "pod_name")?.to_string();
             let target = NavTarget::pod(namespace.clone(), name.clone());
-            let scope = PanelScope::new(target, context_name);
+            let scope = PanelScope::new(target, context_name).restored_from(state);
             Ok(panel_handle(cx.new(|cx| {
                 PodDetailPanel::new(
                     PodRef { namespace, name },
@@ -436,11 +436,14 @@ impl BasePanel for PodDetailPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(serde_json::json!({
-                "context_name": self.scope.context_name,
-                "pod_namespace": self.pod.namespace,
-                "pod_name": self.pod.name,
-            })),
+            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(
+                &self.scope,
+                serde_json::json!({
+                    "context_name": self.scope.context_name,
+                    "pod_namespace": self.pod.namespace,
+                    "pod_name": self.pod.name,
+                }),
+            )),
         }
     }
 }
@@ -458,6 +461,7 @@ impl Panel for PodDetailPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -471,3 +475,5 @@ impl Panel for PodDetailPanel {
         Some(PanelControl::Toolbar)
     }
 }
+
+crate::scoped_panel!(PodDetailPanel);

@@ -5,6 +5,8 @@ use super::*;
 pub struct MainWindow {
     pub(super) mode: WindowMode,
     pub(super) focus_handle: FocusHandle,
+    /// The tab context menu, while it's open (`panel-tab-menu`).
+    pub(super) tab_menu: super::tab_menu::TabMenuState,
 }
 
 impl MainWindow {

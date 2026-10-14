@@ -2070,7 +2070,7 @@ dependencies = [
 
 [[package]]
 name = "fernrohr"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "ashpd",
  "base64 0.23.1",
@@ -2104,6 +2104,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite 0.30.0",
  "toml 1.1.6+spec-1.1.0",
+ "url",
  "windows-sys 0.61.2",
 ]
 

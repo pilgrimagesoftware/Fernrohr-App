@@ -56,6 +56,8 @@ pub struct ObjectListPanel {
     pub(super) indicators: crate::ui::list_state::Indicators,
     /// The last delete the cluster refused, shown until dismissed (`delete`).
     pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
+    /// The last bulk action's outcome, shown above the table until dismissed.
+    pub(super) bulk_outcome: Option<crate::ui::bulk::BatchOutcome>,
 }
 
 impl ObjectListPanel {
@@ -106,6 +108,7 @@ impl ObjectListPanel {
             initial_sort: None,
             indicators: Default::default(),
             refusal: None,
+            bulk_outcome: None,
         };
         this.subscribe_if_connected(&connection, cx);
         this
@@ -140,6 +143,7 @@ impl ObjectListPanel {
             initial_sort: None,
             indicators: Default::default(),
             refusal: None,
+            bulk_outcome: None,
         }
     }
 
@@ -208,6 +212,7 @@ impl ObjectListPanel {
                 default_sort.clone(),
             );
             let this = cx.weak_entity();
+            let kind_menu = self.kind_menu(cx);
             let table = cx.new(|cx| {
                 let mut delegate = ObjectTableDelegate::new(columns);
                 delegate.set_sorting(default_sort, key);
@@ -219,6 +224,11 @@ impl ObjectListPanel {
                 delegate.set_on_open_in_background(move |row, window, cx| {
                     window.dispatch_action(Box::new(open(row)), cx);
                 });
+                let open = self.opener(crate::ui::nav::OpenMode::NewPanel);
+                delegate.set_on_open_in_new_panel(move |row, window, cx| {
+                    window.dispatch_action(Box::new(open(row)), cx);
+                });
+                delegate.set_kind_menu(self.focus_handle.clone(), kind_menu);
                 TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)
@@ -450,6 +460,7 @@ impl Panel for ObjectListPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -466,3 +477,5 @@ impl Panel for ObjectListPanel {
 
 #[cfg(test)]
 mod tests;
+
+crate::scoped_panel!(ObjectListPanel);

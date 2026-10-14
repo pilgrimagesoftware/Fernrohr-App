@@ -1,5 +1,6 @@
-//! Opening a panel in the background (`open-in-background`): the mode every open
-//! request carries, and the action a Pods row's background open dispatches.
+//! Opening a panel in the background (`open-in-background`) or as a new instance
+//! (`open-panel-new-instance`): the mode every open request carries, and the
+//! actions a Pods row's background and new-panel opens dispatch.
 
 use gpui_kit::*;
 
@@ -11,18 +12,37 @@ pub enum OpenMode {
     #[default]
     Foreground,
     Background,
+    /// Another instance of the panel, even when one is open on the same
+    /// resource (`open-panel-new-instance` D3): always built, with the lowest
+    /// free instance number, and focused.
+    NewPanel,
 }
 
 impl OpenMode {
     /// A click with the platform modifier (`cmd` on macOS, `ctrl` elsewhere) or a
-    /// middle-click opens in the background; any other click in the foreground.
+    /// middle-click opens in the background, an `alt`-click in a new panel, and
+    /// any other click in the foreground.
     pub fn of_click(event: &ClickEvent) -> Self {
         if event.modifiers().secondary() || event.is_middle_click() {
             Self::Background
+        } else if event.modifiers().alt {
+            Self::NewPanel
         } else {
             Self::Foreground
         }
     }
+}
+
+/// Opens a pod's detail panel as a new instance (`open-panel-new-instance`):
+/// what a Pods row's `alt`-click, its context menu's Open in New Panel and the
+/// Pods panel's Open Selected Pod in New Panel dispatch. Carries its pod, as
+/// [`OpenPodInBackground`] does.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = nav, no_json)]
+pub struct OpenPodInNewPanel {
+    pub context_name: String,
+    pub namespace: String,
+    pub name: String,
 }
 
 /// Opens a pod's detail panel in the background (`open-in-background`): what a

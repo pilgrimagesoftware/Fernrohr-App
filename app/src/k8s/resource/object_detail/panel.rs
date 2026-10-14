@@ -346,7 +346,10 @@ impl BasePanel for ObjectDetailPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(restore::dump_target(&self.target, &self.scope.context_name)),
+            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(
+                &self.scope,
+                restore::dump_target(&self.target, &self.scope.context_name),
+            )),
         }
     }
 }
@@ -360,6 +363,7 @@ impl Panel for ObjectDetailPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -373,3 +377,5 @@ impl Panel for ObjectDetailPanel {
         Some(PanelControl::Toolbar)
     }
 }
+
+crate::scoped_panel!(ObjectDetailPanel);

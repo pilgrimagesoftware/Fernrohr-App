@@ -3,11 +3,14 @@
 //! rows compare on one, is [`list_model`]'s - split out to keep this file
 //! under the 500-line limit.
 
-use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::*;
 
+mod checked;
+mod fit;
 mod list_model;
+mod menu;
 pub(super) use list_model::{
     ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout, reconcile,
 };
@@ -76,10 +79,20 @@ pub(super) struct ObjectTableDelegate {
     on_open: Option<OpenRow>,
     /// What a modified or middle click on a row does with it.
     on_open_in_background: Option<OpenRowInBackground>,
+    /// What an `alt`-click on a row, or its context menu's Open in New Panel,
+    /// does with that row (`open-panel-new-instance`).
+    on_open_in_new_panel: Option<OpenRowInBackground>,
     background_click: crate::ui::background_rows::BackgroundClick,
     /// The header cells' drawn bounds, for a divider double-click to fit a
     /// column (`ui::table_fit`).
     header: crate::ui::table_fit::HeaderBounds,
+    /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
+    /// the cursor `selected` tracks.
+    checked: crate::ui::bulk::CheckedRows,
+    /// What a row's menu offers beyond Open ([`menu`]), and the focus its
+    /// items dispatch from.
+    kind_menu: Option<menu::KindMenu>,
+    action_context: Option<FocusHandle>,
 }
 
 impl ObjectTableDelegate {
@@ -100,8 +113,12 @@ impl ObjectTableDelegate {
             selected: None,
             on_open: None,
             on_open_in_background: None,
+            on_open_in_new_panel: None,
             background_click: Default::default(),
             header: Default::default(),
+            checked: Default::default(),
+            kind_menu: None,
+            action_context: None,
         }
     }
 
@@ -122,6 +139,14 @@ impl ObjectTableDelegate {
     }
 
     /// What a modified or middle click on a row does with that row.
+    /// What an `alt`-click or the row menu's Open in New Panel does with a row.
+    pub(super) fn set_on_open_in_new_panel(
+        &mut self,
+        open: impl Fn(&ListRow, &mut Window, &mut App) + 'static,
+    ) {
+        self.on_open_in_new_panel = Some(std::rc::Rc::new(open));
+    }
+
     pub(super) fn set_on_open_in_background(
         &mut self,
         open: impl Fn(&ListRow, &mut Window, &mut App) + 'static,
@@ -133,6 +158,7 @@ impl ObjectTableDelegate {
     pub(super) fn set_rows(&mut self, rows: Vec<ListRow>) {
         self.natural = rows;
         self.apply_sort();
+        self.prune_checked();
     }
 
     /// The rows in their displayed order.
@@ -268,6 +294,13 @@ impl crate::ui::background_rows::BackgroundRows for ObjectTableDelegate {
         }
     }
 
+    fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
+        if let (Some(open), Some(row)) = (self.on_open_in_new_panel.clone(), self.rows.get(row_ix))
+        {
+            open(row, window, cx);
+        }
+    }
+
     fn background_click(&mut self) -> &mut crate::ui::background_rows::BackgroundClick {
         &mut self.background_click
     }
@@ -307,16 +340,10 @@ impl TableDelegate for ObjectTableDelegate {
         &mut self,
         row_ix: usize,
         menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        let Some(on_open) = self.on_open.clone() else {
-            return menu;
-        };
-        menu.item(
-            PopupMenuItem::new("Open")
-                .on_click(move |_event, window, cx| on_open(row_ix, window, cx)),
-        )
+        self.row_menu(row_ix, menu, window, cx)
     }
 
     fn render_td(
@@ -334,17 +361,18 @@ impl TableDelegate for ObjectTableDelegate {
             .data_font()
             .whitespace_nowrap();
         if column.id.as_ref() == FORWARDS {
-            return cell.children(crate::ui::forward_indicator::indicator(
+            let cell = cell.children(crate::ui::forward_indicator::indicator(
                 &row.object.name,
                 &row.forwards,
             ));
+            return self.with_checkbox(row_ix, col_ix, cell, cx);
         }
         let text = cell_text(row, column);
         // A status cell's text takes its tone's colour; a readiness ratio or
         // a Ready condition keeps plain text beside a dot in its tone, as the
         // Pods table's Ready.
         let value = row.cell(column);
-        match (value, value.and_then(columns::Cell::tone)) {
+        let cell = match (value, value.and_then(columns::Cell::tone)) {
             (Some(columns::Cell::Readiness(..) | columns::Cell::Condition(_)), Some(tone)) => cell
                 .flex()
                 .items_center()
@@ -358,7 +386,8 @@ impl TableDelegate for ObjectTableDelegate {
                 .child(text),
             (_, Some(tone)) => cell.text_color(style::status(tone, cx)).child(text),
             (_, None) => cell.child(text),
-        }
+        };
+        self.with_checkbox(row_ix, col_ix, cell, cx)
     }
 
     fn move_column(
@@ -450,15 +479,3 @@ pub(super) fn reselect(
 
 #[cfg(test)]
 mod tests;
-
-impl crate::ui::table_fit::FitColumns for ObjectTableDelegate {
-    fn header_bounds(&self) -> &crate::ui::table_fit::HeaderBounds {
-        &self.header
-    }
-
-    fn set_column_width(&mut self, col_ix: usize, width: Pixels) {
-        if let Some(column) = self.columns.get_mut(col_ix) {
-            column.width = width;
-        }
-    }
-}

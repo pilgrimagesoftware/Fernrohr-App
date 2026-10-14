@@ -17,7 +17,8 @@ pub fn register_restore(cx: &mut App) {
             let context_name =
                 crate::ui::unrestored::required_str(state, "context_name")?.to_string();
             let target = target_from_state(state).ok_or("its state doesn't name its object")?;
-            let scope = PanelScope::new(NavTarget::Object(target.clone()), context_name);
+            let scope = PanelScope::new(NavTarget::Object(target.clone()), context_name)
+                .restored_from(state);
             Ok(panel_handle(
                 cx.new(|cx| ObjectDetailPanel::new(target, scope, cx)),
             ))

@@ -19,6 +19,7 @@ use kube_runtime::watcher;
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
 mod actions;
 mod background;
+mod bulk;
 mod commands;
 mod edit;
 mod filter;
@@ -27,14 +28,14 @@ mod hints;
 pub(crate) use commands::LIST_KEY_CONTEXT;
 pub(crate) use commands::STOP_PORT_FORWARD_KEY;
 pub use commands::{
-    CloseQuickLook, DeletePod, DescribePod, EditPod, FocusFilter, KillPod, OpenQuickLookDetails,
-    PANEL_KEY_CONTEXT, PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook, ShellPod, ShowPodLogs,
-    ShowPodLogsFlipped, ShowPodYaml, StopPortForward, WarpAllToNamespace, WarpNamespace,
-    register_commands,
+    CloseQuickLook, DeletePod, DescribePod, EditPod, FocusFilter, KillPod, OpenInNewPanel,
+    OpenQuickLookDetails, PANEL_KEY_CONTEXT, PortForwardPod, QUICK_LOOK_KEY_CONTEXT, QuickLook,
+    ShellPod, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml, StopPortForward, WarpAllToNamespace,
+    WarpNamespace, register_commands,
 };
 use commands::{
-    DESCRIBE_KEY, FILTER_KEY, LOGS_KEY, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OpenInBackground,
-    QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY,
+    DESCRIBE_KEY, FILTER_KEY, LOGS_KEY, NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY,
+    OPEN_IN_NEW_PANEL_KEY, OpenInBackground, QUICK_LOOK_KEY, WARP_ALL_KEY, YAML_KEY,
 };
 
 mod panel;

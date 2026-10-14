@@ -33,6 +33,7 @@ impl BasePanel for LogsPanel {
                 info["container"] = container.clone().into();
             }
         }
+        let info = crate::ui::panel_title::with_saved_scope(&self.scope, info);
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
@@ -89,6 +90,7 @@ impl Panel for LogsPanel {
             self.streaming_title(),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )

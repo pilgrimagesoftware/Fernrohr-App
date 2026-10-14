@@ -15,6 +15,19 @@ pub(super) struct PanelKey {
     pub(super) target: NavTarget,
     pub(super) context_name: String,
     pub(super) namespaces: Vec<String>,
+    /// Which instance of the resource (`open-panel-new-instance` D1): two
+    /// instances of one resource are two keys.
+    pub(super) instance: u32,
+}
+
+impl PanelKey {
+    /// Whether `self` and `other` are panels on the same resource - the same
+    /// target, context and scope - whichever instances they are (D2).
+    pub(super) fn same_resource(&self, other: &Self) -> bool {
+        self.target == other.target
+            && self.context_name == other.context_name
+            && self.namespaces == other.namespaces
+    }
 }
 
 impl From<&PanelScope> for PanelKey {
@@ -27,6 +40,7 @@ impl From<&PanelScope> for PanelKey {
             target: scope.target.clone(),
             context_name: scope.context_name.clone(),
             namespaces: scope.namespaces.clone(),
+            instance: scope.instance,
         }
     }
 }
@@ -152,6 +166,7 @@ fn panel_key(state: &PanelState) -> Option<PanelKey> {
         target,
         context_name,
         namespaces,
+        instance: crate::ui::panel_title::saved_instance(data),
     })
 }
 

@@ -1,4 +1,56 @@
 
+## 0.13.0 - 2026-10-14
+
+### <!-- 0 -->🚀 Features
+- Batch cluster calls for checked objects
+- Check list rows and act on them together
+- Show Check's key in the list panels' hint rows
+- Open a resource again in a new panel
+- A context menu on panel tabs
+- Kind-specific actions' rules and cluster calls
+- Kind actions from a list row, by key and context menu
+- Kind actions in detail panels; Port Forward only for a running pod
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Drain leaves emptyDir pods, evicts by UID, says when it cordoned
+- Delete only the listed objects, and tell already gone apart
+- Copy YAML reports what it can't copy; check keys in the prompt
+- Dial again when retrying a failed connection
+- Honor NO_PROXY, and say what a connect timeout means
+- Never show or log a proxy's credentials
+- Safer kind actions after review
+- Let a detail header's title push its key hints over
+
+
+### <!-- 10 -->💼 Other
+- Allow linker notes, which CI's deny-warnings build fails on
+
+
+### <!-- 2 -->🚜 Refactor
+- Move error content out of title.rs
+- Share the Service forward and CronJob calls for kind actions
+
+
+### <!-- 3 -->📚 Documentation
+- Checking rows and acting on them together
+- Open a panel again in a new panel
+- Connection timeouts and proxies
+- The panel tab menu
+- Acting on one object of a kind, and Port Forward's new entry points
+- Cut the v0.13 documentation snapshot
+
+
+### <!-- 6 -->🧪 Testing
+- Merge patches and scale in the fake cluster; pods harness over any pods
+- Bind the bulk actions to function keys in tests
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.12.0
+
+
+
 ## 0.12.0 - 2026-10-14
 
 ### <!-- 0 -->🚀 Features

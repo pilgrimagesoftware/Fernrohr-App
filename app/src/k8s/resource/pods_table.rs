@@ -10,6 +10,7 @@ use gpui_kit::*;
 
 use super::pods::{PodRow, PodSelection};
 
+mod checked;
 mod columns;
 pub(in crate::k8s::resource) mod list_sort;
 use columns::cell_text;
@@ -96,6 +97,9 @@ pub(super) struct PodTableDelegate {
     /// its commands from so they reach the Pods panel as their keys do.
     action_context: Option<FocusHandle>,
     background_click: crate::ui::background_rows::BackgroundClick,
+    /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
+    /// the cursor `selected` tracks.
+    checked: crate::ui::bulk::CheckedRows,
 }
 
 impl Default for PodTableDelegate {
@@ -112,6 +116,7 @@ impl Default for PodTableDelegate {
             quick_look: None,
             action_context: None,
             background_click: Default::default(),
+            checked: Default::default(),
         }
     }
 }
@@ -122,6 +127,7 @@ impl PodTableDelegate {
     pub(super) fn set_rows(&mut self, rows: Vec<PodTableRow>) {
         self.natural = rows;
         self.apply_sort();
+        self.prune_checked();
     }
 
     /// `column`'s width: the one the user set, or its default.
@@ -262,6 +268,12 @@ impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
         }
     }
 
+    fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
+        if let Some(row) = self.rows.get(row_ix) {
+            window.dispatch_action(Box::new(row.selection.new_panel_open()), cx);
+        }
+    }
+
     fn background_click(&mut self) -> &mut crate::ui::background_rows::BackgroundClick {
         &mut self.background_click
     }
@@ -307,7 +319,9 @@ impl TableDelegate for PodTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        use super::pods::{DescribePod, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml};
+        use super::pods::{
+            DescribePod, OpenInNewPanel, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml,
+        };
         if row_ix >= self.rows.len() {
             return menu;
         }
@@ -320,12 +334,18 @@ impl TableDelegate for PodTableDelegate {
         };
         menu.menu("Quick Look", Box::new(QuickLook))
             .menu("Open Details", Box::new(DescribePod))
+            .menu("Open in New Panel", Box::new(OpenInNewPanel))
             .menu("Logs", Box::new(ShowPodLogs))
             .menu(
                 crate::ui::logs_panels::flipped_label(cx),
                 Box::new(ShowPodLogsFlipped),
             )
             .menu("YAML", Box::new(ShowPodYaml))
+            .menu_with_disabled(
+                "Port Forward…",
+                Box::new(super::pods::PortForwardPod),
+                !self.rows[row_ix].row.forwardable(),
+            )
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,
@@ -371,6 +391,7 @@ impl TableDelegate for PodTableDelegate {
             )),
             _ => cell.child(text),
         };
+        let cell = self.with_checkbox(row_ix, col_ix, cell, cx);
         // An open quick look hangs below the selected row's first cell, in an
         // overlay so the row keeps its height and the popover isn't clipped.
         let popover = self.quick_look.clone().filter(|_| {

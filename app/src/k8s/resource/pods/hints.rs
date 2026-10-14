@@ -54,6 +54,12 @@ impl PodsPanel {
                 "Background",
                 window,
             ))
+            .child(hint(
+                &OpenInNewPanel,
+                OPEN_IN_NEW_PANEL_KEY,
+                "New panel",
+                window,
+            ))
             .child(hint(&ShowPodLogs, LOGS_KEY, "Logs", window))
             .child(hint(
                 &ShowPodLogsFlipped,
@@ -62,6 +68,7 @@ impl PodsPanel {
                 window,
             ))
             .child(hint(&ShowPodYaml, YAML_KEY, "YAML", window))
+            .child(crate::ui::bulk::commands::check_hint(window))
             .when(shellable, |row| {
                 row.child(hint(&ShellPod, SHELL_KEY, "Shell", window))
             })

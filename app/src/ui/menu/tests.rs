@@ -241,7 +241,9 @@ fn the_view_menu_is_grouped() {
             "Collapse/Expand Resource Panel",
             "Move Resource Panel to Other Side",
             "---",
+            "Open in New Panel",
             "Maximize/Restore Panel",
+            "Move to New Window",
             "---",
             "Fit Columns to Contents",
         ]

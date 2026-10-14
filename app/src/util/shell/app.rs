@@ -160,6 +160,8 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::ui::status_bar::register_commands(registry);
+    crate::ui::bulk::register_commands(registry);
+    crate::ui::kind_actions::register_commands(registry);
     crate::ui::add_context_window::register_commands(registry);
     crate::ui::theme::register_commands(registry);
     crate::k8s::resource::object_detail::register_commands(registry);
@@ -171,6 +173,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
+    crate::ui::panel::tab_menu::register_commands(registry);
     crate::ui::settings::register_commands(registry);
     crate::ui::text_size::register_commands(registry);
     crate::ui::shortcut_timeout::register_commands(registry);

@@ -58,13 +58,16 @@ pub(super) fn dump(panel: &EventsPanel, cx: &App) -> Value {
         .sort(cx)
         .map(|(column, sort)| json!({ "column": column.id(), "order": sort_name(sort) }));
     let filter = panel.search.dump(cx);
-    json!({
-        "context_name": panel.scope.context_name,
-        "namespaces": panel.scope.namespaces,
-        "sort": sort,
-        "filters": panel.filters,
-        "filter": filter,
-    })
+    crate::ui::panel_title::with_saved_scope(
+        &panel.scope,
+        json!({
+            "context_name": panel.scope.context_name,
+            "namespaces": panel.scope.namespaces,
+            "sort": sort,
+            "filters": panel.filters,
+            "filter": filter,
+        }),
+    )
 }
 
 /// The browser a saved panel was, or `None` for state that doesn't name its
@@ -94,7 +97,8 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
         NavTarget::Kind(DiscoveredKind::events()),
         saved.context_name.clone(),
     )
-    .scoped_to(saved.namespaces.clone());
+    .scoped_to(saved.namespaces.clone())
+    .restored_from(state);
     Ok(panel_handle(cx.new(|cx| {
         let mut panel = EventsPanel::new(scope, cx);
         panel.initial_sort = saved.sort;

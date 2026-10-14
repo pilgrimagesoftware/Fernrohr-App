@@ -260,12 +260,16 @@ impl MainWindow {
                 continue;
             };
             if contexts.contains(&key.context_name) {
-                self.open_target_in(
+                // Exactly the saved instance (`open-panel-new-instance` D2): a
+                // saved first instance doesn't duplicate an open panel on its
+                // resource, and a saved second one opens beside it.
+                self.open_target_as(
                     key.target,
                     None,
                     Some(key.context_name),
                     key.namespaces,
                     OpenMode::Foreground,
+                    crate::util::shell::open::Instance::Exactly(key.instance),
                     window,
                     cx,
                 );

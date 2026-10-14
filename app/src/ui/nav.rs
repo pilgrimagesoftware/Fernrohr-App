@@ -12,7 +12,7 @@ use gpui_kit::*;
 
 mod naming;
 mod open_mode;
-pub use open_mode::{OpenMode, OpenPodInBackground};
+pub use open_mode::{OpenMode, OpenPodInBackground, OpenPodInNewPanel};
 
 // `ShowPodDetail` and `ShowPodDetailYaml` are deliberately not registered
 // commands: unlike the two above them they need a pod already selected
@@ -30,9 +30,14 @@ actions!(
         ShowLogsFlipped,
         ShowEvents,
         ShowPodDetail,
-        ShowPodDetailYaml
+        ShowPodDetailYaml,
+        OpenInNewPanel
     ]
 );
+
+/// Opens another instance of the focused panel (`open-panel-new-instance`).
+pub const OPEN_IN_NEW_PANEL_COMMAND_ID: &str = "panel.open_new_instance";
+pub const OPEN_IN_NEW_PANEL_DEFAULT_BINDING: &str = "cmd-shift-d";
 
 /// Opens the events browser for the window's active context (`events-browser`).
 pub const SHOW_EVENTS_COMMAND_ID: &str = "nav.show_events";
@@ -145,6 +150,18 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ShowLogsFlipped),
         menu: None,
     });
+    // The View menu's panel layout group, beside Maximize/Restore Panel: it
+    // acts on whichever panel has focus, as that does.
+    registry.register(Command {
+        id: OPEN_IN_NEW_PANEL_COMMAND_ID,
+        title: "Open in New Panel",
+        default_binding: OPEN_IN_NEW_PANEL_DEFAULT_BINDING,
+        context: None,
+        action: Box::new(OpenInNewPanel),
+        menu: Some(crate::command::MenuSlot::View(
+            crate::command::ViewGroup::PanelLayout,
+        )),
+    });
     // Palette and keymap only: Navigate holds focus and tab moves.
     registry.register(Command {
         id: SHOW_EVENTS_COMMAND_ID,
@@ -204,6 +221,45 @@ impl OpenedPanel {
             }
         }
         true
+    }
+
+    /// Whether the panel's tab is pinned (`panel-tab-menu`).
+    pub fn pinned(&self, cx: &App) -> bool {
+        use crate::ui::panel_title::ScopedPanel as _;
+        match self {
+            OpenedPanel::Pods(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::ObjectList(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Events(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Placeholder(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Logs(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::PodDetail(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::ObjectDetail(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Exec(panel) => panel.read(cx).scope().pinned,
+        }
+    }
+
+    /// Pins or unpins the panel's tab; it redraws, so its title shows which.
+    pub fn set_pinned(&self, pinned: bool, cx: &mut App) {
+        fn set<P: crate::ui::panel_title::ScopedPanel + 'static>(
+            panel: &Entity<P>,
+            pinned: bool,
+            cx: &mut App,
+        ) {
+            panel.update(cx, |panel, cx| {
+                panel.scope_mut().pinned = pinned;
+                cx.notify();
+            });
+        }
+        match self {
+            OpenedPanel::Pods(panel) => set(panel, pinned, cx),
+            OpenedPanel::ObjectList(panel) => set(panel, pinned, cx),
+            OpenedPanel::Events(panel) => set(panel, pinned, cx),
+            OpenedPanel::Placeholder(panel) => set(panel, pinned, cx),
+            OpenedPanel::Logs(panel) => set(panel, pinned, cx),
+            OpenedPanel::PodDetail(panel) => set(panel, pinned, cx),
+            OpenedPanel::ObjectDetail(panel) => set(panel, pinned, cx),
+            OpenedPanel::Exec(panel) => set(panel, pinned, cx),
+        }
     }
 
     /// The dock id of the panel just built, without naming its type - what the

@@ -309,6 +309,7 @@ impl Panel for EventsPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -322,3 +323,5 @@ impl Panel for EventsPanel {
         Some(PanelControl::Toolbar)
     }
 }
+
+crate::scoped_panel!(EventsPanel);

@@ -29,6 +29,7 @@ actions!(
         PortForwardPod,
         StopPortForward,
         OpenInBackground,
+        OpenInNewPanel,
         EditPod
     ]
 );
@@ -64,6 +65,8 @@ pub(super) const WARP_ALL_KEY: &str = "shift-w";
 pub(super) const DESCRIBE_KEY: &str = "d";
 /// Open in Background: the platform modifier with Enter (`cmd-enter` on macOS).
 pub(super) const OPEN_IN_BACKGROUND_KEY: &str = "secondary-enter";
+/// Open in New Panel (`open-panel-new-instance`): Shift with Enter.
+pub(super) const OPEN_IN_NEW_PANEL_KEY: &str = "shift-enter";
 pub(super) const LOGS_KEY: &str = "l";
 /// The selected pod's logs the other way from the Logs panels preference
 /// (`logs-panel-instancing`).
@@ -207,6 +210,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Pods: Open Selected Pod in Background",
         OPEN_IN_BACKGROUND_KEY,
         Box::new(OpenInBackground),
+        None,
+    );
+    register(
+        "pods.open_new_panel",
+        "Pods: Open Selected Pod in New Panel",
+        OPEN_IN_NEW_PANEL_KEY,
+        Box::new(OpenInNewPanel),
         None,
     );
     register(

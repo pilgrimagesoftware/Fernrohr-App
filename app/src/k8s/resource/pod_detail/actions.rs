@@ -176,7 +176,12 @@ impl PodDetailPanel {
     /// The acting keys' hints, after Logs: Shell while `shellable`, Port
     /// forward while there is a pod to act on, Delete while it can be deleted.
     pub(super) fn acting_hints(&self, shellable: bool, window: &Window, cx: &App) -> Vec<Div> {
-        let live = self.live_pod().is_some();
+        // Port forward needs a Running pod (`resource-specific-actions`).
+        let forwardable = self
+            .live_pod()
+            .and_then(|pod| pod.status.as_ref())
+            .and_then(|status| status.phase.as_deref())
+            == Some("Running");
         let deletable = self.deletable(cx);
         let hint = |action: &dyn Action, context: &str, fallback: &str, label: &'static str| {
             let key = Kbd::binding_for_action(action, Some(context), window)
@@ -196,7 +201,7 @@ impl PodDetailPanel {
         if shellable {
             hints.push(hint(&ShellPod, SHELLABLE_KEY_CONTEXT, SHELL_KEY, "Shell"));
         }
-        if live {
+        if forwardable {
             hints.push(hint(
                 &PortForwardPod,
                 PANEL_KEY_CONTEXT,

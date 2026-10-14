@@ -151,7 +151,7 @@ fn a_built_in_grouped_list_keeps_its_group_in_the_title() {
 /// backslashes survive.
 #[test]
 fn error_text_is_rendered_verbatim() {
-    use super::{code_block, escape_markdown};
+    use super::error::{code_block, escape_markdown};
     assert_eq!(escape_markdown("continue_: None"), "continue\\_: None");
     assert_eq!(escape_markdown("a*b"), "a\\*b");
     assert_eq!(code_block(r#"pods \"x\""#), "```text\npods \\\"x\\\"\n```");
@@ -252,4 +252,31 @@ fn only_the_focused_panel_underlines_its_title() {
     let accent = gpui_kit::hsla(0.6, 0.9, 0.6, 1.);
     assert_eq!(focus_underline(true, accent), accent);
     assert_eq!(focus_underline(false, accent).a, 0.);
+}
+
+/// `open-panel-new-instance` 1.1: the first instance's title is as it was;
+/// later ones end in their number, `instance + 1`.
+#[test]
+fn instances_after_the_first_are_numbered() {
+    assert_eq!(super::numbered("Pod: web-1".into(), 0), "Pod: web-1");
+    assert_eq!(super::numbered("Pod: web-1".into(), 1), "Pod: web-1 (2)");
+    assert_eq!(super::numbered("Deployments".into(), 2), "Deployments (3)");
+}
+
+/// 1.1: a first instance saves no number and reads back as 0; a later one
+/// round-trips, and a scope's instance is part of what it is.
+#[test]
+fn instances_save_and_read_back() {
+    let first = scope(NavTarget::pods(), 1);
+    let second = first.as_instance(1);
+    assert_ne!(first, second);
+    let saved = super::with_saved_scope(&first, serde_json::json!({ "context_name": "dev" }));
+    assert!(saved.get("instance").is_none());
+    assert_eq!(super::saved_instance(&saved), 0);
+    let saved = super::with_saved_scope(&second, serde_json::json!({ "context_name": "dev" }));
+    assert_eq!(super::saved_instance(&saved), 1);
+    assert_eq!(
+        super::saved_instance(&serde_json::json!({ "instance": "two" })),
+        0
+    );
 }

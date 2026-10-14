@@ -125,3 +125,75 @@ async fn a_middle_click_opens_that_pod_and_keeps_the_selection(cx: &mut TestAppC
     assert_eq!(*opened.borrow(), ["web-2"]);
     assert_eq!(harness.selected().as_deref(), Some("web-1"));
 }
+
+/// Every new-panel pod open the panel asks the window for
+/// (`open-panel-new-instance`).
+fn record_new(harness: &mut Harness) -> Rc<RefCell<Vec<String>>> {
+    let opened = Rc::new(RefCell::new(Vec::new()));
+    harness.vcx.update(|_, cx| {
+        let opened = opened.clone();
+        cx.on_action(move |action: &crate::ui::nav::OpenPodInNewPanel, _| {
+            opened.borrow_mut().push(action.name.clone())
+        });
+    });
+    opened
+}
+
+/// `open-panel-new-instance` 3.1: `shift-enter` opens the selected pod's
+/// detail as a new panel, never through `ShowPodDetail`.
+#[gpui_kit::test]
+async fn shift_enter_opens_the_selected_pod_in_a_new_panel(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    let opened = record_new(&mut harness);
+
+    harness.press("shift-enter");
+
+    assert_eq!(*opened.borrow(), ["web-1"]);
+    assert_eq!(harness.details_opened.get(), 0, "not a default open");
+}
+
+/// 3.1: `shift-enter` typed into the namespace filter opens nothing.
+#[gpui_kit::test]
+async fn shift_enter_in_the_namespace_filter_opens_nothing(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    let opened = record_new(&mut harness);
+    harness.press("n");
+
+    harness.press("shift-enter");
+
+    assert!(opened.borrow().is_empty());
+}
+
+/// 3.2: an `alt`-click opens that pod in a new panel and leaves the selection.
+#[gpui_kit::test]
+async fn an_alt_click_opens_that_pod_in_a_new_panel(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    let opened = record_new(&mut harness);
+
+    click(&mut harness, "web-2", MouseButton::Left, Modifiers::alt());
+
+    assert_eq!(*opened.borrow(), ["web-2"]);
+    assert_eq!(harness.selected().as_deref(), Some("web-1"));
+}
+
+/// 3.2, and the spec's "Open in New Panel from the context menu": right-click
+/// a row, then its third item.
+#[gpui_kit::test]
+async fn the_row_menu_opens_that_pod_in_a_new_panel(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    let opened = record_new(&mut harness);
+    click(&mut harness, "web-2", MouseButton::Right, Modifiers::none());
+    assert_eq!(
+        harness.selected().as_deref(),
+        Some("web-2"),
+        "right-click selects"
+    );
+
+    // Quick Look, Open Details, Open in New Panel: down to the third, Enter.
+    harness.press("down");
+    harness.press("down");
+    harness.press("down");
+    harness.press("enter");
+
+    assert_eq!(*opened.borrow(), ["web-2"]);
+}

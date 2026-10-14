@@ -320,30 +320,18 @@ impl Render for ObjectDetailPanel {
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
+            .child(panel_title::header_title(panel_title::with_header_icon(
+                crate::ui::icon::for_kind(&self.target.kind.gvk.group, &self.target.kind.gvk.kind),
+                panel_title::item_heading(
+                    self.target.name.clone(),
+                    panel_title::heading_context(&self.scope, window_contexts),
+                    cx.theme().muted_foreground,
+                ),
+                window,
+                cx,
+            )))
             .child(
-                div()
-                    .flex_1()
-                    .min_w(rems(8.))
-                    .child(panel_title::with_header_icon(
-                        crate::ui::icon::for_kind(
-                            &self.target.kind.gvk.group,
-                            &self.target.kind.gvk.kind,
-                        ),
-                        panel_title::item_heading(
-                            self.target.name.clone(),
-                            panel_title::heading_context(&self.scope, window_contexts),
-                            cx.theme().muted_foreground,
-                        ),
-                        window,
-                        cx,
-                    )),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .justify_end()
-                    .min_w_0()
+                panel_title::header_hints()
                     .gap_x(space.control_gap)
                     .gap_y_1()
                     .text_sm()
@@ -355,6 +343,7 @@ impl Render for ObjectDetailPanel {
                                 .test_support(),
                         )
                     })
+                    .children(self.kind_header(window, cx))
                     .children(logs_hint)
                     .when(deletable, |this| {
                         this.child(hint(
@@ -375,14 +364,16 @@ impl Render for ObjectDetailPanel {
                     )),
             );
 
-        div()
+        let mut context = key_context(
+            self.edit.is_some(),
+            deletable,
+            self.verbs(cx).patch,
+            self.pod_logs_workload().is_some(),
+        );
+        crate::ui::kind_actions::add_key_contexts(self, &mut context, false, cx);
+        crate::ui::kind_actions::on_kind_actions(div(), cx)
             .size_full()
-            .key_context(key_context(
-                self.edit.is_some(),
-                deletable,
-                self.verbs(cx).patch,
-                self.pod_logs_workload().is_some(),
-            ))
+            .key_context(context)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))

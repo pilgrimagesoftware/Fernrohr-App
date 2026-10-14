@@ -4,8 +4,9 @@
 
 use super::commands::{
     DELETE_KEY, DESCRIBE_KEY, DeleteSelected, DescribeSelected, FILTER_KEY, FocusFilter,
-    NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OPEN_KEY, OpenInBackground, OpenSelected,
-    PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList, ShowSelectedYaml, WarpNamespace, YAML_KEY,
+    NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OPEN_IN_NEW_PANEL_KEY, OPEN_KEY, OpenInBackground,
+    OpenInNewPanel, OpenSelected, PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList, ShowSelectedYaml,
+    WarpNamespace, YAML_KEY,
 };
 use super::panel::ObjectListPanel;
 use super::store::ListMode;
@@ -110,6 +111,12 @@ impl ObjectListPanel {
                 "Background",
                 window,
             ))
+            .child(Self::hint(
+                &OpenInNewPanel,
+                OPEN_IN_NEW_PANEL_KEY,
+                "New panel",
+                window,
+            ))
             // Only a namespaced kind has a picker to open.
             .when(self.scope.is_namespaced(), |hints| {
                 hints.child(Self::hint(
@@ -125,7 +132,9 @@ impl ObjectListPanel {
                 "Describe",
                 window,
             ))
-            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window));
+            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
+            .child(crate::ui::bulk::commands::check_hint(window))
+            .children(self.kind_hints(window, cx));
         // A Service with a forward running can stop it (`port-forward-indicators` 4.1).
         if !self.selected_forwards(cx).is_empty() {
             hints = hints.child(Self::hint(
@@ -188,6 +197,7 @@ impl ObjectListPanel {
                     .child(Input::new(&filter)),
             )
             .children(self.render_refusal(cx))
+            .children(crate::ui::bulk::render_bulk(self, cx))
             .child({
                 let context = self.table_key_context();
                 div()
@@ -350,39 +360,44 @@ impl Render for ObjectListPanel {
         let mut key_context = KeyContext::default();
         key_context.add(PANEL_KEY_CONTEXT);
         key_context.add(crate::ui::list_sort::KEY_CONTEXT);
+        crate::ui::bulk::add_key_contexts(self, &mut key_context, cx);
+        crate::ui::kind_actions::add_key_contexts(self, &mut key_context, true, cx);
         let panel =
-            crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.table.clone(), cx)
-                .size_full()
-                .key_context(key_context)
-                .track_focus(&self.focus_handle)
-                .on_action(cx.listener(Self::on_action_focus_filter))
-                .on_action(cx.listener(Self::on_action_open_selected))
-                .on_action(cx.listener(Self::on_action_open_in_background))
-                .capture_action(cx.listener(Self::capture_select_down))
-                .capture_action(cx.listener(Self::capture_select_up))
-                .on_action(cx.listener(Self::on_action_describe_selected))
-                .on_action(cx.listener(Self::on_action_show_selected_yaml))
-                .on_action(cx.listener(Self::on_action_edit_selected))
-                .on_action(cx.listener(Self::on_action_warp_namespace))
-                .on_action(cx.listener(
-                    |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
-                        this.namespace_picker.open(window, cx)
-                    },
-                ))
-                .on_action(cx.listener(Self::on_action_fit_columns))
-                .on_action(cx.listener(Self::on_action_refresh))
-                .on_action(cx.listener(Self::on_action_port_forward_service))
-                .on_action(cx.listener(Self::on_action_stop_port_forward))
-                .child(
-                    div()
-                        .size_full()
-                        .flex()
-                        .flex_col()
-                        .child(header)
-                        .child(div().flex_1().min_h_0().child(content)),
-                )
-                // Tab stays in the panel: see `ui::panel::focus`.
-                .focus_trap("object-list-panel-tab-trap", &self.focus_handle);
+            crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.table.clone(), cx);
+        let panel = crate::ui::kind_actions::on_kind_actions(panel, cx);
+        let panel = crate::ui::bulk::on_bulk_actions(panel, cx)
+            .size_full()
+            .key_context(key_context)
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::on_action_focus_filter))
+            .on_action(cx.listener(Self::on_action_open_selected))
+            .on_action(cx.listener(Self::on_action_open_in_background))
+            .on_action(cx.listener(Self::on_action_open_in_new_panel))
+            .capture_action(cx.listener(Self::capture_select_down))
+            .capture_action(cx.listener(Self::capture_select_up))
+            .on_action(cx.listener(Self::on_action_describe_selected))
+            .on_action(cx.listener(Self::on_action_show_selected_yaml))
+            .on_action(cx.listener(Self::on_action_edit_selected))
+            .on_action(cx.listener(Self::on_action_warp_namespace))
+            .on_action(cx.listener(
+                |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
+                    this.namespace_picker.open(window, cx)
+                },
+            ))
+            .on_action(cx.listener(Self::on_action_fit_columns))
+            .on_action(cx.listener(Self::on_action_refresh))
+            .on_action(cx.listener(Self::on_action_port_forward_service))
+            .on_action(cx.listener(Self::on_action_stop_port_forward))
+            .child(
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .child(header)
+                    .child(div().flex_1().min_h_0().child(content)),
+            )
+            // Tab stays in the panel: see `ui::panel::focus`.
+            .focus_trap("object-list-panel-tab-trap", &self.focus_handle);
         // Namespace quick-jump's context, for a namespaced kind's list - its own
         // frame around the panel, so it's on the focus path with the panel or
         // its table focused.

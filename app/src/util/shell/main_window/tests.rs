@@ -221,6 +221,7 @@ async fn the_status_bar_renders_only_in_workspace_mode(cx: &mut TestAppContext) 
     let window = cx.add_window(|window, cx| MainWindow {
         mode: WindowMode::Picker(cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx))),
         focus_handle: cx.focus_handle(),
+        tab_menu: Default::default(),
     });
     cx.run_until_parked();
 

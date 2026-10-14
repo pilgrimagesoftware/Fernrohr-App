@@ -1,6 +1,8 @@
 //! Open in Background for the Pods panel (`open-in-background` 2.1): the selected
 //! row's pod detail opened as an inactive tab, the selection - and so
-//! `SelectedPod` - left as it is. The mouse route is `ui::background_rows`.
+//! `SelectedPod` - left as it is - and Open in New Panel, the same pod's detail
+//! as a new instance (`open-panel-new-instance`). The mouse routes are
+//! `ui::background_rows`.
 
 use super::*;
 
@@ -22,6 +24,26 @@ impl PodsPanel {
             return;
         };
         let open = row.selection.background_open();
+        window.dispatch_action(Box::new(open), cx);
+    }
+
+    pub(super) fn on_action_open_in_new_panel(
+        &mut self,
+        _: &OpenInNewPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(table) = self.pod_table.clone() else {
+            return;
+        };
+        let table = table.read(cx);
+        let Some(row) = table
+            .selected_row()
+            .and_then(|row_ix| table.delegate().rows().get(row_ix))
+        else {
+            return;
+        };
+        let open = row.selection.new_panel_open();
         window.dispatch_action(Box::new(open), cx);
     }
 }

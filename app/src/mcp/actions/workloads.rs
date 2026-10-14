@@ -182,9 +182,16 @@ async fn set_rollout_paused(input: SetRolloutPausedInput, tools: ToolContext) ->
         },
     )
     .await?;
-    actions::set_rollout_paused(session.client.clone(), &kind, namespace, name, input.paused)
-        .await
-        .map_err(failed(&session))?;
+    actions::set_rollout_paused(
+        session.client.clone(),
+        &kind,
+        namespace,
+        name,
+        input.paused,
+        None,
+    )
+    .await
+    .map_err(failed(&session))?;
     Ok(approved(json!({
         "context": session.context, "namespace": namespace,
         "kind": kind.gvk.kind, "name": name, "paused": input.paused,

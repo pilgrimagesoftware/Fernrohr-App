@@ -125,3 +125,34 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests;
+
+/// Bulk View Logs (`bulk-select-list-actions`): a Logs panel of its own for each
+/// of `pods`, in the main window `window` holds - whatever the Logs panels
+/// preference, since the point is to see them side by side.
+pub(crate) fn open_pods_logs(
+    pods: Vec<crate::k8s::resource::pods::PodSelection>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let Some(Some(root)) = window.root::<gpui_kit::component::Root>() else {
+        return;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return;
+    };
+    // Deferred: the caller is mid-update in a panel's action, or a dialog's.
+    window.defer(cx, move |window, cx| {
+        main_window.update(cx, |main_window, cx| {
+            // Each panel reads the pod it shows from the selection as it opens;
+            // the user's own selection is put back afterward.
+            let previous = cx
+                .try_global::<SelectedPod>()
+                .and_then(|selected| selected.0.clone());
+            for pod in pods {
+                cx.set_global(SelectedPod(Some(pod)));
+                main_window.show_logs(LogsPanels::PerPod, window, cx);
+            }
+            cx.set_global(SelectedPod(previous));
+        });
+    });
+}
