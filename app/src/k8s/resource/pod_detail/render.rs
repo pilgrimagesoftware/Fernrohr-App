@@ -277,10 +277,9 @@ impl Render for PodDetailPanel {
         // The pod's name (and, in a multi-context window, its context) on the left;
         // the tab and view-toggle hints on the right.
         //
-        // As the panel narrows, the name gives way first: it takes only the
-        // space the hints leave, ellipsizing, down to a floor that keeps a few
-        // characters readable. Past that floor the hints shrink instead and
-        // wrap onto further rows, each hint kept whole.
+        // The name takes the width it needs first, and the hints wrap onto
+        // further rows to make room; only once they're down to their floor does
+        // the name give way, ellipsizing (`panel_title::header_title`).
         let header = div()
             .flex()
             .items_center()
@@ -291,13 +290,9 @@ impl Render for PodDetailPanel {
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(div().flex_1().min_w(rems(8.)).child(heading))
+            .child(panel_title::header_title(heading))
             .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .justify_end()
-                    .min_w_0()
+                panel_title::header_hints()
                     .gap_x(space.control_gap)
                     .gap_y_1()
                     .text_sm()
