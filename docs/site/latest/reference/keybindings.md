@@ -224,6 +224,30 @@ This list matches the commands registered in `app/src/command.rs`.
 | Sort by Previous Column | <kbd>⇧,</kbd> | `SortableList && !Input` | — | `list.sort_previous_column` |
 | Cycle Sort | <kbd>O</kbd> | `SortableList && !Input` | — | `list.cycle_sort` |
 
+### Checked rows
+
+Every list panel, the Pods panel included, adds `CheckableList`, and adds
+`CheckedRows` while any row is checked. Each bulk action's context is added only
+while every checked row's kind takes that action.
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| List: Check or Uncheck Selected Row | <kbd>X</kbd> | `CheckableList && !Input` | — | `bulk.toggle_checked` |
+| List: Check Rows Up to Selected | <kbd>⇧X</kbd> | `CheckableList && !Input` | — | `bulk.check_range` |
+| Checked: Uncheck All | — | `CheckedRows && !Input` | — | `bulk.clear_checked` |
+| Checked: View Logs | — | `BulkViewLogs && !Input` | — | `bulk.view_logs` |
+| Checked: Restart Rollout… | — | `BulkRestartRollout && !Input` | — | `bulk.restart_rollout` |
+| Checked: Rollback Rollout… | — | `BulkRollbackRollout && !Input` | — | `bulk.rollback_rollout` |
+| Checked: Scale… | — | `BulkScale && !Input` | — | `bulk.scale` |
+| Checked: Cordon… | — | `BulkCordon && !Input` | — | `bulk.cordon` |
+| Checked: Uncordon… | — | `BulkUncordon && !Input` | — | `bulk.uncordon` |
+| Checked: Drain… | — | `BulkDrain && !Input` | — | `bulk.drain` |
+| Checked: Label… | — | `BulkLabel && !Input` | — | `bulk.label` |
+| Checked: Annotate… | — | `BulkAnnotate && !Input` | — | `bulk.annotate` |
+| Checked: Copy Names | — | `BulkCopyNames && !Input` | — | `bulk.copy_names` |
+| Checked: Copy YAML | — | `BulkCopyYaml && !Input` | — | `bulk.copy_yaml` |
+| Checked: Delete… | — | `BulkDelete && !Input` | — | `bulk.delete` |
+
 ### Object detail panel
 
 | Command | Default binding | Context | Menu | ID |
