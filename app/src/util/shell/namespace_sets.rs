@@ -45,7 +45,7 @@ impl MainWindow {
                 NavTarget::Kind(kind) => kind.namespaced,
                 // A typed label Logs panel searches namespaces of its own
                 // (`selector-logs`); a workload's is fixed.
-                NavTarget::LabelLogs(crate::util::logs::LabelLogs::Typed) => true,
+                NavTarget::LabelLogs(crate::util::logs::LabelLogs::Typed(_)) => true,
                 _ => false,
             })
             .map(|open| (open.id, open.key.clone()))

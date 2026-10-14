@@ -56,11 +56,17 @@ fn streaming_title(
 }
 
 impl LogsPanel {
+    /// Test-only: what the panel's title reads.
+    #[cfg(test)]
+    pub(crate) fn test_title(&self) -> String {
+        self.streaming_title()
+    }
+
     fn streaming_title(&self) -> String {
         // A typed label panel is named by what it follows; a workload's by
         // the workload, as its target says.
         if let Some(super::labels::Following {
-            source: super::labels::LabelLogs::Typed,
+            source: super::labels::LabelLogs::Typed(_),
             selector: Some((selector, _)),
             ..
         }) = &self.labels

@@ -74,27 +74,22 @@ impl MainWindow {
 }
 
 impl MainWindow {
-    /// `ShowLabelLogs` (#150): the Logs panel a label selector is typed into,
-    /// opened - or, already open, focused with its field focused to type
-    /// another.
+    /// `ShowLabelLogs` (#150): a new Logs panel to type a label selector
+    /// into, every time - several can be open at once, in one context or
+    /// several (`selector-logs-multiple-panels` D3). It focuses its own field.
     pub(super) fn on_action_show_label_logs(
         &mut self,
         _: &crate::util::logs::ShowLabelLogs,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let target = NavTarget::LabelLogs(crate::util::logs::LabelLogs::Typed);
+        let target = NavTarget::LabelLogs(crate::util::logs::LabelLogs::new_typed());
         // In the focused list's context and namespaces (`selector-logs`): in a
         // window holding several contexts, the active one may not be the
-        // list's, and its cluster hasn't the pods the list shows (#213). The
-        // open panel keeps its own scope - it's found by it.
+        // list's, and its cluster hasn't the pods the list shows (#213).
         let focused = self.focused_namespaced(window, cx).map(|(_, key)| key);
         let context_name = focused.as_ref().map(|key| key.context_name.clone());
-        let (existing, namespaces) =
-            match self.open_logs_panel(&target, context_name.as_deref(), cx) {
-                Some((panel, namespaces)) => (Some(panel), namespaces),
-                None => (None, focused.map(|key| key.namespaces).unwrap_or_default()),
-            };
+        let namespaces = focused.map(|key| key.namespaces).unwrap_or_default();
         self.open_target_in(
             target,
             None,
@@ -104,9 +99,6 @@ impl MainWindow {
             window,
             cx,
         );
-        if let Some(panel) = existing {
-            panel.update(cx, |panel, cx| panel.focus_selector(window, cx));
-        }
     }
 
     /// `OpenWorkloadLogs` (#150): the Logs panel following a workload's pods,
@@ -128,39 +120,6 @@ impl MainWindow {
             window,
             cx,
         );
-    }
-
-    /// The Logs panel this window has open on `target`, in `context_name` -
-    /// else the context a new one would open in - with the namespaces it's
-    /// scoped to.
-    pub(super) fn open_logs_panel(
-        &self,
-        target: &NavTarget,
-        context_name: Option<&str>,
-        cx: &App,
-    ) -> Option<(Entity<crate::util::logs::LogsPanel>, Vec<String>)> {
-        let WindowMode::Workspace {
-            open_panels,
-            contexts,
-            active,
-            ..
-        } = &self.mode
-        else {
-            return None;
-        };
-        let context_name = match context_name {
-            Some(named) => named.to_string(),
-            None => super::panels::pod_scoped_context(target, contexts, *active, cx)?,
-        };
-        open_panels
-            .iter()
-            .find(|open| &open.key.target == target && open.key.context_name == context_name)
-            .and_then(|open| match &open.panel {
-                Some(crate::ui::nav::OpenedPanel::Logs(panel)) => {
-                    Some((panel.clone(), open.key.namespaces.clone()))
-                }
-                _ => None,
-            })
     }
 }
 

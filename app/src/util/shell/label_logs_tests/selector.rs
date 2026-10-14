@@ -2,11 +2,10 @@
 //! spec names, beyond what the tests above it already pin - a blank selector
 //! rejected, a deleted pod's stream dropped, and the stream cap.
 
-use super::{logs_panel, pod, wait_for_streams, window};
+use super::{pod, wait_for_streams, window};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::test_cluster::FakeCluster;
-use crate::ui::nav::NavTarget;
-use crate::util::logs::{LabelLogs, LogsPanel};
+use crate::util::logs::LogsPanel;
 use crate::util::shell::MainWindow;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 
@@ -34,7 +33,7 @@ fn typed_panel(
         window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx)
     });
     vcx.run_until_parked();
-    let panel = logs_panel(&main, &NavTarget::LabelLogs(LabelLogs::Typed), &mut vcx);
+    let panel = super::typed_panel(&main, &mut vcx);
     (cluster, main, panel, vcx)
 }
 
@@ -117,7 +116,7 @@ async fn the_menu_item_opens_the_panel_empty(cx: &mut TestAppContext) {
         window.dispatch_action(action, cx)
     });
     vcx.run_until_parked();
-    let panel = logs_panel(&main, &NavTarget::LabelLogs(LabelLogs::Typed), &mut vcx);
+    let panel = super::typed_panel(&main, &mut vcx);
     assert_eq!(vcx.update(|_, cx| panel.read(cx).test_selector()), None);
     assert!(vcx.update(|_, cx| panel.read(cx).test_streams()).is_empty());
     // The field has focus: what's typed lands in it.

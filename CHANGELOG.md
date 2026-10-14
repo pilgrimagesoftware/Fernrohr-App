@@ -1,4 +1,20 @@
 
+## 0.12.0 - 2026-10-14
+
+### <!-- 0 -->🚀 Features
+- Open several Open Logs by Label panels at once
+
+
+### <!-- 3 -->📚 Documentation
+- Several label Logs panels at once
+- Cut the v0.12 documentation snapshot
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.11.0
+
+
+
 ## 0.11.0 - 2026-10-14
 
 ### <!-- 0 -->🚀 Features

@@ -38,6 +38,8 @@ pub use commands::{
     FocusLabelSelector, NextLabelContainer, OpenWorkloadLogs, PANEL_KEY_CONTEXT, PickLogsContext,
     ShowLabelLogs, SwitchLabelLogsContext, ToggleFollow, TogglePreviousLogs, register_commands,
 };
+#[cfg(test)]
+pub(crate) use labels::TypedId;
 pub(crate) use labels::labels_from_state;
 pub use labels::{LabelLogs, WorkloadRef};
 pub(crate) use panel::pinned_from_state;

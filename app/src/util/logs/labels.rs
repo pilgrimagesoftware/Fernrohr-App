@@ -22,12 +22,91 @@ mod scope;
 /// Which pods a label-following Logs panel streams - the identity its
 /// `NavTarget::LabelLogs` dedups on.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(from = "LabelLogsRepr")]
 pub enum LabelLogs {
-    /// A selector typed into the panel, over the panel's namespaces. One such
-    /// panel per context: opening it again focuses it, to type another.
-    Typed,
+    /// A selector typed into the panel, over the panel's namespaces. Each
+    /// such panel is its own instance (`selector-logs-multiple-panels`), so
+    /// any number can be open, in one context or several.
+    Typed(TypedId),
     /// One workload's pods (a Deployment's, say), by its selector.
     Workload(WorkloadRef),
+}
+
+impl LabelLogs {
+    /// A new typed panel's source, with an identity of its own.
+    pub fn new_typed() -> Self {
+        Self::Typed(TypedId::new())
+    }
+
+    /// Whether this is a typed panel's source, whichever instance.
+    pub fn is_typed(&self) -> bool {
+        matches!(self, Self::Typed(_))
+    }
+}
+
+/// One typed label panel's identity (D1): part of its target, and so of the
+/// key the window files it under, which is what lets several be open at once.
+/// A new panel's is random and never 0; 0 is what a layout saved before
+/// typed panels had identities reads as (D2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct TypedId(u64);
+
+impl TypedId {
+    /// The identity a layout saved before this one existed restores with -
+    /// fixed, so the window's key and the restored panel read the same one.
+    pub const LEGACY: Self = Self(0);
+
+    /// A fresh identity. Random, so it needs no counter and can't collide
+    /// with a restored one in practice; if the OS can't supply randomness,
+    /// the clock and a process counter stand in.
+    pub fn new() -> Self {
+        let id = getrandom::u64().unwrap_or_else(|_| {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(1);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_nanos() as u64);
+            nanos ^ COUNTER.fetch_add(1, Ordering::Relaxed).rotate_left(32)
+        });
+        Self(id.max(1))
+    }
+}
+
+impl Default for TypedId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// What `label_logs` deserializes from: today's `{"Typed": <id>}` or
+/// `{"Workload": ..}`, or the bare `"Typed"` a layout saved before typed
+/// panels had identities holds (D2).
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum LabelLogsRepr {
+    Current(CurrentRepr),
+    Legacy(LegacyRepr),
+}
+
+#[derive(serde::Deserialize)]
+enum CurrentRepr {
+    Typed(TypedId),
+    Workload(WorkloadRef),
+}
+
+#[derive(serde::Deserialize)]
+enum LegacyRepr {
+    Typed,
+}
+
+impl From<LabelLogsRepr> for LabelLogs {
+    fn from(repr: LabelLogsRepr) -> Self {
+        match repr {
+            LabelLogsRepr::Current(CurrentRepr::Typed(id)) => Self::Typed(id),
+            LabelLogsRepr::Current(CurrentRepr::Workload(workload)) => Self::Workload(workload),
+            LabelLogsRepr::Legacy(LegacyRepr::Typed) => Self::Typed(TypedId::LEGACY),
+        }
+    }
 }
 
 /// A workload a Logs panel follows the pods of: what titles the panel, and
@@ -46,7 +125,7 @@ impl LabelLogs {
     /// that it follows labels.
     pub fn label(&self) -> String {
         match self {
-            LabelLogs::Typed => "Logs: Labels".to_string(),
+            LabelLogs::Typed(_) => "Logs: Labels".to_string(),
             LabelLogs::Workload(workload) => format!("Logs: {} {}", workload.kind, workload.name),
         }
     }
@@ -219,7 +298,7 @@ impl Following {
     ) -> Self {
         let selector = match (&source, selector) {
             (LabelLogs::Workload(workload), _) => Some(workload.selector.as_str()),
-            (LabelLogs::Typed, selector) => selector,
+            (LabelLogs::Typed(_), selector) => selector,
         };
         let selector = selector
             .and_then(|text| label_selector::parse(text).ok())

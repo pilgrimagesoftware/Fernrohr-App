@@ -27,7 +27,7 @@ impl LogsPanel {
         cx: &mut Context<Self>,
     ) -> Option<Entity<InputState>> {
         let following = self.labels.as_mut()?;
-        if following.source != LabelLogs::Typed {
+        if !following.source.is_typed() {
             return None;
         }
         if let Some(input) = &following.input {
@@ -68,7 +68,7 @@ impl LogsPanel {
         if self
             .labels
             .as_ref()
-            .is_some_and(|following| following.source == LabelLogs::Typed)
+            .is_some_and(|following| following.source.is_typed())
         {
             context.add(super::super::commands::TYPED_LABELS_KEY_CONTEXT);
         }
@@ -122,7 +122,7 @@ impl LogsPanel {
                         .child(workload.selector.clone()),
                 )
                 .into_any_element(),
-            (LabelLogs::Typed, None) => div().into_any_element(),
+            (LabelLogs::Typed(_), None) => div().into_any_element(),
         };
         let matched = following.matched;
         let counts = following.selector.is_some().then(|| {
@@ -264,7 +264,7 @@ pub(super) fn no_lines_message(following: &Following, selector: &str) -> String 
             "No pods in {} match {} {}'s selector, {selector}.",
             workload.namespace, workload.kind, workload.name
         ),
-        (0, LabelLogs::Typed) => format!("No pods match {selector}."),
+        (0, LabelLogs::Typed(_)) => format!("No pods match {selector}."),
         _ if following.matched.containers > 0 => "Waiting for log lines…".into(),
         _ => match &following.container {
             Some(name) if !following.containers.contains(name) => {
