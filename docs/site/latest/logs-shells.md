@@ -63,8 +63,12 @@ panel to the container.
 **Open Logs by Label…**, in the Window menu and the command palette, opens a Logs panel that streams
 every pod a label selector picks. Type a selector in `kubectl -l` form, such as `app=web` or
 `tier in (front, back)`, and press <kbd>Enter</kbd>. Each line is tagged with its pod, in a colour of
-its own. Pods that start or stop matching join and leave the stream as the cluster changes. There's
-one such panel per context, and opening it again focuses it.
+its own. Pods that start or stop matching join and leave the stream as the cluster changes.
+
+Each time you run Open Logs by Label…, it opens a new, empty panel, so you can follow several
+selectors side by side. For example, follow `app=web` in one panel and `app=worker` in another, in
+the same context or in different ones. Each panel keeps its own selector, namespaces, container
+filter and context, and its tab is named by its selector, such as **Logs: app=web**.
 
 The panel opens in the context and namespaces of the list that had focus. Its bar shows where it
 searches, and you can change that without leaving the panel:
@@ -78,8 +82,9 @@ searches, and you can change that without leaving the panel:
 
 The context control appears only in a window holding more than one context. Choosing another
 context keeps your selector and container filter, searches all of that context's namespaces, and
-streams its pods in place of the old ones. If that context already has a label panel, Fernrohr
-focuses it instead. A saved layout restores the panel in the context it last searched. For example,
+streams its pods in place of the old ones. The panel moves even when another label panel already
+searches that context, and it stays in its tab with focus. A saved layout restores every label
+panel, each in the context it last searched with its own selector. For example,
 with `my-cluster` and `my-other-cluster` in one window, press <kbd>X</kbd> in a panel following
 `app=web` on `my-cluster` and choose `my-other-cluster` to see the same selector's pods there.
 
