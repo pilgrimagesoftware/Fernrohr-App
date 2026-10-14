@@ -306,6 +306,7 @@ impl Render for PodsPanel {
             ))
             .on_action(cx.listener(Self::on_action_describe_pod))
             .on_action(cx.listener(Self::on_action_open_in_background))
+            .on_action(cx.listener(Self::on_action_open_in_new_panel))
             .on_action(cx.listener(Self::on_action_show_pod_logs))
             .on_action(cx.listener(Self::on_action_show_pod_logs_flipped))
             .on_action(cx.listener(Self::on_action_show_pod_yaml))

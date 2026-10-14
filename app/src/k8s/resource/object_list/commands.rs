@@ -19,6 +19,7 @@ actions!(
         RefreshList,
         PortForwardService,
         OpenInBackground,
+        OpenInNewPanel,
         EditSelected,
         DeleteSelected
     ]
@@ -63,6 +64,8 @@ pub(super) const FILTER_KEY: &str = "/";
 pub(super) const OPEN_KEY: &str = "enter";
 /// Open in Background: the platform modifier with Enter (`cmd-enter` on macOS).
 pub(super) const OPEN_IN_BACKGROUND_KEY: &str = "secondary-enter";
+/// Open in New Panel (`open-panel-new-instance`): Shift with Enter.
+pub(super) const OPEN_IN_NEW_PANEL_KEY: &str = "shift-enter";
 pub(super) const NAMESPACE_KEY: &str = "w";
 /// The Pods table's describe and YAML keys (`pods::DESCRIBE_KEY`, `YAML_KEY`), so
 /// every list answers them alike (`standard-resource-panels` 5.1).
@@ -78,6 +81,7 @@ pub(crate) const EDIT_KEY: &str = "e";
 const FILTER_COMMAND_ID: &str = "object_list.focus_filter";
 const OPEN_COMMAND_ID: &str = "object_list.open";
 const OPEN_IN_BACKGROUND_COMMAND_ID: &str = "object_list.open_in_background";
+const OPEN_IN_NEW_PANEL_COMMAND_ID: &str = "object_list.open_new_panel";
 const NAMESPACE_COMMAND_ID: &str = "object_list.warp_namespace";
 const DESCRIBE_COMMAND_ID: &str = "object_list.describe";
 const YAML_COMMAND_ID: &str = "object_list.yaml";
@@ -155,6 +159,13 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "List: Open Selected Object in Background",
         OPEN_IN_BACKGROUND_KEY,
         Box::new(OpenInBackground),
+        None,
+    );
+    register(
+        OPEN_IN_NEW_PANEL_COMMAND_ID,
+        "List: Open Selected Object in New Panel",
+        OPEN_IN_NEW_PANEL_KEY,
+        Box::new(OpenInNewPanel),
         None,
     );
     register(

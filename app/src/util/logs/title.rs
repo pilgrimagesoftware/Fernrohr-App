@@ -33,6 +33,7 @@ impl BasePanel for LogsPanel {
                 info["container"] = container.clone().into();
             }
         }
+        let info = crate::ui::panel_title::with_instance(&self.scope, info);
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),

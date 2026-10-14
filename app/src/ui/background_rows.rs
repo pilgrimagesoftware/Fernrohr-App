@@ -3,6 +3,9 @@
 //! middle-click, opens the row's object as an inactive tab and leaves the list's
 //! selection where it was.
 //!
+//! An `alt`-click opens the row's object in a new panel instead
+//! (`open-panel-new-instance`), leaving the selection the same way.
+//!
 //! A middle-click is an aux click, which the table ignores, so it selects nothing.
 //! A modified click is harder: every click listener on a row runs, and the table's
 //! own selects the clicked row and reports `SelectRow` - then `DoubleClickedRow`, on
@@ -28,6 +31,8 @@ pub struct BackgroundClick {
 pub trait BackgroundRows: TableDelegate {
     /// Opens `row_ix`'s object in the background.
     fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App);
+    /// Opens `row_ix`'s object as a new instance of its panel, focused.
+    fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App);
     fn background_click(&mut self) -> &mut BackgroundClick;
 }
 
@@ -37,14 +42,19 @@ pub fn row<D: BackgroundRows>(row_ix: usize, cx: &mut Context<TableState<D>>) ->
     div()
         .id(("row", row_ix))
         .on_click(cx.listener(move |table, event: &ClickEvent, window, cx| {
-            if !event.modifiers().secondary() {
+            let (secondary, alt) = (event.modifiers().secondary(), event.modifiers().alt);
+            if !secondary && !alt {
                 return;
             }
             let previous = table.selected_row();
             let click = table.delegate_mut().background_click();
             click.restore = Some(previous);
             click.double = event.click_count() >= 2;
-            table.delegate_mut().open_in_background(row_ix, window, cx);
+            if secondary {
+                table.delegate_mut().open_in_background(row_ix, window, cx);
+            } else {
+                table.delegate_mut().open_in_new_panel(row_ix, window, cx);
+            }
         }))
         .on_aux_click(cx.listener(move |table, event: &ClickEvent, window, cx| {
             if event.is_middle_click() {

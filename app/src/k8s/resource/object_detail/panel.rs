@@ -346,7 +346,10 @@ impl BasePanel for ObjectDetailPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(restore::dump_target(&self.target, &self.scope.context_name)),
+            info: PanelInfo::Panel(crate::ui::panel_title::with_instance(
+                &self.scope,
+                restore::dump_target(&self.target, &self.scope.context_name),
+            )),
         }
     }
 }

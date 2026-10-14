@@ -223,6 +223,10 @@ impl ObjectListPanel {
                 delegate.set_on_open_in_background(move |row, window, cx| {
                     window.dispatch_action(Box::new(open(row)), cx);
                 });
+                let open = self.opener(crate::ui::nav::OpenMode::NewPanel);
+                delegate.set_on_open_in_new_panel(move |row, window, cx| {
+                    window.dispatch_action(Box::new(open(row)), cx);
+                });
                 TableState::new(delegate, window, cx)
                     .row_selectable(true)
                     .col_selectable(false)

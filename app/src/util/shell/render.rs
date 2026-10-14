@@ -153,6 +153,8 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::on_action_show_logs))
             .on_action(cx.listener(Self::on_action_show_logs_flipped))
             .on_action(cx.listener(Self::on_action_show_label_logs))
+            .on_action(cx.listener(Self::on_action_open_in_new_panel))
+            .on_action(cx.listener(Self::on_action_open_pod_in_new_panel))
             .on_action(cx.listener(Self::on_action_open_workload_logs))
             .on_action(cx.listener(Self::on_action_switch_label_logs_context))
             .on_action(cx.listener(Self::on_action_show_pod_detail))

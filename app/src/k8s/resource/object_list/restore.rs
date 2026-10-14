@@ -59,18 +59,21 @@ pub(super) fn dump(panel: &ObjectListPanel, cx: &App) -> Value {
     };
     let sort =
         sort.map(|(column, descending)| json!({ "column": column, "descending": descending }));
-    json!({
-        "context_name": panel.scope.context_name,
-        "namespaces": panel.scope.namespaces,
-        "group": gvk.group,
-        "version": gvk.version,
-        "kind": gvk.kind,
-        "plural": panel.kind.plural,
-        "namespaced": panel.kind.namespaced,
-        "columns": columns,
-        "filter": filter,
-        "sort": sort,
-    })
+    crate::ui::panel_title::with_instance(
+        &panel.scope,
+        json!({
+            "context_name": panel.scope.context_name,
+            "namespaces": panel.scope.namespaces,
+            "group": gvk.group,
+            "version": gvk.version,
+            "kind": gvk.kind,
+            "plural": panel.kind.plural,
+            "namespaced": panel.kind.namespaced,
+            "columns": columns,
+            "filter": filter,
+            "sort": sort,
+        }),
+    )
 }
 
 /// The list a saved panel was, or `None` for state that doesn't name its kind and
@@ -126,7 +129,8 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
         NavTarget::Kind(saved.kind.clone()),
         saved.context_name.clone(),
     )
-    .scoped_to(saved.namespaces.clone());
+    .scoped_to(saved.namespaces.clone())
+    .as_instance(crate::ui::panel_title::saved_instance(state));
     let discovery = DiscoveryRegistry::kinds(cx, &saved.context_name);
     if restores_as_placeholder(&saved.kind, discovery.read(cx).kinds()) {
         return Ok(panel_handle(

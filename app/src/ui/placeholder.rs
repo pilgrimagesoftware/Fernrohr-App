@@ -203,15 +203,18 @@ impl BasePanel for PlaceholderPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(serde_json::json!({
-                "context_name": self.scope.context_name,
-                "namespaces": self.scope.namespaces,
-                "group": self.kind.gvk.group,
-                "version": self.kind.gvk.version,
-                "kind": self.kind.gvk.kind,
-                "plural": self.kind.plural,
-                "namespaced": self.kind.namespaced,
-            })),
+            info: PanelInfo::Panel(crate::ui::panel_title::with_instance(
+                &self.scope,
+                serde_json::json!({
+                    "context_name": self.scope.context_name,
+                    "namespaces": self.scope.namespaces,
+                    "group": self.kind.gvk.group,
+                    "version": self.kind.gvk.version,
+                    "kind": self.kind.gvk.kind,
+                    "plural": self.kind.plural,
+                    "namespaced": self.kind.namespaced,
+                }),
+            )),
         }
     }
 }

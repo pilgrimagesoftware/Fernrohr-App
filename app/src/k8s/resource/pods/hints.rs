@@ -54,6 +54,12 @@ impl PodsPanel {
                 "Background",
                 window,
             ))
+            .child(hint(
+                &OpenInNewPanel,
+                OPEN_IN_NEW_PANEL_KEY,
+                "New panel",
+                window,
+            ))
             .child(hint(&ShowPodLogs, LOGS_KEY, "Logs", window))
             .child(hint(
                 &ShowPodLogsFlipped,

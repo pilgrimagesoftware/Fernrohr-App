@@ -39,6 +39,11 @@ pub struct PanelScope {
     pub connection_count: usize,
     /// Namespaces this panel is scoped to. An empty list means all namespaces.
     pub namespaces: Vec<String>,
+    /// Which instance of its resource this panel is (`open-panel-new-instance`
+    /// D1): 0 for the first panel on it, and 1 or more for each one opened again
+    /// with Open in New Panel. Part of the window's key, and shown in the title
+    /// as `instance + 1` from the second on.
+    pub instance: u32,
 }
 
 impl PanelScope {
@@ -48,6 +53,15 @@ impl PanelScope {
             context_name,
             connection_count: 1,
             namespaces: Vec::new(),
+            instance: 0,
+        }
+    }
+
+    /// The same scope as instance `instance` of its resource.
+    pub fn as_instance(&self, instance: u32) -> Self {
+        Self {
+            instance,
+            ..self.clone()
         }
     }
 
@@ -92,6 +106,35 @@ impl PanelScope {
 /// cluster a panel reads.
 pub fn title(scope: &PanelScope) -> String {
     scope.target.item_label()
+}
+
+/// `text` as instance `instance`'s title (`open-panel-new-instance` D1): as it
+/// is for the first panel on a resource, and with ` (n)` after it - `n` being
+/// `instance + 1` - for each further one.
+pub fn numbered(text: String, instance: u32) -> String {
+    if instance == 0 {
+        text
+    } else {
+        format!("{text} ({})", u64::from(instance) + 1)
+    }
+}
+
+/// The instance number a panel's saved state holds (`open-panel-new-instance`
+/// D5), 0 when it holds none - every layout saved before instances existed.
+pub fn saved_instance(state: &serde_json::Value) -> u32 {
+    state["instance"]
+        .as_u64()
+        .and_then(|instance| u32::try_from(instance).ok())
+        .unwrap_or(0)
+}
+
+/// A panel's saved `state` with `scope`'s instance number in it, if it isn't
+/// the first instance - so a first panel saves exactly as it did before.
+pub fn with_instance(scope: &PanelScope, mut state: serde_json::Value) -> serde_json::Value {
+    if scope.instance != 0 {
+        state["instance"] = scope.instance.into();
+    }
+    state
 }
 
 /// A pod-scoped panel's content heading: the item (pod, or pod / container) in a
@@ -226,6 +269,7 @@ pub fn title_element(
     cx: &mut App,
 ) -> AnyElement {
     use crate::ui::icon::{self, IconSize};
+    let text = numbered(text, scope.instance);
     let focused = focus_handle.contains_focused(window, cx);
     let tooltip_scope = scope.clone();
     let kind_icon = icon::kind_icon(icon::for_target(&scope.target), IconSize::Small, window, cx);

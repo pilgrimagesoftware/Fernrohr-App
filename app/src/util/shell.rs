@@ -51,6 +51,7 @@ mod logs_open;
 mod main_window;
 mod namespace_defaults;
 mod namespace_sets;
+mod new_instance;
 mod sort_defaults;
 mod warp;
 pub(crate) use exec::OpenExecSession;

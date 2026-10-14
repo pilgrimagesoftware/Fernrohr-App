@@ -8,6 +8,7 @@ use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, T
 use gpui_kit::*;
 
 mod checked;
+mod fit;
 mod list_model;
 pub(super) use list_model::{
     ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout, reconcile,
@@ -77,6 +78,9 @@ pub(super) struct ObjectTableDelegate {
     on_open: Option<OpenRow>,
     /// What a modified or middle click on a row does with it.
     on_open_in_background: Option<OpenRowInBackground>,
+    /// What an `alt`-click on a row, or its context menu's Open in New Panel,
+    /// does with that row (`open-panel-new-instance`).
+    on_open_in_new_panel: Option<OpenRowInBackground>,
     background_click: crate::ui::background_rows::BackgroundClick,
     /// The header cells' drawn bounds, for a divider double-click to fit a
     /// column (`ui::table_fit`).
@@ -104,6 +108,7 @@ impl ObjectTableDelegate {
             selected: None,
             on_open: None,
             on_open_in_background: None,
+            on_open_in_new_panel: None,
             background_click: Default::default(),
             header: Default::default(),
             checked: Default::default(),
@@ -127,6 +132,14 @@ impl ObjectTableDelegate {
     }
 
     /// What a modified or middle click on a row does with that row.
+    /// What an `alt`-click or the row menu's Open in New Panel does with a row.
+    pub(super) fn set_on_open_in_new_panel(
+        &mut self,
+        open: impl Fn(&ListRow, &mut Window, &mut App) + 'static,
+    ) {
+        self.on_open_in_new_panel = Some(std::rc::Rc::new(open));
+    }
+
     pub(super) fn set_on_open_in_background(
         &mut self,
         open: impl Fn(&ListRow, &mut Window, &mut App) + 'static,
@@ -274,6 +287,13 @@ impl crate::ui::background_rows::BackgroundRows for ObjectTableDelegate {
         }
     }
 
+    fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
+        if let (Some(open), Some(row)) = (self.on_open_in_new_panel.clone(), self.rows.get(row_ix))
+        {
+            open(row, window, cx);
+        }
+    }
+
     fn background_click(&mut self) -> &mut crate::ui::background_rows::BackgroundClick {
         &mut self.background_click
     }
@@ -319,10 +339,20 @@ impl TableDelegate for ObjectTableDelegate {
         let Some(on_open) = self.on_open.clone() else {
             return menu;
         };
-        menu.item(
+        let menu = menu.item(
             PopupMenuItem::new("Open")
                 .on_click(move |_event, window, cx| on_open(row_ix, window, cx)),
-        )
+        );
+        match (
+            self.on_open_in_new_panel.clone(),
+            self.rows.get(row_ix).cloned(),
+        ) {
+            (Some(open), Some(row)) => menu.item(
+                PopupMenuItem::new("Open in New Panel")
+                    .on_click(move |_event, window, cx| open(&row, window, cx)),
+            ),
+            _ => menu,
+        }
     }
 
     fn render_td(
@@ -458,15 +488,3 @@ pub(super) fn reselect(
 
 #[cfg(test)]
 mod tests;
-
-impl crate::ui::table_fit::FitColumns for ObjectTableDelegate {
-    fn header_bounds(&self) -> &crate::ui::table_fit::HeaderBounds {
-        &self.header
-    }
-
-    fn set_column_width(&mut self, col_ix: usize, width: Pixels) {
-        if let Some(column) = self.columns.get_mut(col_ix) {
-            column.width = width;
-        }
-    }
-}

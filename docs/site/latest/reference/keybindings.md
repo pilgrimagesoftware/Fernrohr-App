@@ -96,6 +96,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Select Tab 7 | <kbd>⌃7</kbd> | Global | Navigate > Select Tab | `tab.select_7` |
 | Select Tab 8 | <kbd>⌃8</kbd> | Global | Navigate > Select Tab | `tab.select_8` |
 | Select Last Tab | <kbd>⌃9</kbd> | Global | Navigate > Select Tab | `tab.select_9` |
+| Open in New Panel | <kbd>⇧⌘D</kbd> | Global | View | `panel.open_new_instance` |
 | Maximize/Restore Panel | — | Global | View | `panel.toggle_zoom` |
 
 ### Panel groups
@@ -145,6 +146,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Pods: Filter to Selected Pod's Namespace | <kbd>W</kbd> | `PodsPanel && !Input` | — | `pods.warp_namespace` |
 | Pods: Warp All to Selected Pod's Namespace | <kbd>⇧W</kbd> | `PodsPanel && !Input` | — | `pods.warp_all_namespace` |
 | Pods: Open Selected Pod in Background | <kbd>⌘↵</kbd> | `PodsPanel && !Input` | — | `pods.open_in_background` |
+| Pods: Open Selected Pod in New Panel | <kbd>⇧↵</kbd> | `PodsPanel && !Input` | — | `pods.open_new_panel` |
 | Pods: Describe Selected Pod | <kbd>D</kbd> | `PodsPanel && !Input` | — | `pods.describe` |
 | Pods: Show Selected Pod's Logs | <kbd>L</kbd> | `PodsPanel && !Input` | — | `pods.logs` |
 | Pods: Show Selected Pod's Logs (Other Panel Mode) | <kbd>⇧L</kbd> | `PodsPanel && !Input` | — | `pods.logs_flipped` |
@@ -214,6 +216,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | List: Focus Filter | <kbd>/</kbd> | `ObjectListPanel && !Input` | — | `object_list.focus_filter` |
 | List: Open Selected Object | <kbd>↵</kbd> | `ObjectListPanel && !Input` | — | `object_list.open` |
 | List: Open Selected Object in Background | <kbd>⌘↵</kbd> | `ObjectListPanel && !Input` | — | `object_list.open_in_background` |
+| List: Open Selected Object in New Panel | <kbd>⇧↵</kbd> | `ObjectListPanel && !Input` | — | `object_list.open_new_panel` |
 | List: Describe Selected Object | <kbd>D</kbd> | `ObjectListPanel && !Input` | — | `object_list.describe` |
 | List: Show Selected Object's YAML | <kbd>Y</kbd> | `ObjectListPanel && !Input` | — | `object_list.yaml` |
 | List: Filter to Selected Object's Namespace | <kbd>W</kbd> | `ObjectListPanel && !Input` | — | `object_list.warp_namespace` |
