@@ -206,6 +206,21 @@ impl LogsPanel {
         Some(self.labels.as_ref()?.selector.as_ref()?.0.clone())
     }
 
+    /// Test-only: the context the panel searches, and its namespace scope.
+    #[cfg(test)]
+    pub(crate) fn test_scope(&self) -> (String, Vec<String>) {
+        (
+            self.scope.context_name.clone(),
+            self.scope.namespaces.clone(),
+        )
+    }
+
+    /// Test-only: the container filter.
+    #[cfg(test)]
+    pub(crate) fn test_container_filter(&self) -> Option<String> {
+        self.labels.as_ref()?.container.clone()
+    }
+
     /// Test-only: why the selector last typed wasn't applied.
     #[cfg(test)]
     pub(crate) fn test_selector_error(&self) -> Option<String> {

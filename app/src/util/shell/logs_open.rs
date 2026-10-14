@@ -133,7 +133,7 @@ impl MainWindow {
     /// The Logs panel this window has open on `target`, in `context_name` -
     /// else the context a new one would open in - with the namespaces it's
     /// scoped to.
-    fn open_logs_panel(
+    pub(super) fn open_logs_panel(
         &self,
         target: &NavTarget,
         context_name: Option<&str>,
