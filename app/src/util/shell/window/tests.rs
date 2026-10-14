@@ -30,6 +30,7 @@ async fn closing_the_last_panel_keeps_the_window_connected(cx: &mut TestAppConte
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
         main_window
@@ -178,6 +179,7 @@ async fn second_window_connecting_to_an_already_connected_context_shows_workspac
             let main_window = MainWindow {
                 mode: WindowMode::Picker(picker.clone()),
                 focus_handle: cx.focus_handle(),
+                tab_menu: Default::default(),
             };
             watch_picker(&picker, window, cx);
             main_window
@@ -272,6 +274,7 @@ async fn second_window_connecting_to_a_fresh_context_shows_workspace(cx: &mut Te
         let main_window = MainWindow {
             mode: WindowMode::Picker(picker.clone()),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         watch_picker(&picker, window, cx);
         main_window

@@ -58,7 +58,7 @@ pub(super) fn dump(panel: &EventsPanel, cx: &App) -> Value {
         .sort(cx)
         .map(|(column, sort)| json!({ "column": column.id(), "order": sort_name(sort) }));
     let filter = panel.search.dump(cx);
-    crate::ui::panel_title::with_instance(
+    crate::ui::panel_title::with_saved_scope(
         &panel.scope,
         json!({
             "context_name": panel.scope.context_name,
@@ -98,7 +98,7 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
         saved.context_name.clone(),
     )
     .scoped_to(saved.namespaces.clone())
-    .as_instance(crate::ui::panel_title::saved_instance(state));
+    .restored_from(state);
     Ok(panel_handle(cx.new(|cx| {
         let mut panel = EventsPanel::new(scope, cx);
         panel.initial_sort = saved.sort;

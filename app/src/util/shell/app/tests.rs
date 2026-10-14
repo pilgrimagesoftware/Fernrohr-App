@@ -37,6 +37,7 @@ async fn a_pods_panel_shortcut_key_reaches_the_window(cx: &mut TestAppContext) {
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
         main_window

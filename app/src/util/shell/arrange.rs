@@ -69,7 +69,11 @@ impl MainWindow {
             return None;
         };
         let area = dock_area.read(cx);
-        let node = crate::ui::panel::focus::focused_group(area, window, cx)?;
+        // The tab menu's Close All Tabs acts on its tab's group (`panel-tab-menu`).
+        let node = match self.tab_menu.take_target() {
+            Some(target) => tabs::group_of(area, target)?,
+            None => crate::ui::panel::focus::focused_group(area, window, cx)?,
+        };
         area.layout(DockPlacement::Center)?.find_node(node)?;
         Some((dock_area.clone(), node))
     }
@@ -195,8 +199,10 @@ impl MainWindow {
         cx.notify();
     }
 
-    /// Closes every panel of the focused group - asking first, once, when any
-    /// would lose something by closing (a running shell, an unsaved edit).
+    /// Closes every unpinned panel of the focused group - the tab menu's Close
+    /// All Tabs too (`panel-tab-menu`: pinned tabs are spared) - asking first,
+    /// once, when any would lose something by closing (a running shell, an
+    /// unsaved edit).
     fn close_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((dock_area, node)) = self.focused_center_group(window, cx) else {
             return;
@@ -204,41 +210,18 @@ impl MainWindow {
         let Some(group) = tabs::tabs_of(dock_area.read(cx), node) else {
             return;
         };
-        let warnings: Vec<(ConfirmText, Severity)> = group
+        let panels: Vec<PanelId> = group
             .panels
             .iter()
-            .filter_map(|&panel| close_warning(dock_area.read(cx), panel, cx))
+            .copied()
+            .filter(|&panel| !super::tab_menu::is_pinned(&dock_area, panel, cx))
             .collect();
-        // Irreversible if any panel would lose something for good.
-        let severity = if warnings
-            .iter()
-            .any(|(_, severity)| *severity == Severity::Irreversible)
-        {
-            Severity::Irreversible
-        } else {
-            Severity::Recoverable
-        };
-        if warnings.is_empty() {
-            close_panels(&dock_area, &group.panels, window, cx);
-            return;
-        }
-        let panels = group.panels.clone();
-        let body = warnings.into_iter().fold(
-            ConfirmText::from(
-                format!("Closing this group closes {} panels.", panels.len()).as_str(),
-            ),
-            |body, (warning, _)| body.text(" ").append(warning),
-        );
-        let confirmation = Confirmation {
-            title: "Close Group?".into(),
-            body,
-            confirm: "Close Group".into(),
-            id_prefix: "close-group",
-            severity,
-        };
-        confirm_dialog::open(
-            confirmation,
-            move |window, cx| close_panels(&dock_area, &panels, window, cx),
+        let lead = format!("Closing this group closes {} panels.", panels.len());
+        close_confirming(
+            dock_area,
+            panels,
+            ("Close Group?", "Close Group", "close-group"),
+            lead,
             window,
             cx,
         );
@@ -253,6 +236,72 @@ impl MainWindow {
         if let Some(view) = dock_area.read(cx).panel(panel) {
             window.focus(&view.focus_handle(cx), cx);
         }
+    }
+}
+
+/// Closes `panels` - asking first, once, when any would lose something by
+/// closing (a running shell, an unsaved edit), with `title`, `confirm` and
+/// `id_prefix` naming the dialog and `lead` starting its body. Closes at once
+/// when none would. Close Group's, and the tab menu's bulk closes'
+/// (`panel-tab-menu`).
+pub(super) fn close_confirming(
+    dock_area: Entity<DockArea>,
+    panels: Vec<PanelId>,
+    names: (&str, &str, &'static str),
+    lead: String,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let close = {
+        let (dock_area, panels) = (dock_area.clone(), panels.clone());
+        move |window: &mut Window, cx: &mut App| close_panels(&dock_area, &panels, window, cx)
+    };
+    confirm_then(&dock_area, &panels, names, lead, close, window, cx);
+}
+
+/// Runs `then` - asking first, once, when any of `panels` would lose
+/// something by closing, with `title`, `confirm` and `id_prefix` naming the
+/// dialog and `lead` starting its body; at once when none would.
+pub(super) fn confirm_then(
+    dock_area: &Entity<DockArea>,
+    panels: &[PanelId],
+    (title, confirm, id_prefix): (&str, &str, &'static str),
+    lead: String,
+    then: impl Fn(&mut Window, &mut App) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    {
+        let warnings: Vec<(ConfirmText, Severity)> = panels
+            .iter()
+            .filter_map(|&panel| close_warning(dock_area.read(cx), panel, cx))
+            .collect();
+        // Irreversible if any panel would lose something for good.
+        let severity = if warnings
+            .iter()
+            .any(|(_, severity)| *severity == Severity::Irreversible)
+        {
+            Severity::Irreversible
+        } else {
+            Severity::Recoverable
+        };
+        if warnings.is_empty() {
+            then(window, cx);
+            return;
+        }
+        let body = warnings
+            .into_iter()
+            .fold(ConfirmText::from(lead.as_str()), |body, (warning, _)| {
+                body.text(" ").append(warning)
+            });
+        let confirmation = Confirmation {
+            title: title.into(),
+            body,
+            confirm: confirm.into(),
+            id_prefix,
+            severity,
+        };
+        confirm_dialog::open(confirmation, then, window, cx);
     }
 }
 
@@ -317,7 +366,7 @@ pub(super) fn close_warning(
 
 /// Closes each of `panels` through the dock's own close, as its tab's close
 /// button does.
-fn close_panels(
+pub(super) fn close_panels(
     dock_area: &Entity<DockArea>,
     panels: &[PanelId],
     window: &mut Window,

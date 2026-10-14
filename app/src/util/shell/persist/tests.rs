@@ -32,6 +32,7 @@ async fn multi_context_dock_layout_is_saved_under_its_own_composite_key(cx: &mut
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(vec!["staging".to_string(), "other".to_string()], window, cx);
         main_window
@@ -239,6 +240,7 @@ async fn multi_context_dock_arrangement_round_trips_order_insensitively(cx: &mut
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(
             vec!["kind-dev".to_string(), "staging".to_string()],
@@ -270,6 +272,7 @@ async fn multi_context_dock_arrangement_round_trips_order_insensitively(cx: &mut
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(
             vec!["staging".to_string(), "kind-dev".to_string()],

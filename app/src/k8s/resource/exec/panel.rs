@@ -35,8 +35,8 @@ pub fn register_restore(cx: &mut App) {
                 container: required_str(state, "container")?.to_string(),
             };
             let context_name = required_str(state, "context_name")?.to_string();
-            let scope = PanelScope::new(NavTarget::Exec(target.clone()), context_name)
-                .as_instance(crate::ui::panel_title::saved_instance(state));
+            let scope =
+                PanelScope::new(NavTarget::Exec(target.clone()), context_name).restored_from(state);
             Ok(panel_handle(
                 cx.new(|cx| ExecPanel::ended(target, scope, window, cx)),
             ))
@@ -245,7 +245,7 @@ impl BasePanel for ExecPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(crate::ui::panel_title::with_instance(
+            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(
                 &self.scope,
                 serde_json::json!({
                     "context_name": self.scope.context_name,
@@ -265,6 +265,7 @@ impl Panel for ExecPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -278,3 +279,5 @@ impl Panel for ExecPanel {
         Some(PanelControl::Toolbar)
     }
 }
+
+crate::scoped_panel!(ExecPanel);

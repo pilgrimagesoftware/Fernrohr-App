@@ -16,6 +16,7 @@ impl MainWindow {
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         }
     }
 

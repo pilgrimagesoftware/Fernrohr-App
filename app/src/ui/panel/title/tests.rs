@@ -151,7 +151,7 @@ fn a_built_in_grouped_list_keeps_its_group_in_the_title() {
 /// backslashes survive.
 #[test]
 fn error_text_is_rendered_verbatim() {
-    use super::{code_block, escape_markdown};
+    use super::error::{code_block, escape_markdown};
     assert_eq!(escape_markdown("continue_: None"), "continue\\_: None");
     assert_eq!(escape_markdown("a*b"), "a\\*b");
     assert_eq!(code_block(r#"pods \"x\""#), "```text\npods \\\"x\\\"\n```");
@@ -270,10 +270,10 @@ fn instances_save_and_read_back() {
     let first = scope(NavTarget::pods(), 1);
     let second = first.as_instance(1);
     assert_ne!(first, second);
-    let saved = super::with_instance(&first, serde_json::json!({ "context_name": "dev" }));
+    let saved = super::with_saved_scope(&first, serde_json::json!({ "context_name": "dev" }));
     assert!(saved.get("instance").is_none());
     assert_eq!(super::saved_instance(&saved), 0);
-    let saved = super::with_instance(&second, serde_json::json!({ "context_name": "dev" }));
+    let saved = super::with_saved_scope(&second, serde_json::json!({ "context_name": "dev" }));
     assert_eq!(super::saved_instance(&saved), 1);
     assert_eq!(
         super::saved_instance(&serde_json::json!({ "instance": "two" })),

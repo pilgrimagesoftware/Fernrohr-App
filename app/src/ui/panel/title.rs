@@ -11,7 +11,6 @@
 
 use crate::ui::nav::NavTarget;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::Panel;
@@ -44,6 +43,11 @@ pub struct PanelScope {
     /// with Open in New Panel. Part of the window's key, and shown in the title
     /// as `instance + 1` from the second on.
     pub instance: u32,
+    /// Whether the panel's tab is pinned (`panel-tab-menu`): sorted before its
+    /// group's unpinned tabs and spared by the bulk closes. Saved with the
+    /// panel, but not part of the window's key - pinning doesn't make it a
+    /// different panel.
+    pub pinned: bool,
 }
 
 impl PanelScope {
@@ -54,6 +58,17 @@ impl PanelScope {
             connection_count: 1,
             namespaces: Vec::new(),
             instance: 0,
+            pinned: false,
+        }
+    }
+
+    /// The same scope with what a panel's saved `state` keeps of it - its
+    /// instance number and whether it's pinned - both defaulting as an older
+    /// layout, which saved neither, needs.
+    pub fn restored_from(&self, state: &serde_json::Value) -> Self {
+        Self {
+            pinned: saved_pinned(state),
+            ..self.as_instance(saved_instance(state))
         }
     }
 
@@ -128,13 +143,46 @@ pub fn saved_instance(state: &serde_json::Value) -> u32 {
         .unwrap_or(0)
 }
 
-/// A panel's saved `state` with `scope`'s instance number in it, if it isn't
-/// the first instance - so a first panel saves exactly as it did before.
-pub fn with_instance(scope: &PanelScope, mut state: serde_json::Value) -> serde_json::Value {
+/// Whether a panel's saved state says it's pinned - `false` when it says
+/// nothing, as every layout from before pinning does.
+pub fn saved_pinned(state: &serde_json::Value) -> bool {
+    state["pinned"].as_bool().unwrap_or(false)
+}
+
+/// A panel's saved `state` with what `scope` keeps beyond the panel's own
+/// fields: its instance number unless it's the first, and `pinned` when it's
+/// pinned - so a first, unpinned panel saves exactly as it did before.
+pub fn with_saved_scope(scope: &PanelScope, mut state: serde_json::Value) -> serde_json::Value {
     if scope.instance != 0 {
         state["instance"] = scope.instance.into();
     }
+    if scope.pinned {
+        state["pinned"] = true.into();
+    }
     state
+}
+
+/// A dock panel whose [`PanelScope`] the window can read and change in place
+/// - its pinned state (`panel-tab-menu`), which the tab menu flips.
+pub trait ScopedPanel {
+    fn scope(&self) -> &PanelScope;
+    fn scope_mut(&mut self) -> &mut PanelScope;
+}
+
+/// Implements [`ScopedPanel`] for a panel type that keeps its scope in a
+/// `scope` field.
+#[macro_export]
+macro_rules! scoped_panel {
+    ($panel:ty) => {
+        impl $crate::ui::panel_title::ScopedPanel for $panel {
+            fn scope(&self) -> &$crate::ui::panel_title::PanelScope {
+                &self.scope
+            }
+            fn scope_mut(&mut self) -> &mut $crate::ui::panel_title::PanelScope {
+                &mut self.scope
+            }
+        }
+    };
 }
 
 /// A pod-scoped panel's content heading: the item (pod, or pod / container) in a
@@ -265,6 +313,7 @@ pub fn title_element(
     text: String,
     focus_handle: &FocusHandle,
     close: Button,
+    panel: EntityId,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -302,6 +351,29 @@ pub fn title_element(
         .on_mouse_down(MouseButton::Left, {
             let focus_handle = focus_handle.clone();
             move |_, window, cx| window.focus(&focus_handle, cx)
+        })
+        // The tab's menu (`panel-tab-menu`), for this panel - not the focused
+        // one - at the pointer.
+        .on_mouse_down(MouseButton::Right, {
+            move |event, window, cx| {
+                cx.stop_propagation();
+                let open = super::tab_menu::OpenTabMenuAt {
+                    panel,
+                    position: event.position,
+                };
+                window.dispatch_action(Box::new(open), cx);
+            }
+        })
+        // Where the title is, for the keyboard's Open Tab Menu to open at.
+        .child({
+            canvas(
+                move |bounds, _window, cx| {
+                    super::tab_menu::TabTitleBounds::record(panel, bounds, cx)
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full()
         });
     // The close control sits right after the title, in a tab and in a lone
     // panel's title bar alike, rather than at the group's far edge
@@ -388,73 +460,6 @@ pub fn close_button<P: Panel>(panel: Entity<P>) -> Button {
         })
 }
 
-/// A panel's failure content: a human-readable message, then - when there is
-/// one - the failure's full technical detail underneath it, muted and
-/// monospace. Both render through `gpui-component`'s own selectable
-/// [`gpui_kit::component::text::TextView`] (`.selectable(true)`), the same
-/// primitive its own dialogs and message views use for copyable prose - not a
-/// hand-rolled selection - so a user can drag-select either line and press
-/// `Cmd+C`/`Ctrl+C` (the component's own binding, `text::state::CONTEXT`) to
-/// copy it. `1-window-context-bar` bug 2: a raw `{error:?}` dump was neither
-/// readable nor selectable; this is Logs' and Pod detail's shared fix for
-/// both halves at once, so the two panels cannot drift back apart on either.
-///
-/// Below them, Report… (#177) opens Report Issue with the message and detail
-/// already filled in - a tab stop, so Enter or Space reaches it as a click
-/// does.
-pub fn error_content(message: String, detail: Option<String>, cx: &App) -> impl IntoElement {
-    let space = crate::ui::space::spacing(cx);
-    let report = crate::ui::report_issue::ReportError::of(&message, detail.as_deref());
-    div()
-        .size_full()
-        .p(space.panel_inset)
-        .flex()
-        .flex_col()
-        .gap(space.control_gap)
-        .child(gpui_kit::component::text::markdown(escape_markdown(&message)).selectable(true))
-        .children(detail.map(|detail| {
-            div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(gpui_kit::component::text::markdown(code_block(&detail)).selectable(true))
-        }))
-        .child(div().flex().child(report_button(report)))
-}
-
-/// The id of an error's Report… button, for tests.
-pub const REPORT_ERROR_BUTTON: &str = "report-error";
-
-/// Report…: opens Report Issue filled in with `report`.
-pub fn report_button(report: crate::ui::report_issue::ReportError) -> Button {
-    Button::new(REPORT_ERROR_BUTTON)
-        .label("Report\u{2026}")
-        .link()
-        .small()
-        .tooltip("Report this error, its text filled in")
-        .on_click(move |_event, window, cx| window.dispatch_action(Box::new(report.clone()), cx))
-}
-
-/// `text` with every markdown-significant character backslash-escaped, so the only
-/// selectable-text primitive gpui-component offers (markdown) shows it verbatim.
-pub(crate) fn escape_markdown(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        if "\\`*_{}[]()<>#+-.!|~".contains(ch) {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
-}
-
-/// `text` as a fenced code block - rendered verbatim and in monospace. The fence is
-/// longer than any backtick run inside `text`, so nothing in it can close the block.
-fn code_block(text: &str) -> String {
-    let longest_run = text.split(|ch| ch != '`').map(str::len).max().unwrap_or(0);
-    let fence = "`".repeat(longest_run.max(2) + 1);
-    format!("{fence}text\n{text}\n{fence}")
-}
-
 /// A panel changed the scope it shows.
 ///
 /// The window keys each open panel on its scope, so it has to hear this: a panel
@@ -466,6 +471,11 @@ pub enum ScopeEvent {
     NamespacesChanged(Vec<String>),
 }
 
+mod error;
+#[cfg(test)]
+pub use error::REPORT_ERROR_BUTTON;
+pub(crate) use error::escape_markdown;
+pub use error::{error_content, report_button};
 mod tooltip;
 use tooltip::title_tooltip;
 #[cfg(test)]

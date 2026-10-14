@@ -172,6 +172,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::resource_panel::register_commands(registry);
     crate::ui::panel::focus::register_commands(registry);
     crate::ui::panel::tabs::register_commands(registry);
+    crate::ui::panel::tab_menu::register_commands(registry);
     crate::ui::settings::register_commands(registry);
     crate::ui::text_size::register_commands(registry);
     crate::ui::shortcut_timeout::register_commands(registry);

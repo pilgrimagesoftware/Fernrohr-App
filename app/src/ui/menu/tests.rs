@@ -243,6 +243,7 @@ fn the_view_menu_is_grouped() {
             "---",
             "Open in New Panel",
             "Maximize/Restore Panel",
+            "Move to New Window",
             "---",
             "Fit Columns to Contents",
         ]
