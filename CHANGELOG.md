@@ -1,4 +1,39 @@
 
+## 0.11.0 - 2026-10-14
+
+### <!-- 0 -->🚀 Features
+- Ready and Message columns for kinds that report conditions
+- Status message and generic Status section from conditions
+- Copy control on the status message
+- Open Add Context in its own non-modal window
+- Pick the typed label panel's context
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Keep a long context name's tunnel selector in reach
+- Open the typed label panel in the focused list's context
+
+
+### <!-- 10 -->💼 Other
+- Bump shlex from 1.3.0 to 2.0.1
+
+
+### <!-- 3 -->📚 Documentation
+- Ready and Message columns and the status message
+- Describe the Add Context window
+- Following pods by label, and choosing the label panel's context
+- Cut the v0.11 documentation snapshot
+
+
+### <!-- 6 -->🧪 Testing
+- Print field labels, not sections, on failure
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.10.0
+
+
+
 ## 0.10.0 - 2026-10-13
 
 ### <!-- 0 -->🚀 Features
