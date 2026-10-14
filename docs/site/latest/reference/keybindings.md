@@ -97,6 +97,12 @@ This list matches the commands registered in `app/src/command.rs`.
 | Select Tab 8 | <kbd>⌃8</kbd> | Global | Navigate > Select Tab | `tab.select_8` |
 | Select Last Tab | <kbd>⌃9</kbd> | Global | Navigate > Select Tab | `tab.select_9` |
 | Open in New Panel | <kbd>⇧⌘D</kbd> | Global | View | `panel.open_new_instance` |
+| Move to New Window | — | Global | View | `tab.move_to_new_window` |
+| Close Tab | — | Global | — | `tab.close` |
+| Close Other Tabs | — | Global | — | `tab.close_others` |
+| Close Tabs to the Right | — | Global | — | `tab.close_right` |
+| Pin Tab | — | Global | — | `tab.pin` |
+| Unpin Tab | — | Global | — | `tab.unpin` |
 | Maximize/Restore Panel | — | Global | View | `panel.toggle_zoom` |
 
 ### Panel groups
@@ -116,6 +122,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Panels: Merge Group Up | <kbd>⌘K</kbd> <kbd>⌥↑</kbd> | `Dock && !Input` | — | `panel.merge_up` |
 | Panels: Merge Group Down | <kbd>⌘K</kbd> <kbd>⌥↓</kbd> | `Dock && !Input` | — | `panel.merge_down` |
 | Panels: Close Group | <kbd>⌘K</kbd> <kbd>W</kbd> | `Dock && !Input` | — | `panel.close_group` |
+| Open Tab Menu | <kbd>⌘K</kbd> <kbd>M</kbd> | `Dock && !Input` | — | `tab.menu` |
 
 ### Resource panel
 

@@ -61,6 +61,7 @@ fn cmd_k_in_a_panel_group_lists_the_arrange_chords_in_palette_order() {
             ("alt-up".to_string(), "panel.merge_up"),
             ("alt-down".to_string(), "panel.merge_down"),
             ("w".to_string(), "panel.close_group"),
+            ("m".to_string(), "tab.menu"),
         ]
     );
 }

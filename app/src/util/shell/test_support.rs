@@ -62,6 +62,7 @@ pub(super) async fn connected_window(
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(vec![context_name.to_string()], window, cx);
         main_window

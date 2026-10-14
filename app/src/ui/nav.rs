@@ -223,6 +223,45 @@ impl OpenedPanel {
         true
     }
 
+    /// Whether the panel's tab is pinned (`panel-tab-menu`).
+    pub fn pinned(&self, cx: &App) -> bool {
+        use crate::ui::panel_title::ScopedPanel as _;
+        match self {
+            OpenedPanel::Pods(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::ObjectList(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Events(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Placeholder(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Logs(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::PodDetail(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::ObjectDetail(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::Exec(panel) => panel.read(cx).scope().pinned,
+        }
+    }
+
+    /// Pins or unpins the panel's tab; it redraws, so its title shows which.
+    pub fn set_pinned(&self, pinned: bool, cx: &mut App) {
+        fn set<P: crate::ui::panel_title::ScopedPanel + 'static>(
+            panel: &Entity<P>,
+            pinned: bool,
+            cx: &mut App,
+        ) {
+            panel.update(cx, |panel, cx| {
+                panel.scope_mut().pinned = pinned;
+                cx.notify();
+            });
+        }
+        match self {
+            OpenedPanel::Pods(panel) => set(panel, pinned, cx),
+            OpenedPanel::ObjectList(panel) => set(panel, pinned, cx),
+            OpenedPanel::Events(panel) => set(panel, pinned, cx),
+            OpenedPanel::Placeholder(panel) => set(panel, pinned, cx),
+            OpenedPanel::Logs(panel) => set(panel, pinned, cx),
+            OpenedPanel::PodDetail(panel) => set(panel, pinned, cx),
+            OpenedPanel::ObjectDetail(panel) => set(panel, pinned, cx),
+            OpenedPanel::Exec(panel) => set(panel, pinned, cx),
+        }
+    }
+
     /// The dock id of the panel just built, without naming its type - what the
     /// window files it under and what `rescope` needs to find it again.
     pub fn panel_id(&self) -> PanelId {

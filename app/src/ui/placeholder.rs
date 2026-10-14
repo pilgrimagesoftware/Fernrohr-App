@@ -203,7 +203,7 @@ impl BasePanel for PlaceholderPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(crate::ui::panel_title::with_instance(
+            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(
                 &self.scope,
                 serde_json::json!({
                     "context_name": self.scope.context_name,
@@ -228,6 +228,7 @@ impl Panel for PlaceholderPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -412,3 +413,5 @@ mod tests {
         assert!(title_drawn(cx, "Mosss", false), "and leaves Moss");
     }
 }
+
+crate::scoped_panel!(PlaceholderPanel);

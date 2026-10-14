@@ -26,7 +26,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 /// Every arrange command, all under `cmd-k`, in palette order (#138).
-const ARRANGE_CHORDS: [&str; 13] = [
+const ARRANGE_CHORDS: [&str; 14] = [
     "panel.split_left",
     "panel.split_right",
     "panel.split_up",
@@ -40,6 +40,8 @@ const ARRANGE_CHORDS: [&str; 13] = [
     "panel.merge_up",
     "panel.merge_down",
     "panel.close_group",
+    // `panel-tab-menu`'s Open Tab Menu, `cmd-k m`.
+    "tab.menu",
 ];
 
 struct Harness {
@@ -125,8 +127,9 @@ impl Harness {
     }
 }
 
-/// Spec: "First key of a chord" - with split, move, merge and close group all
-/// under `cmd-k`, the popover lists the first eight and "… and 5 more".
+/// Spec: "First key of a chord" - with split, move, merge, close group and the
+/// tab menu all under `cmd-k`, the popover lists the first eight and "… and 6
+/// more".
 #[gpui_kit::test]
 async fn cmd_k_shows_the_pending_keys_and_every_arrange_completion(cx: &mut TestAppContext) {
     let mut h = harness(cx);
@@ -144,7 +147,7 @@ async fn cmd_k_shows_the_pending_keys_and_every_arrange_completion(cx: &mut Test
     for id in &ARRANGE_CHORDS[..8] {
         assert!(h.drawn(completion_selector(id)), "{id} is listed");
     }
-    assert!(h.drawn(MORE_SELECTOR.to_string()), "… and 5 more");
+    assert!(h.drawn(MORE_SELECTOR.to_string()), "… and 6 more");
 }
 
 /// #137: the indicator sits at the bar's right end, so the popover opens up
@@ -203,8 +206,8 @@ async fn more_than_eight_completions_end_in_a_count(cx: &mut TestAppContext) {
     let mut h = harness_with_keymap(cx, &keymap);
     h.press("cmd-k");
     let (_, ids) = h.chord().expect("pending");
-    assert_eq!(ids.len(), 13);
-    assert!(h.drawn(MORE_SELECTOR.to_string()), "… and 5 more");
+    assert_eq!(ids.len(), 14);
+    assert!(h.drawn(MORE_SELECTOR.to_string()), "… and 6 more");
     assert!(h.drawn(completion_selector(ids[7])), "the eighth row shows");
     assert!(!h.drawn(completion_selector(ids[8])), "the ninth doesn't");
 }

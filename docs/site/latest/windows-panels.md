@@ -83,6 +83,23 @@ Click the close control on a tab, or press <kbd>⌘W</kbd> (the Close Window com
 
 Closing the last panel does not return the window to the cluster picker. Disconnecting the window's last context does. That is in the context capsule in the status bar.
 
+### The tab menu
+
+Right-click a tab, or press <kbd>⌘K</kbd> then <kbd>M</kbd> (**Open Tab Menu**) for the focused tab, to open its menu. Move through it with <kbd>↑</kbd> and <kbd>↓</kbd>, press <kbd>Enter</kbd> to run an item, or <kbd>Esc</kbd> to close it. The menu acts on the tab it was opened for, even if that isn't the focused one.
+
+| Item | What it does |
+| --- | --- |
+| Close Tab | Closes this tab. |
+| Close Other Tabs | Closes every other unpinned tab in this tab's group. |
+| Close Tabs to the Right | Closes the unpinned tabs to the right of this one. |
+| Close All Tabs | Closes every unpinned tab in the group, as **Panels: Close Group** does. |
+| Move to New Window | Moves this tab to a new window on its context, as that window's only panel, with its namespaces, filter and sort. |
+| Pin Tab, or Unpin Tab | Pins the tab, or unpins it. |
+
+Each item is also a command in the command palette, and you can bind a key to it in `keymap.toml`. Items that would close nothing are disabled. If a close would end a running shell or discard an unsaved edit, Fernrohr asks once first.
+
+Pinned tabs sort first in their group, and the bulk closes leave them open. A pinned tab stays pinned when you restart, load a saved layout, or move it to a new window. A running shell can't move to another window, so moving a shell's tab ends the shell, and Fernrohr asks first.
+
 ### The Resource panel
 
 The Resource panel sits at one edge of the window.
