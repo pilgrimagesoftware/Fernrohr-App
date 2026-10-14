@@ -5,7 +5,7 @@
 //! Dismiss is an icon button with a tooltip (`icon-buttons.md`), like a single
 //! action's refusal banner (`delete_flow::refusal`).
 
-use crate::k8s::resource::bulk::ObjectOutcome;
+use crate::k8s::resource::bulk::{Done, ObjectOutcome};
 use crate::k8s::resource::resource_actions::ActionFailure;
 use crate::ui::bulk::RowKey;
 use gpui_kit::component::ActiveTheme as _;
@@ -32,8 +32,11 @@ pub(crate) struct FailedObject {
 pub(crate) struct BatchOutcome {
     /// The action's label: "Delete".
     pub(crate) action: &'static str,
-    /// The checked objects it fully succeeded for.
+    /// The checked objects it fully succeeded for - changed, or already gone.
     pub(crate) succeeded: Vec<RowKey>,
+    /// Of `succeeded`, the ones there was nothing to do for: already gone, by
+    /// name.
+    pub(crate) already_gone: Vec<String>,
     pub(crate) failed: Vec<FailedObject>,
     /// How many objects it was sent for, while it is still running.
     pub(crate) running: Option<usize>,
@@ -45,11 +48,15 @@ impl BatchOutcome {
     pub(crate) fn of(action: &'static str, outcomes: &[ObjectOutcome]) -> Self {
         let mut succeeded: Vec<RowKey> = Vec::new();
         let mut failed_keys: Vec<RowKey> = Vec::new();
+        let mut already_gone = Vec::new();
         let mut failed = Vec::new();
         for outcome in outcomes {
             let key = RowKey::new(outcome.target.namespace.as_deref(), &outcome.target.name);
             match &outcome.result {
-                Ok(()) => {
+                Ok(done) => {
+                    if *done == Done::AlreadyGone {
+                        already_gone.push(outcome.target.display_name());
+                    }
                     if !succeeded.contains(&key) {
                         succeeded.push(key);
                     }
@@ -71,6 +78,7 @@ impl BatchOutcome {
         Self {
             action,
             succeeded,
+            already_gone,
             failed,
             running: None,
         }
@@ -81,27 +89,28 @@ impl BatchOutcome {
         Self {
             action,
             succeeded: Vec::new(),
+            already_gone: Vec::new(),
             failed: Vec::new(),
             running: Some(total),
         }
     }
 
-    /// "Delete: 4 succeeded, 1 failed", "Delete: 4 succeeded", or while it
-    /// runs "Delete: running for 5…".
+    /// "Delete: 3 succeeded, 1 already gone, 1 failed" - each part only when
+    /// it counts something, succeeded always - or while it runs "Delete:
+    /// running for 5…".
     pub(crate) fn summary(&self) -> String {
         if let Some(total) = self.running {
             return format!("{}: running for {total}…", self.action);
         }
-        let succeeded = self.succeeded.len();
-        if self.failed.is_empty() {
-            format!("{}: {succeeded} succeeded", self.action)
-        } else {
-            format!(
-                "{}: {succeeded} succeeded, {} failed",
-                self.action,
-                self.failed.len()
-            )
+        let gone = self.already_gone.len();
+        let mut parts = vec![format!("{} succeeded", self.succeeded.len() - gone)];
+        if gone > 0 {
+            parts.push(format!("{gone} already gone"));
         }
+        if !self.failed.is_empty() {
+            parts.push(format!("{} failed", self.failed.len()));
+        }
+        format!("{}: {}", self.action, parts.join(", "))
     }
 }
 
@@ -156,6 +165,14 @@ pub(crate) fn render(
                 .flex_col()
                 .gap_1()
                 .child(div().text_color(color).child(outcome.summary()))
+                .when(!outcome.already_gone.is_empty(), |list| {
+                    list.child(
+                        div()
+                            .text_sm()
+                            .text_color(muted)
+                            .child(format!("Already gone: {}", outcome.already_gone.join(", "))),
+                    )
+                })
                 .children(failures),
         )
         .child(

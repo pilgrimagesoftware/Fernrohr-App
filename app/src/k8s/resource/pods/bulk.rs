@@ -14,6 +14,15 @@ impl BulkHost for PodsPanel {
         if rows.is_empty() {
             return None;
         }
+        let pods = self.table.read(cx).pods();
+        let uid = |namespace: &str, name: &str| {
+            pods.iter()
+                .find(|pod| {
+                    pod.metadata.namespace.as_deref() == Some(namespace)
+                        && pod.metadata.name.as_deref() == Some(name)
+                })
+                .and_then(|pod| pod.metadata.uid.clone())
+        };
         Some(BulkSelection {
             context_name: self.scope.context_name.clone(),
             connection: self.connection.clone(),
@@ -23,6 +32,7 @@ impl BulkHost for PodsPanel {
                     kind: DiscoveredKind::pods(),
                     namespace: Some(row.selection.namespace.clone()),
                     name: row.selection.name.clone(),
+                    uid: uid(&row.selection.namespace, &row.selection.name),
                 })
                 .collect(),
             pods: rows.iter().map(|row| row.selection.clone()).collect(),

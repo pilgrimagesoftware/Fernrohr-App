@@ -3,15 +3,17 @@
 //! confirmation ([`summary`]), and the cluster calls themselves, run per object by
 //! [`run`] so one object's failure is reported beside the others' successes.
 //!
-//! Each call is the one `kubectl` makes for the same operation. Delete, restart,
-//! rollback and scale are [`resource_actions`]'s, the same calls the single-row
-//! commands and the agent tools make; cordon, drain ([`nodes`]) and label or
-//! annotate ([`metadata`]) are this module's own.
+//! Each call is the one `kubectl` makes for the same operation. Restart,
+//! rollback and scale are [`resource_actions`]'s, the same calls the agent
+//! tools make. Delete ([`delete`]) is the single-row delete's request with the
+//! listed object's UID as a precondition; cordon, drain ([`nodes`]) and label
+//! or annotate ([`metadata`]) are this module's own.
 
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::resource_actions::{self, ActionError, ActionFailure};
 use futures_util::StreamExt as _;
 
+mod delete;
 mod eligibility;
 mod manifests;
 mod metadata;
@@ -29,6 +31,9 @@ pub(crate) struct BulkTarget {
     pub(crate) kind: DiscoveredKind,
     pub(crate) namespace: Option<String>,
     pub(crate) name: String,
+    /// The UID of the object the row listed, when known: a delete is sent only
+    /// if the object of that name is still this one.
+    pub(crate) uid: Option<String>,
 }
 
 impl BulkTarget {
@@ -72,6 +77,15 @@ pub(crate) enum Mutation {
     },
 }
 
+/// What a successful request did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Done {
+    /// It made the change.
+    Changed,
+    /// There was nothing to change: the object was already gone.
+    AlreadyGone,
+}
+
 /// How one checked object - or, for a drain, one of a node's pods - came out.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ObjectOutcome {
@@ -79,11 +93,16 @@ pub(crate) struct ObjectOutcome {
     /// What within the target this outcome is about: a drained node's pod
     /// (`evict shop/web-1`). `None` for the target itself.
     pub(crate) part: Option<String>,
-    pub(crate) result: Result<(), ActionFailure>,
+    pub(crate) result: Result<Done, ActionFailure>,
 }
 
 impl ObjectOutcome {
+    /// `target`'s outcome: changed, or why not.
     fn of(target: &BulkTarget, result: Result<(), ActionFailure>) -> Self {
+        Self::done(target, result.map(|()| Done::Changed))
+    }
+
+    fn done(target: &BulkTarget, result: Result<Done, ActionFailure>) -> Self {
         Self {
             target: target.clone(),
             part: None,
@@ -124,7 +143,10 @@ async fn run_one(
     let name = target.name.as_str();
     let result = match mutation {
         Mutation::Delete => {
-            resource_actions::delete(client, kind, name, target.namespace.as_deref(), false).await
+            return vec![ObjectOutcome::done(
+                target,
+                delete::delete(client, target).await,
+            )];
         }
         Mutation::RestartRollout { at } => {
             resource_actions::restart(client, kind, target.namespace(), name, *at)

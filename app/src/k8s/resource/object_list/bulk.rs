@@ -24,6 +24,7 @@ impl BulkHost for ObjectListPanel {
                         kind: self.kind.clone(),
                         namespace: key.namespace,
                         name: key.name,
+                        uid: (!row.object.uid.is_empty()).then(|| row.object.uid.clone()),
                     }
                 })
                 .collect(),

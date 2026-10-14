@@ -228,3 +228,53 @@ fn a_rollback_with_no_earlier_revision_fails_that_object_alone() {
         "back to db's previous revision's template"
     );
 }
+
+/// Review fix 4: a delete carries the listed object's UID as a precondition,
+/// so an object recreated under the same name isn't the one deleted.
+#[test]
+fn bulk_delete_is_preconditioned_on_the_listed_uid() {
+    let targets = [target(DiscoveredKind::pods(), "web-1")];
+    let (requests, _) = record(Mutation::Delete, &targets, |_| ("200 OK", success()));
+    assert_eq!(
+        requests[0].json()["preconditions"],
+        json!({ "uid": "uid-web-1" })
+    );
+}
+
+/// A 404 is reported as already gone, not as deleted; a UID mismatch (409)
+/// says an object of the same name was created since the list.
+#[test]
+fn a_gone_object_is_already_gone_and_a_recreated_one_isnt_deleted() {
+    use crate::k8s::resource::bulk::Done;
+    let targets = [
+        target(DiscoveredKind::pods(), "web-1"),
+        target(DiscoveredKind::pods(), "web-2"),
+        target(DiscoveredKind::pods(), "web-3"),
+    ];
+    let (_, outcomes) = record(Mutation::Delete, &targets, |request| {
+        if request.target.contains("/web-1") {
+            (
+                "404 Not Found",
+                refusal(404, "NotFound", "pods \"web-1\" not found"),
+            )
+        } else if request.target.contains("/web-2") {
+            (
+                "409 Conflict",
+                refusal(
+                    409,
+                    "Conflict",
+                    "Precondition failed: UID in precondition: uid-web-2, UID in object meta: other",
+                ),
+            )
+        } else {
+            ("200 OK", success())
+        }
+    });
+    assert_eq!(outcomes[0].result, Ok(Done::AlreadyGone));
+    let recreated = outcomes[1].result.as_ref().unwrap_err();
+    assert!(
+        recreated.message.contains("same name was created"),
+        "{recreated:?}"
+    );
+    assert_eq!(outcomes[2].result, Ok(Done::Changed));
+}

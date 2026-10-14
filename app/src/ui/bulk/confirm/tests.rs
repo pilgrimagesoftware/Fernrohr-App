@@ -21,6 +21,7 @@ fn targets(kind: &DiscoveredKind, count: usize) -> Vec<BulkTarget> {
             kind: kind.clone(),
             namespace: kind.namespaced.then(|| "shop".to_string()),
             name: format!("{}-{n}", kind.plural),
+            uid: None,
         })
         .collect()
 }

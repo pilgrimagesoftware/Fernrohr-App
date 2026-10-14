@@ -53,6 +53,7 @@ pub(super) fn target(kind: DiscoveredKind, name: &str) -> BulkTarget {
         kind,
         namespace,
         name: name.to_string(),
+        uid: Some(format!("uid-{name}")),
     }
 }
 
