@@ -294,28 +294,58 @@ fn expand_patches_the_requested_storage_and_reports_the_clusters_refusal() {
     );
 }
 
-fn node_facts() -> ObjectFacts {
-    facts(json!({ "metadata": meta("node-a"), "spec": { "taints": [
-        { "key": "dedicated", "value": "gpu", "effect": "NoSchedule" },
-        { "key": "node.kubernetes.io/unreachable", "effect": "NoExecute",
-          "timeAdded": "2026-10-14T12:00:00Z" },
-    ] } }))
+/// A server holding Node `node-a` as it is now - its UID `uid`, version "9",
+/// and two taints, one with a `timeAdded` - answering a get with it and a patch
+/// with OK.
+fn node_server(uid: &'static str) -> (tokio::runtime::Runtime, Recorder, kube::Client) {
+    serve(move |request| {
+        if request.method == "GET" {
+            (
+                "200 OK",
+                json!({ "apiVersion": "v1", "kind": "Node",
+                    "metadata": { "name": "node-a", "uid": uid, "resourceVersion": "9" },
+                    "spec": { "taints": [
+                        { "key": "dedicated", "value": "gpu", "effect": "NoSchedule" },
+                        { "key": "node.kubernetes.io/unreachable", "effect": "NoExecute",
+                          "timeAdded": "2026-10-14T12:00:00Z" },
+                    ] } }),
+            )
+        } else {
+            ("200 OK", json!({ "metadata": { "name": "node-a" } }))
+        }
+    })
 }
 
+fn patches(server: &Recorder) -> Vec<Value> {
+    server
+        .requests()
+        .iter()
+        .filter(|request| request.method == "PATCH")
+        .map(Recorded::json)
+        .collect()
+}
+
+/// Review fix 2: Add Taint reads the node when it runs, and writes every taint
+/// it has then - not the list the dialog opened on - pinned to that version.
 #[test]
-fn add_taint_writes_every_taint_for_the_version_it_read() {
+fn add_taint_writes_every_taint_the_node_has_now_for_that_version() {
     let node = kind("", "Node", "nodes", false);
-    let facts = node_facts();
     let taint = Taint::new("team", None, TaintEffect::PreferNoSchedule);
-    let (runtime, server, client) =
-        serve(|_| ("200 OK", json!({ "metadata": { "name": "node-a" } })));
+    let (runtime, server, client) = node_server("uid-node-a");
     runtime
-        .block_on(super::add_taint(client, &node, "node-a", &facts, &taint))
+        .block_on(super::add_taint(
+            client,
+            &node,
+            "node-a",
+            Some("uid-node-a"),
+            &taint,
+        ))
         .expect("added");
-    let sent = server.requests()[0].json();
+    let sent = patches(&server).remove(0);
     assert_eq!(
         sent["metadata"],
-        json!({ "uid": "uid-node-a", "resourceVersion": "7" })
+        json!({ "uid": "uid-node-a", "resourceVersion": "9" }),
+        "the version just read"
     );
     let taints = sent["spec"]["taints"].as_array().expect("a list");
     assert_eq!(taints.len(), 3);
@@ -326,21 +356,64 @@ fn add_taint_writes_every_taint_for_the_version_it_read() {
 }
 
 #[test]
+fn add_taint_refuses_a_taint_the_node_already_has() {
+    let node = kind("", "Node", "nodes", false);
+    let taint = Taint::new("dedicated", Some("cpu"), TaintEffect::NoSchedule);
+    let (runtime, server, client) = node_server("uid-node-a");
+    let failure = runtime
+        .block_on(super::add_taint(client, &node, "node-a", None, &taint))
+        .unwrap_err();
+    assert!(failure.message.contains("already has"), "{failure:?}");
+    assert!(patches(&server).is_empty());
+}
+
+#[test]
 fn remove_taint_drops_only_that_taint_and_keeps_the_others_as_they_were() {
     let node = kind("", "Node", "nodes", false);
-    let facts = node_facts();
-    let gone = facts.taints[0].clone();
-    let (runtime, server, client) =
-        serve(|_| ("200 OK", json!({ "metadata": { "name": "node-a" } })));
+    let gone = Taint::new("dedicated", Some("gpu"), TaintEffect::NoSchedule);
+    let (runtime, server, client) = node_server("uid-node-a");
     runtime
-        .block_on(super::remove_taint(client, &node, "node-a", &facts, &gone))
+        .block_on(super::remove_taint(client, &node, "node-a", None, &gone))
         .expect("removed");
     assert_eq!(
-        server.requests()[0].json()["spec"]["taints"],
+        patches(&server)[0]["spec"]["taints"],
         json!([{ "key": "node.kubernetes.io/unreachable", "effect": "NoExecute",
             "timeAdded": "2026-10-14T12:00:00Z" }]),
         "the other taint, timeAdded and all"
     );
+}
+
+#[test]
+fn a_taint_already_gone_needs_no_patch() {
+    let node = kind("", "Node", "nodes", false);
+    let gone = Taint::new("team", None, TaintEffect::NoSchedule);
+    let (runtime, server, client) = node_server("uid-node-a");
+    runtime
+        .block_on(super::remove_taint(client, &node, "node-a", None, &gone))
+        .expect("nothing to do");
+    assert!(patches(&server).is_empty());
+}
+
+/// A node recreated under the same name since it was listed isn't changed.
+#[test]
+fn a_recreated_node_isnt_tainted() {
+    let node = kind("", "Node", "nodes", false);
+    let taint = Taint::new("team", None, TaintEffect::NoSchedule);
+    let (runtime, server, client) = node_server("uid-other");
+    let failure = runtime
+        .block_on(super::add_taint(
+            client,
+            &node,
+            "node-a",
+            Some("uid-node-a"),
+            &taint,
+        ))
+        .unwrap_err();
+    assert_eq!(
+        failure.message,
+        crate::k8s::resource::resource_actions::RECREATED
+    );
+    assert!(patches(&server).is_empty());
 }
 
 #[test]
@@ -363,7 +436,12 @@ fn trigger_now_creates_a_job_from_the_template_and_leaves_the_cronjob_alone() {
                 )
             }
         });
-        let job = runtime.block_on(super::trigger_now(client, "shop", "backup"));
+        let job = runtime.block_on(super::trigger_now(
+            client,
+            "shop",
+            "backup",
+            Some("uid-backup"),
+        ));
         (server.requests(), job)
     };
     let job = job.expect("triggered");
@@ -390,6 +468,97 @@ fn trigger_now_creates_a_job_from_the_template_and_leaves_the_cronjob_alone() {
             .any(|r| r.method == "PATCH" || r.method == "PUT"),
         "the CronJob itself is never written"
     );
+}
+
+/// Review fix 3: Trigger Now refuses a CronJob recreated under the same name.
+#[test]
+fn trigger_now_refuses_a_recreated_cronjob() {
+    let (runtime, server, client) = serve(|_| {
+        (
+            "200 OK",
+            json!({ "apiVersion": "batch/v1", "kind": "CronJob",
+                "metadata": { "name": "backup", "namespace": "shop", "uid": "uid-other" },
+                "spec": { "schedule": "0 3 * * *", "jobTemplate": { "spec": {
+                    "template": { "spec": { "containers": [] } } } } } }),
+        )
+    });
+    let failure = runtime
+        .block_on(super::trigger_now(
+            client,
+            "shop",
+            "backup",
+            Some("uid-backup"),
+        ))
+        .unwrap_err();
+    assert_eq!(
+        failure.message,
+        crate::k8s::resource::resource_actions::RECREATED
+    );
+    assert!(
+        !server
+            .requests()
+            .iter()
+            .any(|request| request.method == "POST"),
+        "no Job is created"
+    );
+}
+
+/// Review fix 1: only an openable host is offered - the first rule's that is -
+/// and a wildcard is never one.
+#[test]
+fn open_host_offers_the_first_openable_rule_host() {
+    let ingress =
+        |rules: Value| facts(json!({ "metadata": meta("web"), "spec": { "rules": rules } }));
+    assert_eq!(
+        ingress(json!([{ "http": {} }, { "host": "app.example.com" }]))
+            .host
+            .as_deref(),
+        Some("app.example.com"),
+        "the first rule that has a host"
+    );
+    assert_eq!(
+        ingress(json!([{ "host": "*.example.com" }, { "host": "api.example.com" }]))
+            .host
+            .as_deref(),
+        Some("api.example.com"),
+        "a wildcard is passed over"
+    );
+    assert_eq!(ingress(json!([{ "host": "*.example.com" }])).host, None);
+    let ingresses = kind("networking.k8s.io", "Ingress", "ingresses", true);
+    assert!(
+        offered(
+            &ingresses,
+            json!({ "metadata": meta("web"),
+            "spec": { "rules": [{ "host": "*.example.com" }] } })
+        )
+        .is_empty(),
+        "nothing to open"
+    );
+}
+
+#[test]
+fn an_openable_host_is_a_lowercase_dns_name() {
+    use super::openable;
+    for good in ["app.example.com", "a", "x-1.example.com", "localhost"] {
+        assert!(openable(good), "{good}");
+    }
+    let long = format!("{}.example.com", "a".repeat(64));
+    for bad in [
+        "",
+        "*.example.com",
+        ".example.com",
+        "example.com.",
+        "App.example.com",
+        "a..b",
+        "-a.example.com",
+        "a-.example.com",
+        "app.example.com/path",
+        "user@app.example.com",
+        "app.example.com:8443",
+        long.as_str(),
+    ] {
+        assert!(!openable(bad), "{bad:?}");
+    }
 }
 
 #[test]

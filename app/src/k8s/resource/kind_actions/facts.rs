@@ -22,7 +22,8 @@ pub(crate) struct ObjectFacts {
     pub(crate) storage: Option<String>,
     /// A Node's `spec.taints`, as the API has them.
     pub(crate) taints: Vec<Taint>,
-    /// An Ingress's first rule's host.
+    /// An Ingress's first rule's host that can be opened ([`openable`]): a
+    /// wildcard host (`*.example.com`) names no one site.
     pub(crate) host: Option<String>,
 }
 
@@ -41,12 +42,30 @@ impl ObjectFacts {
                 .as_array()
                 .map(|taints| taints.iter().filter_map(Taint::from_api).collect())
                 .unwrap_or_default(),
-            host: spec["rules"][0]["host"]
-                .as_str()
-                .filter(|host| !host.is_empty())
+            host: spec["rules"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|rule| rule["host"].as_str())
+                .find(|host| openable(host))
                 .map(str::to_string),
         }
     }
+}
+
+/// Whether `host` is a DNS name a browser can open: lowercase letters, digits,
+/// `-` and `.`, in labels of 1 to 63 characters that don't start or end with
+/// `-`, 253 at most in all. A wildcard (`*.example.com`) isn't one.
+pub(crate) fn openable(host: &str) -> bool {
+    let label_ok = |label: &str| {
+        (1..=63).contains(&label.len())
+            && label
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+    };
+    !host.is_empty() && host.len() <= 253 && host.split('.').all(label_ok)
 }
 
 /// A taint's effect: what it does to pods that don't tolerate it.

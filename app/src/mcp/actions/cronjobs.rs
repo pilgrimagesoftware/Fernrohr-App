@@ -36,6 +36,7 @@ async fn trigger_cronjob(input: CronJobInput, tools: ToolContext) -> ToolResult 
         namespace,
         name,
         &actions::job_suffix().ok_or(ToolError::Internal)?,
+        None,
     )
     .await
     .map_err(failed(&session))?;

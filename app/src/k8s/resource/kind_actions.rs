@@ -16,7 +16,7 @@ mod quantity;
 pub(crate) use calls::{
     add_taint, create_token, expand, remove_taint, set_paused, set_suspended, trigger_now,
 };
-pub(crate) use facts::{ObjectFacts, Taint, TaintEffect};
+pub(crate) use facts::{ObjectFacts, Taint, TaintEffect, openable};
 pub(crate) use quantity::bytes;
 
 /// Every kind-specific action, in the order a menu lists them.

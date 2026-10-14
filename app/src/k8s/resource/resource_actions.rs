@@ -70,6 +70,11 @@ pub(super) fn patch_params() -> kube::api::PatchParams {
     }
 }
 
+/// What an action reports when the object it was asked about has changed, or
+/// been recreated under the same name, since it was read.
+pub(crate) const RECREATED: &str = "Not changed: the object changed, or was recreated under the \
+                                     same name, since it was read. Look again and retry.";
+
 /// `patch` that applies only to the object with `uid`, when it is known: the API
 /// server refuses to change an object's UID, so a patch carrying one fails on
 /// an object recreated under the same name since it was read.

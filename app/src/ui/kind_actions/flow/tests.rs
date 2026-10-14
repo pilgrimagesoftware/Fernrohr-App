@@ -8,6 +8,7 @@ use crate::ui::kind_actions::taints::parse;
 #[test]
 fn expand_takes_only_a_larger_size() {
     assert_eq!(parse_size("20Gi", "10Gi"), Ok("20Gi".into()));
+    assert_eq!(parse_size("  20Gi ", "10Gi"), Ok("20Gi".into()), "trimmed");
     assert!(parse_size("10Gi", "10Gi").is_err(), "the same size");
     assert!(parse_size("5Gi", "10Gi").is_err(), "smaller");
     assert!(parse_size("10G", "10Gi").is_err(), "10G is under 10Gi");
@@ -38,5 +39,16 @@ fn a_taint_needs_a_valid_key_and_effect_and_mustnt_exist_yet() {
 
 #[test]
 fn open_host_opens_the_host_over_https() {
-    assert_eq!(host_url("app.example.com"), "https://app.example.com");
+    assert_eq!(
+        host_url("app.example.com").as_deref(),
+        Ok("https://app.example.com/")
+    );
+    for bad in [
+        "*.example.com",
+        "app.example.com/evil",
+        "evil.com#app.example.com",
+        "",
+    ] {
+        assert!(host_url(bad).is_err(), "{bad:?} isn't opened");
+    }
 }

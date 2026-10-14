@@ -198,7 +198,7 @@ keys for whatever the selected object is offered.
 | Node | Add Taint… | <kbd>⇧T</kbd> | Asks for a key, an optional value and an effect: `NoSchedule`, `PreferNoSchedule` or `NoExecute`. |
 | Node | Remove Taint… | <kbd>⌥⇧T</kbd> | Asks which taint to remove when the node has several. |
 | ServiceAccount | Create Token | <kbd>⇧K</kbd> | Requests a new token and shows it once. |
-| Ingress | Open Host in Browser | <kbd>⇧O</kbd> | Opens the first rule's host, such as `https://app.example.com`. |
+| Ingress | Open Host in Browser | <kbd>⇧O</kbd> | Opens the first rule's host, such as `https://app.example.com`. A wildcard host such as `*.example.com` names no one site, so it's passed over, and an Ingress with no other host isn't offered the action. |
 
 Every action that changes the cluster asks first, naming the object. Expand
 can't be undone, because a claim can't be made smaller again, so its question

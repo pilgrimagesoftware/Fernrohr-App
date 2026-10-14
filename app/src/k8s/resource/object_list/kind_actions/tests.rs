@@ -274,7 +274,55 @@ async fn open_host_opens_the_first_rules_host(cx: &mut TestAppContext) {
     assert!(!harness.dialog_open(), "no confirmation");
     assert_eq!(
         harness.vcx.opened_url().as_deref(),
-        Some("https://app.example.com")
+        Some("https://app.example.com/")
+    );
+}
+
+/// Review fix 4: a row menu's item acts on the row the menu opened on, even
+/// once the selection is somewhere else.
+#[gpui_kit::test]
+async fn a_row_menu_item_acts_on_its_own_row(cx: &mut TestAppContext) {
+    let ingress = |name: &str, host: &str| {
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": meta(name),
+            "spec": { "rules": [{ "host": host }] } })
+    };
+    let mut harness = open_objects(
+        cx,
+        kind("networking.k8s.io", "Ingress", "ingresses", true),
+        vec![
+            ingress("api", "api.example.com"),
+            ingress("web", "web.example.com"),
+        ],
+    );
+    // The first row, `api`, is selected; the menu is the second row's.
+    let entries = harness.vcx.update(|_, cx| {
+        let panel = harness.panel.read(cx);
+        let row = panel
+            .table
+            .as_ref()
+            .expect("built")
+            .read(cx)
+            .delegate()
+            .rows()
+            .iter()
+            .find(|row| row.object.name == "web")
+            .expect("listed")
+            .clone();
+        harness
+            .panel
+            .update(cx, |panel, cx| panel.kind_menu(cx)(&row))
+    });
+    let open = entries
+        .iter()
+        .find(|entry| entry.label == "Open Host in Browser")
+        .expect("offered");
+    let run = open.run.clone();
+    harness.vcx.update(|window, cx| run(window, cx));
+    harness.vcx.run_until_parked();
+    assert_eq!(
+        harness.vcx.opened_url().as_deref(),
+        Some("https://web.example.com/"),
+        "the menu's row, not the selection"
     );
 }
 
