@@ -35,6 +35,14 @@ pub struct PodRow {
     pub forwards: usize,
 }
 
+impl PodRow {
+    /// Whether Port Forward is offered: only a Running pod has a container to
+    /// forward to (`resource-specific-actions`).
+    pub fn forwardable(&self) -> bool {
+        self.phase == "Running"
+    }
+}
+
 /// Container waiting reasons that mean the pod won't run as it is - `kubectl`
 /// shows these in its STATUS column in place of the phase.
 pub(crate) const BAD_WAITING_REASONS: &[&str] = &[

@@ -355,6 +355,7 @@ impl Render for ObjectDetailPanel {
                                 .test_support(),
                         )
                     })
+                    .children(self.kind_header(window, cx))
                     .children(logs_hint)
                     .when(deletable, |this| {
                         this.child(hint(
@@ -375,14 +376,16 @@ impl Render for ObjectDetailPanel {
                     )),
             );
 
-        div()
+        let mut context = key_context(
+            self.edit.is_some(),
+            deletable,
+            self.verbs(cx).patch,
+            self.pod_logs_workload().is_some(),
+        );
+        crate::ui::kind_actions::add_key_contexts(self, &mut context, false, cx);
+        crate::ui::kind_actions::on_kind_actions(div(), cx)
             .size_full()
-            .key_context(key_context(
-                self.edit.is_some(),
-                deletable,
-                self.verbs(cx).patch,
-                self.pod_logs_workload().is_some(),
-            ))
+            .key_context(context)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_action_toggle_view))
             .on_action(cx.listener(Self::on_action_fold_all))

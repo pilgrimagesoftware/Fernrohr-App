@@ -11,7 +11,8 @@ use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwardRequest};
 use crate::k8s::resource::port_forwarding::{self, PortChoice};
 
 /// Forwards `pod`'s declared port - asking which first when it declares more
-/// than one - or says in a notification why it can't. Shared by the Pods list
+/// than one - or says in a notification why it can't, a pod that isn't Running
+/// included. Shared by the Pods list
 /// and the pod detail panel, so both ask alike.
 pub(crate) fn forward_pod(
     selection: PodSelection,
@@ -19,6 +20,14 @@ pub(crate) fn forward_pod(
     window: &mut Window,
     cx: &mut App,
 ) {
+    // Only a Running pod has a container to forward to (`resource-specific-actions`).
+    let phase = pod
+        .and_then(|pod| pod.status.as_ref())
+        .and_then(|status| status.phase.as_deref());
+    if phase != Some("Running") {
+        let reason = format!("Pod {} isn't running.", selection.name);
+        return port_forwarding::notify_failure(&selection.name, None, &reason, window, cx);
+    }
     let ports: Vec<PortChoice> = pod.map(port_forwarding::pod_ports).unwrap_or_default();
     match ports.as_slice() {
         [] => {
