@@ -1,0 +1,78 @@
+//! The mouse routes to a kind's actions: icon buttons with tooltips in a detail
+//! panel's header (`icon-buttons.md`), and items in a list row's context menu.
+//! Both dispatch the action's registered command, so they run exactly what its
+//! key does.
+
+use super::commands::{action, command};
+use crate::k8s::resource::kind_actions::KindAction;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::Sizable as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::*;
+
+fn icon(kind_action: KindAction) -> IconName {
+    match kind_action {
+        KindAction::ForwardService => IconName::ArrowLeftRight,
+        KindAction::TriggerNow => IconName::Play,
+        KindAction::Suspend | KindAction::PauseRollout => IconName::Pause,
+        KindAction::Resume | KindAction::ResumeRollout => IconName::CirclePlay,
+        KindAction::Expand => IconName::ArrowUpFromLine,
+        KindAction::AddTaint => IconName::ShieldPlus,
+        KindAction::RemoveTaint => IconName::ShieldMinus,
+        KindAction::CreateToken => IconName::KeyRound,
+        KindAction::OpenHost => IconName::ExternalLink,
+    }
+}
+
+/// `kind_action`'s button id: `kind-trigger_now`.
+pub(crate) fn button_id(kind_action: KindAction) -> SharedString {
+    format!(
+        "kind-{}",
+        command(kind_action).id.trim_start_matches("kind.")
+    )
+    .into()
+}
+
+/// One icon button per offered action, its tooltip naming the action and its
+/// key from the live keymap.
+pub(crate) fn buttons(offered: &[KindAction]) -> Vec<AnyElement> {
+    offered
+        .iter()
+        .map(|kind_action| {
+            let dispatched = action(*kind_action);
+            Button::new(button_id(*kind_action))
+                .icon(icon(*kind_action))
+                .xsmall()
+                .ghost()
+                .tooltip_with_action(kind_action.label(), &*action(*kind_action), None)
+                .on_click(move |_, window, cx| window.dispatch_action(dispatched.boxed_clone(), cx))
+                .into_any_element()
+        })
+        .collect()
+}
+
+/// A list row's context-menu items for `offered`: each label and its action.
+pub(crate) fn menu_items(offered: &[KindAction]) -> Vec<(&'static str, Box<dyn Action>)> {
+    offered
+        .iter()
+        .map(|kind_action| (kind_action.label(), action(*kind_action)))
+        .collect()
+}
+
+/// The hint row's entry for each of `offered`: its key from the live keymap,
+/// and its label.
+pub(crate) fn hints(offered: &[KindAction], window: &mut Window) -> Vec<Div> {
+    offered
+        .iter()
+        .map(|kind_action| {
+            let command = command(*kind_action);
+            crate::ui::list_search::ListSearch::hint(
+                &*action(*kind_action),
+                command.gate,
+                command.key,
+                kind_action.label(),
+                window,
+            )
+        })
+        .collect()
+}

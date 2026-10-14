@@ -180,6 +180,39 @@ Delete and Drain act only on the objects you checked. If one is deleted and
 recreated under the same name before the request arrives, the new one is left
 alone and reported. An object that is already gone is reported as already gone.
 
+## Act on one object of a kind
+
+Some actions mean something only for one kind. Select a row and press its key,
+choose it from the row's right-click menu, or use the buttons in the object's
+detail panel. Each is also in the command palette while that row or panel has
+focus, and you can rebind any of them in `keymap.toml`. The hint row shows the
+keys for whatever the selected object is offered.
+
+| Kind | Action | Key | What it does |
+| --- | --- | --- | --- |
+| Pod, Service | Port Forward… | <kbd>⇧F</kbd> | Forwards one of its ports, asking which when it has several. Only a Running pod can be forwarded. |
+| CronJob | Trigger Now… | <kbd>T</kbd> | Creates a Job from its job template now, as `kubectl create job --from=cronjob/my-cronjob` does. Its schedule is unchanged. |
+| Job, CronJob | Suspend… / Resume… | <kbd>P</kbd> / <kbd>⇧P</kbd> | Sets or clears `spec.suspend`. Only the one that applies is offered. |
+| Deployment | Pause Rollout… / Resume Rollout… | <kbd>P</kbd> / <kbd>⇧P</kbd> | Sets or clears `spec.paused`. Not offered for DaemonSets or StatefulSets. |
+| PersistentVolumeClaim | Expand… | <kbd>⇧E</kbd> | Asks for a new size, larger than the current one, and sets it. |
+| Node | Add Taint… | <kbd>⇧T</kbd> | Asks for a key, an optional value and an effect: `NoSchedule`, `PreferNoSchedule` or `NoExecute`. |
+| Node | Remove Taint… | <kbd>⌥⇧T</kbd> | Asks which taint to remove when the node has several. |
+| ServiceAccount | Create Token | <kbd>⇧K</kbd> | Requests a new token and shows it once. |
+| Ingress | Open Host in Browser | <kbd>⇧O</kbd> | Opens the first rule's host, such as `https://app.example.com`. |
+
+Every action that changes the cluster asks first, naming the object. Expand
+can't be undone, because a claim can't be made smaller again, so its question
+opens on Cancel and confirms with <kbd>⌘⌫</kbd>. The others confirm with
+<kbd>Enter</kbd>. If the cluster refuses, the panel shows its reason. A
+StorageClass that doesn't allow expansion is reported in the cluster's own
+words. Each change applies only to the object you selected: if it was deleted
+and recreated under the same name, the change is refused rather than applied to
+the new one.
+
+A token from Create Token is shown once, the same way a revealed Secret value is.
+Copy it before you hide it or close the dialog, because it isn't kept anywhere,
+written to disk or logged. To get another, choose Create Token again.
+
 ## Icons and status
 
 Every kind has a full-colour icon from the Kubernetes community icon set. It
@@ -282,4 +315,4 @@ Sorting works like any list. The browser remembers the last sort you chose,
 across contexts, windows and restarts, and a new browser starts with it. Until
 you choose one, the sort is age ascending, which puts the newest events first.
 
-*Summarizes the capability specs: `resource-browser`, `resource-group-navigation`, `resource-icons`, `namespace-sets`, `events-browser`, `bulk-object-actions`.*
+*Summarizes the capability specs: `resource-browser`, `resource-group-navigation`, `resource-icons`, `namespace-sets`, `events-browser`, `bulk-object-actions`, `resource-specific-actions`.*

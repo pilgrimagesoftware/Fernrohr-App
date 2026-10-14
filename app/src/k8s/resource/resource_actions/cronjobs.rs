@@ -89,6 +89,21 @@ pub(super) fn job_from(cronjob: &CronJob, suffix: &str) -> Result<TriggerPlan, A
 
 /// `<cronjob>-manual-<suffix>`, the CronJob's name cut short when the whole
 /// would pass [`MAX_JOB_NAME`].
+/// A Job name suffix: five random `[a-z0-9]` characters, as the CronJob
+/// controller's own Job names end with. `None` if the system has no randomness
+/// to give.
+pub(crate) fn job_suffix() -> Option<String> {
+    const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bytes = [0u8; 5];
+    getrandom::fill(&mut bytes).ok()?;
+    Some(
+        bytes
+            .iter()
+            .map(|byte| ALPHABET[usize::from(*byte) % ALPHABET.len()] as char)
+            .collect(),
+    )
+}
+
 pub(super) fn manual_job_name(cronjob: &str, suffix: &str) -> String {
     let tail = format!("-manual-{suffix}");
     let room = MAX_JOB_NAME.saturating_sub(tail.len());
@@ -97,7 +112,7 @@ pub(super) fn manual_job_name(cronjob: &str, suffix: &str) -> String {
 }
 
 /// Whether CronJob `name`'s schedule is suspended now.
-pub(crate) async fn cronjob_suspended(
+pub(crate) async fn suspended(
     client: kube::Client,
     kind: &DiscoveredKind,
     namespace: &str,
@@ -108,14 +123,15 @@ pub(crate) async fn cronjob_suspended(
 }
 
 /// Suspends or resumes CronJob `name`'s schedule.
-pub(crate) async fn set_cronjob_suspended(
+pub(crate) async fn set_suspended(
     client: kube::Client,
     kind: &DiscoveredKind,
     namespace: &str,
     name: &str,
     suspended: bool,
+    uid: Option<&str>,
 ) -> Result<(), ActionError> {
-    let patch = json!({ "spec": { "suspend": suspended } });
+    let patch = super::with_uid(json!({ "spec": { "suspend": suspended } }), uid);
     api_for(client, kind, Some(namespace))
         .patch(name, &patch_params(), &Patch::Merge(&patch))
         .await?;

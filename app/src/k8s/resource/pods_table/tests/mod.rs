@@ -51,6 +51,7 @@ pub(super) fn pod_table_rows_fixture() -> Vec<crate::k8s::resource::pods_table::
                 namespace: namespace.into(),
                 ready: ready.into(),
                 status: status.into(),
+                phase: "Running".into(),
                 restarts,
                 age: String::new(),
                 pod_ip: ip.into(),

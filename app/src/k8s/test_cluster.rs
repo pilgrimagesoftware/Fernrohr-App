@@ -55,7 +55,12 @@ pub(crate) struct FakeCluster {
     patch_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
     /// When set, every get of a single object is refused with this.
     get_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
+    /// Every create, as (plural, body); a TokenRequest as ("token", body).
+    creates: Arc<Mutex<Vec<(String, Value)>>>,
 }
+
+/// The token the fake answers every TokenRequest with.
+pub(crate) const TEST_TOKEN: &str = "eyJhbGciOiJSUzI1NiJ9.fake-test-token";
 
 impl FakeCluster {
     /// Starts the server on the app's runtime and returns it with a client for it.
@@ -69,6 +74,7 @@ impl FakeCluster {
             patches: Arc::default(),
             patch_refusal: Arc::default(),
             get_refusal: Arc::default(),
+            creates: Arc::default(),
         };
         let handle = cx.update(|cx| crate::runtime::handle(cx));
         let addr = handle.block_on(cluster.clone().serve());
@@ -160,6 +166,40 @@ impl FakeCluster {
         self.patches.lock().clone()
     }
 
+    /// Every create so far, as (plural, body) - a TokenRequest as `("token", body)`.
+    pub(crate) fn creates(&self) -> Vec<(String, Value)> {
+        self.creates.lock().clone()
+    }
+
+    /// A create: a TokenRequest (`serviceaccounts/<name>/token`) is answered
+    /// with [`TEST_TOKEN`]; anything else is stored as written and answered
+    /// with itself.
+    fn answer_create(&self, target: &str, sent: &str) -> (&'static str, String) {
+        let path = target.split_once('?').map_or(target, |(path, _)| path);
+        let sent: Value = serde_json::from_str(sent).unwrap_or(Value::Null);
+        if path.ends_with("/token") {
+            self.creates
+                .lock()
+                .push(("token".to_string(), sent.clone()));
+            let mut answer = sent;
+            answer["status"] = json!({ "token": TEST_TOKEN,
+                "expirationTimestamp": "2026-10-14T13:00:00Z" });
+            return ("201 Created", answer.to_string());
+        }
+        let Some(Request {
+            prefix,
+            plural,
+            name: None,
+            ..
+        }) = Request::parse(path)
+        else {
+            return not_found();
+        };
+        self.creates.lock().push((plural.to_string(), sent.clone()));
+        self.apply(prefix, plural, sent.clone());
+        ("201 Created", sent.to_string())
+    }
+
     /// Answers every get of a single object with `status` and `body` from now
     /// on; lists and watches still answer.
     pub(crate) fn refuse_gets(&self, status: &'static str, body: Value) {
@@ -245,6 +285,7 @@ impl FakeCluster {
                             &request.body,
                             request.content_type.as_deref(),
                         ),
+                        "POST" => cluster.answer_create(&request.target, &request.body),
                         _ => cluster.answer(&request.target).await,
                     };
                     let response = format!(

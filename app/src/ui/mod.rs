@@ -14,6 +14,7 @@ pub mod forward_indicator;
 pub mod forward_stop;
 pub mod icon;
 pub mod icon_tooltip;
+pub(crate) mod kind_actions;
 pub mod link;
 pub mod list_keys;
 pub mod list_search;
