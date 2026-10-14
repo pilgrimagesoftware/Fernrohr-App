@@ -151,7 +151,7 @@ fn a_built_in_grouped_list_keeps_its_group_in_the_title() {
 /// backslashes survive.
 #[test]
 fn error_text_is_rendered_verbatim() {
-    use super::{code_block, escape_markdown};
+    use super::error::{code_block, escape_markdown};
     assert_eq!(escape_markdown("continue_: None"), "continue\\_: None");
     assert_eq!(escape_markdown("a*b"), "a\\*b");
     assert_eq!(code_block(r#"pods \"x\""#), "```text\npods \\\"x\\\"\n```");
