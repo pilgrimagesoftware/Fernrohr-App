@@ -2,7 +2,7 @@
 //! actions bound to keys, as a user's `keymap.toml` could - over a fake cluster
 //! that watches, and records and applies patches.
 
-use super::super::panel::ObjectListPanel;
+use super::panel::ObjectListPanel;
 use crate::command::CommandRegistry;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
@@ -52,7 +52,7 @@ pub(super) fn object(kind: &DiscoveredKind, name: &str) -> Value {
     object
 }
 
-fn prefix(kind: &DiscoveredKind) -> String {
+pub(super) fn prefix(kind: &DiscoveredKind) -> String {
     if kind.gvk.group.is_empty() {
         "/api/v1".into()
     } else {
@@ -68,6 +68,16 @@ pub(super) struct Harness {
 
 /// A list of `kind` over objects `names`, the first selected.
 pub(super) fn open(cx: &mut TestAppContext, kind: DiscoveredKind, names: &[&str]) -> Harness {
+    let objects = names.iter().map(|name| object(&kind, name)).collect();
+    open_objects(cx, kind, objects)
+}
+
+/// A list of `kind` over `objects`, the first selected.
+pub(super) fn open_objects(
+    cx: &mut TestAppContext,
+    kind: DiscoveredKind,
+    objects: Vec<Value>,
+) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
@@ -76,6 +86,7 @@ pub(super) fn open(cx: &mut TestAppContext, kind: DiscoveredKind, names: &[&str]
         crate::k8s::resource::object_list::register_commands(&mut registry);
         crate::ui::confirm_dialog::register_commands(&mut registry);
         crate::ui::bulk::register_commands(&mut registry);
+        crate::ui::kind_actions::register_commands(&mut registry);
         let keymap = KeymapConfig {
             bindings: BULK_KEYS
                 .iter()
@@ -89,8 +100,9 @@ pub(super) fn open(cx: &mut TestAppContext, kind: DiscoveredKind, names: &[&str]
         ]));
     });
     let (cluster, client) = FakeCluster::start(cx);
-    for name in names {
-        cluster.apply(&prefix(&kind), &kind.plural, object(&kind, name));
+    let count = objects.len();
+    for object in objects {
+        cluster.apply(&prefix(&kind), &kind.plural, object);
     }
     cx.update(|cx| {
         ClusterRegistry::insert_test_session(cx, CONTEXT, ConnectionState::Connected(client));
@@ -109,7 +121,6 @@ pub(super) fn open(cx: &mut TestAppContext, kind: DiscoveredKind, names: &[&str]
         panel,
         vcx,
     };
-    let count = names.len();
     harness.wait_for("listed every object", |harness| harness.rows() == count);
     let panel = harness.panel.clone();
     harness.vcx.update(|window, cx| {
@@ -126,6 +137,19 @@ impl Harness {
             self.vcx
                 .simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
         }
+        self.vcx.run_until_parked();
+    }
+
+    /// Space, down and up - how a focused button is pressed from the keyboard.
+    pub(super) fn press_space(&mut self) {
+        let space = Keystroke::parse("space").expect("valid");
+        self.vcx.simulate_event(gpui_kit::KeyDownEvent {
+            keystroke: space.clone(),
+            is_held: false,
+            prefer_character_input: false,
+        });
+        self.vcx
+            .simulate_event(gpui_kit::KeyUpEvent { keystroke: space });
         self.vcx.run_until_parked();
     }
 

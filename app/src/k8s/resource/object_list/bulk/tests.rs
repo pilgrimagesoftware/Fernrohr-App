@@ -2,7 +2,7 @@
 //! prompt where it has one, its confirmation, the requests sent for every
 //! checked object, and the outcome reported per object.
 
-use super::harness::{Harness, kind, open};
+use super::super::test_harness::{Harness, kind, open};
 use crate::ui::bulk::bar::BAR_SELECTOR;
 use crate::ui::bulk::outcome::OUTCOME_SELECTOR;
 use gpui_kit::TestAppContext;

@@ -235,6 +235,7 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
                 namespace: "ns-e".into(),
                 ready: "1/1".into(),
                 status: "Running".into(),
+                phase: "Running".into(),
                 restarts: 0,
                 age: String::new(),
                 pod_ip: "10.0.0.5".into(),

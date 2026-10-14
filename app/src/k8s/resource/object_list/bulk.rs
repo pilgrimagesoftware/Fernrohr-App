@@ -60,6 +60,4 @@ impl BulkHost for ObjectListPanel {
 }
 
 #[cfg(test)]
-mod harness;
-#[cfg(test)]
 mod tests;

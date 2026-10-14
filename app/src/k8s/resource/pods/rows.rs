@@ -13,6 +13,9 @@ pub struct PodRow {
     pub namespace: String,
     pub ready: String,
     pub status: String,
+    /// The pod's phase as the API reports it - `status` may show a waiting
+    /// reason in its place - for what only a Running pod is offered.
+    pub phase: String,
     pub restarts: i32,
     pub age: String,
     pub pod_ip: String,
@@ -171,6 +174,7 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
         namespace: pod.metadata.namespace.clone().unwrap_or_default(),
         ready: format!("{ready_count}/{total}"),
         status: status.and_then(|s| s.phase.clone()).unwrap_or_default(),
+        phase: status.and_then(|s| s.phase.clone()).unwrap_or_default(),
         restarts,
         age: format_age(age_secs),
         pod_ip: status.and_then(|s| s.pod_ip.clone()).unwrap_or_default(),

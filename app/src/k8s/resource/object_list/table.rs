@@ -3,13 +3,14 @@
 //! rows compare on one, is [`list_model`]'s - split out to keep this file
 //! under the 500-line limit.
 
-use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::*;
 
 mod checked;
 mod fit;
 mod list_model;
+mod menu;
 pub(super) use list_model::{
     ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout, reconcile,
 };
@@ -88,6 +89,10 @@ pub(super) struct ObjectTableDelegate {
     /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
     /// the cursor `selected` tracks.
     checked: crate::ui::bulk::CheckedRows,
+    /// What a row's menu offers beyond Open ([`menu`]), and the focus its
+    /// items dispatch from.
+    kind_menu: Option<menu::KindMenu>,
+    action_context: Option<FocusHandle>,
 }
 
 impl ObjectTableDelegate {
@@ -112,6 +117,8 @@ impl ObjectTableDelegate {
             background_click: Default::default(),
             header: Default::default(),
             checked: Default::default(),
+            kind_menu: None,
+            action_context: None,
         }
     }
 
@@ -333,26 +340,10 @@ impl TableDelegate for ObjectTableDelegate {
         &mut self,
         row_ix: usize,
         menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        let Some(on_open) = self.on_open.clone() else {
-            return menu;
-        };
-        let menu = menu.item(
-            PopupMenuItem::new("Open")
-                .on_click(move |_event, window, cx| on_open(row_ix, window, cx)),
-        );
-        match (
-            self.on_open_in_new_panel.clone(),
-            self.rows.get(row_ix).cloned(),
-        ) {
-            (Some(open), Some(row)) => menu.item(
-                PopupMenuItem::new("Open in New Panel")
-                    .on_click(move |_event, window, cx| open(&row, window, cx)),
-            ),
-            _ => menu,
-        }
+        self.row_menu(row_ix, menu, window, cx)
     }
 
     fn render_td(

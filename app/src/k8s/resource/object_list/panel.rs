@@ -9,6 +9,7 @@ use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::resource::kind_actions::KindAction;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::ui::list_search::ListSearch;
 use crate::ui::nav::{ObjectTarget, OpenMode};
@@ -226,6 +227,13 @@ impl ObjectListPanel {
                 let open = self.opener(crate::ui::nav::OpenMode::NewPanel);
                 delegate.set_on_open_in_new_panel(move |row, window, cx| {
                     window.dispatch_action(Box::new(open(row)), cx);
+                });
+                let kind = self.kind.clone();
+                delegate.set_kind_menu(self.focus_handle.clone(), move |row| {
+                    crate::ui::kind_actions::menu_items(&KindAction::offered(
+                        &kind,
+                        &row.object.facts,
+                    ))
                 });
                 TableState::new(delegate, window, cx)
                     .row_selectable(true)

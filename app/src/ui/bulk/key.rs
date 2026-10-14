@@ -1,14 +1,15 @@
 //! A label or annotation key, checked in the prompt as the API server checks
 //! it - a qualified name: an optional DNS-subdomain prefix and `/`, then a name
 //! of at most 63 characters, alphanumeric at both ends with `-`, `_` and `.`
-//! between - so a bad key is refused once, not once per checked object.
+//! between - so a bad key is refused once, not once per checked object. A
+//! taint's key follows the same rules (`resource-specific-actions`).
 
 /// The longest name part (and prefix label), and the longest prefix.
 const NAME_MAX: usize = 63;
 const PREFIX_MAX: usize = 253;
 
 /// Whether `key` is a valid label or annotation key, or why not.
-pub(super) fn check(key: &str) -> Result<(), String> {
+pub(crate) fn check(key: &str) -> Result<(), String> {
     if key.is_empty() {
         return Err("Enter a key.".to_string());
     }
