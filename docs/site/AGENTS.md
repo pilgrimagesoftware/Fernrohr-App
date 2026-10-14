@@ -79,3 +79,4 @@ what it checks. Don't add tests on page wording: the checks cover structure only
 Pushes to `master` publish the site, so documentation merged to `develop` goes
 live with the next release. See `PUBLISHING.md` for the release snapshot steps.
 Edit a `vX.Y/` snapshot only to correct that release's documentation.
+<!-- probe -->
