@@ -23,7 +23,10 @@ impl Render for ClusterPicker {
                 .justify_center()
                 .bg(background)
                 .child(
+                    // Full width, so the card can grow with the window (`layout::card`).
                     div()
+                        .w_full()
+                        .px(px(PICKER_SIDE_MARGIN))
                         .flex()
                         .flex_col()
                         .items_center()

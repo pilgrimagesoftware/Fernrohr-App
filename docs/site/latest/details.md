@@ -44,7 +44,8 @@ over the open panel and the panel notes that it replaced the deleted pod.
 In the palette these are prefixed "Pod Detail:" or "Object Detail:" for the panel
 that has focus. The YAML view scrolls, and you can fold and unfold each nested
 block with the keyboard or the mouse. Hovering a copyable value, such as a
-container image or a ConfigMap value, shows a copy control that Tab also reaches.
+container image, a ConfigMap value or a status message, shows a copy control
+that Tab also reaches.
 
 ## Object detail
 
@@ -55,8 +56,10 @@ ellipsis, and hovering the chip shows the whole value. The YAML view always
 shows every value in full.
 
 Beyond that, these kinds have sections of their own: those in the table, plus
-Job and ServiceAccount. Any other kind
-shows metadata only.
+Job and ServiceAccount. Any other kind whose object reports `status.conditions`,
+such as a Flux HelmRelease or Kustomization, gets a Status section instead. It
+shows the object's Ready status, its status message and every condition as a
+badge. Any other kind shows metadata only.
 
 | Kind | What it shows |
 | --- | --- |
@@ -76,6 +79,12 @@ shows metadata only.
 | Role, ClusterRole | Each rule's API groups, resources, resource names and verbs |
 | RoleBinding, ClusterRoleBinding | The role and each subject |
 | Event | Type as a coloured badge, reason, full message, count, first and last seen, reporting component, action, and the involved and related objects |
+
+The status message is the `Ready` condition's message, coloured by its status:
+green for True, red for False and amber for anything else. Without a `Ready`
+condition, it's the most recently changed condition's message, uncoloured. The
+kinds above that show conditions as badges show this message right before them.
+The list's Message column shows the same text.
 
 The panel also lists the events that name the object, newest first. If you can
 read the object but not list events, the object still loads and the events

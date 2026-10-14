@@ -47,6 +47,10 @@ mod state;
 use layout::*;
 use rows::*;
 
+#[cfg(test)]
+pub(crate) use layout::CARD_SELECTOR;
 pub use layout::MIN_WINDOW_SIZE;
+#[cfg(test)]
+pub(crate) use rows::row_tunnel_selector;
 pub(crate) use state::load_tunnels;
 pub use state::{ClusterPicker, PickerEvent};

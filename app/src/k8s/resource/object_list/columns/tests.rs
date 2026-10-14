@@ -295,3 +295,69 @@ fn an_hpas_row_reads_like_kubectl_get_hpa() {
         ]
     );
 }
+
+/// `resource-status-message` 2.2: a kind outside the table carries a Ready
+/// and a Message cell - Ready's message toned by its status, any other
+/// condition's untoned.
+#[test]
+fn a_kind_outside_the_table_carries_condition_cells() {
+    use crate::k8s::resource::status_tone::ConditionStatus;
+    use crate::ui::style::Tone;
+    let columns = super::for_rows("helm.toolkit.fluxcd.io", "HelmRelease");
+    let ids: Vec<&str> = columns.columns.iter().map(|column| column.id).collect();
+    assert_eq!(ids, ["ready", "message"]);
+    let with = |conditions: serde_json::Value| {
+        let object: DynamicObject = serde_json::from_value(json!({
+            "apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease",
+            "metadata": { "name": "web" },
+            "status": { "conditions": conditions },
+        }))
+        .unwrap();
+        columns.cells_for(&object)
+    };
+    for (status, condition, tone) in [
+        ("True", ConditionStatus::True, Tone::Good),
+        ("False", ConditionStatus::False, Tone::Bad),
+        ("Unknown", ConditionStatus::Unknown, Tone::Warning),
+    ] {
+        assert_eq!(
+            with(json!([{ "type": "Ready", "status": status, "message": "msg" }])),
+            [Cell::Condition(condition), Cell::Status("msg".into(), tone)]
+        );
+    }
+    assert_eq!(
+        with(json!([{ "type": "Released", "status": "True", "message": "installed" }])),
+        [Cell::Empty, Cell::Status("installed".into(), Tone::Neutral)]
+    );
+    assert!(
+        std::ptr::eq(
+            super::for_rows("batch", "Job"),
+            super::for_kind("batch", "Job").unwrap()
+        ),
+        "a kind in the table keeps its own columns"
+    );
+}
+
+/// A Ready cell reads as its status, carries its tone, and sorts False,
+/// Unknown, True - after an empty one.
+#[test]
+fn condition_cells_read_and_sort_by_status() {
+    use crate::k8s::resource::status_tone::ConditionStatus::{False, True, Unknown};
+    use crate::ui::style::Tone;
+    assert_eq!(Cell::Condition(False).display(now()), "False");
+    assert_eq!(Cell::Condition(Unknown).tone(), Some(Tone::Warning));
+    assert_eq!(
+        sorted(vec![
+            Cell::Condition(True),
+            Cell::Condition(Unknown),
+            Cell::Empty,
+            Cell::Condition(False),
+        ]),
+        vec![
+            Cell::Empty,
+            Cell::Condition(False),
+            Cell::Condition(Unknown),
+            Cell::Condition(True),
+        ]
+    );
+}

@@ -45,6 +45,17 @@ A window can hold several contexts at once.
 
 The menu bar has it too, under Context.
 
+It opens the picker in an Add a Context window of its own, listing the contexts this window doesn't
+use yet. The window you opened it from stays usable while a context connects, so you can keep
+working while a tunnel comes up. Choosing Add Context again brings the open one to the front.
+
+Once the chosen context connects, it is added to your window with a Pods panel, and the Add a
+Context window closes. If it fails, the failure stays in the Add a Context window so you can pick
+another context or retry. Press <kbd>⎋</kbd> or close the window to add nothing.
+
+A long context name is shortened with an ellipsis, and hovering it shows the full name. Widen the
+window to see more of it. The tunnel selector stays at the end of each row.
+
 ## Watch the connection
 
 The picker shows a status line while it connects:

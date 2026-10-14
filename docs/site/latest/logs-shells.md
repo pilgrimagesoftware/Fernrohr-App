@@ -58,6 +58,31 @@ than one container, the Logs panel streams the first container to start with, an
 to another. Opening another container's logs of a pod that already has a Logs panel switches that
 panel to the container.
 
+## Follow pods by label
+
+**Open Logs by Label…**, in the Window menu and the command palette, opens a Logs panel that streams
+every pod a label selector picks. Type a selector in `kubectl -l` form, such as `app=web` or
+`tier in (front, back)`, and press <kbd>Enter</kbd>. Each line is tagged with its pod, in a colour of
+its own. Pods that start or stop matching join and leave the stream as the cluster changes. There's
+one such panel per context, and opening it again focuses it.
+
+The panel opens in the context and namespaces of the list that had focus. Its bar shows where it
+searches, and you can change that without leaving the panel:
+
+| What | Keyboard | Mouse |
+| --- | --- | --- |
+| Edit the selector | <kbd>/</kbd> | Click the selector field |
+| Choose the namespaces | <kbd>N</kbd> | Click the namespace button |
+| Stream only one container from each pod | <kbd>C</kbd> cycles through the containers | Click the container button |
+| Choose the context | <kbd>X</kbd>, then <kbd>↓</kbd> or <kbd>↑</kbd> and <kbd>Enter</kbd> | Click the context button |
+
+The context control appears only in a window holding more than one context. Choosing another
+context keeps your selector and container filter, searches all of that context's namespaces, and
+streams its pods in place of the old ones. If that context already has a label panel, Fernrohr
+focuses it instead. A saved layout restores the panel in the context it last searched. For example,
+with `my-cluster` and `my-other-cluster` in one window, press <kbd>X</kbd> in a panel following
+`app=web` on `my-cluster` and choose `my-other-cluster` to see the same selector's pods there.
+
 ## Open a shell in a container
 
 Select a running pod in the Pods panel, or open its detail panel, and open a shell.
@@ -105,4 +130,4 @@ The session ends when you type `exit`, the container stops or the connection dro
 accepting input and shows that the session ended, with the exit status when it is known. Its final
 screen and scrollback stay on view, so you can still read, select and copy them.
 
-*Summarizes the capability specs: `pod-logs`, `exec-terminal`.*
+*Summarizes the capability specs: `pod-logs`, `selector-logs`, `exec-terminal`.*

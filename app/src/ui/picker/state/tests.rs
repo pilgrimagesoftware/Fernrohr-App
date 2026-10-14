@@ -265,9 +265,9 @@ async fn a_tunnel_created_elsewhere_appears_in_an_open_picker(cx: &mut gpui_kit:
     let _ = std::fs::remove_file(&tunnels_path);
 }
 
-/// `window-context-bar` section 3.2: the "+" popover's own filtering -
-/// `StatusBarView::open_add_dialog` (`ui/status_bar/capsule.rs`) calls this with the
-/// window's current `contexts` so the popover never re-offers a context already
+/// `window-context-bar` section 3.2: the add control's own filtering -
+/// The Add Context window (`ui/add_context_window.rs`) calls this with the
+/// window's current `contexts` so it never re-offers a context already
 /// in use. Setting `contexts` directly (rather than through `ClusterPicker::new`,
 /// which reads this machine's real kubeconfig) keeps the candidate list under
 /// this test's own control.

@@ -35,7 +35,7 @@ impl LogsPanel {
         true
     }
 
-    fn is_typed_labels(&self) -> bool {
+    pub(super) fn is_typed_labels(&self) -> bool {
         self.labels
             .as_ref()
             .is_some_and(|following| following.source == LabelLogs::Typed)

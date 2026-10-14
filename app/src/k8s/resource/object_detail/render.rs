@@ -30,6 +30,32 @@ impl ObjectDetailPanel {
                 .text_color(crate::ui::style::status(*tone, cx))
                 .child(text.clone())
                 .into_any_element(),
+            FieldValue::Message { text, tone } => {
+                let id = format!("copy {section}/{}", field.label);
+                crate::ui::copy::copyable(
+                    div()
+                        .debug_selector(|| format!("object-status-{section}/{}", field.label))
+                        .min_w_0()
+                        .text_color(crate::ui::style::status(*tone, cx))
+                        .child(text.clone()),
+                    ElementId::Name(id.clone().into()),
+                    text.clone(),
+                    id,
+                )
+            }
+            FieldValue::Ready(status) => div()
+                .debug_selector(|| format!("object-status-{section}/{}", field.label))
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(
+                    div()
+                        .size(px(7.))
+                        .rounded_full()
+                        .bg(crate::ui::style::status(status.ready_tone(), cx)),
+                )
+                .child(status.to_string())
+                .into_any_element(),
             FieldValue::References { targets, qualified } => {
                 let qualified = *qualified;
                 link::references(

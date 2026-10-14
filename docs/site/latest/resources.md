@@ -70,6 +70,20 @@ add their own columns. A Services list, for example, adds type, cluster IP,
 external IP and ports, and a Deployments list adds replica counts. A kind with
 nothing extra to show has only the base columns.
 
+Any other kind, including custom resources such as Flux's HelmRelease and
+Kustomization, gains two columns once one of its objects reports
+`status.conditions`:
+
+- **Ready** shows the `Ready` condition's status (True, False or Unknown) beside
+  a dot in its tone. It appears only if some object has a `Ready` condition.
+  Sorting ascending puts False first, so failures surface at the top.
+- **Message** shows the `Ready` condition's message, coloured green for True,
+  red for False and amber for anything else. Without a `Ready` condition, it
+  shows the most recently changed condition's message, uncoloured.
+
+A long message is cut off in its cell. Select the row and press <kbd>D</kbd>, or
+double-click it, to read the whole message in the object's detail panel.
+
 - **Sort.** Click a column header to sort ascending, again for descending, and a
   third time to return to the default sort, which is the first column of the
   kind's default order. An arrow on the header shows the current sort. Numeric

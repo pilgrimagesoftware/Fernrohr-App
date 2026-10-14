@@ -2,7 +2,7 @@
 //! event, when the store stores it, never per frame - the one place a kind's
 //! per-kind cells (`standard-resource-panels` section 2) are computed too.
 
-use super::columns::{Cell, KindColumns};
+use super::columns::{Cell, ConditionsSeen, KindColumns};
 use jiff::Timestamp;
 use kube::api::DynamicObject;
 
@@ -23,6 +23,9 @@ pub struct ObjectRow {
     /// The kind's own columns' cells, in [`KindColumns::columns`] order. Empty
     /// for a kind with base columns only.
     pub cells: Vec<Cell>,
+    /// What the object reports in `status.conditions` - whether a list of a
+    /// kind outside the per-kind table shows its Ready and Message columns.
+    pub conditions: ConditionsSeen,
 }
 
 impl ObjectRow {
@@ -38,6 +41,7 @@ impl ObjectRow {
             cells: columns
                 .map(|columns| columns.cells_for(object))
                 .unwrap_or_default(),
+            conditions: ConditionsSeen::of(object),
         }
     }
 

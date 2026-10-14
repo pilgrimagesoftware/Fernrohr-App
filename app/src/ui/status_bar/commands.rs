@@ -1,7 +1,7 @@
 //! The status bar's keyboard routes (`toolbar-layout-with-gpui-kit` 1.2-1.3): adding
 //! a context to the window and disconnecting its active one, as registered commands
 //! in the Context menu and the palette. `MainWindow` handles them by asking its
-//! status bar, which owns the add popover and the disconnect confirmation.
+//! status bar, which owns the Add Context window and the disconnect confirmation.
 
 use crate::command::{Command, CommandRegistry, ContextGroup, MenuSlot};
 use gpui_kit::actions;

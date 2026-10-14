@@ -14,7 +14,8 @@ actions!(
         ToggleFollow,
         ShowLabelLogs,
         FocusLabelSelector,
-        NextLabelContainer
+        NextLabelContainer,
+        PickLogsContext
     ]
 );
 
@@ -27,6 +28,17 @@ actions!(
 pub struct OpenWorkloadLogs {
     pub context_name: String,
     pub workload: WorkloadRef,
+}
+
+/// Asks the window to switch the typed label Logs panel `panel` to `context`
+/// (`selector-logs-context-picker`) - what its context control and picker
+/// dispatch. An action rather than an event, so it reaches the window from a
+/// panel restored with a layout as well as one the window opened.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = logs, no_json)]
+pub struct SwitchLabelLogsContext {
+    pub panel: gpui_kit::EntityId,
+    pub context: String,
 }
 
 /// The panel's key context: its command means something only while it has focus.
@@ -47,6 +59,9 @@ pub(super) const PREVIOUS_KEY: &str = "p";
 pub(super) const FOLLOW_KEY: &str = "s";
 /// The lists' filter key, for the field a selector is typed into.
 pub(super) const FOCUS_SELECTOR_KEY: &str = "/";
+/// A typed panel's context picker: `x`, since `c` is the container filter's
+/// and `n` the namespace picker's (`selector-logs-context-picker` D4).
+pub(super) const PICK_CONTEXT_KEY: &str = "x";
 
 pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(Command {
@@ -89,6 +104,16 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         "Logs: Pick Namespaces",
         "TypedLabelLogs && !Input",
     ));
+    // A typed label panel's context; offered only while its window holds
+    // more than one (`selector-logs-context-picker`).
+    registry.register(Command {
+        id: "logs.pick_context",
+        title: "Logs: Pick Context\u{2026}",
+        default_binding: PICK_CONTEXT_KEY,
+        context: Some("TypedLabelLogs && !Input"),
+        action: Box::new(PickLogsContext),
+        menu: None,
+    });
     registry.register(Command {
         id: "logs.focus_selector",
         title: "Logs: Edit Label Selector",

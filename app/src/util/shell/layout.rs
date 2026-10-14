@@ -174,6 +174,20 @@ pub(crate) fn window_context_count(window: &mut Window, cx: &App) -> usize {
     main_window.read(cx).contexts().len().max(1)
 }
 
+/// The contexts the window drawing a dock panel holds, in the window's order -
+/// what a typed label Logs panel's context control offers
+/// (`selector-logs-context-picker`). Empty for a picker-mode window or one this
+/// module didn't open. Read, not cached, as [`window_context_count`] is.
+pub(crate) fn window_contexts(window: &mut Window, cx: &App) -> Vec<String> {
+    let Some(Some(root)) = window.root::<Root>() else {
+        return Vec::new();
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return Vec::new();
+    };
+    main_window.read(cx).contexts()
+}
+
 /// A saved Resource panel width, clamped to the range its divider allows; the
 /// default when the layout has none.
 pub(super) fn restored_resource_width(layout: &WindowLayout) -> Pixels {

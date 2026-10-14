@@ -8,7 +8,8 @@
 //! kind gaining columns, and the per-kind columns join the base ones without a
 //! new type per kind. Every kind has the base columns - Name, Namespace for a
 //! namespaced kind, and Age - and a built-in kind its own between them
-//! ([`super::super::columns`]).
+//! ([`super::super::columns`]), or any other kind the condition columns its
+//! objects have reported (`resource-status-message`).
 
 use std::cmp::Ordering;
 
@@ -48,10 +49,12 @@ impl ListColumn {
     }
 
     /// `kind`'s columns in their default order, as `kubectl get` lays them
-    /// out: Name, Namespace for a namespaced kind only, the kind's own columns,
-    /// then Age.
+    /// out: Name, Namespace for a namespaced kind only, the kind's own columns
+    /// (for a kind outside the per-kind table, the condition columns `seen`
+    /// calls for), then Age.
     pub(in crate::k8s::resource::object_list) fn for_kind(
         kind: &DiscoveredKind,
+        seen: columns::ConditionsSeen,
     ) -> Vec<ListColumn> {
         let mut columns = vec![ListColumn::new(NAME, "Name", 260.)];
         if kind.namespaced {
@@ -66,6 +69,13 @@ impl ListColumn {
                         cell: Some(cell),
                         ..ListColumn::new(def.id, def.title, def.width)
                     }),
+            );
+        } else {
+            columns.extend(
+                columns::condition_columns(seen).map(|(cell, def)| ListColumn {
+                    cell: Some(cell),
+                    ..ListColumn::new(def.id, def.title, def.width)
+                }),
             );
         }
         if kind.gvk.group.is_empty() && kind.gvk.kind == "Service" {
@@ -105,6 +115,39 @@ pub(in crate::k8s::resource::object_list) fn apply_layout(
     }
     ordered.extend(remaining);
     ordered
+}
+
+/// `current` - the table's columns as the user has arranged them - brought to
+/// the column set `defaults` lists, for a kind whose condition columns come
+/// and go as objects report them: a column `defaults` no longer has goes, and
+/// a new one joins right after the column that precedes it in `defaults`
+/// (first if none does), at its width in `saved` - the layout the panel was
+/// restored with - if that names it. Everything else keeps its place and
+/// width.
+pub(in crate::k8s::resource::object_list) fn reconcile(
+    current: &[ListColumn],
+    defaults: Vec<ListColumn>,
+    saved: &[SavedColumn],
+) -> Vec<ListColumn> {
+    let mut columns: Vec<ListColumn> = current
+        .iter()
+        .filter(|column| defaults.iter().any(|default| default.id == column.id))
+        .cloned()
+        .collect();
+    for (index, mut column) in defaults.iter().cloned().enumerate() {
+        if columns.iter().any(|kept| kept.id == column.id) {
+            continue;
+        }
+        if let Some(saved) = saved.iter().find(|saved| saved.id == column.id.as_ref()) {
+            column.width = px(saved.width);
+        }
+        let after = defaults[..index]
+            .iter()
+            .rev()
+            .find_map(|before| columns.iter().position(|kept| kept.id == before.id));
+        columns.insert(after.map_or(0, |position| position + 1), column);
+    }
+    columns
 }
 
 /// One listed object as the table shows it: the row, its age now, and the

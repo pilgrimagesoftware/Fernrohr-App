@@ -3,6 +3,10 @@
 //! once here so a kind's list cell and its detail field agree. The text is
 //! always shown too; the tone only colours it (`ui::style::status`).
 
+mod conditions;
+
+pub use conditions::{ConditionStatus, condition_message, conditions_of, ready_status};
+
 use crate::ui::style::Tone;
 use k8s_openapi::api::batch::v1::Job;
 use std::fmt;

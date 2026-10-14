@@ -57,6 +57,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Manage Tunnels… | <kbd>⌘⇧T</kbd> | Global | Context | `tunnels.manage` |
 | Add Context to Window… | — | Global | Context | `context.add` |
 | Disconnect Active Context… | — | Global | Context | `context.disconnect` |
+| Add Context: Close | <kbd>⎋</kbd> | `AddContextWindow` | — | `add_context.close` |
 | Switch Namespace Set… | <kbd>⌘⇧N</kbd> | Global | — | `namespace_sets.switch` |
 | Apply Namespace Set to Context… | <kbd>⌥⌘⇧N</kbd> | Global | — | `namespace_sets.switch_context` |
 | Create Namespace Set… | <kbd>⌥⌘N</kbd> | Global | — | `namespace_sets.create_set` |
@@ -192,6 +193,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Logs: Next Container Filter | <kbd>C</kbd> | `LabelLogs && !Input` | — | `logs.next_container` |
 | Logs: Pick Namespaces | <kbd>N</kbd> | `TypedLabelLogs && !Input` | — | `logs.pick_namespaces` |
 | Logs: Edit Label Selector | <kbd>/</kbd> | `TypedLabelLogs && !Input` | — | `logs.focus_selector` |
+| Logs: Pick Context… | <kbd>X</kbd> | `TypedLabelLogs && !Input` | — | `logs.pick_context` |
 
 ### Object lists
 

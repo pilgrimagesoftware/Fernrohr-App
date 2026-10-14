@@ -3,18 +3,19 @@
 use super::*;
 
 impl MainWindow {
-    /// `context.add`: opens the status bar's add popover.
+    /// `context.add`: opens the status bar's Add Context window.
     pub(super) fn on_action_add_context(
         &mut self,
         _: &crate::ui::status_bar::AddContext,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Deferred out of this update: the bar's dialogs read `MainWindow`.
+        // Deferred out of this update: opening a window, or raising the open one,
+        // from inside this window's update.
         if let WindowMode::Workspace { status_bar, .. } = &self.mode {
             let status_bar = status_bar.clone();
             window.defer(cx, move |window, cx| {
-                status_bar.update(cx, |bar, cx| bar.open_add_dialog(window, cx));
+                status_bar.update(cx, |bar, cx| bar.open_add_window(window, cx));
             });
         }
     }
@@ -114,7 +115,7 @@ impl MainWindow {
 
     /// Section 3.2: adds `context_name` to this window, makes it the active
     /// context, and opens its Pods panel. Called only after
-    /// the status bar's add popover already reports
+    /// the Add Context window's picker already reports
     /// `PickerEvent::Connected` for it, so by the time this runs the connection
     /// has already succeeded - a context that fails to connect never reaches
     /// this at all, which is what keeps a failed add from opening a panel.
@@ -234,6 +235,8 @@ impl MainWindow {
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod add_window_tests;
 #[cfg(test)]
 mod awaiting_tests;
 #[cfg(test)]

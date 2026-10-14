@@ -91,6 +91,7 @@ impl LogsPanel {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let input = self.selector_input(window, cx);
+        let context_control = self.context_control(window, cx);
         let scope_picker = self.scope_picker(window, cx);
         let following = self.labels.as_ref()?;
         let space = crate::ui::space::spacing(cx);
@@ -163,6 +164,7 @@ impl LogsPanel {
                         .px(space.panel_inset)
                         .py(space.control_gap)
                         .child(div().flex_1().min_w_0().child(what))
+                        .children(context_control)
                         .children(scope_picker)
                         .children(counts)
                         .children(container_filter)

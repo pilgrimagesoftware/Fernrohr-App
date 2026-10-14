@@ -4,15 +4,13 @@
 
 use super::commands::{FocusFilter, OpenListedObject, OpenSelected, WarpNamespace};
 use super::store::ObjectsTable;
-use super::table::{
-    ColumnLayout, ListColumn, ListRow, ObjectTableDelegate, apply_layout, reselect, visible_texts,
-};
+use super::table::{ColumnLayout, ListRow, ObjectTableDelegate, apply_layout, reselect};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::namespaces::NamespaceList;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pod_detail::DetailView;
-use crate::ui::list_search::{self, ListSearch};
+use crate::ui::list_search::ListSearch;
 use crate::ui::nav::{ObjectTarget, OpenMode};
 use crate::ui::panel_title::{self, PanelScope, ScopeEvent};
 use gpui_kit::component::dock::{
@@ -23,6 +21,7 @@ use gpui_kit::component::table::{TableEvent, TableState};
 use gpui_kit::*;
 
 mod keys;
+mod rows;
 
 /// The filter box's placeholder - narrows rows by every visible column, not
 /// name alone (`list-search` #189).
@@ -168,36 +167,6 @@ impl ObjectListPanel {
         &self.kind
     }
 
-    /// The rows to show now: the kind's objects in this panel's namespaces
-    /// whose visible column text - every one of [`ListColumn::for_kind`]'s
-    /// columns, the table's own column set regardless of the order the user
-    /// left them in - contains the filter text, case-insensitively
-    /// (`list-search` #189).
-    pub(super) fn visible_rows(&self, cx: &App) -> Vec<ListRow> {
-        let now = jiff::Timestamp::now();
-        let namespaces = &self.scope.namespaces;
-        let query = self.filter.query(cx);
-        let columns = ListColumn::for_kind(&self.kind);
-        self.objects
-            .read(cx)
-            .rows()
-            .iter()
-            .filter(|row| {
-                namespaces.is_empty()
-                    || row
-                        .namespace
-                        .as_ref()
-                        .is_some_and(|namespace| namespaces.contains(namespace))
-            })
-            .map(|row| {
-                let mut listed = ListRow::new(row.clone(), now);
-                listed.forwards = self.forwards_of(row, cx);
-                listed
-            })
-            .filter(|row| list_search::matches(visible_texts(row, &columns), &query))
-            .collect()
-    }
-
     /// The text field filtering rows, created the first time a window renders
     /// this panel.
     pub(super) fn filter_input(
@@ -209,7 +178,8 @@ impl ObjectListPanel {
     }
 
     /// The table, created the first time a window renders this panel and given
-    /// `rows` on every render after.
+    /// `rows` on every render after - and, when the objects' conditions call
+    /// for different condition columns, those columns.
     pub(super) fn sync_table(
         &mut self,
         rows: Vec<ListRow>,
@@ -217,7 +187,7 @@ impl ObjectListPanel {
         cx: &mut Context<Self>,
     ) -> Entity<TableState<ObjectTableDelegate>> {
         if self.table.is_none() {
-            let defaults = ListColumn::for_kind(&self.kind);
+            let defaults = self.default_columns(cx);
             // The kind's first column in its default order - not the user's
             // dragged one - ascending (`remembered-list-sort` D3).
             let default_sort = (
@@ -285,7 +255,14 @@ impl ObjectListPanel {
             self.table = Some(table);
         }
         let table = self.table.clone().expect("built above");
+        let defaults = self.default_columns(cx);
         table.update(cx, |table, cx| {
+            if table
+                .delegate_mut()
+                .set_column_set(defaults, &self.initial_layout)
+            {
+                table.refresh(cx);
+            }
             table.delegate_mut().set_rows(rows);
             reselect(table, cx);
             cx.notify();

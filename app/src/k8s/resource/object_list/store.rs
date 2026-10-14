@@ -1,7 +1,7 @@
 //! The live set of one kind's objects that one watch keeps up to date, including the
 //! relist sweep, and the refusal a forbidden kind shows in place of rows.
 
-use super::columns::{self, KindColumns};
+use super::columns::{self, ConditionsSeen, KindColumns};
 use super::row::ObjectRow;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::load_phase::LoadPhase;
@@ -23,8 +23,9 @@ pub struct ObjectsTable {
     relisting: Option<HashSet<String>>,
     /// The API server's refusal, when it won't let this user list the kind (a 403).
     refused: Option<String>,
-    /// The kind's own columns, whose cells each row is built with - `None` for
-    /// a kind with base columns only.
+    /// The columns whose cells each row is built with - the kind's own, else
+    /// the generic condition columns (`columns::for_rows`). `None` only for a
+    /// table not yet given its kind.
     columns: Option<&'static KindColumns>,
     /// How the rows are kept current: a watch, polling, or not at all.
     mode: ListMode,
@@ -51,13 +52,24 @@ impl ObjectsTable {
     /// columns' cells.
     pub fn for_kind(kind: &DiscoveredKind) -> Self {
         Self {
-            columns: columns::for_kind(&kind.gvk.group, &kind.gvk.kind),
+            columns: Some(columns::for_rows(&kind.gvk.group, &kind.gvk.kind)),
             ..Self::default()
         }
     }
 
     pub fn rows(&self) -> &[ObjectRow] {
         self.index.items()
+    }
+
+    /// What the loaded objects have reported in `status.conditions`, between
+    /// them - recomputed from the rows, so it follows objects arriving and
+    /// going.
+    pub fn conditions_seen(&self) -> ConditionsSeen {
+        self.rows()
+            .iter()
+            .fold(ConditionsSeen::default(), |seen, row| {
+                seen.or(row.conditions)
+            })
     }
 
     /// Whether the table has finished its first list.
