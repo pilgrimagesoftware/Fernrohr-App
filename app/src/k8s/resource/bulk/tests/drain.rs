@@ -17,7 +17,7 @@ fn drain() -> Mutation {
 /// nothing.
 fn pod(name: &str, owner: Option<&str>, mirror: bool) -> Value {
     let mut pod = json!({ "apiVersion": "v1", "kind": "Pod",
-        "metadata": { "name": name, "namespace": "shop" },
+        "metadata": { "name": name, "namespace": "shop", "uid": format!("uid-{name}") },
         "spec": { "nodeName": "node-a", "containers": [] } });
     if let Some(owner) = owner {
         pod["metadata"]["ownerReferences"] = json!([{ "apiVersion": "apps/v1", "kind": owner,
@@ -145,4 +145,79 @@ fn drain_reports_a_pod_no_controller_manages_instead_of_evicting_it() {
     assert_eq!(outcomes.len(), 2);
     assert_eq!(outcomes[1].part.as_deref(), Some("evict shop/scratch"));
     assert!(outcomes[1].result.is_err());
+}
+
+/// Review fix 1: a controller's pod with an `emptyDir` volume isn't evicted -
+/// `kubectl drain` refuses without `--delete-emptydir-data` - and is reported
+/// with why.
+#[test]
+fn drain_reports_an_emptydir_pod_instead_of_evicting_it() {
+    let mut scratch = pod("cache-0", Some("StatefulSet"), false);
+    scratch["spec"]["volumes"] = json!([{ "name": "tmp", "emptyDir": {} }]);
+    let pods = vec![scratch, pod("web-1", Some("ReplicaSet"), false)];
+    let (requests, outcomes) = record(
+        drain(),
+        &[target(node(), "node-a")],
+        drain_cluster(pods, None),
+    );
+    let evictions: Vec<&str> = requests
+        .iter()
+        .filter(|request| request.method == "POST")
+        .map(|request| path(&request.target))
+        .collect();
+    assert_eq!(evictions, ["/api/v1/namespaces/shop/pods/web-1/eviction"]);
+    assert_eq!(outcomes[1].part.as_deref(), Some("evict shop/cache-0"));
+    let failure = outcomes[1].result.as_ref().unwrap_err();
+    assert!(
+        failure
+            .message
+            .contains("uses emptyDir (data would be lost)"),
+        "{failure:?}"
+    );
+}
+
+/// Review fix 2: each eviction carries the listed pod's UID, so a same-name pod
+/// created since the list isn't the one evicted.
+#[test]
+fn an_eviction_is_preconditioned_on_the_listed_pods_uid() {
+    let pods = vec![pod("web-1", Some("ReplicaSet"), false)];
+    let (requests, _) = record(
+        drain(),
+        &[target(node(), "node-a")],
+        drain_cluster(pods, None),
+    );
+    let eviction = requests
+        .iter()
+        .find(|request| request.method == "POST")
+        .expect("web-1 is evicted");
+    assert_eq!(
+        eviction.json(),
+        json!({ "apiVersion": "policy/v1", "kind": "Eviction",
+            "metadata": { "name": "web-1", "namespace": "shop" },
+            "deleteOptions": { "preconditions": { "uid": "uid-web-1" } } }),
+        "the field the API server reads is deleteOptions"
+    );
+}
+
+/// Review fix 3: a pod list that fails after the cordon says the node is now
+/// cordoned.
+#[test]
+fn a_failed_pod_list_says_the_node_is_cordoned() {
+    let (_, outcomes) = record(drain(), &[target(node(), "node-a")], |request| {
+        if request.method == "PATCH" {
+            return ("200 OK", object(&node(), "node-a"));
+        }
+        (
+            "403 Forbidden",
+            refusal(403, "Forbidden", "pods is forbidden: cannot list pods"),
+        )
+    });
+    assert_eq!(outcomes.len(), 1);
+    let failure = outcomes[0].result.as_ref().unwrap_err();
+    assert!(
+        failure
+            .message
+            .starts_with("Cordoned, but its pods couldn't be listed: "),
+        "{failure:?}"
+    );
 }

@@ -102,8 +102,10 @@ fn body(action: BulkAction, targets: &[BulkTarget]) -> ConfirmText {
             text.text(" A controller that owns a pod may start a replacement.")
         }
         BulkAction::Drain => text.text(
-            " Each is cordoned, then its pods are evicted, all but DaemonSet and mirror pods. \
-             A PodDisruptionBudget can refuse an eviction.",
+            " Each is cordoned, then its pods are evicted. DaemonSet and mirror pods are left \
+             alone, and so are pods no controller manages and pods using emptyDir, whose data \
+             would be lost: those are reported as not evicted. A PodDisruptionBudget can \
+             refuse an eviction.",
         ),
         BulkAction::RollbackRollout => {
             text.text(" Each goes back to the revision before its current one.")

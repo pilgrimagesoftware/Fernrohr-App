@@ -4,17 +4,20 @@
 //! - [`drain`]: cordon, then evict each of the node's pods through the
 //!   eviction subresource, which is what makes a PodDisruptionBudget hold. Like
 //!   `kubectl drain` it leaves DaemonSet pods (their controller would put them
-//!   straight back) and mirror pods (the kubelet owns them) alone. A pod that no
-//!   controller manages is not evicted either: nothing would recreate it, which
-//!   is why `kubectl drain` refuses such a node without `--force`. It is
-//!   reported as not evicted rather than silently left running.
+//!   straight back) and mirror pods (the kubelet owns them) alone. It doesn't
+//!   evict what `kubectl drain` refuses to without a flag: a pod no controller
+//!   manages (`--force`), since nothing would recreate it, and a pod with an
+//!   `emptyDir` volume (`--delete-emptydir-data`), whose data would be lost.
+//!   Each is reported as not evicted rather than silently left running. Every
+//!   eviction carries the listed pod's UID, so a pod of the same name created
+//!   since the list isn't the one evicted.
 
 use super::{BulkTarget, ObjectOutcome};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::resource_actions::{ActionFailure, api_for, patch_params};
 use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
-use kube::api::{EvictParams, ListParams, Patch};
+use kube::api::{ListParams, Patch};
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -58,6 +61,8 @@ pub(super) enum PodPlan {
     Skip,
     /// Not evicted, and reported: no controller would recreate it.
     Unmanaged,
+    /// Not evicted, and reported: its `emptyDir` data would be lost.
+    EmptyDir,
 }
 
 pub(super) fn plan(pod: &Pod) -> PodPlan {
@@ -75,10 +80,16 @@ pub(super) fn plan(pod: &Pod) -> PodPlan {
         .iter()
         .flatten()
         .find(|owner| owner.controller == Some(true));
+    let empty_dir = pod
+        .spec
+        .as_ref()
+        .and_then(|spec| spec.volumes.as_ref())
+        .is_some_and(|volumes| volumes.iter().any(|volume| volume.empty_dir.is_some()));
     match controller {
         Some(owner) if owner.kind == "DaemonSet" => PodPlan::Skip,
-        Some(_) => PodPlan::Evict,
         None => PodPlan::Unmanaged,
+        Some(_) if empty_dir => PodPlan::EmptyDir,
+        Some(_) => PodPlan::Evict,
     }
 }
 
@@ -102,10 +113,17 @@ pub(super) async fn drain(
     let pods = match pods {
         Ok(pods) => pods.items,
         Err(error) => {
-            return vec![ObjectOutcome::of(
-                target,
-                Err(ActionFailure::from_kube(&error)),
-            )];
+            // The cordon went through: say so, since the node now takes no
+            // new pods.
+            let listed = ActionFailure::from_kube(&error);
+            let failure = ActionFailure {
+                message: format!(
+                    "Cordoned, but its pods couldn't be listed: {}",
+                    listed.message
+                ),
+                detail: listed.detail,
+            };
+            return vec![ObjectOutcome::of(target, Err(failure))];
         }
     };
 
@@ -114,10 +132,12 @@ pub(super) async fn drain(
         let namespace = pod.metadata.namespace.clone().unwrap_or_default();
         let name = pod.metadata.name.clone().unwrap_or_default();
         let part = format!("evict {namespace}/{name}");
+        let uid = pod.metadata.uid.clone();
         let result = match plan(pod) {
             PodPlan::Skip => continue,
-            PodPlan::Unmanaged => Err(unmanaged()),
-            PodPlan::Evict => evict(client.clone(), &namespace, &name, timeout).await,
+            PodPlan::Unmanaged => Err(not_evicted(UNMANAGED)),
+            PodPlan::EmptyDir => Err(not_evicted(EMPTY_DIR)),
+            PodPlan::Evict => evict(client.clone(), &namespace, &name, uid, timeout).await,
         };
         if let Err(failure) = result {
             failed.push(ObjectOutcome {
@@ -132,16 +152,43 @@ pub(super) async fn drain(
     outcomes
 }
 
-/// Evicts one pod, giving up after `timeout`. Already gone is success.
+/// The `policy/v1` Eviction for `namespace/name`, only of the pod with `uid`.
+///
+/// Built here rather than by `Api::evict`: kube-core 4.2 sends its delete
+/// options as `delete_options`, which the API server doesn't read - it takes
+/// `deleteOptions` - so the UID precondition would be dropped.
+pub(super) fn eviction(namespace: &str, name: &str, uid: Option<&str>) -> Value {
+    let mut eviction = json!({ "apiVersion": "policy/v1", "kind": "Eviction",
+        "metadata": { "name": name, "namespace": namespace } });
+    if let Some(uid) = uid {
+        eviction["deleteOptions"] = json!({ "preconditions": { "uid": uid } });
+    }
+    eviction
+}
+
+/// Evicts the pod `name` - only if it is still the one with `uid` - giving up
+/// after `timeout`. Already gone is success.
 async fn evict(
     client: kube::Client,
     namespace: &str,
     name: &str,
+    uid: Option<String>,
     timeout: Duration,
 ) -> Result<(), ActionFailure> {
-    let api = Api::<Pod>::namespaced(client, namespace);
-    let params = EvictParams::default();
-    match tokio::time::timeout(timeout, api.evict(name, &params)).await {
+    let body = eviction(namespace, name, uid.as_deref())
+        .to_string()
+        .into_bytes();
+    let request = http::Request::post(format!(
+        "/api/v1/namespaces/{namespace}/pods/{name}/eviction"
+    ))
+    .header(http::header::CONTENT_TYPE, "application/json")
+    .body(body);
+    let Ok(request) = request else {
+        return Err(not_evicted(
+            "Not evicted: the eviction request couldn't be built.",
+        ));
+    };
+    match tokio::time::timeout(timeout, client.request_text(request)).await {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(kube::Error::Api(status))) if status.code == 404 => Ok(()),
         Ok(Err(error)) => Err(ActionFailure::from_kube(&error)),
@@ -162,12 +209,15 @@ fn still_refused(timeout: Duration) -> ActionFailure {
     }
 }
 
-fn unmanaged() -> ActionFailure {
-    let message = "Not evicted: no controller manages this pod, so nothing would recreate it. \
-                   Delete it yourself if it can go."
-        .to_string();
+/// Why a pod no controller manages isn't evicted.
+const UNMANAGED: &str = "Not evicted: no controller manages this pod, so nothing would recreate \
+                         it. Delete it yourself if it can go.";
+/// Why a pod with an `emptyDir` volume isn't evicted.
+const EMPTY_DIR: &str = "Not evicted: uses emptyDir (data would be lost).";
+
+fn not_evicted(why: &str) -> ActionFailure {
     ActionFailure {
-        detail: message.clone(),
-        message,
+        message: why.to_string(),
+        detail: why.to_string(),
     }
 }
