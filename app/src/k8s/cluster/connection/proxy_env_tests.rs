@@ -1,7 +1,7 @@
 //! #198: `NO_PROXY` applied to a proxy from the environment, as `kubectl`
 //! applies it; never to the kubeconfig's own `proxy-url`.
 
-use super::{apply_no_proxy, bypasses, kubeconfig_proxy};
+use super::{apply_no_proxy, bypasses, kubeconfig_proxy, redacted};
 use kube::Config;
 use kube::config::Kubeconfig;
 
@@ -68,4 +68,18 @@ fn the_kubeconfigs_proxy_is_read_off_the_contexts_cluster() {
     );
     assert_eq!(kubeconfig_proxy(&kubeconfig, Some("prod")), None);
     assert_eq!(kubeconfig_proxy(&kubeconfig, Some("missing")), None);
+}
+
+/// App#279 review: a proxy is shown and logged as `scheme://host:port` only -
+/// never its credentials, path or query.
+#[test]
+fn a_proxy_is_redacted_to_scheme_host_and_port() {
+    let with_userinfo: http::Uri = "http://user:s3cr3t@proxy.example:3128/path?q=1"
+        .parse()
+        .unwrap();
+    let shown = redacted(&with_userinfo);
+    assert_eq!(shown, "http://proxy.example:3128");
+    assert!(!shown.contains("s3cr3t") && !shown.contains("user"));
+    let bare: http::Uri = "http://proxy.example".parse().unwrap();
+    assert_eq!(redacted(&bare), "http://proxy.example");
 }

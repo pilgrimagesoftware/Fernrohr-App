@@ -47,7 +47,7 @@ fn a_direct_timeout_names_the_server_and_what_to_check() {
 fn a_proxied_timeout_names_the_proxy() {
     let message = explain(
         RAW.into(),
-        &dialled(Some("http://proxy.example:3128/"), false),
+        &dialled(Some("http://proxy.example:3128"), false),
     );
     assert!(
         message.contains("through the proxy http://proxy.example:3128."),
@@ -72,4 +72,21 @@ fn a_tunnelled_timeout_names_the_tunnel() {
 fn other_failures_are_unchanged() {
     let refused = "ServiceError: client error (Connect): Connection refused".to_string();
     assert_eq!(explain(refused.clone(), &dialled(None, false)), refused);
+}
+
+/// App#279 review: a proxy with credentials, as `Dialled::of` reads it off a
+/// config, reaches the message without them.
+#[test]
+fn a_proxys_credentials_never_reach_the_message() {
+    let mut config = kube::Config::new("https://api.cluster.example:6443".parse().unwrap());
+    config.proxy_url = Some("http://user:s3cr3t@proxy.example:3128".parse().unwrap());
+    let dialled = Dialled::of(&config, false);
+    assert_eq!(dialled.proxy.as_deref(), Some("http://proxy.example:3128"));
+    let message = explain(RAW.into(), &dialled);
+    assert!(!message.contains("s3cr3t"), "{message}");
+    assert!(!message.contains("user:"), "{message}");
+    assert!(
+        message.contains("through the proxy http://proxy.example:3128."),
+        "{message}"
+    );
 }

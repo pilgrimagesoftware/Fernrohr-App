@@ -48,6 +48,19 @@ pub(super) fn apply_no_proxy(config: &mut Config, own_proxy: bool, no_proxy: Opt
     }
 }
 
+/// `proxy` as it may be shown or logged: `scheme://host:port` only. A proxy
+/// URL can carry credentials (`http://user:pass@host:port`), which must reach
+/// neither the UI nor the app log Report Issue attaches; a path or query is
+/// dropped too, since a proxy needs neither.
+pub(super) fn redacted(proxy: &http::Uri) -> String {
+    let scheme = proxy.scheme_str().unwrap_or("http");
+    let host = proxy.host().unwrap_or_default();
+    match proxy.port_u16() {
+        Some(port) => format!("{scheme}://{host}:{port}"),
+        None => format!("{scheme}://{host}"),
+    }
+}
+
 /// `NO_PROXY` / `no_proxy` from the environment, the upper case first, as
 /// `kubectl` reads it.
 pub(super) fn env_no_proxy() -> Option<String> {

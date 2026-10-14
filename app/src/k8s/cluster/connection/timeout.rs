@@ -13,7 +13,8 @@ pub(super) struct Dialled {
     /// The API server's `host:port` - or, for a tunnel-rewritten client, the
     /// tunnel's local port.
     pub(super) endpoint: String,
-    /// The HTTP proxy the client went through, if any.
+    /// The HTTP proxy the client went through, if any, already redacted
+    /// (`proxy_env::redacted`) - no credentials.
     pub(super) proxy: Option<String>,
     /// Whether `endpoint` is a tunnel's local port rather than the server.
     pub(super) through_tunnel: bool,
@@ -32,7 +33,7 @@ impl Dialled {
         });
         Self {
             endpoint: format!("{host}:{port}"),
-            proxy: config.proxy_url.as_ref().map(ToString::to_string),
+            proxy: config.proxy_url.as_ref().map(super::proxy_env::redacted),
             through_tunnel,
             timeout: config.connect_timeout,
         }
@@ -68,7 +69,7 @@ pub(super) fn explain(reason: String, dialled: &Dialled) -> String {
     let via = dialled
         .proxy
         .as_ref()
-        .map(|proxy| format!(" through the proxy {}", proxy.trim_end_matches('/')))
+        .map(|proxy| format!(" through the proxy {proxy}"))
         .unwrap_or_default();
     let check = match (&dialled.proxy, dialled.through_tunnel) {
         (Some(_), _) => {

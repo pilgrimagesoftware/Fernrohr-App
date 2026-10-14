@@ -132,6 +132,7 @@ fn route_through_tunnel(config: &mut Config, local_addr: SocketAddr, route: Tunn
             // The forward is on this machine: no proxy - the kubeconfig's, or
             // one `kube` took from `HTTPS_PROXY` - can reach it (#198).
             if let Some(proxy) = config.proxy_url.take() {
+                let proxy = super::proxy_env::redacted(&proxy);
                 log::debug!("not sending the tunnel's local port through the proxy {proxy}");
             }
         }
@@ -139,6 +140,7 @@ fn route_through_tunnel(config: &mut Config, local_addr: SocketAddr, route: Tunn
         TunnelRoute::Direct => {}
         TunnelRoute::Proxy => {
             if let Some(own) = &config.proxy_url {
+                let own = super::proxy_env::redacted(own);
                 log::debug!("the bound tunnel's proxy overrides the kubeconfig's proxy-url {own}");
             }
             config.proxy_url = Some(
