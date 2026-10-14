@@ -258,6 +258,27 @@ while every checked row's kind takes that action.
 | Checked: Copy YAML | — | `BulkCopyYaml && !Input` | — | `bulk.copy_yaml` |
 | Checked: Delete… | — | `BulkDelete && !Input` | — | `bulk.delete` |
 
+### Kind actions
+
+A list adds an action's context while its selected row is offered that action,
+and a detail panel while its object is. A Services list keeps its own
+`services.port_forward`, so only a Service's detail panel adds
+`KindForwardService`.
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Service: Port Forward… | <kbd>⇧F</kbd> | `KindForwardService && !Input` | — | `kind.port_forward_service` |
+| CronJob: Trigger Now… | <kbd>T</kbd> | `KindTriggerNow && !Input` | — | `kind.trigger_now` |
+| Suspend… | <kbd>P</kbd> | `KindSuspend && !Input` | — | `kind.suspend` |
+| Resume… | <kbd>⇧P</kbd> | `KindResume && !Input` | — | `kind.resume` |
+| Deployment: Pause Rollout… | <kbd>P</kbd> | `KindPauseRollout && !Input` | — | `kind.pause_rollout` |
+| Deployment: Resume Rollout… | <kbd>⇧P</kbd> | `KindResumeRollout && !Input` | — | `kind.resume_rollout` |
+| PersistentVolumeClaim: Expand… | <kbd>⇧E</kbd> | `KindExpand && !Input` | — | `kind.expand` |
+| Node: Add Taint… | <kbd>⇧T</kbd> | `KindAddTaint && !Input` | — | `kind.add_taint` |
+| Node: Remove Taint… | <kbd>⌥⇧T</kbd> | `KindRemoveTaint && !Input` | — | `kind.remove_taint` |
+| ServiceAccount: Create Token | <kbd>⇧K</kbd> | `KindCreateToken && !Input` | — | `kind.create_token` |
+| Ingress: Open Host in Browser | <kbd>⇧O</kbd> | `KindOpenHost && !Input` | — | `kind.open_host` |
+
 ### Object detail panel
 
 | Command | Default binding | Context | Menu | ID |
