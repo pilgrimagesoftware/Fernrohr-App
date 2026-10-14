@@ -13,13 +13,15 @@ use crate::k8s::resource::resource_actions::{self, ActionError, ActionFailure};
 use futures_util::StreamExt as _;
 
 mod eligibility;
+mod manifests;
 mod metadata;
 mod nodes;
 mod summary;
 
-pub(crate) use eligibility::{BulkAction, KindGroup};
+pub(crate) use eligibility::BulkAction;
+pub(crate) use manifests::manifests;
 pub(crate) use metadata::MetadataMap;
-pub(crate) use summary::{count_of_kinds, plural_count};
+pub(crate) use summary::count_of_kinds;
 
 /// One checked object.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -97,8 +99,13 @@ pub(crate) async fn run(
     mutation: &Mutation,
     targets: &[BulkTarget],
 ) -> Vec<ObjectOutcome> {
-    futures_util::stream::iter(targets)
-        .map(|target| run_one(client.clone(), mutation, target))
+    // Each future owns what it sends, so the stream's futures borrow nothing
+    // from its closure.
+    futures_util::stream::iter(targets.iter().cloned())
+        .map(|target| {
+            let (client, mutation) = (client.clone(), mutation.clone());
+            async move { run_one(client, &mutation, &target).await }
+        })
         .buffered(crate::consts::BULK_CONCURRENCY)
         .collect::<Vec<_>>()
         .await

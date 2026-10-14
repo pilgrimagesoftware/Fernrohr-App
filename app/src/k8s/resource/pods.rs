@@ -19,6 +19,7 @@ use kube_runtime::watcher;
 use super::pods_table::{self, PodTableDelegate, PodTableRow};
 mod actions;
 mod background;
+mod bulk;
 mod commands;
 mod edit;
 mod filter;

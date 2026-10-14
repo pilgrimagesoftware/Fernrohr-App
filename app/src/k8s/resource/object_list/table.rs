@@ -7,6 +7,7 @@ use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::*;
 
+mod checked;
 mod list_model;
 pub(super) use list_model::{
     ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout, reconcile,
@@ -80,6 +81,9 @@ pub(super) struct ObjectTableDelegate {
     /// The header cells' drawn bounds, for a divider double-click to fit a
     /// column (`ui::table_fit`).
     header: crate::ui::table_fit::HeaderBounds,
+    /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
+    /// the cursor `selected` tracks.
+    checked: crate::ui::bulk::CheckedRows,
 }
 
 impl ObjectTableDelegate {
@@ -102,6 +106,7 @@ impl ObjectTableDelegate {
             on_open_in_background: None,
             background_click: Default::default(),
             header: Default::default(),
+            checked: Default::default(),
         }
     }
 
@@ -133,6 +138,7 @@ impl ObjectTableDelegate {
     pub(super) fn set_rows(&mut self, rows: Vec<ListRow>) {
         self.natural = rows;
         self.apply_sort();
+        self.prune_checked();
     }
 
     /// The rows in their displayed order.
@@ -334,17 +340,18 @@ impl TableDelegate for ObjectTableDelegate {
             .data_font()
             .whitespace_nowrap();
         if column.id.as_ref() == FORWARDS {
-            return cell.children(crate::ui::forward_indicator::indicator(
+            let cell = cell.children(crate::ui::forward_indicator::indicator(
                 &row.object.name,
                 &row.forwards,
             ));
+            return self.with_checkbox(row_ix, col_ix, cell, cx);
         }
         let text = cell_text(row, column);
         // A status cell's text takes its tone's colour; a readiness ratio or
         // a Ready condition keeps plain text beside a dot in its tone, as the
         // Pods table's Ready.
         let value = row.cell(column);
-        match (value, value.and_then(columns::Cell::tone)) {
+        let cell = match (value, value.and_then(columns::Cell::tone)) {
             (Some(columns::Cell::Readiness(..) | columns::Cell::Condition(_)), Some(tone)) => cell
                 .flex()
                 .items_center()
@@ -358,7 +365,8 @@ impl TableDelegate for ObjectTableDelegate {
                 .child(text),
             (_, Some(tone)) => cell.text_color(style::status(tone, cx)).child(text),
             (_, None) => cell.child(text),
-        }
+        };
+        self.with_checkbox(row_ix, col_ix, cell, cx)
     }
 
     fn move_column(
