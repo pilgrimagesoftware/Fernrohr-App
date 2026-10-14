@@ -472,10 +472,12 @@ pub enum ScopeEvent {
 }
 
 mod error;
+mod header;
 #[cfg(test)]
 pub use error::REPORT_ERROR_BUTTON;
 pub(crate) use error::escape_markdown;
 pub use error::{error_content, report_button};
+pub use header::{header_hints, header_title};
 mod tooltip;
 use tooltip::title_tooltip;
 #[cfg(test)]
