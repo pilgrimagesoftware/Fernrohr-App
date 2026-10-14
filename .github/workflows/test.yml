@@ -3,20 +3,10 @@ name: Test
 on:
   push:
     branches: [master, develop]
-    paths:
-      - 'app/src/**'
-      - 'app/Cargo.toml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/test.yml'
+  # No paths filter: every pull request runs this, and a docs-only one
+  # (`docs/**`, top-level `*.md`) skips the steps after the change check.
   pull_request:
     branches: [master, develop]
-    paths:
-      - 'app/src/**'
-      - 'app/Cargo.toml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/test.yml'
 
 permissions:
   contents: read
@@ -26,15 +16,27 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+        with:
+          fetch-depth: 0
+      - id: changes
+        uses: ./.github/actions/changes
+      - name: Skip the tests for a docs-only change
+        if: steps.changes.outputs.docs-only == 'true'
+        run: echo "Docs-only pull request; skipping tests, clippy and rustfmt." >> "$GITHUB_STEP_SUMMARY"
+      - if: steps.changes.outputs.docs-only != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.changes.outputs.docs-only != 'true'
+        uses: Swatinem/rust-cache@v2
       # macos-latest is the only runner this workflow uses, and the only one with a
       # real keychain daemon - `--include-ignored` keeps the real-keychain tests
       # (`#[ignore]`d so a plain `cargo test` never pops a macOS Keychain access
       # prompt) running here.
       - name: Run tests
+        if: steps.changes.outputs.docs-only != 'true'
         run: cargo test --verbose -- --include-ignored
       - name: Run clippy
+        if: steps.changes.outputs.docs-only != 'true'
         run: cargo clippy -- -D warnings
       - name: Check formatting
+        if: steps.changes.outputs.docs-only != 'true'
         run: cargo fmt -- --check
