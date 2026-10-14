@@ -170,6 +170,9 @@ impl Render for LogsPanel {
             .on_action(cx.listener(|this, _: &FocusLabelSelector, window, cx| {
                 this.focus_selector(window, cx);
             }))
+            .on_action(cx.listener(|this, _: &PickLogsContext, window, cx| {
+                this.open_context_picker(window, cx);
+            }))
             .flex()
             .flex_col()
             .children(control_bar)

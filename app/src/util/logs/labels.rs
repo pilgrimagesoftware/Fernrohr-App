@@ -14,6 +14,7 @@ use k8s_openapi::api::core::v1::{ContainerStatus, Pod};
 use kube::core::Selector;
 use std::collections::HashMap;
 
+mod context;
 mod follow;
 mod render;
 mod scope;

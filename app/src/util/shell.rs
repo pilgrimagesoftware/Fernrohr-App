@@ -46,6 +46,7 @@ mod empty_dock;
 mod exec;
 mod follow;
 mod layout;
+mod logs_context;
 mod logs_open;
 mod main_window;
 mod namespace_defaults;
@@ -92,7 +93,7 @@ mod window_title;
 pub(crate) use app::register_commands;
 pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
-pub(crate) use layout::{close_window, is_main_window, window_context_count};
+pub(crate) use layout::{close_window, is_main_window, window_context_count, window_contexts};
 pub use main_window::MainWindow;
 // The list panels (`k8s::resource`) read and record per-kind sorts.
 pub(crate) use sort_defaults::SortDefaults;
