@@ -3,6 +3,14 @@ name = "fernrohr"
 version = "0.12.0"
 edition = "2024"
 
+[lints.rust]
+# ld64 notes when a debug build's `__eh_frame` passes 16 MB, too large for its
+# compact unwind table: it falls back to DWARF unwind info, which only slows a
+# panic's unwinding. The debug binary crossed that size with bulk actions (#242),
+# and CI's `CARGO_BUILD_WARNINGS=deny` turns the note into a failed build. It is
+# about the binary's size, not the code, so linker notes are allowed.
+linker_messages = "allow"
+
 [dependencies]
 gpui-kit = "=0.7.0"
 # The shell panel's terminal: emulation, rendering and key/mouse/paste encoding
