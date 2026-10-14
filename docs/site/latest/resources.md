@@ -144,7 +144,7 @@ in `keymap.toml`.
 | Scale | Deployments, StatefulSets, ReplicaSets | Asks for one replica count and sets it on each. |
 | Cordon, Uncordon | Nodes | Marks each node unschedulable, or schedulable again. |
 | Drain | Nodes | Cordons each node, then evicts its pods. |
-| Label, Annotate | Any kind | Asks for a key and a value and sets them on each. An empty value removes the key. |
+| Label, Annotate | Any kind | Asks for a key and a value and sets them on each. An empty value removes the key. The key must be a valid Kubernetes key, such as `team` or `example.com/team`. |
 | Copy Names | Any kind | Copies the names, one per line. |
 | Copy YAML | Any kind | Copies the manifests, separated by `---`. A Secret's values stay hidden. |
 | Delete | Any kind | Deletes each object. |
@@ -167,12 +167,18 @@ succeeded for, and names each one that failed with the cluster's reason. One
 failure never stops the rest. Dismiss the line with its ✕ button. A delete
 unchecks what it deleted, and any other action leaves the rows checked.
 
-Drain works like `kubectl drain`. It leaves DaemonSet pods and static (mirror)
-pods alone. A pod that no controller manages isn't evicted, because nothing would
-recreate it, and it's reported as not evicted. A PodDisruptionBudget can refuse
-an eviction, and Fernrohr keeps retrying for 30 seconds before it reports that
-pod as not evicted. The node stays cordoned, and its other pods are still
-evicted.
+Drain works like `kubectl drain` with no extra flags. It leaves DaemonSet pods and
+static (mirror) pods alone. It doesn't evict two kinds of pod that `kubectl drain`
+also refuses to: a pod no controller manages, because nothing would recreate it,
+and a pod with an `emptyDir` volume, whose data would be lost. Each is reported as
+not evicted. A PodDisruptionBudget can refuse an eviction, and Fernrohr keeps
+retrying for 30 seconds before it reports that pod as not evicted. The node stays
+cordoned, and its other pods are still evicted. If the node's pods can't be
+listed, the report says the node is cordoned anyway.
+
+Delete and Drain act only on the objects you checked. If one is deleted and
+recreated under the same name before the request arrives, the new one is left
+alone and reported. An object that is already gone is reported as already gone.
 
 ## Icons and status
 

@@ -5,8 +5,8 @@
 use super::{BulkTarget, ObjectOutcome};
 use crate::k8s::resource::resource_actions::{ActionFailure, api_for};
 
-/// The manifests that could be read, in `targets`' order, and the failure of
-/// each one that couldn't.
+/// The manifests that could be read and written as YAML, in `targets`' order,
+/// and the failure of each one that couldn't.
 pub(crate) async fn manifests(
     client: kube::Client,
     targets: &[BulkTarget],
@@ -24,7 +24,19 @@ pub(crate) async fn manifests(
                     &mut object,
                 );
                 object.metadata.managed_fields = None;
-                manifests.push(serde_yaml_ng::to_string(&object).unwrap_or_default());
+                match serde_yaml_ng::to_string(&object) {
+                    Ok(yaml) => manifests.push(yaml),
+                    Err(error) => {
+                        let message = format!("Couldn't write it as YAML: {error}");
+                        failures.push(ObjectOutcome::of(
+                            target,
+                            Err(ActionFailure {
+                                detail: message.clone(),
+                                message,
+                            }),
+                        ));
+                    }
+                }
             }
             Err(error) => failures.push(ObjectOutcome::of(
                 target,

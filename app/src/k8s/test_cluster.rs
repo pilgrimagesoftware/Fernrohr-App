@@ -53,6 +53,8 @@ pub(crate) struct FakeCluster {
     patches: Arc<Mutex<Vec<(String, Value)>>>,
     /// When set, every patch is refused with this status and body.
     patch_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
+    /// When set, every get of a single object is refused with this.
+    get_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
 }
 
 impl FakeCluster {
@@ -66,6 +68,7 @@ impl FakeCluster {
             refusal: Arc::default(),
             patches: Arc::default(),
             patch_refusal: Arc::default(),
+            get_refusal: Arc::default(),
         };
         let handle = cx.update(|cx| crate::runtime::handle(cx));
         let addr = handle.block_on(cluster.clone().serve());
@@ -155,6 +158,12 @@ impl FakeCluster {
     /// The patches sent so far: each object's name and its patch body.
     pub(crate) fn patches(&self) -> Vec<(String, Value)> {
         self.patches.lock().clone()
+    }
+
+    /// Answers every get of a single object with `status` and `body` from now
+    /// on; lists and watches still answer.
+    pub(crate) fn refuse_gets(&self, status: &'static str, body: Value) {
+        *self.get_refusal.lock() = Some((status, body));
     }
 
     /// Refuses every later patch with `status` (`"409 Conflict"`) and `body`.
@@ -284,6 +293,9 @@ impl FakeCluster {
         };
         if let Some(name) = request.name {
             self.gets.fetch_add(1, Ordering::SeqCst);
+            if let Some((status, body)) = self.get_refusal.lock().clone() {
+                return (status, body.to_string());
+            }
             let state = self.state.lock();
             return match state
                 .objects

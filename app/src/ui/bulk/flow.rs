@@ -121,20 +121,7 @@ fn run<T: BulkHost>(
     cx: &mut App,
 ) {
     let ConnectionState::Connected(client) = &selection.connection.read(cx).state else {
-        let failure = ActionFailure {
-            message: format!("{} is not connected.", selection.context_name),
-            detail: String::new(),
-        };
-        let outcomes: Vec<ObjectOutcome> = selection
-            .targets
-            .iter()
-            .map(|target| ObjectOutcome {
-                target: target.clone(),
-                part: None,
-                result: Err(failure.clone()),
-            })
-            .collect();
-        finish(action, &panel, &outcomes, cx);
+        finish(action, &panel, &not_connected(&selection), cx);
         return;
     };
     let client = client.clone();
@@ -157,8 +144,29 @@ fn run<T: BulkHost>(
     .detach();
 }
 
+/// Every target refused: the context isn't connected.
+fn not_connected(selection: &BulkSelection) -> Vec<ObjectOutcome> {
+    let failure = ActionFailure {
+        message: format!("{} is not connected.", selection.context_name),
+        detail: String::new(),
+    };
+    selection
+        .targets
+        .iter()
+        .map(|target| ObjectOutcome {
+            target: target.clone(),
+            part: None,
+            result: Err(failure.clone()),
+        })
+        .collect()
+}
+
 /// Shows the batch's outcome. A delete also unchecks what it deleted; any
 /// other action leaves the set checked, to act on again.
+///
+/// Deferred: a batch refused before it is sent (no connection) finishes from
+/// inside the panel's own action handler, where updating the panel again
+/// would panic.
 fn finish<T: BulkHost>(
     action: BulkAction,
     panel: &WeakEntity<T>,
@@ -166,13 +174,16 @@ fn finish<T: BulkHost>(
     cx: &mut App,
 ) {
     let outcome = BatchOutcome::of(action.label(), outcomes);
-    let _ = panel.update(cx, |this, cx| {
-        if action == BulkAction::Delete {
-            let succeeded = outcome.succeeded.clone();
-            this.edit_checked(cx, |checked| checked.uncheck(&succeeded));
-        }
-        *this.bulk_outcome() = Some(outcome);
-        cx.notify();
+    let panel = panel.clone();
+    cx.defer(move |cx| {
+        let _ = panel.update(cx, |this, cx| {
+            if action == BulkAction::Delete {
+                let succeeded = outcome.succeeded.clone();
+                this.edit_checked(cx, |checked| checked.uncheck(&succeeded));
+            }
+            *this.bulk_outcome() = Some(outcome);
+            cx.notify();
+        });
     });
 }
 
@@ -269,12 +280,7 @@ fn ask_metadata<T: BulkHost>(
 }
 
 pub(super) fn parse_metadata(key: &str, value: &str) -> Result<(String, Option<String>), String> {
-    if key.is_empty() {
-        return Err("Enter a key.".to_string());
-    }
-    if key.contains(char::is_whitespace) || key.contains('=') {
-        return Err("A key can't hold spaces or \"=\".".to_string());
-    }
+    super::key::check(key)?;
     let value = (!value.is_empty()).then(|| value.to_string());
     Ok((key.to_string(), value))
 }
@@ -298,9 +304,11 @@ fn view_logs(selection: BulkSelection, window: &mut Window, cx: &mut App) {
 
 /// Each checked object's manifest, fetched (rows keep only what they show),
 /// redacted like the YAML view, joined by `---`. Any object that couldn't be
-/// read is reported; the rest are copied.
+/// read is reported and the rest are copied - with none read, the clipboard
+/// is left alone.
 fn copy_yaml<T: BulkHost>(selection: BulkSelection, panel: WeakEntity<T>, cx: &mut App) {
     let ConnectionState::Connected(client) = &selection.connection.read(cx).state else {
+        finish(BulkAction::CopyYaml, &panel, &not_connected(&selection), cx);
         return;
     };
     let client = client.clone();
@@ -311,7 +319,10 @@ fn copy_yaml<T: BulkHost>(selection: BulkSelection, panel: WeakEntity<T>, cx: &m
     cx.spawn(async move |cx| {
         crate::runtime::drain(rx, |(manifests, failures)| {
             cx.update(|cx| {
-                crate::ui::copy::copy_text(&manifests.join("---\n"), cx);
+                // With nothing read, the clipboard is left as it was.
+                if !manifests.is_empty() {
+                    crate::ui::copy::copy_text(&manifests.join("---\n"), cx);
+                }
                 if !failures.is_empty() {
                     finish(BulkAction::CopyYaml, &panel, &failures, cx);
                 }

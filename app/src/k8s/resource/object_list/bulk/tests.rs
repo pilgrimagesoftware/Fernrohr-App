@@ -219,3 +219,104 @@ async fn copy_yaml_copies_every_manifest_without_asking(cx: &mut TestAppContext)
     assert_eq!(copied.matches("---\n").count(), 1, "{copied}");
     assert!(copied.contains("name: flags") && copied.contains("name: settings"));
 }
+
+fn clipboard(harness: &mut Harness) -> Option<String> {
+    harness
+        .vcx
+        .update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
+}
+
+fn set_clipboard(harness: &mut Harness, text: &str) {
+    harness.vcx.update(|_, cx| {
+        cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(text.to_string()))
+    });
+}
+
+/// Review fix 5: with no manifest read, Copy YAML leaves the clipboard as it
+/// was and reports each object it couldn't read.
+#[gpui_kit::test]
+async fn copy_yaml_with_nothing_read_leaves_the_clipboard_alone(cx: &mut TestAppContext) {
+    let mut harness = open(
+        cx,
+        kind("", "ConfigMap", "configmaps", true),
+        &["flags", "settings"],
+    );
+    harness.check_first(2);
+    set_clipboard(&mut harness, "before");
+    harness.cluster.refuse_gets(
+        "403 Forbidden",
+        json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure",
+            "reason": "Forbidden", "code": 403, "message": "configmaps is forbidden" }),
+    );
+    harness.press("f20");
+    assert_eq!(harness.outcome(), "Copy YAML: 0 succeeded, 2 failed");
+    assert_eq!(clipboard(&mut harness).as_deref(), Some("before"));
+}
+
+/// Review fix 5: Copy YAML when the context isn't connected says so, rather
+/// than doing nothing.
+#[gpui_kit::test]
+async fn copy_yaml_while_disconnected_says_so(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::connection::ConnectionState;
+    let mut harness = open(
+        cx,
+        kind("", "ConfigMap", "configmaps", true),
+        &["flags", "settings"],
+    );
+    harness.check_first(2);
+    set_clipboard(&mut harness, "before");
+    let connection = harness
+        .vcx
+        .update(|_, cx| harness.panel.read(cx).connection.clone());
+    harness.vcx.update(|_, cx| {
+        connection.update(cx, |connection, cx| {
+            connection.state = ConnectionState::Connecting;
+            cx.notify();
+        })
+    });
+    // Not connected, the panel draws no table to take keys: this is a batch
+    // asked for just as the connection drops, so the command is dispatched to
+    // the panel itself.
+    let panel = harness.panel.clone();
+    harness.vcx.update(|window, cx| {
+        use gpui_kit::Focusable as _;
+        let focus = panel.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+    });
+    harness
+        .vcx
+        .dispatch_action(crate::ui::bulk::commands::BulkCopyYaml);
+    harness.vcx.run_until_parked();
+    assert_eq!(harness.outcome(), "Copy YAML: 0 succeeded, 2 failed");
+    let failed = harness.vcx.update(|_, cx| {
+        harness
+            .panel
+            .read(cx)
+            .bulk_outcome
+            .clone()
+            .expect("shown")
+            .failed
+    });
+    assert!(failed[0].failure.message.ends_with("is not connected."));
+    assert_eq!(clipboard(&mut harness).as_deref(), Some("before"));
+}
+
+/// Review fix 6: a key the API server would refuse is refused in the prompt,
+/// once, and nothing is sent.
+#[gpui_kit::test]
+async fn label_refuses_an_invalid_key_in_the_prompt(cx: &mut TestAppContext) {
+    let mut harness = open(
+        cx,
+        kind("", "ConfigMap", "configmaps", true),
+        &["flags", "settings"],
+    );
+    harness.check_first(2);
+    harness.press("f19");
+    harness.vcx.simulate_input("Example.com/team");
+    harness.press("tab");
+    harness.vcx.simulate_input("platform");
+    harness.press("enter");
+    assert!(harness.drawn("bulk-metadata-error"), "the prompt says why");
+    assert!(harness.dialog_open(), "and stays open");
+    assert!(harness.cluster.patches().is_empty());
+}

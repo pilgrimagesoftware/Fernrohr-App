@@ -11,6 +11,7 @@ pub(crate) mod commands;
 pub(crate) mod confirm;
 pub(crate) mod flow;
 mod host;
+mod key;
 pub(crate) mod outcome;
 pub(crate) mod prompt;
 
