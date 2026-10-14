@@ -12,7 +12,7 @@ use gpui_kit::*;
 
 mod naming;
 mod open_mode;
-pub use open_mode::{OpenMode, OpenPodInBackground};
+pub use open_mode::{OpenMode, OpenPodInBackground, OpenPodInNewPanel};
 
 // `ShowPodDetail` and `ShowPodDetailYaml` are deliberately not registered
 // commands: unlike the two above them they need a pod already selected
@@ -30,9 +30,14 @@ actions!(
         ShowLogsFlipped,
         ShowEvents,
         ShowPodDetail,
-        ShowPodDetailYaml
+        ShowPodDetailYaml,
+        OpenInNewPanel
     ]
 );
+
+/// Opens another instance of the focused panel (`open-panel-new-instance`).
+pub const OPEN_IN_NEW_PANEL_COMMAND_ID: &str = "panel.open_new_instance";
+pub const OPEN_IN_NEW_PANEL_DEFAULT_BINDING: &str = "cmd-shift-d";
 
 /// Opens the events browser for the window's active context (`events-browser`).
 pub const SHOW_EVENTS_COMMAND_ID: &str = "nav.show_events";
@@ -144,6 +149,18 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         context: None,
         action: Box::new(ShowLogsFlipped),
         menu: None,
+    });
+    // The View menu's panel layout group, beside Maximize/Restore Panel: it
+    // acts on whichever panel has focus, as that does.
+    registry.register(Command {
+        id: OPEN_IN_NEW_PANEL_COMMAND_ID,
+        title: "Open in New Panel",
+        default_binding: OPEN_IN_NEW_PANEL_DEFAULT_BINDING,
+        context: None,
+        action: Box::new(OpenInNewPanel),
+        menu: Some(crate::command::MenuSlot::View(
+            crate::command::ViewGroup::PanelLayout,
+        )),
     });
     // Palette and keymap only: Navigate holds focus and tab moves.
     registry.register(Command {

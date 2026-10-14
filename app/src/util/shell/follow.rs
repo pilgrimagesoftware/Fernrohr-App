@@ -66,6 +66,26 @@ impl MainWindow {
 }
 
 impl MainWindow {
+    /// Opens a pod's detail panel as a new instance, in the pod's own context
+    /// (`open-panel-new-instance`): a Pods row's `alt`-click, context-menu
+    /// item, or Open Selected Pod in New Panel.
+    pub(super) fn on_action_open_pod_in_new_panel(
+        &mut self,
+        action: &crate::ui::nav::OpenPodInNewPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_target_in(
+            NavTarget::pod(action.namespace.clone(), action.name.clone()),
+            None,
+            Some(action.context_name.clone()),
+            Vec::new(),
+            OpenMode::NewPanel,
+            window,
+            cx,
+        );
+    }
+
     /// Opens a pod's detail panel in the background, in the pod's own context
     /// (`open-in-background`): a Pods row's modified or middle click, or its Open
     /// in Background.

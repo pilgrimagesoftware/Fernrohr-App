@@ -134,3 +134,66 @@ async fn a_cmd_double_click_only_opens_in_the_background(cx: &mut TestAppContext
     );
     assert_eq!(selected(&mut h), Some(0));
 }
+
+/// `open-panel-new-instance` 3.1: `shift-enter` asks for the selected row's
+/// object as a new panel.
+#[gpui_kit::test]
+async fn shift_enter_opens_the_selected_row_in_a_new_panel(cx: &mut TestAppContext) {
+    let opened = record_opens(cx);
+    let mut h = three(cx);
+    let name = row_name(&mut h, 0);
+
+    press(&mut h.vcx, "shift-enter");
+
+    let opened = opened.borrow();
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0].target.name, name);
+    assert_eq!(opened[0].mode, OpenMode::NewPanel);
+}
+
+/// 3.1: `shift-enter` typed into the filter opens nothing.
+#[gpui_kit::test]
+async fn shift_enter_in_the_filter_opens_nothing(cx: &mut TestAppContext) {
+    let opened = record_opens(cx);
+    let mut h = three(cx);
+    press(&mut h.vcx, "/");
+    press(&mut h.vcx, "shift-enter");
+    assert!(opened.borrow().is_empty(), "typing isn't intercepted");
+}
+
+/// 3.2: an `alt`-click opens that row's object in a new panel, and the
+/// selection stays where it was.
+#[gpui_kit::test]
+async fn an_alt_click_opens_that_row_in_a_new_panel(cx: &mut TestAppContext) {
+    let opened = record_opens(cx);
+    let mut h = three(cx);
+    let name = row_name(&mut h, 2);
+
+    click(&mut h, 2, MouseButton::Left, Modifiers::alt(), 1);
+
+    let opened = opened.borrow();
+    assert_eq!(opened.len(), 1, "{opened:?}");
+    assert_eq!(opened[0].target.name, name);
+    assert_eq!(opened[0].mode, OpenMode::NewPanel);
+    assert_eq!(selected(&mut h), Some(0), "the first row stays selected");
+}
+
+/// 3.2: the row menu's second item, Open in New Panel, opens that row's
+/// object in a new panel.
+#[gpui_kit::test]
+async fn the_row_menu_opens_that_row_in_a_new_panel(cx: &mut TestAppContext) {
+    let opened = record_opens(cx);
+    let mut h = three(cx);
+    let name = row_name(&mut h, 1);
+    click(&mut h, 1, MouseButton::Right, Modifiers::none(), 1);
+
+    // Open, Open in New Panel: down to the second, Enter.
+    press(&mut h.vcx, "down");
+    press(&mut h.vcx, "down");
+    press(&mut h.vcx, "enter");
+
+    let opened = opened.borrow();
+    assert_eq!(opened.len(), 1, "{opened:?}");
+    assert_eq!(opened[0].target.name, name);
+    assert_eq!(opened[0].mode, OpenMode::NewPanel);
+}

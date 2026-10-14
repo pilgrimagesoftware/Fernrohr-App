@@ -259,7 +259,9 @@ async fn logs_from_a_rows_context_menu_opens_that_pods_logs(cx: &mut TestAppCont
         "right-click selects"
     );
 
-    // Quick Look, Open Details, Logs, YAML: Down to the third, Enter.
+    // Quick Look, Open Details, Open in New Panel, Logs, YAML: Down to the
+    // fourth, Enter.
+    harness.press("down");
     harness.press("down");
     harness.press("down");
     harness.press("down");
