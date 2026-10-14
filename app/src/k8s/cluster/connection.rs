@@ -17,9 +17,11 @@ use tokio::sync::{mpsc, watch};
 
 mod connect;
 mod probe;
+mod proxy_env;
 mod state;
 #[cfg(test)]
 mod test_support;
+mod timeout;
 
 pub(in crate::k8s::cluster) use connect::{ForwardWait, connect_and_probe, resolve_config};
 pub(crate) use probe::error_chain;

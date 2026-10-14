@@ -192,3 +192,58 @@ async fn a_refusing_proxy_fails_the_connection_with_no_fallback() {
         "{reason}"
     );
 }
+
+/// #198: an SSH or forward-mode tunnel's local port is never sent through a
+/// proxy - the kubeconfig's, or `HTTPS_PROXY`'s - since none can reach it.
+#[test]
+fn a_rewritten_client_drops_any_proxy() {
+    let mut config = Config::new(format!("https://{API_HOST}:6443").parse().unwrap());
+    config.proxy_url = Some("http://proxy.example:3128".parse().unwrap());
+    route_through_tunnel(
+        &mut config,
+        "127.0.0.1:40123".parse().unwrap(),
+        TunnelRoute::Rewrite,
+    );
+    assert_eq!(config.proxy_url, None);
+    assert_eq!(config.cluster_url.to_string(), "https://127.0.0.1:40123/");
+}
+
+/// A proxy that accepts the connection and then never answers its `CONNECT`.
+async fn spawn_silent_proxy() -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        loop {
+            let (client, _) = listener.accept().await.unwrap();
+            held.push(client);
+        }
+    });
+    addr
+}
+
+/// #198's failure, end to end: a connect through a proxy that never answers
+/// times out, and says so - the server, the proxy, how long, what to check -
+/// rather than only `kube`'s nested error.
+#[tokio::test]
+async fn a_connect_timeout_names_what_timed_out() {
+    let proxy = spawn_silent_proxy().await;
+    let mut config = Config::new(format!("https://{API_HOST}:6443").parse().unwrap());
+    config.proxy_url = Some(format!("http://{proxy}").parse().unwrap());
+    config.connect_timeout = Some(Duration::from_millis(300));
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    crate::k8s::cluster::connection::connect::connect_and_probe(Ok(config), None, tx).await;
+    let Some(ConnectionState::Failed(reason)) = rx.recv().await else {
+        panic!("the connection fails");
+    };
+    assert!(
+        reason.starts_with(&format!(
+            "Timed out after 300ms connecting to the API server at {API_HOST}:6443 through the proxy http://{proxy}."
+        )),
+        "{reason}"
+    );
+    assert!(
+        reason.contains("deadline has elapsed"),
+        "the original error is kept: {reason}"
+    );
+}
