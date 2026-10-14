@@ -359,3 +359,17 @@ mod tests {
         );
     }
 }
+
+/// How many objects a bulk action (`bulk-select-list-actions`) sends requests
+/// for at once: enough that a large batch doesn't crawl, few enough that it
+/// doesn't burst the API server's rate limit.
+pub(crate) const BULK_CONCURRENCY: usize = 4;
+
+/// The most Logs panels bulk View Logs opens without asking first.
+pub(crate) const BULK_LOGS_WITHOUT_CONFIRM: usize = 5;
+
+/// How long bulk Drain waits for one pod's eviction. The client retries a
+/// refused eviction - a PodDisruptionBudget allowing no disruption answers 429 -
+/// with backoff for minutes, as `kubectl drain` keeps retrying; past this the pod
+/// is reported as not evicted, so the rest of the batch isn't held up.
+pub(crate) const BULK_EVICTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
