@@ -43,6 +43,11 @@ pub struct PanelScope {
     /// with Open in New Panel. Part of the window's key, and shown in the title
     /// as `instance + 1` from the second on.
     pub instance: u32,
+    /// Whether the panel's tab is pinned (`panel-tab-menu`): sorted before its
+    /// group's unpinned tabs and spared by the bulk closes. Saved with the
+    /// panel, but not part of the window's key - pinning doesn't make it a
+    /// different panel.
+    pub pinned: bool,
 }
 
 impl PanelScope {
@@ -53,6 +58,17 @@ impl PanelScope {
             connection_count: 1,
             namespaces: Vec::new(),
             instance: 0,
+            pinned: false,
+        }
+    }
+
+    /// The same scope with what a panel's saved `state` keeps of it - its
+    /// instance number and whether it's pinned - both defaulting as an older
+    /// layout, which saved neither, needs.
+    pub fn restored_from(&self, state: &serde_json::Value) -> Self {
+        Self {
+            pinned: saved_pinned(state),
+            ..self.as_instance(saved_instance(state))
         }
     }
 
@@ -127,13 +143,46 @@ pub fn saved_instance(state: &serde_json::Value) -> u32 {
         .unwrap_or(0)
 }
 
-/// A panel's saved `state` with `scope`'s instance number in it, if it isn't
-/// the first instance - so a first panel saves exactly as it did before.
-pub fn with_instance(scope: &PanelScope, mut state: serde_json::Value) -> serde_json::Value {
+/// Whether a panel's saved state says it's pinned - `false` when it says
+/// nothing, as every layout from before pinning does.
+pub fn saved_pinned(state: &serde_json::Value) -> bool {
+    state["pinned"].as_bool().unwrap_or(false)
+}
+
+/// A panel's saved `state` with what `scope` keeps beyond the panel's own
+/// fields: its instance number unless it's the first, and `pinned` when it's
+/// pinned - so a first, unpinned panel saves exactly as it did before.
+pub fn with_saved_scope(scope: &PanelScope, mut state: serde_json::Value) -> serde_json::Value {
     if scope.instance != 0 {
         state["instance"] = scope.instance.into();
     }
+    if scope.pinned {
+        state["pinned"] = true.into();
+    }
     state
+}
+
+/// A dock panel whose [`PanelScope`] the window can read and change in place
+/// - its pinned state (`panel-tab-menu`), which the tab menu flips.
+pub trait ScopedPanel {
+    fn scope(&self) -> &PanelScope;
+    fn scope_mut(&mut self) -> &mut PanelScope;
+}
+
+/// Implements [`ScopedPanel`] for a panel type that keeps its scope in a
+/// `scope` field.
+#[macro_export]
+macro_rules! scoped_panel {
+    ($panel:ty) => {
+        impl $crate::ui::panel_title::ScopedPanel for $panel {
+            fn scope(&self) -> &$crate::ui::panel_title::PanelScope {
+                &self.scope
+            }
+            fn scope_mut(&mut self) -> &mut $crate::ui::panel_title::PanelScope {
+                &mut self.scope
+            }
+        }
+    };
 }
 
 /// A pod-scoped panel's content heading: the item (pod, or pod / container) in a
@@ -264,6 +313,7 @@ pub fn title_element(
     text: String,
     focus_handle: &FocusHandle,
     close: Button,
+    panel: EntityId,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -301,6 +351,29 @@ pub fn title_element(
         .on_mouse_down(MouseButton::Left, {
             let focus_handle = focus_handle.clone();
             move |_, window, cx| window.focus(&focus_handle, cx)
+        })
+        // The tab's menu (`panel-tab-menu`), for this panel - not the focused
+        // one - at the pointer.
+        .on_mouse_down(MouseButton::Right, {
+            move |event, window, cx| {
+                cx.stop_propagation();
+                let open = super::tab_menu::OpenTabMenuAt {
+                    panel,
+                    position: event.position,
+                };
+                window.dispatch_action(Box::new(open), cx);
+            }
+        })
+        // Where the title is, for the keyboard's Open Tab Menu to open at.
+        .child({
+            canvas(
+                move |bounds, _window, cx| {
+                    super::tab_menu::TabTitleBounds::record(panel, bounds, cx)
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full()
         });
     // The close control sits right after the title, in a tab and in a lone
     // panel's title bar alike, rather than at the group's far edge

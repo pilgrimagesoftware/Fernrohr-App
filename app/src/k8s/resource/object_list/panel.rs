@@ -454,6 +454,7 @@ impl Panel for ObjectListPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -470,3 +471,5 @@ impl Panel for ObjectListPanel {
 
 #[cfg(test)]
 mod tests;
+
+crate::scoped_panel!(ObjectListPanel);

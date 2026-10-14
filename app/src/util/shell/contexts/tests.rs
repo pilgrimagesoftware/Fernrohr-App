@@ -101,6 +101,7 @@ async fn adding_a_context_another_window_holds_reuses_its_session(cx: &mut TestA
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(vec!["staging".to_string()], window, cx);
         main_window
@@ -208,6 +209,7 @@ async fn disconnecting_the_last_context_returns_to_the_picker(cx: &mut TestAppCo
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
+            tab_menu: Default::default(),
         };
         main_window.enter_workspace(vec!["kind-dev".to_string()], window, cx);
         main_window

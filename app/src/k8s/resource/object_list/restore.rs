@@ -59,7 +59,7 @@ pub(super) fn dump(panel: &ObjectListPanel, cx: &App) -> Value {
     };
     let sort =
         sort.map(|(column, descending)| json!({ "column": column, "descending": descending }));
-    crate::ui::panel_title::with_instance(
+    crate::ui::panel_title::with_saved_scope(
         &panel.scope,
         json!({
             "context_name": panel.scope.context_name,
@@ -130,7 +130,7 @@ pub(crate) fn restore(state: &Value, cx: &mut App) -> Result<Arc<dyn PanelView>,
         saved.context_name.clone(),
     )
     .scoped_to(saved.namespaces.clone())
-    .as_instance(crate::ui::panel_title::saved_instance(state));
+    .restored_from(state);
     let discovery = DiscoveryRegistry::kinds(cx, &saved.context_name);
     if restores_as_placeholder(&saved.kind, discovery.read(cx).kinds()) {
         return Ok(panel_handle(

@@ -53,6 +53,7 @@ mod namespace_defaults;
 mod namespace_sets;
 mod new_instance;
 mod sort_defaults;
+mod tab_menu;
 mod warp;
 pub(crate) use exec::OpenExecSession;
 pub(crate) use warp::WarpContextToNamespace;

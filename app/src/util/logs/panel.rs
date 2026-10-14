@@ -12,13 +12,12 @@ pub fn register_restore(cx: &mut App) {
                 crate::ui::unrestored::required_str(state, "context_name")?.to_string();
             let namespaces =
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
-            let instance = crate::ui::panel_title::saved_instance(state);
             // A label-following panel saves what it follows (#150).
             if let Some(saved) = super::labels::labels_from_state(state) {
                 let scope =
                     PanelScope::new(NavTarget::LabelLogs(saved.source.clone()), context_name)
                         .scoped_to(namespaces)
-                        .as_instance(instance);
+                        .restored_from(state);
                 let following = super::labels::Following::new(
                     saved.source,
                     saved.selector.as_deref(),
@@ -38,7 +37,7 @@ pub fn register_restore(cx: &mut App) {
                     };
                     let scope = PanelScope::new(NavTarget::PodLogs(pod), context_name)
                         .scoped_to(namespaces)
-                        .as_instance(instance);
+                        .restored_from(state);
                     Ok(panel_handle(
                         cx.new(|cx| LogsPanel::build(scope, Some(pinned), None, cx)),
                     ))
@@ -46,7 +45,7 @@ pub fn register_restore(cx: &mut App) {
                 None => {
                     let scope = PanelScope::new(NavTarget::Logs, context_name)
                         .scoped_to(namespaces)
-                        .as_instance(instance);
+                        .restored_from(state);
                     Ok(panel_handle(cx.new(|cx| LogsPanel::new(scope, cx))))
                 }
             }
@@ -427,3 +426,5 @@ impl EventEmitter<ScopeEvent> for LogsPanel {}
 
 #[cfg(test)]
 mod tests;
+
+crate::scoped_panel!(LogsPanel);

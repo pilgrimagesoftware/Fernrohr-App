@@ -13,7 +13,7 @@ pub fn register_restore(cx: &mut App) {
                 serde_json::from_value(state["namespaces"].clone()).unwrap_or_default();
             let scope = PanelScope::new(NavTarget::pods(), context_name)
                 .scoped_to(namespaces)
-                .as_instance(crate::ui::panel_title::saved_instance(state));
+                .restored_from(state);
             let sort = sort_from_state(state);
             let filter = filter::filter_from_state(state);
             Ok(panel_handle(cx.new(|cx| {
@@ -440,7 +440,7 @@ impl BasePanel for PodsPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(crate::ui::panel_title::with_instance(
+            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(
                 &self.scope,
                 serde_json::json!({
                     "context_name": self.scope.context_name,
@@ -462,6 +462,7 @@ impl Panel for PodsPanel {
             panel_title::title(&self.scope),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
+            cx.entity_id(),
             window,
             cx,
         )
@@ -494,3 +495,5 @@ mod state_tests;
 mod test_accessors;
 #[cfg(test)]
 mod tests;
+
+crate::scoped_panel!(PodsPanel);
