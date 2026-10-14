@@ -105,6 +105,7 @@ resource tab shows the kind only, and hovering the tab shows its API group.
 | Open the object's detail | <kbd>Enter</kbd> or <kbd>D</kbd> | Double-click the row |
 | Open it on its YAML | <kbd>Y</kbd> | Choose it from the command palette |
 | Open it as an inactive tab | <kbd>⌘Enter</kbd> | <kbd>⌘</kbd>-click or middle-click the row |
+| Open it in a new panel, even if it's open | <kbd>⇧Enter</kbd> | <kbd>⌥</kbd>-click the row, or choose **Open in New Panel** from its menu |
 
 Opening in the background leaves focus and the selection in the list. See
 {{ '/latest/details/' | relative_url }} for what the detail panel shows.
@@ -114,7 +115,7 @@ a popover on the selected pod showing its phase, ready containers, restarts,
 age, node, IP, owner, each container's image and state, and its latest warning.
 <kbd>↓</kbd> and <kbd>↑</kbd> move to the next or previous pod without closing
 it, <kbd>Enter</kbd> opens the pod's detail, and <kbd>Esc</kbd> closes it.
-Right-clicking a row selects it and opens a menu with Quick Look, Open Details,
+Right-clicking a row selects it and opens a menu with Quick Look, Open Details, Open in New Panel,
 Logs and YAML.
 
 ## Icons and status

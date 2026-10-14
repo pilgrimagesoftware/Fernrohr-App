@@ -31,6 +31,15 @@ Open panels from the Resource panel or the command palette. The new panel become
 
 A background open adds the panel as an inactive tab and leaves focus where it was. Use a modifier-click or a middle-click, or a panel's own background command, such as **Open in Background** in the Pods panel. See {{ '/latest/resources/' | relative_url }} for opening resources.
 
+### Open a panel again
+
+To keep two panels on the same resource, such as two Deployments lists scoped to different namespaces or a pod's detail beside the same pod's YAML, open another instance:
+
+- **Open in New Panel** (<kbd>⇧⌘D</kbd>, also in the View menu and the command palette) opens another instance of the focused panel, on the same resource, context and namespaces, in its own tab with focus.
+- In a list, <kbd>⇧Enter</kbd>, an <kbd>⌥</kbd>-click on a row, or **Open in New Panel** in the row's menu opens that row's resource in a new panel, even when its panel is already open.
+
+Instances after the first end their title and tab with their number, such as **Pod: web-1 (2)**. A new instance takes the lowest number that's free, so closing **(2)** frees it for the next one. Each instance keeps its own namespaces, sort and filters. Opening the resource the usual way still focuses the first instance. On an **Open Logs by Label** panel, Open in New Panel opens a new empty label panel.
+
 ### Move focus and switch tabs
 
 Exactly one panel has focus, and it is drawn differently from the others. Click a panel or tab to focus it, or use these commands.
@@ -57,7 +66,7 @@ Drag a separator between two groups to resize them. From the keyboard, the dock 
 | Panels: Merge Group Left, Right, Up, Down | <kbd>⌘K</kbd> then <kbd>⌥</kbd> and an arrow key |
 | Panels: Close Group | <kbd>⌘K</kbd> then <kbd>W</kbd> |
 
-- **Split** opens a new pane in that direction holding a copy of the focused panel, and focuses it.
+- **Split** opens a new pane in that direction holding a copy of the focused panel, and focuses it. The copy is another instance, numbered as Open in New Panel numbers one.
 - **Move Panel** takes the focused panel out of its group and into the adjacent group. If its old group ends up empty, that pane goes away and the rest reflow.
 - **Merge Group** moves every tab of the focused group into the adjacent group, in order, and removes the emptied pane.
 - **Close Group** closes every panel in the group. If a panel would lose something, such as a running shell or an unsaved edit, one confirmation lists what is lost. Cancel it and nothing closes.
@@ -144,7 +153,7 @@ Move the highlight with <kbd>↑</kbd> and <kbd>↓</kbd>, or click a row.
 | Delete | <kbd>Backspace</kbd> |
 
 - **Load (Replace)** swaps the window's whole arrangement for the saved one, including the Resource panel state and the window size.
-- **Load (Add)** opens the saved panels next to the ones already open. The Resource panel and the window size stay as they are, and a panel that is already open is not duplicated.
+- **Load (Add)** opens the saved panels next to the ones already open. The Resource panel and the window size stay as they are, and a panel that is already open is not duplicated. Each saved instance of a panel counts separately, so a layout holding a panel and its second instance adds the second next to an open first one.
 
 Neither route opens a new window or moves the current one.
 
