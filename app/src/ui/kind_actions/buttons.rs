@@ -9,6 +9,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::*;
+use std::rc::Rc;
+
+use super::host::{KindHost, KindTarget};
 
 fn icon(kind_action: KindAction) -> IconName {
     match kind_action {
@@ -51,11 +54,38 @@ pub(crate) fn buttons(offered: &[KindAction]) -> Vec<AnyElement> {
         .collect()
 }
 
-/// A list row's context-menu items for `offered`: each label and its action.
-pub(crate) fn menu_items(offered: &[KindAction]) -> Vec<(&'static str, Box<dyn Action>)> {
-    offered
-        .iter()
-        .map(|kind_action| (kind_action.label(), action(*kind_action)))
+/// What a row menu item runs.
+pub(crate) type RunEntry = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// One row menu item: its label, the action whose key it shows, and what it
+/// runs - on the row the menu opened on, whatever is selected by the click.
+pub(crate) struct MenuEntry {
+    pub(crate) label: &'static str,
+    pub(crate) action: Box<dyn Action>,
+    pub(crate) run: RunEntry,
+}
+
+/// A row menu's items for what `target` is offered, each acting on `target`
+/// through `panel`.
+pub(crate) fn menu_entries<T: KindHost>(
+    target: KindTarget,
+    panel: WeakEntity<T>,
+) -> Vec<MenuEntry> {
+    target
+        .offered()
+        .into_iter()
+        .map(|kind_action| {
+            let (target, panel) = (target.clone(), panel.clone());
+            MenuEntry {
+                label: kind_action.label(),
+                action: action(kind_action),
+                run: Rc::new(move |window, cx| {
+                    let _ = panel.update(cx, |this, cx| {
+                        super::flow::run_on(kind_action, target.clone(), this, window, cx)
+                    });
+                }),
+            }
+        })
         .collect()
 }
 

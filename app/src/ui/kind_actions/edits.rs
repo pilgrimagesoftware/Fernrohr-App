@@ -94,8 +94,9 @@ pub(super) fn ask_size<T: KindHost>(
     );
 }
 
-/// A new size, larger than `current`.
+/// A new size, larger than `current`, trimmed.
 pub(super) fn parse_size(size: &str, current: &str) -> Result<String, String> {
+    let size = size.trim();
     let Some(new) = kind_actions::bytes(size) else {
         return Err("Enter a size such as 20Gi or 500M.".to_string());
     };
@@ -146,10 +147,10 @@ pub(super) fn ask_taint<T: KindHost>(
                 .text(" to ")
                 .append(named(&target))
                 .text(&format!("?{warning}"));
-            let (kind, name, facts) = (
+            let (kind, name, uid) = (
                 target.kind.clone(),
                 target.name.clone(),
-                target.facts.clone(),
+                target.facts.uid.clone(),
             );
             let added = taint.clone();
             confirm_then(
@@ -165,9 +166,11 @@ pub(super) fn ask_taint<T: KindHost>(
                     panel: panel.clone(),
                 },
                 move |client| {
-                    let (kind, name, facts, taint) =
-                        (kind.clone(), name.clone(), facts.clone(), added.clone());
-                    async move { kind_actions::add_taint(client, &kind, &name, &facts, &taint).await }
+                    let (kind, name, uid, taint) =
+                        (kind.clone(), name.clone(), uid.clone(), added.clone());
+                    async move {
+                        kind_actions::add_taint(client, &kind, &name, uid.as_deref(), &taint).await
+                    }
                 },
                 |(), _, _| {},
                 window,
@@ -192,10 +195,10 @@ pub(super) fn confirm_remove<T: KindHost>(
         .text(" from ")
         .append(named(&target))
         .text("?");
-    let (kind, name, facts) = (
+    let (kind, name, uid) = (
         target.kind.clone(),
         target.name.clone(),
-        target.facts.clone(),
+        target.facts.uid.clone(),
     );
     let removed = taint.clone();
     confirm_then(
@@ -211,9 +214,9 @@ pub(super) fn confirm_remove<T: KindHost>(
             panel,
         },
         move |client| {
-            let (kind, name, facts, taint) =
-                (kind.clone(), name.clone(), facts.clone(), removed.clone());
-            async move { kind_actions::remove_taint(client, &kind, &name, &facts, &taint).await }
+            let (kind, name, uid, taint) =
+                (kind.clone(), name.clone(), uid.clone(), removed.clone());
+            async move { kind_actions::remove_taint(client, &kind, &name, uid.as_deref(), &taint).await }
         },
         |(), _, _| {},
         window,

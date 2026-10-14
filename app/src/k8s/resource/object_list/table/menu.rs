@@ -1,23 +1,25 @@
 //! A list row's context menu: Open and Open in New Panel, then the actions the
-//! row's kind and object are offered (`resource-specific-actions`), which
-//! dispatch their commands from the panel's focus, so each runs as its key
-//! does. Right-clicking a row selects it first, so those commands act on it.
+//! row's kind and object are offered (`resource-specific-actions`). Each is
+//! built for the row the menu opened on and acts on that row, whatever the
+//! selection is when it's clicked; it shows its command's key, read from the
+//! panel's focus. Right-clicking a row selects it too.
 
 use super::{ListRow, ObjectTableDelegate};
+use crate::ui::kind_actions::MenuEntry;
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::TableState;
 use gpui_kit::*;
 use std::rc::Rc;
 
-/// A row's kind-action items: each label and the action it dispatches.
-pub(super) type KindMenu = Rc<dyn Fn(&ListRow) -> Vec<(&'static str, Box<dyn Action>)>>;
+/// A row's kind-action items, built for that row when its menu opens.
+pub(super) type KindMenu = Rc<dyn Fn(&ListRow) -> Vec<MenuEntry>>;
 
 impl ObjectTableDelegate {
     /// What a row's menu offers beyond Open, and the focus it dispatches from.
     pub(in crate::k8s::resource::object_list) fn set_kind_menu(
         &mut self,
         focus: FocusHandle,
-        items: impl Fn(&ListRow) -> Vec<(&'static str, Box<dyn Action>)> + 'static,
+        items: impl Fn(&ListRow) -> Vec<MenuEntry> + 'static,
     ) {
         self.action_context = Some(focus);
         self.kind_menu = Some(Rc::new(items));
@@ -59,8 +61,12 @@ impl ObjectTableDelegate {
             return menu;
         }
         let mut menu = menu.separator().action_context(focus);
-        for (label, action) in items {
-            menu = menu.menu(label, action);
+        for MenuEntry { label, action, run } in items {
+            menu = menu.item(
+                PopupMenuItem::new(label)
+                    .action(action)
+                    .on_click(move |_event, window, cx| run(window, cx)),
+            );
         }
         menu
     }

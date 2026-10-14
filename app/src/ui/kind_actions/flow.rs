@@ -30,6 +30,18 @@ pub(super) fn start<T: KindHost>(
     let Some(target) = this.kind_target(cx) else {
         return;
     };
+    run_on(action, target, this, window, cx);
+}
+
+/// Runs `action` on `target` - the selected object's, or a row menu's own,
+/// captured when the menu opened - nothing, if it isn't offered it.
+pub(crate) fn run_on<T: KindHost>(
+    action: KindAction,
+    target: KindTarget,
+    this: &mut T,
+    window: &mut Window,
+    cx: &mut Context<T>,
+) {
     if !target.offered().contains(&action) {
         return;
     }
@@ -44,11 +56,17 @@ pub(super) fn start<T: KindHost>(
             window,
             cx,
         ),
-        KindAction::OpenHost => {
-            if let Some(host) = &target.facts.host {
-                cx.open_url(&host_url(host));
+        KindAction::OpenHost => match target.facts.host.as_deref().map(host_url) {
+            Some(Ok(url)) => cx.open_url(&url),
+            Some(Err(message)) => {
+                let failure = ActionFailure {
+                    message,
+                    detail: String::new(),
+                };
+                refuse(&panel, format!("Open {}", target.noun()), failure, cx);
             }
-        }
+            None => {}
+        },
         KindAction::CreateToken => token::create(target, panel, window, cx),
         KindAction::TriggerNow => trigger_now(target, panel, window, cx),
         KindAction::Suspend | KindAction::Resume => {
@@ -74,9 +92,19 @@ pub(super) fn start<T: KindHost>(
     }
 }
 
-/// The URL Open Host opens: the host over https.
-pub(crate) fn host_url(host: &str) -> String {
-    format!("https://{host}")
+/// The URL Open Host opens: the host over https - or why not. The URL is
+/// built, then read back, and its host must be the host asked for: anything
+/// that would open somewhere else isn't opened.
+pub(crate) fn host_url(host: &str) -> Result<String, String> {
+    let refused = || format!("{host} isn't a host name that can be opened.");
+    if !kind_actions::openable(host) {
+        return Err(refused());
+    }
+    let url = url::Url::parse(&format!("https://{host}/")).map_err(|_| refused())?;
+    if url.host_str() != Some(host) {
+        return Err(refused());
+    }
+    Ok(url.to_string())
 }
 
 /// What a mutation asks, of what, and what it is called if it fails.
@@ -212,6 +240,7 @@ fn trigger_now<T: KindHost>(
         .append(named(&target))
         .text("'s job template now? Its schedule is unchanged.");
     let (namespace, name) = (target.namespace().to_string(), target.name.clone());
+    let uid = target.facts.uid.clone();
     confirm_then(
         Ask {
             question: question(
@@ -225,8 +254,8 @@ fn trigger_now<T: KindHost>(
             panel,
         },
         move |client| {
-            let (namespace, name) = (namespace.clone(), name.clone());
-            async move { kind_actions::trigger_now(client, &namespace, &name).await }
+            let (namespace, name, uid) = (namespace.clone(), name.clone(), uid.clone());
+            async move { kind_actions::trigger_now(client, &namespace, &name, uid.as_deref()).await }
         },
         |job, window, cx| {
             use gpui_kit::component::WindowExt as _;

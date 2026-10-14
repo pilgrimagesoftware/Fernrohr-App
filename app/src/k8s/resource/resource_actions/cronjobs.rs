@@ -28,16 +28,22 @@ pub(crate) struct TriggerPlan {
     job: Job,
 }
 
-/// Builds the Job for CronJob `name`, named `<name>-manual-<suffix>`.
+/// Builds the Job for CronJob `name`, named `<name>-manual-<suffix>` - only
+/// from the CronJob with `uid`, when it is known: one recreated under the same
+/// name since it was listed is refused ([`super::RECREATED`]).
 pub(crate) async fn plan_trigger(
     client: kube::Client,
     namespace: &str,
     name: &str,
     suffix: &str,
+    uid: Option<&str>,
 ) -> Result<TriggerPlan, ActionError> {
     let cronjob = Api::<CronJob>::namespaced(client, namespace)
         .get(name)
         .await?;
+    if uid.is_some_and(|uid| cronjob.metadata.uid.as_deref() != Some(uid)) {
+        return Err(ActionError::Precondition(super::RECREATED.to_string()));
+    }
     job_from(&cronjob, suffix)
 }
 
@@ -87,8 +93,6 @@ pub(super) fn job_from(cronjob: &CronJob, suffix: &str) -> Result<TriggerPlan, A
     Ok(TriggerPlan { job_name, job })
 }
 
-/// `<cronjob>-manual-<suffix>`, the CronJob's name cut short when the whole
-/// would pass [`MAX_JOB_NAME`].
 /// A Job name suffix: five random `[a-z0-9]` characters, as the CronJob
 /// controller's own Job names end with. `None` if the system has no randomness
 /// to give.
@@ -104,6 +108,8 @@ pub(crate) fn job_suffix() -> Option<String> {
     )
 }
 
+/// `<cronjob>-manual-<suffix>`, the CronJob's name cut short when the whole
+/// would pass [`MAX_JOB_NAME`].
 pub(super) fn manual_job_name(cronjob: &str, suffix: &str) -> String {
     let tail = format!("-manual-{suffix}");
     let room = MAX_JOB_NAME.saturating_sub(tail.len());

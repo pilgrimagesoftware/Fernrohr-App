@@ -14,17 +14,19 @@ use kube::api::Patch;
 use serde_json::{Value, json};
 
 /// Trigger Now: a Job from CronJob `name`'s job template, as `kubectl create
-/// job --from=cronjob/<name>` makes - the agent tools' own call. The Job's name.
+/// job --from=cronjob/<name>` makes - the agent tools' own call - only from the
+/// CronJob with `uid`. The Job's name.
 pub(crate) async fn trigger_now(
     client: kube::Client,
     namespace: &str,
     name: &str,
+    uid: Option<&str>,
 ) -> Result<String, ActionFailure> {
     let suffix = resource_actions::job_suffix().ok_or_else(|| ActionFailure {
         message: "No random name suffix could be made for the Job.".to_string(),
         detail: String::new(),
     })?;
-    let plan = resource_actions::plan_trigger(client.clone(), namespace, name, &suffix)
+    let plan = resource_actions::plan_trigger(client.clone(), namespace, name, &suffix, uid)
         .await
         .map_err(failure)?;
     resource_actions::trigger(client, namespace, &plan)
@@ -78,34 +80,68 @@ pub(crate) async fn expand(
     merge(client, kind, Some(namespace), name, &patch).await
 }
 
-/// Add Taint: `taint` added to Node `name`'s taints, as `facts` read them.
+/// Add Taint: `taint` added to Node `name`'s taints as they are when this
+/// runs - read now, not when the dialog opened, so a busy node's other changes
+/// don't refuse it - pinned to that read's version, so a change between the
+/// read and the write is still caught. The node must still be the one with
+/// `uid`, and mustn't already have `taint`'s key and effect.
 pub(crate) async fn add_taint(
     client: kube::Client,
     kind: &DiscoveredKind,
     name: &str,
-    facts: &ObjectFacts,
+    uid: Option<&str>,
     taint: &Taint,
 ) -> Result<(), ActionFailure> {
+    let facts = read_node(client.clone(), kind, name, uid).await?;
+    if facts.taints.iter().any(|existing| existing.same_as(taint)) {
+        return Err(ActionFailure {
+            message: format!("The node already has a {} taint.", taint.label()),
+            detail: String::new(),
+        });
+    }
     let mut taints: Vec<Value> = facts.taints.iter().map(|taint| taint.raw.clone()).collect();
     taints.push(taint.raw.clone());
-    merge(client, kind, None, name, &taints_patch(facts, taints)).await
+    merge(client, kind, None, name, &taints_patch(&facts, taints)).await
 }
 
-/// Remove Taint: Node `name`'s taints, as `facts` read them, without `taint`.
+/// Remove Taint: Node `name`'s taints, as they are when this runs, without
+/// `taint` - as [`add_taint`] reads and pins them.
 pub(crate) async fn remove_taint(
     client: kube::Client,
     kind: &DiscoveredKind,
     name: &str,
-    facts: &ObjectFacts,
+    uid: Option<&str>,
     taint: &Taint,
 ) -> Result<(), ActionFailure> {
+    let facts = read_node(client.clone(), kind, name, uid).await?;
+    if !facts.taints.iter().any(|existing| existing.same_as(taint)) {
+        // Someone else removed it: what was asked is already so.
+        return Ok(());
+    }
     let taints: Vec<Value> = facts
         .taints
         .iter()
         .filter(|kept| !kept.same_as(taint))
         .map(|kept| kept.raw.clone())
         .collect();
-    merge(client, kind, None, name, &taints_patch(facts, taints)).await
+    merge(client, kind, None, name, &taints_patch(&facts, taints)).await
+}
+
+/// The node's facts now, if it is still the one with `uid`.
+async fn read_node(
+    client: kube::Client,
+    kind: &DiscoveredKind,
+    name: &str,
+    uid: Option<&str>,
+) -> Result<ObjectFacts, ActionFailure> {
+    let node = api_for(client, kind, None)
+        .get(name)
+        .await
+        .map_err(|error| ActionFailure::from_kube(&error))?;
+    if uid.is_some_and(|uid| node.metadata.uid.as_deref() != Some(uid)) {
+        return Err(stale(String::new()));
+    }
+    Ok(ObjectFacts::of(&node))
 }
 
 /// The whole `spec.taints` list, only for the object and version `facts` read.
@@ -137,18 +173,21 @@ async fn merge(
 /// A refusal as the panel shows it. A conflict on the UID or version a patch
 /// carried says what it means; any other refusal is the cluster's own words.
 fn refused(error: ActionError) -> ActionFailure {
-    let stale = matches!(&error, ActionError::Kube(kube::Error::Api(status))
+    let conflict = matches!(&error, ActionError::Kube(kube::Error::Api(status))
         if status.code == 409 || (status.code == 422 && status.message.contains("uid")));
     let failure = failure(error);
-    if stale {
-        ActionFailure {
-            message: "Not changed: the object changed, or was recreated under the same name, \
-                      since it was read. Look again and retry."
-                .to_string(),
-            detail: failure.detail,
-        }
+    if conflict {
+        stale(failure.detail)
     } else {
         failure
+    }
+}
+
+/// The object changed, or was recreated, since it was read.
+fn stale(detail: String) -> ActionFailure {
+    ActionFailure {
+        message: resource_actions::RECREATED.to_string(),
+        detail,
     }
 }
 
