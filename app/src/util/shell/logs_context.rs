@@ -1,10 +1,10 @@
 //! Switching a typed label Logs panel to another of the window's contexts
 //! (`selector-logs-context-picker`): the panel asks by dispatching
-//! [`SwitchLabelLogsContext`], and the window - which owns the panel keys that
-//! keep one typed panel per context - answers here.
+//! [`SwitchLabelLogsContext`], and the window - which owns the dock - answers
+//! here.
 
 use super::*;
-use crate::util::logs::{LabelLogs, LogsPanel, SwitchLabelLogsContext};
+use crate::util::logs::{LogsPanel, SwitchLabelLogsContext};
 use gpui_kit::component::dock::InsertTarget;
 
 impl MainWindow {
@@ -27,12 +27,12 @@ impl MainWindow {
         self.switch_label_logs_context(from, action.context.clone(), window, cx);
     }
 
-    /// Moves the typed panel `from` to `context`. If `context` already has a
-    /// typed panel, that one is focused and `from` is left as it is (D2).
-    /// Otherwise a typed panel opens in `context` in `from`'s tab, with its
-    /// selector and container filter over all namespaces, and `from` closes
-    /// (D1) - which ends its streams and its hold on the old context's Pods
-    /// watch, as any close does.
+    /// Moves the typed panel `from` to `context`, whatever other typed panels
+    /// already search it (`selector-logs-multiple-panels` D4): the same
+    /// instance opens in `context` in `from`'s tab, with its selector and
+    /// container filter over all namespaces, and `from` closes (D1) - which
+    /// ends its streams and its hold on the old context's Pods watch, as any
+    /// close does.
     pub(super) fn switch_label_logs_context(
         &mut self,
         from: Entity<LogsPanel>,
@@ -52,17 +52,10 @@ impl MainWindow {
             return;
         }
         let dock_area = dock_area.clone();
-        let target = NavTarget::LabelLogs(LabelLogs::Typed);
-        if let Some((_, namespaces)) = self.open_logs_panel(&target, Some(&context), cx) {
-            self.open_target_in(
-                target,
-                None,
-                Some(context),
-                namespaces,
-                crate::ui::nav::OpenMode::Foreground,
-                window,
-                cx,
-            );
+        // The same instance, in the new context: the context is part of its
+        // key, so it can't collide with a typed panel already searching there.
+        let target = from.read(cx).label_target();
+        if !matches!(&target, NavTarget::LabelLogs(source) if source.is_typed()) {
             return;
         }
         let from_id = nav::OpenedPanel::Logs(from.clone()).panel_id();

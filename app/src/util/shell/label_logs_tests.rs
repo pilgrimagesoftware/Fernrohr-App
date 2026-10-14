@@ -49,25 +49,33 @@ fn label_logs(main: &Entity<MainWindow>, vcx: &mut VisualTestContext) -> Vec<Nav
     })
 }
 
-/// The Logs panel open on `target`.
-fn logs_panel(
-    main: &Entity<MainWindow>,
-    target: &NavTarget,
-    vcx: &mut VisualTestContext,
-) -> Entity<LogsPanel> {
+/// Whether `target` is a typed label panel's, whichever instance.
+fn is_typed(target: &NavTarget) -> bool {
+    matches!(target, NavTarget::LabelLogs(source) if source.is_typed())
+}
+
+/// The window's one typed label Logs panel.
+fn typed_panel(main: &Entity<MainWindow>, vcx: &mut VisualTestContext) -> Entity<LogsPanel> {
+    let typed = typed_panels(main, vcx);
+    assert_eq!(typed.len(), 1, "one typed label panel");
+    typed.into_iter().next().unwrap()
+}
+
+/// The window's typed label Logs panels, in opening order.
+fn typed_panels(main: &Entity<MainWindow>, vcx: &mut VisualTestContext) -> Vec<Entity<LogsPanel>> {
     vcx.update(|_, cx| {
         let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
-            return None;
+            return Vec::new();
         };
         open_panels
             .iter()
-            .filter(|open| &open.key.target == target)
-            .find_map(|open| match &open.panel {
+            .filter(|open| is_typed(&open.key.target))
+            .filter_map(|open| match &open.panel {
                 Some(OpenedPanel::Logs(panel)) => Some(panel.clone()),
                 _ => None,
             })
+            .collect()
     })
-    .expect("the label Logs panel is open")
 }
 
 /// Waits - the fake cluster answers on the runtime, not the test's executor -
@@ -203,8 +211,7 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
         window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx)
     });
     vcx.run_until_parked();
-    let typed = NavTarget::LabelLogs(LabelLogs::Typed);
-    let panel = logs_panel(&main, &typed, &mut vcx);
+    let panel = typed_panel(&main, &mut vcx);
 
     // The new panel's selector field has focus: type into it, then Enter.
     vcx.simulate_keystrokes("a p p = w e b enter");
@@ -257,7 +264,9 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
         ["web-1/app#1@uid-web-1", "web-2/app#0@uid-web-2-again"]
     );
 
-    // Open Logs by Label… again focuses the open panel, and its field.
+    // `selector-logs-multiple-panels` 2.1: Open Logs by Label… again opens a
+    // second, empty panel with its own field focused; what's typed there
+    // streams in it alone, and the first panel keeps streaming.
     vcx.update(|window, cx| {
         use gpui_kit::Focusable as _;
         let handle = panel.read(cx).focus_handle(cx);
@@ -265,12 +274,22 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
         window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx)
     });
     vcx.run_until_parked();
-    assert_eq!(label_logs(&main, &mut vcx), [typed]);
-    vcx.simulate_keystrokes("secondary-a backspace a p p = d b enter");
+    let panels = typed_panels(&main, &mut vcx);
+    assert_eq!(panels.len(), 2, "a second typed panel");
+    assert_eq!(label_logs(&main, &mut vcx).len(), 2);
+    let second = panels[1].clone();
+    assert_eq!(vcx.update(|_, cx| second.read(cx).test_selector()), None);
+    vcx.simulate_keystrokes("a p p = d b enter");
     vcx.run_until_parked();
-    wait_for_streams(&mut vcx, &panel, &["db-1/app#0@uid-db-1"]);
+    wait_for_streams(&mut vcx, &second, &["db-1/app#0@uid-db-1"]);
+    wait_for_streams(
+        &mut vcx,
+        &panel,
+        &["web-1/app#1@uid-web-1", "web-2/app#0@uid-web-2-again"],
+    );
 }
 
 mod context;
+mod instances;
 mod scope;
 mod selector;

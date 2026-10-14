@@ -38,7 +38,7 @@ impl LogsPanel {
     pub(super) fn is_typed_labels(&self) -> bool {
         self.labels
             .as_ref()
-            .is_some_and(|following| following.source == LabelLogs::Typed)
+            .is_some_and(|following| following.source.is_typed())
     }
 
     /// The picker reading a typed panel's scope; `None` for any other.

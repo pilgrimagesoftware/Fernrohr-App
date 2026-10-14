@@ -1,11 +1,12 @@
 //! `selector-logs-context-picker`: a typed label panel in a window holding two
 //! contexts switches to the other - keeping its selector and container filter,
-//! in its own tab (1.1) - or focuses that context's own typed panel (1.2), is
+//! in its own tab (1.1), even where another typed panel already searches it
+//! (`selector-logs-multiple-panels` 2.3) - is
 //! saved in its new context (1.3), and is switched from its bar's control by
 //! mouse (2.2) or by its command's key (2.3), a control shown only while there
 //! is a choice (2.1).
 
-use super::{logs_panel, wait_for_streams, window};
+use super::{wait_for_streams, window};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::test_cluster::FakeCluster;
@@ -75,7 +76,7 @@ fn two_contexts(cx: &mut TestAppContext) -> TwoContexts {
     vcx.run_until_parked();
     vcx.update(|window, cx| window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx));
     vcx.run_until_parked();
-    let panel = logs_panel(&main, &typed(), &mut vcx);
+    let panel = super::typed_panel(&main, &mut vcx);
     vcx.simulate_keystrokes("a p p = w e b enter");
     wait_for_streams(
         &mut vcx,
@@ -96,10 +97,6 @@ fn two_contexts(cx: &mut TestAppContext) -> TwoContexts {
     }
 }
 
-fn typed() -> NavTarget {
-    NavTarget::LabelLogs(LabelLogs::Typed)
-}
-
 /// Every open typed panel: its context and namespaces, and the panel.
 fn typed_panels(t: &mut TwoContexts) -> Vec<(String, Vec<String>, Entity<LogsPanel>)> {
     let main = t.main.clone();
@@ -109,7 +106,7 @@ fn typed_panels(t: &mut TwoContexts) -> Vec<(String, Vec<String>, Entity<LogsPan
         };
         open_panels
             .iter()
-            .filter(|open| open.key.target == typed())
+            .filter(|open| super::is_typed(&open.key.target))
             .filter_map(|open| match &open.panel {
                 Some(OpenedPanel::Logs(panel)) => Some((
                     open.key.context_name.clone(),
@@ -184,16 +181,18 @@ async fn switching_moves_the_panel_and_what_it_follows(cx: &mut TestAppContext) 
     assert_eq!(tab_index(&mut t, &old), None, "the old panel is closed");
 }
 
-/// 1.2: `other` already has a typed panel, so that one is focused and this
-/// one keeps searching `demo`.
+/// `selector-logs-multiple-panels` 2.3: `other` already has a typed panel
+/// following `app`, and switching this one there moves it anyway - in its own
+/// tab, keeping `app=web` - and leaves the other as it was. Focus stays on
+/// the switched panel.
 #[gpui_kit::test]
-async fn a_context_with_its_own_typed_panel_is_focused_instead(cx: &mut TestAppContext) {
+async fn switching_to_a_context_with_its_own_typed_panel_moves_this_one(cx: &mut TestAppContext) {
     let mut t = two_contexts(cx);
     let main = t.main.clone();
     t.vcx.update(|window, cx| {
         main.update(cx, |main, cx| {
             main.open_target_in(
-                typed(),
+                NavTarget::LabelLogs(LabelLogs::new_typed()),
                 None,
                 Some("other".into()),
                 Vec::new(),
@@ -205,24 +204,48 @@ async fn a_context_with_its_own_typed_panel_is_focused_instead(cx: &mut TestAppC
     });
     t.vcx.run_until_parked();
     let others = logs_panel_in(&mut t, "other");
+    t.vcx.update(|_, cx| {
+        others.update(cx, |panel, cx| {
+            panel.carry_over(Some("app".into()), None, cx)
+        })
+    });
+    wait_for_streams(
+        &mut t.vcx,
+        &others,
+        &["web-9/app#0@uid-web-9", "web-9/sidecar#0@uid-web-9"],
+    );
+    let old = t.panel.clone();
+    let before = tab_index(&mut t, &old);
     switch(&mut t, "other");
 
-    let mut contexts = contexts_of(&typed_panels(&mut t));
-    contexts.sort();
-    assert_eq!(contexts, ["demo", "other"]);
+    let typed = typed_panels(&mut t);
+    assert_eq!(contexts_of(&typed), ["other", "other"]);
+    let switched = typed
+        .iter()
+        .map(|(.., panel)| panel.clone())
+        .find(|panel| *panel != others)
+        .expect("the switched panel");
+    let selector = t.vcx.update(|_, cx| switched.read(cx).test_selector());
+    assert_eq!(selector.as_deref(), Some("app=web"));
     assert_eq!(
-        t.vcx.update(|_, cx| t.panel.read(cx).test_scope()),
-        ("demo".to_string(), vec!["blog".to_string()])
+        tab_index(&mut t, &switched),
+        before,
+        "in the old panel's tab"
+    );
+    wait_for_streams(&mut t.vcx, &switched, &["web-9/app#0@uid-web-9"]);
+    wait_for_streams(
+        &mut t.vcx,
+        &others,
+        &["web-9/app#0@uid-web-9", "web-9/sidecar#0@uid-web-9"],
     );
     let focused = t.vcx.update(|window, cx| {
         use gpui_kit::Focusable as _;
-        others
+        switched
             .read(cx)
             .focus_handle(cx)
             .contains_focused(window, cx)
     });
-    assert!(focused, "the other context's panel has focus");
-    wait_for_streams(&mut t.vcx, &t.panel.clone(), &["web-1/app#0@uid-web-1"]);
+    assert!(focused, "the switched panel keeps focus");
 }
 
 fn logs_panel_in(t: &mut TwoContexts, context: &str) -> Entity<LogsPanel> {
