@@ -10,6 +10,7 @@ use gpui_kit::*;
 
 use super::pods::{PodRow, PodSelection};
 
+mod checked;
 mod columns;
 pub(in crate::k8s::resource) mod list_sort;
 use columns::cell_text;
@@ -96,6 +97,9 @@ pub(super) struct PodTableDelegate {
     /// its commands from so they reach the Pods panel as their keys do.
     action_context: Option<FocusHandle>,
     background_click: crate::ui::background_rows::BackgroundClick,
+    /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
+    /// the cursor `selected` tracks.
+    checked: crate::ui::bulk::CheckedRows,
 }
 
 impl Default for PodTableDelegate {
@@ -112,6 +116,7 @@ impl Default for PodTableDelegate {
             quick_look: None,
             action_context: None,
             background_click: Default::default(),
+            checked: Default::default(),
         }
     }
 }
@@ -122,6 +127,7 @@ impl PodTableDelegate {
     pub(super) fn set_rows(&mut self, rows: Vec<PodTableRow>) {
         self.natural = rows;
         self.apply_sort();
+        self.prune_checked();
     }
 
     /// `column`'s width: the one the user set, or its default.
@@ -380,6 +386,7 @@ impl TableDelegate for PodTableDelegate {
             )),
             _ => cell.child(text),
         };
+        let cell = self.with_checkbox(row_ix, col_ix, cell, cx);
         // An open quick look hangs below the selected row's first cell, in an
         // overlay so the row keeps its height and the popover isn't clipped.
         let popover = self.quick_look.clone().filter(|_| {

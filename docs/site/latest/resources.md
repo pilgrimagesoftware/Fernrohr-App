@@ -118,6 +118,68 @@ it, <kbd>Enter</kbd> opens the pod's detail, and <kbd>Esc</kbd> closes it.
 Right-clicking a row selects it and opens a menu with Quick Look, Open Details, Open in New Panel,
 Logs and YAML.
 
+## Act on several objects
+
+Check rows to act on several objects at once. Checking a row doesn't move the
+selection, and the single-row commands such as <kbd>⌃D</kbd> keep acting on the
+selected row alone, whatever else is checked.
+
+| Action | Keyboard | Mouse |
+| --- | --- | --- |
+| Check or uncheck the selected row | <kbd>X</kbd> | Click the row's checkbox |
+| Check every row from the last one checked | <kbd>⇧X</kbd> | <kbd>⇧</kbd>-click a checkbox |
+| Uncheck all | **Checked: Uncheck All** in the command palette | The bar's ✕ button |
+
+While rows are checked, a bar above the list counts them and offers each action
+that every checked row's kind takes. The bar's buttons are icons, and hovering
+one names its action. The same actions are in the command palette as
+**Checked: …** commands. They have no default keys, and you can bind any of them
+in `keymap.toml`.
+
+| Action | Offered for | What it does |
+| --- | --- | --- |
+| View Logs | Pods | Opens a Logs panel for each pod. Past five pods it asks first. |
+| Restart Rollout | Deployments, DaemonSets, StatefulSets | Restarts each rollout, as `kubectl rollout restart` does. |
+| Rollback Rollout | Deployments, DaemonSets, StatefulSets | Goes back to each one's previous revision, as `kubectl rollout undo` does. |
+| Scale | Deployments, StatefulSets, ReplicaSets | Asks for one replica count and sets it on each. |
+| Cordon, Uncordon | Nodes | Marks each node unschedulable, or schedulable again. |
+| Drain | Nodes | Cordons each node, then evicts its pods. |
+| Label, Annotate | Any kind | Asks for a key and a value and sets them on each. An empty value removes the key. The key must be a valid Kubernetes key, such as `team` or `example.com/team`. |
+| Copy Names | Any kind | Copies the names, one per line. |
+| Copy YAML | Any kind | Copies the manifests, separated by `---`. A Secret's values stay hidden. |
+| Delete | Any kind | Deletes each object. |
+
+Every action that changes the cluster asks first, naming how many objects of
+which kind, and any value it will set:
+
+```text
+Scale 2 Deployments to 3 replicas?
+Set label team=platform on 3 ConfigMaps?
+```
+
+Delete and Drain can't be undone, so their question opens on Cancel and
+<kbd>Enter</kbd> cancels. Confirm with <kbd>⌘⌫</kbd> (<kbd>Ctrl+Backspace</kbd>
+off macOS), or <kbd>Tab</kbd> to the button. The others confirm with
+<kbd>Enter</kbd>. <kbd>Esc</kbd> always cancels.
+
+When the action finishes, a line above the list says how many objects it
+succeeded for, and names each one that failed with the cluster's reason. One
+failure never stops the rest. Dismiss the line with its ✕ button. A delete
+unchecks what it deleted, and any other action leaves the rows checked.
+
+Drain works like `kubectl drain` with no extra flags. It leaves DaemonSet pods and
+static (mirror) pods alone. It doesn't evict two kinds of pod that `kubectl drain`
+also refuses to: a pod no controller manages, because nothing would recreate it,
+and a pod with an `emptyDir` volume, whose data would be lost. Each is reported as
+not evicted. A PodDisruptionBudget can refuse an eviction, and Fernrohr keeps
+retrying for 30 seconds before it reports that pod as not evicted. The node stays
+cordoned, and its other pods are still evicted. If the node's pods can't be
+listed, the report says the node is cordoned anyway.
+
+Delete and Drain act only on the objects you checked. If one is deleted and
+recreated under the same name before the request arrives, the new one is left
+alone and reported. An object that is already gone is reported as already gone.
+
 ## Icons and status
 
 Every kind has a full-colour icon from the Kubernetes community icon set. It
@@ -220,4 +282,4 @@ Sorting works like any list. The browser remembers the last sort you chose,
 across contexts, windows and restarts, and a new browser starts with it. Until
 you choose one, the sort is age ascending, which puts the newest events first.
 
-*Summarizes the capability specs: `resource-browser`, `resource-group-navigation`, `resource-icons`, `namespace-sets`, `events-browser`.*
+*Summarizes the capability specs: `resource-browser`, `resource-group-navigation`, `resource-icons`, `namespace-sets`, `events-browser`, `bulk-object-actions`.*

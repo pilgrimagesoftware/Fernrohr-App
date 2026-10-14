@@ -56,6 +56,8 @@ pub struct ObjectListPanel {
     pub(super) indicators: crate::ui::list_state::Indicators,
     /// The last delete the cluster refused, shown until dismissed (`delete`).
     pub(super) refusal: Option<crate::k8s::resource::delete_flow::refusal::Refusal>,
+    /// The last bulk action's outcome, shown above the table until dismissed.
+    pub(super) bulk_outcome: Option<crate::ui::bulk::BatchOutcome>,
 }
 
 impl ObjectListPanel {
@@ -106,6 +108,7 @@ impl ObjectListPanel {
             initial_sort: None,
             indicators: Default::default(),
             refusal: None,
+            bulk_outcome: None,
         };
         this.subscribe_if_connected(&connection, cx);
         this
@@ -140,6 +143,7 @@ impl ObjectListPanel {
             initial_sort: None,
             indicators: Default::default(),
             refusal: None,
+            bulk_outcome: None,
         }
     }
 

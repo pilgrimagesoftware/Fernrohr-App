@@ -5,6 +5,7 @@ pub(crate) mod add_context_window;
 pub(crate) mod agent_approval;
 pub(crate) mod agent_setup;
 pub mod background_rows;
+pub(crate) mod bulk;
 pub mod confirm_dialog;
 pub mod confirm_text;
 pub mod copy;

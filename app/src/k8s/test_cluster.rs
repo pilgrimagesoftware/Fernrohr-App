@@ -53,6 +53,8 @@ pub(crate) struct FakeCluster {
     patches: Arc<Mutex<Vec<(String, Value)>>>,
     /// When set, every patch is refused with this status and body.
     patch_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
+    /// When set, every get of a single object is refused with this.
+    get_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
 }
 
 impl FakeCluster {
@@ -66,6 +68,7 @@ impl FakeCluster {
             refusal: Arc::default(),
             patches: Arc::default(),
             patch_refusal: Arc::default(),
+            get_refusal: Arc::default(),
         };
         let handle = cx.update(|cx| crate::runtime::handle(cx));
         let addr = handle.block_on(cluster.clone().serve());
@@ -157,6 +160,12 @@ impl FakeCluster {
         self.patches.lock().clone()
     }
 
+    /// Answers every get of a single object with `status` and `body` from now
+    /// on; lists and watches still answer.
+    pub(crate) fn refuse_gets(&self, status: &'static str, body: Value) {
+        *self.get_refusal.lock() = Some((status, body));
+    }
+
     /// Refuses every later patch with `status` (`"409 Conflict"`) and `body`.
     pub(crate) fn refuse_patches(&self, status: &'static str, body: Value) {
         *self.patch_refusal.lock() = Some((status, body));
@@ -165,22 +174,55 @@ impl FakeCluster {
     /// A patch of the object `target` names: refused if
     /// [`Self::refuse_patches`] says so, else recorded and its body written as
     /// the object's new state - an apply of a whole manifest, as an edit sends.
-    fn answer_patch(&self, target: &str, sent: &str) -> (&'static str, String) {
+    ///
+    /// A merge patch (`application/merge-patch+json`, what a bulk action
+    /// sends) is merged into the stored object instead. A patch of a `scale`
+    /// subresource is recorded and answered with the `Scale` it asks for.
+    fn answer_patch(
+        &self,
+        target: &str,
+        sent: &str,
+        content_type: Option<&str>,
+    ) -> (&'static str, String) {
         let path = target.split_once('?').map_or(target, |(path, _)| path);
-        let Some(Request {
-            prefix,
-            plural,
-            name: Some(name),
-            ..
-        }) = Request::parse(path)
+        let (path, scale) = match path.strip_suffix("/scale") {
+            Some(path) => (path, true),
+            None => (path, false),
+        };
+        let Some(
+            request @ Request {
+                prefix,
+                plural,
+                name: Some(name),
+                ..
+            },
+        ) = Request::parse(path)
         else {
             return not_found();
         };
         if let Some((status, body)) = self.patch_refusal.lock().clone() {
             return (status, body.to_string());
         }
-        let object: Value = serde_json::from_str(sent).unwrap_or(Value::Null);
-        self.patches.lock().push((name.to_string(), object.clone()));
+        let sent: Value = serde_json::from_str(sent).unwrap_or(Value::Null);
+        self.patches.lock().push((name.to_string(), sent.clone()));
+        if scale {
+            let answer = json!({ "kind": "Scale", "apiVersion": "autoscaling/v1",
+                "metadata": { "name": name }, "spec": sent["spec"] });
+            return ("200 OK", answer.to_string());
+        }
+        let object = if content_type == Some("application/merge-patch+json") {
+            let stored = self.state.lock().objects.iter().find_map(|stored| {
+                (request.holds(stored) && stored.object["metadata"]["name"] == name)
+                    .then(|| stored.object.clone())
+            });
+            let Some(mut stored) = stored else {
+                return not_found();
+            };
+            merge(&mut stored, &sent);
+            stored
+        } else {
+            sent
+        };
         self.apply(prefix, plural, object.clone());
         ("200 OK", object.to_string())
     }
@@ -198,7 +240,11 @@ impl FakeCluster {
                     let request = crate::k8s::test_recorder::read_request(&mut stream).await;
                     let (status, body) = match request.method.as_str() {
                         "DELETE" => cluster.answer_delete(&request.target, &request.body),
-                        "PATCH" => cluster.answer_patch(&request.target, &request.body),
+                        "PATCH" => cluster.answer_patch(
+                            &request.target,
+                            &request.body,
+                            request.content_type.as_deref(),
+                        ),
                         _ => cluster.answer(&request.target).await,
                     };
                     let response = format!(
@@ -247,6 +293,9 @@ impl FakeCluster {
         };
         if let Some(name) = request.name {
             self.gets.fetch_add(1, Ordering::SeqCst);
+            if let Some((status, body)) = self.get_refusal.lock().clone() {
+                return (status, body.to_string());
+            }
             let state = self.state.lock();
             return match state
                 .objects
@@ -350,6 +399,26 @@ impl<'a> Request<'a> {
             && self
                 .namespace
                 .is_none_or(|namespace| write.event["object"]["metadata"]["namespace"] == namespace)
+    }
+}
+
+/// A JSON merge patch (RFC 7386): `patch`'s fields replace `target`'s, a
+/// `null` removes one, and objects merge field by field.
+fn merge(target: &mut Value, patch: &Value) {
+    let Value::Object(patch) = patch else {
+        *target = patch.clone();
+        return;
+    };
+    if !target.is_object() {
+        *target = json!({});
+    }
+    let target = target.as_object_mut().expect("made an object above");
+    for (key, value) in patch {
+        if value.is_null() {
+            target.remove(key);
+        } else {
+            merge(target.entry(key.clone()).or_insert(Value::Null), value);
+        }
     }
 }
 

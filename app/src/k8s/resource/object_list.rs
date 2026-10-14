@@ -4,6 +4,7 @@
 //! and re-exports; each submodule owns one concern.
 
 mod background;
+mod bulk;
 mod columns;
 mod commands;
 mod delete;
