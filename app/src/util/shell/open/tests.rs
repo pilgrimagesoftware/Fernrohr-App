@@ -78,6 +78,7 @@ async fn reopening_a_kind_focuses_it_instead_of_duplicating(cx: &mut TestAppCont
                     target: NavTarget::pods(),
                     context_name: "kind-dev".to_string(),
                     namespaces: Vec::new(),
+                    instance: 0,
                 }
             );
 

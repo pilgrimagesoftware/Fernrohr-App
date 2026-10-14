@@ -21,6 +21,15 @@ pub struct PodSelection {
 }
 
 impl PodSelection {
+    /// This pod's detail panel, opened as a new instance (`open-panel-new-instance`).
+    pub(crate) fn new_panel_open(&self) -> crate::ui::nav::OpenPodInNewPanel {
+        crate::ui::nav::OpenPodInNewPanel {
+            context_name: self.context_name.clone(),
+            namespace: self.namespace.clone(),
+            name: self.name.clone(),
+        }
+    }
+
     /// This pod's detail panel, opened in the background.
     pub(crate) fn background_open(&self) -> crate::ui::nav::OpenPodInBackground {
         crate::ui::nav::OpenPodInBackground {

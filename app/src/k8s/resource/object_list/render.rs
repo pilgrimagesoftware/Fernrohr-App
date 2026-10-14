@@ -4,8 +4,9 @@
 
 use super::commands::{
     DELETE_KEY, DESCRIBE_KEY, DeleteSelected, DescribeSelected, FILTER_KEY, FocusFilter,
-    NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OPEN_KEY, OpenInBackground, OpenSelected,
-    PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList, ShowSelectedYaml, WarpNamespace, YAML_KEY,
+    NAMESPACE_KEY, OPEN_IN_BACKGROUND_KEY, OPEN_IN_NEW_PANEL_KEY, OPEN_KEY, OpenInBackground,
+    OpenInNewPanel, OpenSelected, PANEL_KEY_CONTEXT, REFRESH_KEY, RefreshList, ShowSelectedYaml,
+    WarpNamespace, YAML_KEY,
 };
 use super::panel::ObjectListPanel;
 use super::store::ListMode;
@@ -108,6 +109,12 @@ impl ObjectListPanel {
                 &OpenInBackground,
                 OPEN_IN_BACKGROUND_KEY,
                 "Background",
+                window,
+            ))
+            .child(Self::hint(
+                &OpenInNewPanel,
+                OPEN_IN_NEW_PANEL_KEY,
+                "New panel",
                 window,
             ))
             // Only a namespaced kind has a picker to open.
@@ -358,6 +365,7 @@ impl Render for ObjectListPanel {
                 .on_action(cx.listener(Self::on_action_focus_filter))
                 .on_action(cx.listener(Self::on_action_open_selected))
                 .on_action(cx.listener(Self::on_action_open_in_background))
+                .on_action(cx.listener(Self::on_action_open_in_new_panel))
                 .capture_action(cx.listener(Self::capture_select_down))
                 .capture_action(cx.listener(Self::capture_select_up))
                 .on_action(cx.listener(Self::on_action_describe_selected))

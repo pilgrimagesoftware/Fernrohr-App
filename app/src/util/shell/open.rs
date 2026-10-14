@@ -67,6 +67,10 @@ impl MainWindow {
     /// target; for a panel already open it changes nothing at all. Dedup, placement
     /// and the panel's watches are the same either way.
     ///
+    /// An [`OpenMode::NewPanel`] open always builds another instance of the
+    /// panel (`open-panel-new-instance` D2); any other matches an open panel on
+    /// the same resource, whichever instance, the first opened.
+    ///
     /// Returns the panel the request landed on, or `None` when it was refused
     /// (no workspace, or a context this window doesn't hold). Every in-app
     /// caller ignores it; `agent-mcp`'s open-panel tool reports it.
@@ -78,6 +82,33 @@ impl MainWindow {
         context_name: Option<String>,
         namespaces: Vec<String>,
         mode: OpenMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<ShownPanel> {
+        self.open_target_as(
+            target,
+            initial_view,
+            context_name,
+            namespaces,
+            mode,
+            Instance::Any,
+            window,
+            cx,
+        )
+    }
+
+    /// [`Self::open_target_in`], matching an open panel by `instance`'s rule
+    /// rather than always any instance - layout Add asks for exactly the
+    /// instance it saved (`open-panel-new-instance` D2).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn open_target_as(
+        &mut self,
+        target: NavTarget,
+        initial_view: Option<DetailView>,
+        context_name: Option<String>,
+        namespaces: Vec<String>,
+        mode: OpenMode,
+        instance: Instance,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<ShownPanel> {
@@ -124,8 +155,21 @@ impl MainWindow {
             ..PanelScope::new(target.clone(), context_name)
         }
         .scoped_to(namespaces);
+        let scope = match (mode, instance) {
+            (OpenMode::NewPanel, _) => {
+                let number = free_instance(open_panels, &scope);
+                scope.as_instance(number)
+            }
+            (_, Instance::Exactly(number)) => scope.as_instance(number),
+            (_, Instance::Any) => scope,
+        };
         let key = PanelKey::from(&scope);
-        let shown = match open_panels.iter().find(|open| open.key == key) {
+        let open = match (mode, instance) {
+            (OpenMode::NewPanel, _) => None,
+            (_, Instance::Exactly(_)) => open_panels.iter().find(|open| open.key == key),
+            (_, Instance::Any) => open_panels.iter().find(|open| open.key.same_resource(&key)),
+        };
+        let shown = match open {
             Some(open) if background => {
                 return Some(ShownPanel {
                     id: open.id,
@@ -226,6 +270,31 @@ impl MainWindow {
         let held: Vec<PanelId> = tree.panels().collect();
         open_panels.retain(|open| held.contains(&open.id));
     }
+}
+
+/// Which open panel a request may land on (`open-panel-new-instance` D2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Instance {
+    /// Any instance on the same resource - the first opened. Every request
+    /// but layout Add's.
+    Any,
+    /// Only this instance: what layout Add asks for, so a saved second
+    /// instance opens beside an open first one.
+    Exactly(u32),
+}
+
+/// The lowest instance number of 1 or more that no open panel on `scope`'s
+/// target in its context uses (`open-panel-new-instance` D1). Namespaces are
+/// left out, so a later re-scope can't make two panels' keys collide.
+pub(super) fn free_instance(open_panels: &[OpenPanel], scope: &PanelScope) -> u32 {
+    let used: std::collections::HashSet<u32> = open_panels
+        .iter()
+        .filter(|open| {
+            open.key.target == scope.target && open.key.context_name == scope.context_name
+        })
+        .map(|open| open.key.instance)
+        .collect();
+    (1..).find(|number| !used.contains(number)).unwrap_or(1)
 }
 
 /// The panel an [`MainWindow::open_target_in`] request landed on.

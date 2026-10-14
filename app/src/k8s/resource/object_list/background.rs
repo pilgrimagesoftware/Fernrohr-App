@@ -3,7 +3,7 @@
 //! through `ui::background_rows` - opened as an inactive tab, the selection left
 //! where it is.
 
-use super::commands::{OpenInBackground, OpenListedObject};
+use super::commands::{OpenInBackground, OpenInNewPanel, OpenListedObject};
 use super::panel::ObjectListPanel;
 use super::table::ListRow;
 use crate::ui::nav::{ObjectTarget, OpenMode};
@@ -13,6 +13,12 @@ impl ObjectListPanel {
     /// What opening `row` in the background dispatches. Built from the panel's
     /// kind and context once, for the table's rows to call while it is mid-update.
     pub(super) fn background_opener(&self) -> impl Fn(&ListRow) -> OpenListedObject + 'static {
+        self.opener(OpenMode::Background)
+    }
+
+    /// What opening `row` in `mode` dispatches - in the background, or as a new
+    /// instance of its panel (`open-panel-new-instance`).
+    pub(super) fn opener(&self, mode: OpenMode) -> impl Fn(&ListRow) -> OpenListedObject + 'static {
         let kind = self.kind.clone();
         let context_name = self.scope.context_name.clone();
         move |row| OpenListedObject {
@@ -23,7 +29,7 @@ impl ObjectListPanel {
                 name: row.object.name.clone(),
             },
             view: None,
-            mode: OpenMode::Background,
+            mode,
         }
     }
 
@@ -40,5 +46,22 @@ impl ObjectListPanel {
             return;
         };
         window.dispatch_action(Box::new(self.background_opener()(&row)), cx);
+    }
+
+    /// Open Selected Object in New Panel: the selected row's object as a new
+    /// instance of its detail panel, focused.
+    pub(super) fn on_action_open_in_new_panel(
+        &mut self,
+        _: &OpenInNewPanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (Some(table), Some(row_ix)) = (self.table.clone(), self.selected_row(cx)) else {
+            return;
+        };
+        let Some(row) = table.read(cx).delegate().rows().get(row_ix).cloned() else {
+            return;
+        };
+        window.dispatch_action(Box::new(self.opener(OpenMode::NewPanel)(&row)), cx);
     }
 }

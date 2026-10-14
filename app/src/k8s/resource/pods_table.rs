@@ -262,6 +262,12 @@ impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
         }
     }
 
+    fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
+        if let Some(row) = self.rows.get(row_ix) {
+            window.dispatch_action(Box::new(row.selection.new_panel_open()), cx);
+        }
+    }
+
     fn background_click(&mut self) -> &mut crate::ui::background_rows::BackgroundClick {
         &mut self.background_click
     }
@@ -307,7 +313,9 @@ impl TableDelegate for PodTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        use super::pods::{DescribePod, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml};
+        use super::pods::{
+            DescribePod, OpenInNewPanel, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml,
+        };
         if row_ix >= self.rows.len() {
             return menu;
         }
@@ -320,6 +328,7 @@ impl TableDelegate for PodTableDelegate {
         };
         menu.menu("Quick Look", Box::new(QuickLook))
             .menu("Open Details", Box::new(DescribePod))
+            .menu("Open in New Panel", Box::new(OpenInNewPanel))
             .menu("Logs", Box::new(ShowPodLogs))
             .menu(
                 crate::ui::logs_panels::flipped_label(cx),

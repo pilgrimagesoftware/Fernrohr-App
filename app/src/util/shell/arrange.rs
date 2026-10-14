@@ -105,12 +105,15 @@ impl MainWindow {
             return;
         };
         // A copy, not a re-selection: built straight from the key, past
-        // `open_target_in`'s one-panel-per-key lookup.
+        // `open_target_in`'s one-panel-per-key lookup - and so another
+        // instance, numbered as Open in New Panel numbers one
+        // (`open-panel-new-instance` D1).
         let scope = PanelScope {
             connection_count: contexts.len(),
             ..PanelScope::new(key.target.clone(), key.context_name.clone())
         }
         .scoped_to(key.namespaces.clone());
+        let scope = scope.as_instance(super::open::free_instance(open_panels, &scope));
         let (id, opened) = dock_area.update(cx, |area, cx| {
             let (id, opened) = nav::add_panel(area, &scope, None, window, cx);
             let beside = InsertTarget::Split {
