@@ -26,6 +26,8 @@ pub struct ObjectRow {
     /// What the object reports in `status.conditions` - whether a list of a
     /// kind outside the per-kind table shows its Ready and Message columns.
     pub conditions: ConditionsSeen,
+    /// What the kind's own actions read of the object (`resource-specific-actions`).
+    pub(crate) facts: crate::k8s::resource::kind_actions::ObjectFacts,
 }
 
 impl ObjectRow {
@@ -42,6 +44,7 @@ impl ObjectRow {
                 .map(|columns| columns.cells_for(object))
                 .unwrap_or_default(),
             conditions: ConditionsSeen::of(object),
+            facts: crate::k8s::resource::kind_actions::ObjectFacts::of(object),
         }
     }
 

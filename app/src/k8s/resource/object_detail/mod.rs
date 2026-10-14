@@ -18,6 +18,7 @@ mod delete;
 mod edit;
 mod edit_view;
 mod fetch;
+mod kind_actions;
 mod live;
 mod logs;
 mod metadata;

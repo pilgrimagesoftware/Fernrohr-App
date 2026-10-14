@@ -133,7 +133,8 @@ impl ObjectListPanel {
                 window,
             ))
             .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
-            .child(crate::ui::bulk::commands::check_hint(window));
+            .child(crate::ui::bulk::commands::check_hint(window))
+            .children(self.kind_hints(window, cx));
         // A Service with a forward running can stop it (`port-forward-indicators` 4.1).
         if !self.selected_forwards(cx).is_empty() {
             hints = hints.child(Self::hint(
@@ -360,8 +361,10 @@ impl Render for ObjectListPanel {
         key_context.add(PANEL_KEY_CONTEXT);
         key_context.add(crate::ui::list_sort::KEY_CONTEXT);
         crate::ui::bulk::add_key_contexts(self, &mut key_context, cx);
+        crate::ui::kind_actions::add_key_contexts(self, &mut key_context, true, cx);
         let panel =
             crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.table.clone(), cx);
+        let panel = crate::ui::kind_actions::on_kind_actions(panel, cx);
         let panel = crate::ui::bulk::on_bulk_actions(panel, cx)
             .size_full()
             .key_context(key_context)

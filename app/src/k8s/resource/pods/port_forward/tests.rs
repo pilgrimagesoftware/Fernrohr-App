@@ -252,3 +252,33 @@ async fn stop_port_forward_confirms_the_selected_pods_one_forward(cx: &mut TestA
         assert!(!clashes.any_clash(), "{id}: {clashes:?}");
     }
 }
+
+/// `resource-specific-actions` 1.1: a pod that isn't Running isn't forwarded -
+/// by its key, as by its (disabled) row menu item - and the notification says
+/// why.
+#[gpui_kit::test]
+async fn a_pending_pod_isnt_forwarded(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    let mut pending = pod_with_ports("u1", "web-1", &[("app", 8080, "http")]);
+    pending["status"] = json!({ "phase": "Pending" });
+    harness.cluster.apply(PODS.0, PODS.1, pending);
+    harness.wait_for("saw it Pending", |panel, cx| {
+        let table = panel.pod_table.as_ref().expect("built").read(cx);
+        table
+            .delegate()
+            .rows()
+            .iter()
+            .any(|row| row.row.name == "web-1" && !row.row.forwardable())
+    });
+
+    harness.press("shift-f");
+
+    assert!(forwards(&mut harness).is_empty());
+    let notified = notifications(&mut harness);
+    assert!(
+        notified
+            .iter()
+            .any(|(_, reason)| reason.contains("isn't running")),
+        "{notified:?}"
+    );
+}

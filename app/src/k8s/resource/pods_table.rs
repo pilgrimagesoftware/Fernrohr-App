@@ -341,6 +341,11 @@ impl TableDelegate for PodTableDelegate {
                 Box::new(ShowPodLogsFlipped),
             )
             .menu("YAML", Box::new(ShowPodYaml))
+            .menu_with_disabled(
+                "Port Forward…",
+                Box::new(super::pods::PortForwardPod),
+                !self.rows[row_ix].row.forwardable(),
+            )
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,
