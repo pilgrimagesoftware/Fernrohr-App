@@ -10,7 +10,7 @@
 
 use crate::command::{Command, CommandRegistry};
 use crate::k8s::resource::bulk::BulkAction;
-use gpui_kit::{Action, KeyContext, actions};
+use gpui_kit::{Action, Div, KeyContext, Window, actions};
 
 actions!(
     bulk,
@@ -160,6 +160,17 @@ fn gated(action: BulkAction) -> &'static str {
         BulkAction::CopyYaml => "BulkCopyYaml && !Input",
         BulkAction::Delete => "BulkDelete && !Input",
     }
+}
+
+/// The hint row's Check entry (`x`), read from the live keymap.
+pub(crate) fn check_hint(window: &mut Window) -> Div {
+    crate::ui::list_search::ListSearch::hint(
+        &ToggleChecked,
+        CHECKABLE_CONTEXT,
+        TOGGLE_KEY,
+        "Check",
+        window,
+    )
 }
 
 /// Adds a checkable list's contexts: always [`CHECKABLE_CONTEXT`], and while

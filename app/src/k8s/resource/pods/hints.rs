@@ -62,6 +62,7 @@ impl PodsPanel {
                 window,
             ))
             .child(hint(&ShowPodYaml, YAML_KEY, "YAML", window))
+            .child(crate::ui::bulk::commands::check_hint(window))
             .when(shellable, |row| {
                 row.child(hint(&ShellPod, SHELL_KEY, "Shell", window))
             })
