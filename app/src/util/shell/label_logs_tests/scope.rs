@@ -2,7 +2,7 @@
 //! from the list it was opened from, switched by a namespace set, and picked
 //! from its bar by keyboard - decides which pods stream.
 
-use super::{logs_panel, wait_for_streams, window};
+use super::{is_typed, typed_panel, wait_for_streams, window};
 use crate::config::namespaces::{NamespaceSetConfig, NamespaceSetsConfig};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::namespaces::{NamespaceList, NamespaceRegistry};
@@ -10,7 +10,6 @@ use crate::k8s::test_cluster::FakeCluster;
 use crate::ui::namespace_filter::option_selector;
 use crate::ui::namespace_sets::store::NamespaceSets;
 use crate::ui::nav::NavTarget;
-use crate::util::logs::LabelLogs;
 use crate::util::shell::{MainWindow, WindowMode};
 use gpui_kit::{AppContext as _, Entity, TestAppContext, VisualTestContext};
 
@@ -40,7 +39,7 @@ fn typed_scope(main: &Entity<MainWindow>, vcx: &mut VisualTestContext) -> Vec<St
         };
         let typed: Vec<_> = open_panels
             .iter()
-            .filter(|open| open.key.target == NavTarget::LabelLogs(LabelLogs::Typed))
+            .filter(|open| is_typed(&open.key.target))
             .collect();
         assert_eq!(typed.len(), 1, "one typed label panel");
         typed[0].key.namespaces.clone()
@@ -87,8 +86,7 @@ async fn the_namespace_scope_decides_which_pods_stream(cx: &mut TestAppContext) 
     vcx.run_until_parked();
     vcx.update(|window, cx| window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx));
     vcx.run_until_parked();
-    let typed = NavTarget::LabelLogs(LabelLogs::Typed);
-    let panel = logs_panel(&main, &typed, &mut vcx);
+    let panel = typed_panel(&main, &mut vcx);
     assert_eq!(typed_scope(&main, &mut vcx), ["shop"]);
     vcx.simulate_keystrokes("a p p = w e b enter");
     wait_for_streams(&mut vcx, &panel, &["web-1/app#0@uid-web-1"]);
@@ -111,11 +109,6 @@ async fn the_namespace_scope_decides_which_pods_stream(cx: &mut TestAppContext) 
         &panel,
         &["web-1/app#0@uid-web-1", "web-2/app#0@uid-web-2"],
     );
-    assert_eq!(typed_scope(&main, &mut vcx), ["blog", "shop"]);
-
-    // Reopening focuses this panel, scope and all, rather than a second.
-    vcx.update(|window, cx| window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx));
-    vcx.run_until_parked();
     assert_eq!(typed_scope(&main, &mut vcx), ["blog", "shop"]);
 
     // "All namespaces", from the bar's picker by keyboard: `n` opens it on
@@ -186,8 +179,7 @@ async fn opened_from_an_all_namespaces_list_it_matches_any_namespace(cx: &mut Te
         .boxed_clone();
     vcx.update(|window, cx| window.dispatch_action(action, cx));
     vcx.run_until_parked();
-    let typed = NavTarget::LabelLogs(LabelLogs::Typed);
-    let panel = logs_panel(&main, &typed, &mut vcx);
+    let panel = typed_panel(&main, &mut vcx);
     assert!(typed_scope(&main, &mut vcx).is_empty(), "all namespaces");
     vcx.simulate_keystrokes("a p p = w e b enter");
     wait_for_streams(&mut vcx, &panel, &["web-2/app#0@uid-web-2"]);
@@ -236,14 +228,13 @@ async fn it_opens_in_the_focused_lists_context_not_the_active_one(cx: &mut TestA
 
     vcx.update(|window, cx| window.dispatch_action(Box::new(crate::util::logs::ShowLabelLogs), cx));
     vcx.run_until_parked();
-    let typed = NavTarget::LabelLogs(LabelLogs::Typed);
     let context = vcx.update(|_, cx| {
         let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
             return None;
         };
         open_panels
             .iter()
-            .find(|open| open.key.target == typed)
+            .find(|open| is_typed(&open.key.target))
             .map(|open| open.key.context_name.clone())
     });
     assert_eq!(
@@ -251,7 +242,7 @@ async fn it_opens_in_the_focused_lists_context_not_the_active_one(cx: &mut TestA
         Some("demo"),
         "the focused list's context"
     );
-    let panel = logs_panel(&main, &typed, &mut vcx);
+    let panel = typed_panel(&main, &mut vcx);
     vcx.simulate_keystrokes("a p p = w e b enter");
     wait_for_streams(&mut vcx, &panel, &["web-2/app#0@uid-web-2"]);
 }

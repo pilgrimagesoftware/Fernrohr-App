@@ -3,7 +3,8 @@
 
 use super::render::counts_text;
 use super::{
-    LabelLogs, Matched, SavedLabels, WorkloadRef, container_names, labels_from_state, wanted,
+    LabelLogs, Matched, SavedLabels, TypedId, WorkloadRef, container_names, labels_from_state,
+    wanted,
 };
 use crate::k8s::label_selector::parse;
 use k8s_openapi::api::core::v1::{
@@ -275,7 +276,7 @@ fn the_container_filter_streams_one_container_per_pod() {
 fn a_saved_panel_keeps_its_container_filter() {
     let state = serde_json::json!({
         "context_name": "dev",
-        "label_logs": serde_json::to_value(LabelLogs::Typed).unwrap(),
+        "label_logs": serde_json::to_value(LabelLogs::Typed(TypedId::LEGACY)).unwrap(),
         "selector": "app=web",
         "container_filter": "sidecar",
     });
@@ -333,7 +334,11 @@ fn the_container_filter_steps_through_all_then_each_name() {
 fn a_filter_naming_no_container_says_so() {
     use super::Following;
     use super::render::no_lines_message;
-    let mut following = Following::new(LabelLogs::Typed, Some("app=web"), Some("sidecar".into()));
+    let mut following = Following::new(
+        LabelLogs::new_typed(),
+        Some("app=web"),
+        Some("sidecar".into()),
+    );
     following.matched = Matched {
         pods: 2,
         containers: 0,
@@ -354,5 +359,44 @@ fn a_filter_naming_no_container_says_so() {
     assert_eq!(
         no_lines_message(&following, "app=web"),
         "Waiting for log lines…"
+    );
+}
+
+/// `selector-logs-multiple-panels` 1.1: every new typed panel has an identity
+/// of its own, and none is the legacy one.
+#[test]
+fn new_typed_panels_have_distinct_identities() {
+    let ids: std::collections::HashSet<TypedId> = (0..64).map(|_| TypedId::new()).collect();
+    assert_eq!(ids.len(), 64, "no two alike");
+    assert!(!ids.contains(&TypedId::LEGACY));
+    assert_ne!(LabelLogs::new_typed(), LabelLogs::new_typed());
+    assert!(LabelLogs::new_typed().is_typed());
+}
+
+/// 1.2: `label_logs` reads today's form, a workload's, and the bare `"Typed"`
+/// a layout saved before identities holds - as the fixed legacy one.
+#[test]
+fn label_logs_reads_current_and_legacy_forms() {
+    let typed = LabelLogs::new_typed();
+    let round = serde_json::from_value::<LabelLogs>(serde_json::to_value(&typed).unwrap());
+    assert_eq!(round.unwrap(), typed);
+    let workload = LabelLogs::Workload(WorkloadRef {
+        kind: "Deployment".into(),
+        namespace: "shop".into(),
+        name: "web".into(),
+        selector: "app=web".into(),
+    });
+    let round = serde_json::from_value::<LabelLogs>(serde_json::to_value(&workload).unwrap());
+    assert_eq!(round.unwrap(), workload);
+    assert_eq!(
+        serde_json::from_value::<LabelLogs>(serde_json::json!("Typed")).unwrap(),
+        LabelLogs::Typed(TypedId::LEGACY)
+    );
+    let legacy = serde_json::json!({
+        "context_name": "dev", "label_logs": "Typed", "selector": "app=web",
+    });
+    assert_eq!(
+        labels_from_state(&legacy).map(|saved| saved.source),
+        Some(LabelLogs::Typed(TypedId::LEGACY))
     );
 }

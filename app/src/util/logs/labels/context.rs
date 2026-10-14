@@ -3,7 +3,7 @@
 //! shown only while its window holds more than one context. Neither switches
 //! anything itself. Each asks the window by dispatching
 //! [`SwitchLabelLogsContext`], and `MainWindow` replaces the panel with one in
-//! the context asked for (D1), or focuses that context's own typed panel (D2).
+//! the context asked for (D1).
 
 use super::*;
 use crate::util::logs::commands::{PICK_CONTEXT_KEY, SwitchLabelLogsContext};
@@ -114,6 +114,12 @@ impl LogsPanel {
                 .content(move |content, _window, _cx| content.child(picker.clone()))
         });
         state.update(cx, |state, cx| state.focus(window, cx));
+    }
+
+    /// The panel's own target - a typed panel's, with its identity - which a
+    /// replacement in another context keeps (`selector-logs-multiple-panels` D4).
+    pub(crate) fn label_target(&self) -> NavTarget {
+        self.scope.target.clone()
     }
 
     /// What a replacement panel carries over (D1): the selector's text and the
