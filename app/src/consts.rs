@@ -315,6 +315,11 @@ pub(crate) const MCP_CONNECT_SETTLE: Duration = Duration::from_secs(20);
 /// How often `connect_context` looks at a connection while it settles.
 pub(crate) const MCP_CONNECT_POLL: Duration = Duration::from_millis(100);
 
+/// `fernrohr mcp`: how often the adapter checks whether the process that
+/// launched it has exited, so it stops with a client that died without closing
+/// its stdin (`cli-help-and-shutdown` D3).
+pub(crate) const MCP_PARENT_POLL: Duration = Duration::from_secs(1);
+
 /// `agent-mcp`: the most Pods one `delete_pods` call may name (design.md).
 pub(crate) const MCP_DELETE_PODS_MAX: usize = 10;
 
