@@ -58,7 +58,7 @@ base64 = "=0.23.1"
 rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"] }
 # The MCP endpoint's per-launch token (`mcp::endpoint`). Already in the build
 # through ahash and rand_core; pinned to that same version.
-getrandom = "=0.3.4"
+getrandom = "=0.4.3"
 # The MCP tools' input schemas, derived from their typed inputs
 # (`mcp::tools::ToolSpec::for_input`). Already in the build through gpui-base
 # and rmcp, with its derive; pinned to that same version.
