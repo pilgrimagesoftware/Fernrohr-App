@@ -69,7 +69,7 @@ schemars = "=1.2.2"
 # build through gpui, with these default features; pinned to that same
 # version. Unix only: the app posts none on Windows.
 [target.'cfg(unix)'.dependencies]
-notify-rust = "=4.18.1"
+notify-rust = "=4.18.2"
 
 # The user's accent colour for the focused-panel mark (`ui::accent`). Already
 # in the build through gpui's macOS backend; pinned to that same version.
