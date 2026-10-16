@@ -358,6 +358,10 @@ pub(crate) const BULK_LOGS_WITHOUT_CONFIRM: usize = 5;
 /// is reported as not evicted, so the rest of the batch isn't held up.
 pub(crate) const BULK_EVICTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// The exec library's file, in the preference directory
+/// (`exec-command-library`).
+pub(crate) const EXEC_LIBRARY_FILE: &str = "exec-library.toml";
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.

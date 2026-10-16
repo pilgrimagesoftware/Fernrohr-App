@@ -10,6 +10,7 @@ pub mod confirm_dialog;
 pub mod confirm_text;
 pub mod copy;
 pub mod detail;
+pub(crate) mod exec_library;
 pub mod forward_indicator;
 pub mod forward_stop;
 pub mod icon;

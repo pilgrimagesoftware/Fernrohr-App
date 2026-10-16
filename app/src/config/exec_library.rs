@@ -125,11 +125,13 @@ pub enum EntryError {
     NoWorkloadName,
     /// No entry has the name.
     NotFound,
+    /// The library file didn't parse, so nothing may change until it's fixed.
+    ReadOnly,
 }
 
 impl EntryError {
     /// The field to show the error beside; `None` for one that belongs to no
-    /// field (`NotFound`).
+    /// field (`NotFound`, `ReadOnly`).
     pub fn field(&self) -> Option<Field> {
         match self {
             Self::EmptyName | Self::NameTaken => Some(Field::Name),
@@ -137,7 +139,7 @@ impl EntryError {
             Self::Selector(_) => Some(Field::Selector),
             Self::NoNamespace => Some(Field::Namespace),
             Self::NoWorkloadName => Some(Field::WorkloadName),
-            Self::NotFound => None,
+            Self::NotFound | Self::ReadOnly => None,
         }
     }
 }
@@ -153,6 +155,9 @@ impl fmt::Display for EntryError {
             Self::NoNamespace => f.write_str("A workload target needs a namespace."),
             Self::NoWorkloadName => f.write_str("A workload target needs a name."),
             Self::NotFound => f.write_str("There is no entry with that name."),
+            Self::ReadOnly => f.write_str(
+                "exec-library.toml has an error, so the library can't be changed until it's fixed.",
+            ),
         }
     }
 }
