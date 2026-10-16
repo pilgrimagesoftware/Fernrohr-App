@@ -86,6 +86,21 @@ impl ClusterRegistry {
         }
     }
 
+    /// `context_name`'s table of `kind` if some panel is watching it - its
+    /// objects as already listed. Unlike [`Self::subscribe_kind`], never starts a
+    /// watch: for a reader that only uses what is cached (the exec library's
+    /// applies-to check and prefill, `exec-command-library` D3, D4).
+    pub fn existing_kind(
+        cx: &App,
+        context_name: &str,
+        kind: &DiscoveredKind,
+    ) -> Option<Entity<ObjectsTable>> {
+        cx.try_global::<Self>()
+            .and_then(|registry| registry.sessions.get(context_name))
+            .and_then(|session| session.kinds.get(kind))
+            .map(|watch| watch.table.clone())
+    }
+
     /// Test-only: whether `context_name` is consuming a watch of `kind` right now.
     #[cfg(test)]
     pub(crate) fn kind_watch_running(cx: &App, context_name: &str, kind: &DiscoveredKind) -> bool {

@@ -7,6 +7,7 @@
 pub(crate) mod chooser;
 pub(crate) mod commands;
 pub(crate) mod dialog;
+pub(crate) mod resource;
 pub(crate) mod run;
 pub(crate) mod store;
 pub(crate) mod window;

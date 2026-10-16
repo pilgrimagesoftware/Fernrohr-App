@@ -16,6 +16,9 @@ use gpui_kit::{AppContext as _, Entity, TestAppContext, VisualTestContext};
 use serde_json::json;
 
 pub(crate) const OPEN_KEY: &str = "f12";
+/// Run from Library… and Save to Library…, which have no keys by default.
+pub(crate) const RUN_FROM_KEY: &str = "f11";
+pub(crate) const SAVE_FROM_KEY: &str = "f10";
 
 pub(crate) struct Harness {
     pub(crate) main: Entity<MainWindow>,
@@ -44,7 +47,11 @@ pub(crate) fn open(cx: &mut TestAppContext, entries: Vec<Entry>) -> Harness {
     let keymap = crate::util::test_paths::temp_path("exec-library-keymap");
     std::fs::write(
         &keymap,
-        format!("[bindings]\n\"exec_library.open\" = \"{OPEN_KEY}\"\n"),
+        format!(
+            "[bindings]\n\"exec_library.open\" = \"{OPEN_KEY}\"\n\
+             \"exec_library.run_from\" = \"{RUN_FROM_KEY}\"\n\
+             \"exec_library.save_from\" = \"{SAVE_FROM_KEY}\"\n"
+        ),
     )
     .expect("the test keymap is written");
     cx.update(|cx| {
@@ -122,7 +129,7 @@ impl Harness {
             .vcx
             .update(|_, cx| super::window::test_handle(cx))
             .expect("the library window opened");
-        let mut library = VisualTestContext::from_window(handle.into(), &self.vcx);
+        let library = VisualTestContext::from_window(handle.into(), &self.vcx);
         library.run_until_parked();
         library
     }

@@ -19,12 +19,18 @@ actions!(
         EditEntry,
         DuplicateEntry,
         DeleteEntry,
-        SaveAndRun
+        SaveAndRun,
+        RunFromLibrary,
+        SaveToLibrary
     ]
 );
 
 /// The window's key context.
 pub(crate) const WINDOW_CONTEXT: &str = "ExecLibraryWindow";
+/// Added by every row and detail panel that can run from or save to the
+/// library: Pods, Deployments, StatefulSets, DaemonSets and Services.
+pub(crate) const RESOURCE_CONTEXT: &str = "ExecLibraryResource";
+
 /// The entry dialog's key context.
 pub(crate) const ENTRY_CONTEXT: &str = "ExecLibraryEntry";
 
@@ -82,6 +88,27 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             title,
             default_binding,
             context: Some("ExecLibraryWindow && !Input"),
+            action,
+            menu: None,
+        });
+    }
+    for (id, title, action) in [
+        (
+            "exec_library.run_from",
+            "Run from Library…",
+            Box::new(RunFromLibrary) as Box<dyn Action>,
+        ),
+        (
+            "exec_library.save_from",
+            "Save to Library…",
+            Box::new(SaveToLibrary),
+        ),
+    ] {
+        registry.register(Command {
+            id,
+            title,
+            default_binding: "",
+            context: Some("ExecLibraryResource && !Input"),
             action,
             menu: None,
         });

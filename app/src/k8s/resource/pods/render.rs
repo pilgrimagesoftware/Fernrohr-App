@@ -289,6 +289,7 @@ impl Render for PodsPanel {
         }
         let panel =
             crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.pod_table.clone(), cx);
+        let panel = Self::on_exec_library_actions(panel, &mut key_context, cx);
         let panel = crate::ui::bulk::on_bulk_actions(panel, cx)
             .size_full()
             .key_context(key_context)

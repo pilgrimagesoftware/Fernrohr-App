@@ -187,9 +187,19 @@ fn launch(
 
 /// Reports that `entry` couldn't run, and why, as a notification.
 pub(crate) fn report(entry: &Entry, reason: &str, window: &mut Window, cx: &mut App) {
+    notify(
+        &format!("Couldn't run “{}”", entry.name),
+        reason,
+        window,
+        cx,
+    );
+}
+
+/// A notification titled `title` saying `reason`.
+pub(crate) fn notify(title: &str, reason: &str, window: &mut Window, cx: &mut App) {
     use gpui_kit::component::WindowExt as _;
     use gpui_kit::component::notification::Notification;
-    let title = format!("Couldn't run “{}”", entry.name);
+    let title = title.to_string();
     #[cfg(test)]
     cx.default_global::<Reported>()
         .0
