@@ -279,6 +279,23 @@ and a detail panel while its object is. A Services list keeps its own
 | ServiceAccount: Create Token | <kbd>⇧K</kbd> | `KindCreateToken && !Input` | — | `kind.create_token` |
 | Ingress: Open Host in Browser | <kbd>⇧O</kbd> | `KindOpenHost && !Input` | — | `kind.open_host` |
 
+### Exec library
+
+Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and detail panels, add
+`ExecLibraryResource`.
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Open Exec Library | — | Global | Context | `exec_library.open` |
+| Exec Library: Run | <kbd>↵</kbd> | `ExecLibraryWindow && !Input` | — | `exec_library.run` |
+| Exec Library: New Entry… | <kbd>N</kbd> | `ExecLibraryWindow && !Input` | — | `exec_library.new` |
+| Exec Library: Edit Entry… | <kbd>E</kbd> | `ExecLibraryWindow && !Input` | — | `exec_library.edit` |
+| Exec Library: Duplicate Entry | <kbd>D</kbd> | `ExecLibraryWindow && !Input` | — | `exec_library.duplicate` |
+| Exec Library: Delete Entry… | <kbd>⌘⌫</kbd> | `ExecLibraryWindow && !Input` | — | `exec_library.delete` |
+| Exec Library: Save and Run | <kbd>⌘↵</kbd> | `ExecLibraryEntry` | — | `exec_library.save_and_run` |
+| Run from Library… | — | `ExecLibraryResource && !Input` | — | `exec_library.run_from` |
+| Save to Library… | — | `ExecLibraryResource && !Input` | — | `exec_library.save_from` |
+
 ### Object detail panel
 
 | Command | Default binding | Context | Menu | ID |

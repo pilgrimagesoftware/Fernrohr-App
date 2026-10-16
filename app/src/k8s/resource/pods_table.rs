@@ -322,6 +322,7 @@ impl TableDelegate for PodTableDelegate {
         use super::pods::{
             DescribePod, OpenInNewPanel, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml,
         };
+        use crate::ui::exec_library::commands::{RunFromLibrary, SaveToLibrary};
         if row_ix >= self.rows.len() {
             return menu;
         }
@@ -346,6 +347,9 @@ impl TableDelegate for PodTableDelegate {
                 Box::new(super::pods::PortForwardPod),
                 !self.rows[row_ix].row.forwardable(),
             )
+            .separator()
+            .menu("Run from Library…", Box::new(RunFromLibrary))
+            .menu("Save to Library…", Box::new(SaveToLibrary))
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,

@@ -44,6 +44,7 @@ mod arrange;
 mod contexts;
 mod empty_dock;
 mod exec;
+mod exec_library;
 mod follow;
 mod layout;
 mod logs_context;
@@ -55,7 +56,8 @@ mod new_instance;
 mod sort_defaults;
 mod tab_menu;
 mod warp;
-pub(crate) use exec::OpenExecSession;
+pub(crate) use exec::{OpenExecSession, open_exec};
+pub(crate) use exec_library::focused_context;
 pub(crate) use warp::WarpContextToNamespace;
 #[cfg(test)]
 mod bulk_logs_tests;

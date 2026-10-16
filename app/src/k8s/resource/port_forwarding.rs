@@ -13,8 +13,6 @@ use gpui_kit::*;
 use k8s_openapi::api::core::v1::{Pod, Service};
 use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use kube::Api;
-use kube::api::ListParams;
-use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 
@@ -74,21 +72,9 @@ pub(crate) fn service_ports(service: &Service) -> Vec<PortChoice> {
         .collect()
 }
 
-/// Whether `labels` carry every pair `selector` asks for. An empty selector
-/// matches nothing: a Service without one has no Pods of its own.
-pub(crate) fn matches_selector(
-    labels: Option<&BTreeMap<String, String>>,
-    selector: &BTreeMap<String, String>,
-) -> bool {
-    !selector.is_empty()
-        && selector
-            .iter()
-            .all(|(key, value)| labels.and_then(|labels| labels.get(key)) == Some(value))
-}
-
-/// The Pod and Pod port a forward of `service`'s `service_port` goes to: one
-/// of the Pods it selects that is Running, and the port its `targetPort` names
-/// there - by number, or by the container port's name.
+/// The Pod and Pod port a forward of `service`'s `service_port` goes to: the
+/// first Running Pod it selects (`pod_resolver::running_pods`), and the port
+/// its `targetPort` names there - by number, or by the container port's name.
 pub(crate) async fn resolve_service(
     client: kube::Client,
     namespace: &str,
@@ -107,18 +93,21 @@ pub(crate) async fn resolve_service(
         .flatten()
         .find(|port| port.port == i32::from(service_port))
         .ok_or_else(|| format!("The service has no port {service_port}."))?;
+    // A Service without a selector has no pods of its own.
     let selector = spec.selector.unwrap_or_default();
-    let pods: Api<Pod> = Api::namespaced(client, namespace);
-    let listed = pods
-        .list(&ListParams::default())
-        .await
-        .map_err(|error| crate::k8s::error::describe(&error))?;
-    let pod = listed
-        .items
+    let none_running = || "None of the service's pods is Running.".to_string();
+    if selector.is_empty() {
+        return Err(none_running());
+    }
+    let selector: kube::core::Selector = selector
         .into_iter()
-        .filter(|pod| matches_selector(pod.metadata.labels.as_ref(), &selector))
-        .find(|pod| pod.status.as_ref().and_then(|s| s.phase.as_deref()) == Some("Running"))
-        .ok_or_else(|| "None of the service's pods is Running.".to_string())?;
+        .map(|(key, value)| kube::core::Expression::Equal(key, value))
+        .collect();
+    let pod = crate::k8s::pod_resolver::running_pods(client, Some(namespace), &selector)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(none_running)?;
     let target = match &port.target_port {
         None => Some(service_port),
         Some(IntOrString::Int(number)) => u16::try_from(*number).ok(),

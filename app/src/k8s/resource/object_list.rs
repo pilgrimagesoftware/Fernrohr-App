@@ -8,6 +8,7 @@ mod bulk;
 mod columns;
 mod commands;
 mod delete;
+mod exec_library;
 mod kind_actions;
 mod panel;
 mod poll;

@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 pub mod dock_layouts;
+pub mod exec_library;
 pub mod namespaces;
 pub mod saved_layouts;
 pub mod tunnels;
@@ -29,6 +30,29 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
     }
     let contents = toml::to_string_pretty(value).expect("config struct must serialize to TOML");
     fs::write(path, contents)
+}
+
+static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Writes `contents` to `path` atomically: a temp file in the same directory,
+/// then `fs::rename`d onto `path`. A same-filesystem rename is atomic on macOS
+/// and Linux, so an interruption leaves `path`'s previous content or its new
+/// content, never a partial file. The directory must exist.
+pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::sync::atomic::Ordering;
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("config");
+    let tmp_name = format!(
+        ".{file_name}.tmp-{}-{}",
+        std::process::id(),
+        TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+    let tmp_path = dir.join(tmp_name);
+    fs::write(&tmp_path, contents)?;
+    fs::rename(&tmp_path, path)
 }
 
 #[cfg(test)]

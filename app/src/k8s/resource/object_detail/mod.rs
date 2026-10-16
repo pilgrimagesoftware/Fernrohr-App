@@ -17,6 +17,7 @@ mod commands;
 mod delete;
 mod edit;
 mod edit_view;
+mod exec_library;
 mod fetch;
 mod kind_actions;
 mod live;

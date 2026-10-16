@@ -40,7 +40,7 @@ pub(super) const DISMISS_REFUSAL_ID: &str = "pod-detail-refusal-dismiss";
 
 impl PodDetailPanel {
     /// The pod, while there is one to act on: loaded and not known gone.
-    fn live_pod(&self) -> Option<&k8s_openapi::api::core::v1::Pod> {
+    pub(super) fn live_pod(&self) -> Option<&k8s_openapi::api::core::v1::Pod> {
         let gone = matches!(self.notice, Some(Lifecycle::Deleted { .. }));
         match &self.state {
             PodDetailState::Loaded(pod) if !gone => Some(pod),

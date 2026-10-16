@@ -38,6 +38,7 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
             namespace: "staging".into(),
             pod: "web-1".into(),
             container: "app".into(),
+            command: None,
         }),
     ];
 
