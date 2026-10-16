@@ -38,6 +38,15 @@ Copy the command from the running app rather than typing it, because the path in
 
 The connection between `fernrohr mcp` and the app is a Unix-domain socket in your per-user runtime directory, readable only by you and checked against a token that changes every launch. It is never a network port. Windows has no agent access yet, and the section says so.
 
+To see what the command does, ask it for help. Neither of these opens the app or touches a running one:
+
+```sh
+'/path/to/fernrohr' --help
+'/path/to/fernrohr' mcp --help
+```
+
+`fernrohr mcp` ends when the agent's client closes it, stops it, or exits, so it doesn't stay running after the agent session. Any argument Fernrohr doesn't recognize prints an error and the usage instead of starting the app.
+
 ## What an agent can do
 
 An agent can only use the clusters Fernrohr already has open, through the same sessions the app uses. It never gets Kubernetes credentials, kubeconfig contents, authorization headers or tunnel secrets, and error messages are cleaned of them.
