@@ -175,7 +175,12 @@ impl PodDetailPanel {
 
     /// The acting keys' hints, after Logs: Shell while `shellable`, Port
     /// forward while there is a pod to act on, Delete while it can be deleted.
-    pub(super) fn acting_hints(&self, shellable: bool, window: &Window, cx: &App) -> Vec<Div> {
+    pub(super) fn acting_hints(
+        &self,
+        shellable: bool,
+        window: &Window,
+        cx: &App,
+    ) -> Vec<crate::ui::key_hint_row::KeyHint> {
         // Port forward needs a Running pod (`resource-specific-actions`).
         let forwardable = self
             .live_pod()
@@ -187,15 +192,9 @@ impl PodDetailPanel {
             let key = Kbd::binding_for_action(action, Some(context), window)
                 .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("valid keybinding")));
             let selector = hint_selector(label);
-            div()
-                .debug_selector(move || selector)
-                .flex()
-                .flex_shrink_0()
-                .items_center()
-                .gap_1()
-                .whitespace_nowrap()
-                .child(key)
-                .child(label)
+            crate::ui::key_hint_row::KeyHint::styled(key, label, |body| {
+                body.debug_selector(move || selector)
+            })
         };
         let mut hints = Vec::new();
         if shellable {

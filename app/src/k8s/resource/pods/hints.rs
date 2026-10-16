@@ -5,7 +5,7 @@
 //! forward while the selected pod has one (`port-forward-indicators` 4.1).
 
 use super::*;
-use crate::ui::list_search::ListSearch;
+use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use commands::{LOGS_FLIPPED_KEY, PORT_FORWARD_KEY, SHELL_KEY};
 use gpui_kit::prelude::FluentBuilder as _;
 
@@ -15,65 +15,76 @@ pub(super) fn hint_selector(label: &str) -> String {
 }
 
 /// One hint: `action`'s live key in the panel, else `fallback`, then `label`.
-fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &mut Window) -> Div {
+fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &Window) -> KeyHint {
     let selector = hint_selector(label);
-    ListSearch::hint(action, PANEL_KEY_CONTEXT, fallback, label, window)
-        .debug_selector(move || selector)
+    KeyHint::styled(
+        crate::ui::key_hint_row::live_key(action, Some(PANEL_KEY_CONTEXT), fallback, window),
+        label,
+        |body| body.debug_selector(move || selector),
+    )
 }
+
+/// The row's id, which keeps whether it is collapsed.
+pub(super) const HINTS_ID: &str = "pods-hints";
 
 impl PodsPanel {
     /// The row, for a selection that `shellable` says can take a shell.
-    pub(super) fn render_hints(&self, shellable: bool, window: &mut Window, cx: &App) -> Div {
+    /// Filter and Describe stay when a narrow panel collapses it
+    /// (`key-hint-rows` D2).
+    pub(super) fn render_hints(
+        &self,
+        shellable: bool,
+        window: &mut Window,
+        cx: &App,
+    ) -> KeyHintRow {
         let selected = self.table_selection(cx).is_some();
         let stoppable = !self.selected_forwards(cx).is_empty();
-        div()
-            .flex()
-            .flex_wrap()
-            .gap(crate::ui::space::spacing(cx).control_gap)
+        KeyHintRow::new(HINTS_ID)
+            .hint_gap(crate::ui::space::spacing(cx).control_gap)
             .text_sm()
             .text_color(cx.theme().muted_foreground)
-            .child(hint(&FocusFilter, FILTER_KEY, "Filter", window))
-            .child(hint(&QuickLook, QUICK_LOOK_KEY, "Quick look", window))
-            .child(hint(&WarpNamespace, NAMESPACE_KEY, "Namespace", window))
-            .child(hint(
+            .hint(hint(&FocusFilter, FILTER_KEY, "Filter", window).essential())
+            .hint(hint(&QuickLook, QUICK_LOOK_KEY, "Quick look", window))
+            .hint(hint(&WarpNamespace, NAMESPACE_KEY, "Namespace", window))
+            .hint(hint(
                 &WarpAllToNamespace,
                 WARP_ALL_KEY,
                 "All panels",
                 window,
             ))
-            .child(hint(
+            .hint(hint(
                 &crate::ui::namespace_picker::PickNamespaces,
                 crate::ui::namespace_picker::PICK_NAMESPACES_KEY,
                 "Pick namespaces",
                 window,
             ))
-            .child(hint(&DescribePod, DESCRIBE_KEY, "Describe", window))
-            .child(hint(
+            .hint(hint(&DescribePod, DESCRIBE_KEY, "Describe", window).essential())
+            .hint(hint(
                 &OpenInBackground,
                 OPEN_IN_BACKGROUND_KEY,
                 "Background",
                 window,
             ))
-            .child(hint(
+            .hint(hint(
                 &OpenInNewPanel,
                 OPEN_IN_NEW_PANEL_KEY,
                 "New panel",
                 window,
             ))
-            .child(hint(&ShowPodLogs, LOGS_KEY, "Logs", window))
-            .child(hint(
+            .hint(hint(&ShowPodLogs, LOGS_KEY, "Logs", window))
+            .hint(hint(
                 &ShowPodLogsFlipped,
                 LOGS_FLIPPED_KEY,
                 crate::ui::logs_panels::flipped_label(cx),
                 window,
             ))
-            .child(hint(&ShowPodYaml, YAML_KEY, "YAML", window))
-            .child(crate::ui::bulk::commands::check_hint(window))
+            .hint(hint(&ShowPodYaml, YAML_KEY, "YAML", window))
+            .hint(crate::ui::bulk::commands::check_hint(window))
             .when(shellable, |row| {
-                row.child(hint(&ShellPod, SHELL_KEY, "Shell", window))
+                row.hint(hint(&ShellPod, SHELL_KEY, "Shell", window))
             })
             .when(selected, |row| {
-                row.child(hint(
+                row.hint(hint(
                     &PortForwardPod,
                     PORT_FORWARD_KEY,
                     "Port forward",
@@ -81,7 +92,7 @@ impl PodsPanel {
                 ))
             })
             .when(stoppable, |row| {
-                row.child(hint(
+                row.hint(hint(
                     &StopPortForward,
                     crate::k8s::resource::pods::STOP_PORT_FORWARD_KEY,
                     "Stop forward",

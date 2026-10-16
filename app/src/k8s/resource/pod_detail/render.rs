@@ -11,6 +11,7 @@ use super::commands::{
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
+use crate::ui::key_hint_row::KeyHint;
 use crate::ui::panel_title;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
@@ -21,6 +22,9 @@ use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use jiff::Timestamp;
+
+/// The header hint row's id, which keeps whether it is collapsed.
+pub(super) const HEADER_HINTS_ID: &str = "pod-detail-hints";
 
 impl PodDetailPanel {
     fn render_structured(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
@@ -212,36 +216,21 @@ impl Render for PodDetailPanel {
             .unwrap_or_else(|| {
                 Kbd::new(Keystroke::parse(VIEW_LOGS_KEY).expect("valid keybinding"))
             });
-        let logs_hint = div()
-            .flex()
-            .flex_shrink_0()
-            .items_center()
-            .gap_1()
-            .whitespace_nowrap()
-            .child(logs_key)
-            .child("Logs");
+        let logs_hint = KeyHint::new(logs_key, "Logs");
         let logs_flipped_key =
             Kbd::binding_for_action(&ViewLogsFlipped, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| {
                     Kbd::new(Keystroke::parse(VIEW_LOGS_FLIPPED_KEY).expect("valid keybinding"))
                 });
-        let logs_flipped_hint = div()
-            .flex()
-            .flex_shrink_0()
-            .items_center()
-            .gap_1()
-            .whitespace_nowrap()
-            .child(logs_flipped_key)
-            .child(crate::ui::logs_panels::flipped_label(cx));
+        let logs_flipped_hint =
+            KeyHint::new(logs_flipped_key, crate::ui::logs_panels::flipped_label(cx));
         let shellable = !self.running().is_empty();
         let deletable = self.deletable(cx);
         let acting_hints = self.acting_hints(shellable, window, cx);
-        let toggle_hint = div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .child(toggle_key)
-            .child(if yaml { "Show fields" } else { "Show YAML" });
+        // Essential (`key-hint-rows` D2): with the tab keys, it switches what
+        // the panel shows.
+        let toggle_hint =
+            KeyHint::new(toggle_key, if yaml { "Show fields" } else { "Show YAML" }).essential();
         // Built before `tab_key`, which holds `window` for the rest of the
         // header: drawing the icon needs it mutably.
         let heading = panel_title::with_header_icon(
@@ -292,41 +281,26 @@ impl Render for PodDetailPanel {
             .border_color(cx.theme().border)
             .child(panel_title::header_title(heading))
             .child(
-                panel_title::header_hints()
-                    .gap_x(space.control_gap)
-                    .gap_y_1()
+                panel_title::header_hints(HEADER_HINTS_ID)
+                    .hint_gap(space.control_gap)
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .when(!yaml, |this| {
-                        this.children(DetailSection::ALL.iter().map(|section| {
-                            div()
-                                .flex()
-                                .flex_shrink_0()
-                                .items_center()
-                                .gap_1()
-                                .whitespace_nowrap()
-                                .child(tab_key(*section))
-                                .child(section.label())
+                        this.hints(DetailSection::ALL.iter().map(|section| {
+                            KeyHint::new(tab_key(*section), section.label()).essential()
                         }))
                     })
                     .when(has_links, |this| {
-                        this.child(
-                            div()
-                                .id("go-to-hint")
-                                .flex()
-                                .flex_shrink_0()
-                                .items_center()
-                                .gap_1()
-                                .whitespace_nowrap()
-                                .child(crate::ui::link::go_to_key(window))
-                                .child("Go to…")
-                                .test_support(),
-                        )
+                        this.hint(KeyHint::styled(
+                            crate::ui::link::go_to_key(window),
+                            "Go to…",
+                            |body| body.id("go-to-hint").test_support(),
+                        ))
                     })
-                    .child(logs_hint)
-                    .child(logs_flipped_hint)
-                    .children(acting_hints)
-                    .child(toggle_hint.flex_shrink_0().whitespace_nowrap()),
+                    .hint(logs_hint)
+                    .hint(logs_flipped_hint)
+                    .hints(acting_hints)
+                    .hint(toggle_hint),
             );
 
         Self::with_window_actions(div(), cx)

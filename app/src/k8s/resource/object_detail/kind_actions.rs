@@ -38,19 +38,20 @@ impl KindHost for ObjectDetailPanel {
 
 impl ObjectDetailPanel {
     /// The header's mouse and keyboard routes to what the object is offered:
-    /// an icon button each, then each one's key hint.
-    pub(super) fn kind_header(&self, window: &mut Window, cx: &App) -> Vec<AnyElement> {
+    /// an icon button each, always drawn, and each one's key hint.
+    pub(super) fn kind_header(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> (Vec<AnyElement>, Vec<crate::ui::key_hint_row::KeyHint>) {
         let offered = self
             .kind_target(cx)
             .map(|target| target.offered())
             .unwrap_or_default();
-        let mut header = crate::ui::kind_actions::buttons(&offered);
-        header.extend(
-            crate::ui::kind_actions::hints(&offered, window)
-                .into_iter()
-                .map(IntoElement::into_any_element),
-        );
-        header
+        (
+            crate::ui::kind_actions::buttons(&offered),
+            crate::ui::kind_actions::hints(&offered, window),
+        )
     }
 }
 

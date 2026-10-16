@@ -91,14 +91,17 @@ pub(crate) fn menu_entries<T: KindHost>(
 
 /// The hint row's entry for each of `offered`: its key from the live keymap,
 /// and its label.
-pub(crate) fn hints(offered: &[KindAction], window: &mut Window) -> Vec<Div> {
+pub(crate) fn hints(
+    offered: &[KindAction],
+    window: &Window,
+) -> Vec<crate::ui::key_hint_row::KeyHint> {
     offered
         .iter()
         .map(|kind_action| {
             let command = command(*kind_action);
-            crate::ui::list_search::ListSearch::hint(
+            crate::ui::key_hint_row::KeyHint::for_action(
                 &*action(*kind_action),
-                command.gate,
+                Some(command.gate),
                 command.key,
                 kind_action.label(),
                 window,
