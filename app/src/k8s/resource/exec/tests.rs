@@ -342,3 +342,37 @@ async fn the_shells_rows_fit_the_pane_at_full_line_height(cx: &mut TestAppContex
         );
     }
 }
+
+/// `key-hint-rows` 2.3: the shell's hint row lists only its reserved keys and
+/// never collapses - in a narrow window they are all still drawn and there is
+/// no overflow control.
+#[gpui_kit::test]
+async fn the_shells_hint_row_does_not_collapse_when_narrow(cx: &mut TestAppContext) {
+    use crate::ui::key_hint_row::{control_selector, row_selector};
+    use gpui_kit::{px, size};
+    let mut h = open(cx);
+    h.vcx.simulate_resize(size(px(260.), px(700.)));
+    for _ in 0..3 {
+        h.vcx.update(|window, cx| window.render_frame(cx));
+        h.vcx.run_until_parked();
+    }
+    assert!(h.drawn(HINTS), "the reserved keys are listed");
+    let hints = h.vcx.debug_bounds(HINTS).expect("the hint row");
+    // Every reserved key's label is in the row, none hidden behind a control.
+    for label in ["Copy", "Paste", "Commands"] {
+        assert!(
+            !h.drawn(hidden_label(label)),
+            "{label} is not in an overflow tooltip"
+        );
+    }
+    for id in [HINTS, "exec-hints", "exec"] {
+        assert!(!h.drawn(control_selector(id).leak()));
+        assert!(!h.drawn(row_selector(id, true).leak()));
+        assert!(!h.drawn(row_selector(id, false).leak()));
+    }
+    assert!(hints.size.width > px(0.));
+}
+
+fn hidden_label(label: &str) -> &'static str {
+    crate::ui::key_hint_row::hidden_selector(label).leak()
+}
