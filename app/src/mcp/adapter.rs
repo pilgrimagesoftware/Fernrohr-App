@@ -25,11 +25,14 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{RoleServer, ServerHandler, ServiceExt};
 use serde_json::{Value, json};
+use shutdown::Stop;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+mod shutdown;
+
 /// Runs `fernrohr mcp` on this process's stdin and stdout until the client
-/// closes them, and returns the exit code.
+/// goes away, and returns the exit code.
 pub(super) fn run() -> i32 {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -42,8 +45,19 @@ pub(super) fn run() -> i32 {
         }
     };
     let client = AppClient::new(EndpointPaths::default_location());
-    match runtime.block_on(serve(client, rmcp::transport::stdio())) {
-        Ok(()) => 0,
+    // Taken before anything awaits, so a parent that exits during startup still
+    // counts as a change.
+    let parent = std::os::unix::process::parent_id();
+    let ended = runtime.block_on(serve(
+        client,
+        rmcp::transport::stdio(),
+        shutdown::client_gone(parent),
+    ));
+    // Not a plain drop: dropping the runtime waits for its blocking pool, and
+    // stdin's reader sits there until someone writes, which may be never.
+    runtime.shutdown_background();
+    match ended {
+        Ok(stop) => stop.exit_code(),
         Err(error) => {
             // stdout is the protocol stream; diagnostics go to stderr, which
             // MCP clients collect as the server's log.
@@ -54,18 +68,31 @@ pub(super) fn run() -> i32 {
 }
 
 /// Serves MCP over `transport` - stdio in production, an in-memory pipe in
-/// tests - forwarding to the app behind `client`.
-pub(super) async fn serve<R, W>(client: AppClient, transport: (R, W)) -> Result<(), String>
+/// tests - forwarding to the app behind `client`, until the client closes the
+/// transport or `shutdown` resolves first. Shutdown abandons the session,
+/// handshake and in-flight requests included: dropping rmcp's running service
+/// cancels it.
+pub(super) async fn serve<R, W>(
+    client: AppClient,
+    transport: (R, W),
+    shutdown: impl Future<Output = Stop>,
+) -> Result<Stop, String>
 where
     R: AsyncRead + Send + Unpin + 'static,
     W: AsyncWrite + Send + Unpin + 'static,
 {
-    let running = Adapter { client }
-        .serve(transport)
-        .await
-        .map_err(|error| error.to_string())?;
-    running.waiting().await.map_err(|error| error.to_string())?;
-    Ok(())
+    let session = async {
+        let running = Adapter { client }
+            .serve(transport)
+            .await
+            .map_err(|error| error.to_string())?;
+        running.waiting().await.map_err(|error| error.to_string())?;
+        Ok(Stop::Closed)
+    };
+    tokio::select! {
+        ended = session => ended,
+        stop = shutdown => Ok(stop),
+    }
 }
 
 struct Adapter {

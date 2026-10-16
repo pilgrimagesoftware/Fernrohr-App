@@ -23,7 +23,11 @@ impl McpClient {
     /// MCP initialization with it.
     pub(in crate::mcp) async fn connect(paths: EndpointPaths) -> Self {
         let (ours, theirs) = tokio::io::duplex(1 << 20);
-        tokio::spawn(serve(AppClient::new(paths), tokio::io::split(theirs)));
+        tokio::spawn(serve(
+            AppClient::new(paths),
+            tokio::io::split(theirs),
+            std::future::pending(),
+        ));
         let (reader, writer) = tokio::io::split(ours);
         let mut client = Self {
             lines: BufReader::new(reader).lines(),
