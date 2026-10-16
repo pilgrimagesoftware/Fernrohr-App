@@ -93,7 +93,7 @@ windows-sys = { version = "=0.61.2", features = ["Win32_Graphics_Dwm"] }
 gpui-kit = { version = "=0.7.0", features = ["test-support"] }
 rcgen = "=0.14.10"
 rustls = "=0.23.45"
-tokio-rustls = "=0.26.5"
+tokio-rustls = "=0.26.6"
 tokio-tungstenite = "=0.30.0"
 
 # cargo-packager configuration (`cargo install cargo-packager`). Invoked in CI as
