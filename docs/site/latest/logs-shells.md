@@ -98,6 +98,9 @@ Select a running pod in the Pods panel, or open its detail panel, and open a she
 
 When the pod runs more than one container, Fernrohr asks which one to open the shell in.
 
+To run a saved command instead of a shell, use the exec library. See
+{{ '/latest/exec-library/' | relative_url }}.
+
 The shell is a real terminal (a Kubernetes exec with a TTY). Full-screen programs like `top` and
 `vi`, Tab completion and <kbd>Ctrl</kbd>+<kbd>C</kbd> work as they would locally. ANSI colors show,
 and the terminal resizes with its panel, so splitting the panel group makes a running full-screen

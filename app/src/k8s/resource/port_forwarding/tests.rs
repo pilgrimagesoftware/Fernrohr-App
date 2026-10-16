@@ -1,12 +1,11 @@
 //! What a resource offers to forward, and where a Service's forward goes: its
 //! selected, Running Pod and the port its `targetPort` names there.
 
-use super::{matches_selector, pod_ports, resolve_service, service_ports};
+use super::{pod_ports, resolve_service, service_ports};
 use crate::k8s::test_cluster::FakeCluster;
 use gpui_kit::TestAppContext;
 use k8s_openapi::api::core::v1::{Pod, Service};
 use serde_json::json;
-use std::collections::BTreeMap;
 
 fn web_pod(name: &str, phase: &str, app: &str) -> serde_json::Value {
     json!({ "apiVersion": "v1", "kind": "Pod",
@@ -59,21 +58,23 @@ fn a_services_ports_are_its_own_ports() {
     assert_eq!(ports, [80, 9000]);
 }
 
-#[test]
-fn a_selector_matches_only_labels_carrying_all_of_it() {
-    let selector = BTreeMap::from([("app".to_string(), "web".to_string())]);
-    let web = BTreeMap::from([
-        ("app".to_string(), "web".to_string()),
-        ("tier".to_string(), "front".to_string()),
-    ]);
-    let api = BTreeMap::from([("app".to_string(), "api".to_string())]);
-    assert!(matches_selector(Some(&web), &selector));
-    assert!(!matches_selector(Some(&api), &selector));
-    assert!(!matches_selector(None, &selector));
-    assert!(
-        !matches_selector(Some(&web), &BTreeMap::new()),
-        "no selector, no pods"
-    );
+/// A Service with no selector has no pods of its own: nothing to forward to,
+/// however many pods the namespace holds.
+#[gpui_kit::test]
+async fn a_service_with_no_selector_has_no_pod_to_forward_to(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let (cluster, client) = FakeCluster::start(cx);
+    let mut service = web_service();
+    service["spec"]
+        .as_object_mut()
+        .expect("a spec")
+        .remove("selector");
+    cluster.apply("/api/v1", "services", service);
+    cluster.apply("/api/v1", "pods", web_pod("web-1", "Running", "web"));
+    let handle = cx.update(|cx| crate::runtime::handle(cx));
+    let resolved = handle.block_on(resolve_service(client, "shop", "web", 80));
+    assert!(resolved.unwrap_err().contains("None of the service's pods"));
 }
 
 /// A Service port forwards to a Running Pod it selects - not a Pending one, nor

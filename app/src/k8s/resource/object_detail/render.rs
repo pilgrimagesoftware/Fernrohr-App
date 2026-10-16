@@ -364,7 +364,8 @@ impl Render for ObjectDetailPanel {
             self.pod_logs_workload().is_some(),
         );
         crate::ui::kind_actions::add_key_contexts(self, &mut context, false, cx);
-        crate::ui::kind_actions::on_kind_actions(div(), cx)
+        self.add_exec_library_context(&mut context);
+        Self::on_exec_library_actions(crate::ui::kind_actions::on_kind_actions(div(), cx), cx)
             .size_full()
             .key_context(context)
             .track_focus(&self.focus_handle)

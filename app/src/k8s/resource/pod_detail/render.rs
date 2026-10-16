@@ -316,7 +316,7 @@ impl Render for PodDetailPanel {
                     .hint(toggle_hint),
             );
 
-        Self::with_window_actions(div(), cx)
+        Self::with_exec_library_actions(Self::with_window_actions(div(), cx), cx)
             .size_full()
             .key_context(key_context(shellable, deletable))
             .on_action(cx.listener(Self::on_action_go_to))
@@ -370,5 +370,6 @@ fn key_context(shellable: bool, deletable: bool) -> KeyContext {
         context.add(super::actions::DELETABLE_KEY_CONTEXT);
     }
     context.add(crate::ui::link::LINKS_KEY_CONTEXT);
+    context.add(crate::ui::exec_library::commands::RESOURCE_CONTEXT);
     context
 }

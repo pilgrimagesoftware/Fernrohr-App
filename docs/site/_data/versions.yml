@@ -15,6 +15,7 @@ versions:
       - resources
       - details
       - logs-shells
+      - exec-library
       - tunnels-forwards
       - agents
       - settings
@@ -35,6 +36,8 @@ versions:
         path: details/
       - title: Logs and shells
         path: logs-shells/
+      - title: Exec library
+        path: exec-library/
       - title: Tunnels and forwards
         path: tunnels-forwards/
       - title: Agents

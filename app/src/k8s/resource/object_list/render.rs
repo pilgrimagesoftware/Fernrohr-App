@@ -227,6 +227,7 @@ impl ObjectListPanel {
         if self.lists_services() {
             context.add(super::port_forward::SERVICES_KEY_CONTEXT);
         }
+        self.add_exec_library_context(&mut context);
         context
     }
 
@@ -352,6 +353,7 @@ impl Render for ObjectListPanel {
         let panel =
             crate::ui::list_sort::on_sort_actions(div(), |this: &Self| this.table.clone(), cx);
         let panel = crate::ui::kind_actions::on_kind_actions(panel, cx);
+        let panel = Self::on_exec_library_actions(panel, cx);
         let panel = crate::ui::bulk::on_bulk_actions(panel, cx)
             .size_full()
             .key_context(key_context)

@@ -76,6 +76,10 @@ fn main() {
                 util::paths::preference_dir().join("namespace-sets.toml"),
                 cx,
             );
+            ui::exec_library::store::ExecLibraryStore::init(
+                util::paths::preference_dir().join(consts::EXEC_LIBRARY_FILE),
+                cx,
+            );
             let workspace_path = util::shell::default_workspace_path();
             let keymap_path = util::paths::preference_dir().join("keymap.toml");
             util::shell::init(cx, workspace_path.clone(), &keymap_path);

@@ -22,7 +22,6 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// One saved layout's on-disk shape - the whole content of one file under
 /// `layouts/` (design.md D2).
@@ -154,28 +153,13 @@ fn target_path(dir: &Path, stem: &str, display_name: &str, reuse: Option<&Path>)
     }
 }
 
-static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-/// Writes `layout` to `path` atomically: a temp file in the same directory,
-/// then `fs::rename`d onto `path` - a same-filesystem rename is atomic on
-/// both macOS and Linux, so an interruption leaves either `path`'s previous
-/// content or its new content, never a partial file (design.md D2).
+/// Writes `layout` to `path` atomically ([`super::write_atomic`]), so an
+/// interruption leaves either `path`'s previous content or its new content,
+/// never a partial file (design.md D2).
 fn write_atomic(path: &Path, layout: &SavedLayout) -> io::Result<()> {
     let contents =
         serde_json::to_string_pretty(layout).expect("a saved layout must serialize to JSON");
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("saved-layout.json");
-    let tmp_name = format!(
-        ".{file_name}.tmp-{}-{}",
-        std::process::id(),
-        TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-    );
-    let tmp_path = dir.join(tmp_name);
-    fs::write(&tmp_path, contents)?;
-    fs::rename(&tmp_path, path)
+    super::write_atomic(path, &contents)
 }
 
 /// Saves `layout` under `dir` (created with `fs::create_dir_all` if missing),

@@ -221,6 +221,12 @@ A token from Create Token is shown once, the same way a revealed Secret value is
 Copy it before you hide it or close the dialog, because it isn't kept anywhere,
 written to disk or logged. To get another, choose Create Token again.
 
+## Run saved commands
+
+Pods, Deployments, StatefulSets, DaemonSets and Services offer **Run from Library…** and **Save to
+Library…** in their row's right-click menu and the command palette. They run a saved exec command
+on the resource, or save a new one from it. See {{ '/latest/exec-library/' | relative_url }}.
+
 ## Icons and status
 
 Every kind has a full-colour icon from the Kubernetes community icon set. It

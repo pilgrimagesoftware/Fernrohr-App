@@ -4,8 +4,9 @@
 //! change resizes the shell, and an ended session keeps its screen, says how
 //! it ended and takes no more input.
 
-use super::panel::{ExecPanel, ExecTarget, SessionState};
+use super::panel::{ExecPanel, SessionState};
 use super::render::{ENDED, HINTS, INPUT_NOTICE, TERMINAL, ended_notice};
+use super::target::ExecTarget;
 use super::transport::{ExecEnd, ExecTransport};
 use crate::command::CommandRegistry;
 use crate::keymap::{self, KeymapConfig};
@@ -78,6 +79,7 @@ fn open_with_queue(cx: &mut TestAppContext, queue: usize) -> Harness {
         namespace: "shop".into(),
         pod: "web-1".into(),
         container: "app".into(),
+        command: None,
     };
     let mut built = None;
     let window = cx.add_window(|window, cx| {

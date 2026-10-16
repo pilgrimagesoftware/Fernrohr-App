@@ -32,6 +32,7 @@ async fn opening_a_shell_docks_one_panel_per_container(cx: &mut TestAppContext) 
         namespace: "shop".into(),
         pod: "web-1".into(),
         container: "app".into(),
+        command: None,
     };
     let shells = |vcx: &mut VisualTestContext| {
         window
