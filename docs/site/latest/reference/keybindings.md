@@ -366,6 +366,10 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Show Key Hints | <kbd>?</kbd> | `!Input` | — | `global.show_key_hints` |
 | Go to Reference… | <kbd>G</kbd> | `ReferenceLinks` | — | `links.go_to` |
 | Confirm Irreversible Action | <kbd>⌘⌫</kbd> | `Dialog` | — | `dialog.confirm_irreversible` |
+
+Show Key Hints lists every key available where focus is, including the hints a
+narrow panel has hidden behind its **⋯** button. <kbd>↵</kbd> or
+<kbd>Space</kbd> on that button opens it too.
 ## Shortcuts of two keys
 
 Some shortcuts take two keys, such as <kbd>⌘K</kbd> <kbd>←</kbd> to split a panel group. After the first key, the status bar shows the keys so far, such as `⌘K …`. Above it, it lists the keys that would finish a shortcut there, each with what it does. Press one of those keys to run it. Any other key, or a change of focus, cancels the shortcut.

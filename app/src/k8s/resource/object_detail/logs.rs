@@ -6,7 +6,6 @@ use super::commands::{POD_LOGS_KEY, POD_SELECTING_KEY_CONTEXT, ShowObjectLogs};
 use super::panel::ObjectDetailPanel;
 use crate::k8s::label_selector;
 use crate::util::logs::{OpenWorkloadLogs, WorkloadRef};
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
 
 /// The header's Logs hint, for tests.
@@ -46,25 +45,25 @@ impl ObjectDetailPanel {
 
     /// The header's Logs hint - its key from the live keymap, and a click
     /// doing what the key does - while the object selects pods.
-    pub(super) fn logs_hint(&self, window: &Window, cx: &Context<Self>) -> Option<AnyElement> {
+    pub(super) fn logs_hint(
+        &self,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> Option<crate::ui::key_hint_row::KeyHint> {
         self.pod_logs_workload()?;
-        let key = Kbd::binding_for_action(&ShowObjectLogs, Some(POD_SELECTING_KEY_CONTEXT), window)
-            .unwrap_or_else(|| Kbd::new(Keystroke::parse(POD_LOGS_KEY).expect("valid keybinding")));
-        Some(
-            div()
-                .id(LOGS_HINT)
-                .flex()
-                .flex_shrink_0()
-                .items_center()
-                .gap_1()
-                .whitespace_nowrap()
-                .cursor_pointer()
-                .child(key)
-                .child("Logs")
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.on_action_show_logs(&ShowObjectLogs, window, cx);
-                }))
-                .into_any_element(),
-        )
+        let key = crate::ui::key_hint_row::live_key(
+            &ShowObjectLogs,
+            Some(POD_SELECTING_KEY_CONTEXT),
+            POD_LOGS_KEY,
+            window,
+        );
+        let clicked = cx.listener(|this, _, window, cx| {
+            this.on_action_show_logs(&ShowObjectLogs, window, cx);
+        });
+        Some(crate::ui::key_hint_row::KeyHint::styled(
+            key,
+            "Logs",
+            |body| body.id(LOGS_HINT).cursor_pointer().on_click(clicked),
+        ))
     }
 }

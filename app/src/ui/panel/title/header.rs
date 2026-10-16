@@ -6,6 +6,7 @@
 //!
 //! Shared by the pod detail and object viewer headers.
 
+use crate::ui::key_hint_row::KeyHintRow;
 use gpui_kit::*;
 
 /// The title's floor: a few characters of the name stay readable.
@@ -23,13 +24,13 @@ pub fn header_title(title: impl IntoElement) -> Div {
 }
 
 /// The hints column: whatever the title leaves, down to its floor, its hints
-/// right-aligned and wrapping onto further rows rather than overflowing.
-pub fn header_hints() -> Div {
-    div()
-        .flex()
+/// right-aligned and wrapping onto further rows rather than overflowing - and
+/// collapsing to the essential ones past three lines (`key-hint-rows`). `id`
+/// keeps that state between frames.
+pub fn header_hints(id: impl Into<SharedString>) -> KeyHintRow {
+    KeyHintRow::new(id)
         .flex_1()
         .min_w(rems(HINTS_MIN_REMS))
-        .flex_wrap()
         .justify_end()
 }
 

@@ -74,9 +74,14 @@ impl LibraryWindow {
     }
 
     fn hints(&self, read_only: bool, window: &mut Window) -> Div {
-        use crate::ui::list_search::ListSearch;
+        // A plain row, not a collapsing `KeyHintRow`: it never has more than
+        // five hints.
+        use crate::ui::key_hint_row::{KeyHint, live_key};
         let hint = |action: &dyn Action, key: &str, label: &'static str, window: &mut Window| {
-            ListSearch::hint(action, WINDOW_CONTEXT, key, label, window)
+            KeyHint::body(
+                vec![live_key(action, Some(WINDOW_CONTEXT), key, window)],
+                label.into(),
+            )
         };
         div()
             .flex()

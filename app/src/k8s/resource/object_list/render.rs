@@ -13,21 +13,23 @@ use super::store::ListMode;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::resource::load_phase::LoadPhase;
-use crate::ui::list_search::ListSearch;
+use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use crate::ui::list_state::{self, TableArea};
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+
+/// The hint row's id, which keeps whether it is collapsed.
+pub(super) const HINTS_ID: &str = "object-list-hints";
 
 impl ObjectListPanel {
     /// One hint: `action`'s live key (or `fallback` when the keymap has none) and
     /// what it does.
-    fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &mut Window) -> Div {
-        ListSearch::hint(action, PANEL_KEY_CONTEXT, fallback, label, window)
+    fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &Window) -> KeyHint {
+        KeyHint::for_action(action, Some(PANEL_KEY_CONTEXT), fallback, label, window)
     }
 
     fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -98,20 +100,21 @@ impl ObjectListPanel {
             cx,
         );
         let table = self.sync_table(rows, window, cx);
-        let mut hints = div()
-            .flex()
-            .gap(space.control_gap)
+        // Open, Filter and Describe stay when a narrow panel collapses the
+        // row (`key-hint-rows` D2).
+        let mut hints = KeyHintRow::new(HINTS_ID)
+            .hint_gap(space.control_gap)
             .text_sm()
             .text_color(cx.theme().muted_foreground)
-            .child(Self::hint(&FocusFilter, FILTER_KEY, "Filter", window))
-            .child(Self::hint(&OpenSelected, OPEN_KEY, "Open", window))
-            .child(Self::hint(
+            .hint(Self::hint(&FocusFilter, FILTER_KEY, "Filter", window).essential())
+            .hint(Self::hint(&OpenSelected, OPEN_KEY, "Open", window).essential())
+            .hint(Self::hint(
                 &OpenInBackground,
                 OPEN_IN_BACKGROUND_KEY,
                 "Background",
                 window,
             ))
-            .child(Self::hint(
+            .hint(Self::hint(
                 &OpenInNewPanel,
                 OPEN_IN_NEW_PANEL_KEY,
                 "New panel",
@@ -119,25 +122,20 @@ impl ObjectListPanel {
             ))
             // Only a namespaced kind has a picker to open.
             .when(self.scope.is_namespaced(), |hints| {
-                hints.child(Self::hint(
+                hints.hint(Self::hint(
                     &crate::ui::namespace_picker::PickNamespaces,
                     crate::ui::namespace_picker::PICK_NAMESPACES_KEY,
                     "Namespaces",
                     window,
                 ))
             })
-            .child(Self::hint(
-                &DescribeSelected,
-                DESCRIBE_KEY,
-                "Describe",
-                window,
-            ))
-            .child(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
-            .child(crate::ui::bulk::commands::check_hint(window))
-            .children(self.kind_hints(window, cx));
+            .hint(Self::hint(&DescribeSelected, DESCRIBE_KEY, "Describe", window).essential())
+            .hint(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
+            .hint(crate::ui::bulk::commands::check_hint(window))
+            .hints(self.kind_hints(window, cx));
         // A Service with a forward running can stop it (`port-forward-indicators` 4.1).
         if !self.selected_forwards(cx).is_empty() {
-            hints = hints.child(Self::hint(
+            hints = hints.hint(Self::hint(
                 &crate::k8s::resource::pods::StopPortForward,
                 crate::k8s::resource::pods::STOP_PORT_FORWARD_KEY,
                 "Stop forward",
@@ -145,39 +143,28 @@ impl ObjectListPanel {
             ));
         }
         if self.kind.verbs.patch {
-            let key = Kbd::binding_for_action(
+            hints = hints.hint(KeyHint::for_action(
                 &super::commands::EditSelected,
                 Some(super::commands::EDITABLE_KEY_CONTEXT),
+                super::commands::EDIT_KEY,
+                "Edit",
                 window,
-            )
-            .unwrap_or_else(|| {
-                Kbd::new(Keystroke::parse(super::commands::EDIT_KEY).expect("a valid default key"))
-            });
-            hints = hints.child(div().flex().gap_1().items_center().child(key).child("Edit"));
+            ));
         }
         if polled {
-            hints = hints.child(Self::hint(&RefreshList, REFRESH_KEY, "Refresh", window));
+            hints = hints.hint(Self::hint(&RefreshList, REFRESH_KEY, "Refresh", window));
         }
         if self.deletable() {
-            let key = Kbd::binding_for_action(
+            hints = hints.hint(KeyHint::for_action(
                 &DeleteSelected,
                 Some(super::delete::DELETABLE_KEY_CONTEXT),
+                DELETE_KEY,
+                "Delete",
                 window,
-            )
-            .unwrap_or_else(|| {
-                Kbd::new(Keystroke::parse(DELETE_KEY).expect("a valid default key"))
-            });
-            hints = hints.child(
-                div()
-                    .flex()
-                    .gap_1()
-                    .items_center()
-                    .child(key)
-                    .child("Delete"),
-            );
+            ));
         }
         if self.kind.namespaced {
-            hints = hints.child(Self::hint(
+            hints = hints.hint(Self::hint(
                 &WarpNamespace,
                 NAMESPACE_KEY,
                 "Namespace",

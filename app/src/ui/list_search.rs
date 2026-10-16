@@ -22,7 +22,6 @@
 //! unfiltered until some later event redraws it.
 
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
 
 /// One panel's search/filter box, and the text it starts with once restored.
@@ -131,20 +130,6 @@ impl ListSearch {
             Some(input) => Some(input.read(cx).value().to_string()),
             None => self.initial.clone(),
         }
-    }
-
-    /// One hint-row entry for the search box: `action`'s live key within
-    /// `context` (or `fallback` when the keymap has none), labeled `label`.
-    pub fn hint(
-        action: &dyn Action,
-        context: &'static str,
-        fallback: &str,
-        label: &'static str,
-        window: &mut Window,
-    ) -> Div {
-        let key = Kbd::binding_for_action(action, Some(context), window)
-            .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("a valid default key")));
-        div().flex().gap_1().items_center().child(key).child(label)
     }
 }
 

@@ -1,6 +1,7 @@
 //! #136: `s` and `shift-f` on a Running pod in a real window - the Pods panel
 //! inside `MainWindow`'s dock, with the app's keymap, over a fake cluster -
-//! and the hint row listing both while they apply.
+//! and the hint row listing both while they apply, then reaching its
+//! collapsed overflow control from the keyboard.
 
 use super::actions::FAILURE_ID;
 use super::hints::hint_selector;
@@ -164,4 +165,40 @@ async fn s_on_a_running_pod_opens_a_shell(cx: &mut TestAppContext) {
         "a shell panel opened: {:?}",
         h.open_targets()
     );
+}
+
+/// `key-hint-rows`: in a window too narrow for the Pods panel's hints, Tab
+/// reaches the overflow control, and Enter or Space on it - a real key press
+/// and release, which is when a button acts - opens the Key Hints overlay.
+#[gpui_kit::test]
+async fn tab_then_enter_or_space_on_the_overflow_control_opens_key_hints(cx: &mut TestAppContext) {
+    for key in ["enter", "space"] {
+        let mut h = harness(cx, running_pod(&[18_084]));
+        h.press("down");
+        h.vcx
+            .simulate_resize(gpui_kit::size(gpui_kit::px(360.), gpui_kit::px(700.)));
+        for _ in 0..3 {
+            h.vcx.update(|window, cx| window.render_frame(cx));
+            h.vcx.run_until_parked();
+        }
+        assert!(
+            h.drawn(crate::ui::key_hint_row::row_selector("pods-hints", true)),
+            "the row collapsed"
+        );
+        h.press("tab");
+        assert!(!h.vcx.update(|window, cx| window.has_active_dialog(cx)));
+        let keystroke = Keystroke::parse(key).expect("valid");
+        h.vcx.simulate_event(gpui_kit::KeyDownEvent {
+            keystroke: keystroke.clone(),
+            is_held: false,
+            prefer_character_input: false,
+        });
+        h.vcx.simulate_event(gpui_kit::KeyUpEvent { keystroke });
+        h.vcx.run_until_parked();
+        assert!(
+            h.vcx.update(|window, cx| window.has_active_dialog(cx)),
+            "{key} on the control opens Key Hints"
+        );
+        assert_eq!(h.open_targets().len(), 1, "and opened no panel");
+    }
 }

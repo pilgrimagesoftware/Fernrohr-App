@@ -66,7 +66,11 @@ impl ObjectListPanel {
     }
 
     /// The hint row's entries for what the selected row is offered.
-    pub(super) fn kind_hints(&self, window: &mut Window, cx: &App) -> Vec<Div> {
+    pub(super) fn kind_hints(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> Vec<crate::ui::key_hint_row::KeyHint> {
         let offered = self
             .kind_target(cx)
             .map(|target| target.offered())

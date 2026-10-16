@@ -3,12 +3,14 @@
 //! is too narrow for the hints' floor beside it.
 
 use super::{header_hints, header_title};
+use crate::ui::key_hint_row::KeyHint;
 use crate::ui::panel::title::item_heading;
 use gpui_kit::InteractiveElement as _;
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    Bounds, Context, IntoElement, ParentElement as _, Pixels, Render, Styled as _, TestAppContext,
-    Window, div, px,
+    Bounds, Context, IntoElement, Keystroke, ParentElement as _, Pixels, Render, Styled as _,
+    TestAppContext, Window, div, px,
 };
 
 const NAME: &str = "example-connect-deployment-7f9c8d6b5-abcde";
@@ -20,12 +22,19 @@ struct Header {
 
 impl Render for Header {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        // All essential, so a row narrow enough to collapse still draws them:
+        // this is about the header's layout, not the collapse.
         let hints = (0..10).map(|n| {
-            div()
-                .debug_selector(move || format!("hint-{n}"))
-                .flex_shrink_0()
-                .w(px(90.))
-                .h(px(16.))
+            KeyHint::styled(
+                Kbd::new(Keystroke::parse("x").unwrap()),
+                format!("{n}"),
+                |body| {
+                    body.debug_selector(move || format!("hint-{n}"))
+                        .w(px(90.))
+                        .h(px(16.))
+                },
+            )
+            .essential()
         });
         div()
             .w(self.width)
@@ -37,7 +46,7 @@ impl Render for Header {
                 None,
                 gpui_kit::black(),
             )))
-            .child(header_hints().gap(px(8.)).children(hints))
+            .child(header_hints("test-hints").hint_gap(px(8.)).hints(hints))
     }
 }
 

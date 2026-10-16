@@ -10,7 +10,7 @@
 
 use crate::command::{Command, CommandRegistry};
 use crate::k8s::resource::bulk::BulkAction;
-use gpui_kit::{Action, Div, KeyContext, Window, actions};
+use gpui_kit::{Action, KeyContext, Window, actions};
 
 actions!(
     bulk,
@@ -163,10 +163,10 @@ fn gated(action: BulkAction) -> &'static str {
 }
 
 /// The hint row's Check entry (`x`), read from the live keymap.
-pub(crate) fn check_hint(window: &mut Window) -> Div {
-    crate::ui::list_search::ListSearch::hint(
+pub(crate) fn check_hint(window: &Window) -> crate::ui::key_hint_row::KeyHint {
+    crate::ui::key_hint_row::KeyHint::for_action(
         &ToggleChecked,
-        CHECKABLE_CONTEXT,
+        Some(CHECKABLE_CONTEXT),
         TOGGLE_KEY,
         "Check",
         window,

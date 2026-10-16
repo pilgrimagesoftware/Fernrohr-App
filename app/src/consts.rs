@@ -320,6 +320,10 @@ pub(crate) const MCP_CONNECT_POLL: Duration = Duration::from_millis(100);
 /// its stdin (`cli-help-and-shutdown` D3).
 pub(crate) const MCP_PARENT_POLL: Duration = Duration::from_secs(1);
 
+/// `key-hint-rows` D1: the most lines a panel's key-hint row wraps onto before
+/// it collapses to its essential hints and an overflow control.
+pub(crate) const MAX_HINT_LINES: usize = 3;
+
 /// `agent-mcp`: the most Pods one `delete_pods` call may name (design.md).
 pub(crate) const MCP_DELETE_PODS_MAX: usize = 10;
 

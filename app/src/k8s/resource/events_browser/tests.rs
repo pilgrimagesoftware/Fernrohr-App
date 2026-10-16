@@ -493,6 +493,7 @@ async fn the_type_button_opens_the_type_picker(cx: &mut TestAppContext) {
 
 /// `list-search` #189's regression: the shared `ListSearch` component behind
 /// this search box, case-insensitivity and the hint row's live key.
+mod hints;
 mod search;
 mod sort;
 mod states;

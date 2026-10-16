@@ -47,6 +47,20 @@ block with the keyboard or the mouse. Hovering a copyable value, such as a
 container image, a ConfigMap value or a status message, shows a copy control
 that Tab also reaches.
 
+### Key hints in a narrow panel
+
+The header's key hints wrap beside the name. When a narrow panel would need
+more than three lines for them, the header shows only the keys that switch
+what the panel shows: the pod detail's tab keys, grouped as **Tabs**, and
+**Show YAML** or **Show fields**. A **⋯** button follows them. Every hidden key still works.
+
+- Hover the **⋯** button to list the hidden keys.
+- Press <kbd>Tab</kbd> to reach it, then <kbd>↵</kbd> or <kbd>Space</kbd> to
+  open Key Hints, which lists every key the panel offers. <kbd>?</kbd> opens
+  it from anywhere in the panel too.
+
+Widen the panel and all the hints come back.
+
 ## Object detail
 
 Every object opens with its creation time, name, namespace, labels, annotations
