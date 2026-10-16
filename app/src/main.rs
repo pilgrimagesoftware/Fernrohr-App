@@ -1,6 +1,7 @@
 use gpui_kit::*;
 
 mod assets;
+mod cli;
 mod command;
 mod config;
 mod consts;
@@ -16,11 +17,29 @@ mod ui;
 mod util;
 
 fn main() {
-    // `fernrohr mcp` is the stdio MCP adapter an agent's client launches: a
-    // short-lived process that talks to the running app, so it starts no
-    // window and must not sweep the running app's tunnels below.
-    if let Some(code) = mcp::run_subcommand(std::env::args_os()) {
-        std::process::exit(code);
+    // Help, version, unrecognized arguments and `fernrohr mcp` (the stdio MCP
+    // adapter an agent's client launches) all end here, before anything below
+    // can sweep the running app's tunnels, write the app log or open a window
+    // (`cli-help-and-shutdown` D2). Only no arguments start the app.
+    match cli::parse(std::env::args_os().skip(1)) {
+        cli::Invocation::StartApp => {}
+        cli::Invocation::Mcp => std::process::exit(mcp::run_command()),
+        cli::Invocation::Print {
+            text,
+            to_stderr,
+            code,
+        } => {
+            // Write errors (a closed pipe, as in `fernrohr --help | head -1`)
+            // don't change the exit code.
+            // `process::exit` runs no destructors, so flush before it.
+            let mut out: Box<dyn std::io::Write> = if to_stderr {
+                Box::new(std::io::stderr())
+            } else {
+                Box::new(std::io::stdout())
+            };
+            let _ = out.write_all(text.as_bytes()).and_then(|()| out.flush());
+            std::process::exit(code);
+        }
     }
 
     // Crash recovery: reap any `ssh -N -L` forward a previous run left running after
@@ -29,8 +48,8 @@ fn main() {
     // be acquired. See `util::pidfile`'s module docs for the quit-time half of this.
     util::pidfile::sweep_stale();
 
-    // Not under `cfg(test)`: `main` is never the test entry point. The mcp
-    // adapter returned above, so only the real app writes the log.
+    // Not under `cfg(test)`: `main` is never the test entry point. Every other
+    // invocation returned above, so only the real app writes the log.
     util::app_log::install();
     log::info!("Fernrohr {} starting", env!("CARGO_PKG_VERSION"));
 
@@ -55,6 +74,10 @@ fn main() {
             ui::text_size::init(ui_config.text_size, ui_path, cx);
             ui::namespace_sets::store::NamespaceSets::init(
                 util::paths::preference_dir().join("namespace-sets.toml"),
+                cx,
+            );
+            ui::exec_library::store::ExecLibraryStore::init(
+                util::paths::preference_dir().join(consts::EXEC_LIBRARY_FILE),
                 cx,
             );
             let workspace_path = util::shell::default_workspace_path();

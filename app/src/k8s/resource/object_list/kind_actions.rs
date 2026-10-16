@@ -36,8 +36,9 @@ impl KindHost for ObjectListPanel {
 }
 
 impl ObjectListPanel {
-    /// What a row's menu offers of its kind's actions: built for that row as
-    /// the menu opens, each acting on it.
+    /// What a row's menu offers of its kind's actions - and, for a workload or
+    /// Service, the exec library's: built for that row as the menu opens, each
+    /// acting on it.
     pub(super) fn kind_menu(
         &self,
         cx: &Context<Self>,
@@ -48,6 +49,7 @@ impl ObjectListPanel {
             self.connection.clone(),
         );
         let panel = cx.weak_entity();
+        let library = self.library_menu();
         move |row| {
             let target = KindTarget {
                 context_name: context_name.clone(),
@@ -57,12 +59,18 @@ impl ObjectListPanel {
                 name: row.object.name.clone(),
                 facts: row.object.facts.clone(),
             };
-            crate::ui::kind_actions::menu_entries(target, panel.clone())
+            let mut entries = crate::ui::kind_actions::menu_entries(target, panel.clone());
+            entries.extend(library(row));
+            entries
         }
     }
 
     /// The hint row's entries for what the selected row is offered.
-    pub(super) fn kind_hints(&self, window: &mut Window, cx: &App) -> Vec<Div> {
+    pub(super) fn kind_hints(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> Vec<crate::ui::key_hint_row::KeyHint> {
         let offered = self
             .kind_target(cx)
             .map(|target| target.offered())

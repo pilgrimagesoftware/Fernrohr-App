@@ -31,7 +31,10 @@ impl NavTarget {
             NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) => "Logs".to_string(),
             NavTarget::Pod(_) => Self::pod_kind().label(),
             NavTarget::Object(object) => object.kind.label(),
-            NavTarget::Exec(_) => "Shell".to_string(),
+            NavTarget::Exec(exec) => exec
+                .command
+                .as_ref()
+                .map_or_else(|| "Shell".to_string(), |command| command.entry_name.clone()),
         }
     }
 
@@ -84,7 +87,7 @@ impl NavTarget {
             NavTarget::PodLogs(pod) => format!("Logs: {}", pod.name),
             NavTarget::LabelLogs(source) => source.label(),
             NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
-            NavTarget::Exec(exec) => format!("Shell: {} · {}", exec.pod, exec.container),
+            NavTarget::Exec(exec) => exec.title(),
             _ => self.list_label(),
         }
     }

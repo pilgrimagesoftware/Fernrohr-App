@@ -23,6 +23,7 @@ mod container_detail;
 pub(super) mod container_view;
 mod edit;
 pub(super) mod events_tab;
+mod exec_library;
 mod fetch;
 mod field_view;
 mod fields;

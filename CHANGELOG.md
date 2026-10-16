@@ -1,4 +1,52 @@
 
+## 0.14.0 - 2026-10-16
+
+### <!-- 0 -->🚀 Features
+- Print help, version and usage errors instead of starting the app
+- Add a key-hint row that collapses past three lines
+- Collapse the detail headers' and list panels' key hints
+- The library's entries, targets and validation
+- Store the library in exec-library.toml
+- Resolve a target's pods and container
+- Run a library entry's command in the shell panel
+- Run an entry, choosing among its pods
+- The Exec Library window and entry dialog
+- Run from and save to the library on a resource
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Exit fernrohr mcp when its client goes away (#253)
+- Let Enter and Space activate a focused hint-row overflow control
+- Keep a collapsed pod detail header within three lines
+- A library file that can't be read stays untouched
+
+
+### <!-- 10 -->💼 Other
+- Bump notify-rust from 4.18.1 to 4.18.2
+- Bump gpui-terminal from v0.2.1 to v0.2.2
+- Bump tokio-rustls from 0.26.5 to 0.26.6
+- Bump getrandom from 0.3.4 to 0.4.3
+- Bump serde_json from 1.0.151 to 1.0.154
+
+
+### <!-- 3 -->📚 Documentation
+- Note fernrohr --help and that fernrohr mcp ends with its client
+- Describe collapsed key hints in narrow panels
+- The exec library page, and links from shells and resources
+
+
+### <!-- 6 -->🧪 Testing
+- Check fernrohr mcp exits with its client on the built binary
+- Cover collapsed key hints in each panel and the shell row
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.13.0
+- Run a docs-check job on every pull request
+- Skip the code checks on docs-only pull requests
+
+
+
 ## 0.13.0 - 2026-10-14
 
 ### <!-- 0 -->🚀 Features

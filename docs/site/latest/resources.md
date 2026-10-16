@@ -118,6 +118,14 @@ it, <kbd>Enter</kbd> opens the pod's detail, and <kbd>Esc</kbd> closes it.
 Right-clicking a row selects it and opens a menu with Quick Look, Open Details, Open in New Panel,
 Logs and YAML.
 
+### Key hints in a narrow panel
+
+The row of key hints under a list wraps as the panel narrows. Past three lines,
+it keeps only Filter, Describe and, where the list shows it, Open (Search and
+Open object in the Events list), and adds a **⋯** button. The other keys still work while hidden: hover
+**⋯** to list them, or press <kbd>Tab</kbd> to reach it and <kbd>↵</kbd> or
+<kbd>Space</kbd> to open Key Hints. Widen the panel to see every hint again.
+
 ## Act on several objects
 
 Check rows to act on several objects at once. Checking a row doesn't move the
@@ -212,6 +220,12 @@ the new one.
 A token from Create Token is shown once, the same way a revealed Secret value is.
 Copy it before you hide it or close the dialog, because it isn't kept anywhere,
 written to disk or logged. To get another, choose Create Token again.
+
+## Run saved commands
+
+Pods, Deployments, StatefulSets, DaemonSets and Services offer **Run from Library…** and **Save to
+Library…** in their row's right-click menu and the command palette. They run a saved exec command
+on the resource, or save a new one from it. See {{ '/latest/exec-library/' | relative_url }}.
 
 ## Icons and status
 

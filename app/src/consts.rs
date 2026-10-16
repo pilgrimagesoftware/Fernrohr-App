@@ -315,6 +315,15 @@ pub(crate) const MCP_CONNECT_SETTLE: Duration = Duration::from_secs(20);
 /// How often `connect_context` looks at a connection while it settles.
 pub(crate) const MCP_CONNECT_POLL: Duration = Duration::from_millis(100);
 
+/// `fernrohr mcp`: how often the adapter checks whether the process that
+/// launched it has exited, so it stops with a client that died without closing
+/// its stdin (`cli-help-and-shutdown` D3).
+pub(crate) const MCP_PARENT_POLL: Duration = Duration::from_secs(1);
+
+/// `key-hint-rows` D1: the most lines a panel's key-hint row wraps onto before
+/// it collapses to its essential hints and an overflow control.
+pub(crate) const MAX_HINT_LINES: usize = 3;
+
 /// `agent-mcp`: the most Pods one `delete_pods` call may name (design.md).
 pub(crate) const MCP_DELETE_PODS_MAX: usize = 10;
 
@@ -357,6 +366,16 @@ pub(crate) const BULK_LOGS_WITHOUT_CONFIRM: usize = 5;
 /// with backoff for minutes, as `kubectl drain` keeps retrying; past this the pod
 /// is reported as not evicted, so the rest of the batch isn't held up.
 pub(crate) const BULK_EVICTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The exec library's file, in the preference directory
+/// (`exec-command-library`).
+pub(crate) const EXEC_LIBRARY_FILE: &str = "exec-library.toml";
+
+/// The Exec Library window's starting and smallest sizes.
+pub(crate) const EXEC_LIBRARY_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(720.), gpui_kit::px(520.));
+pub(crate) const EXEC_LIBRARY_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(480.), gpui_kit::px(320.));
 
 #[cfg(test)]
 mod tests {

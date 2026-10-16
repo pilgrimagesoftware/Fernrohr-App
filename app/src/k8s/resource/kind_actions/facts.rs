@@ -25,6 +25,13 @@ pub(crate) struct ObjectFacts {
     /// An Ingress's first rule's host that can be opened ([`openable`]): a
     /// wildcard host (`*.example.com`) names no one site.
     pub(crate) host: Option<String>,
+    /// The pods a workload or Service selects: a workload's `spec.selector`
+    /// label selector, or a Service's `spec.selector` label map. `None` for an
+    /// object that selects none.
+    pub(crate) pod_selector: Option<kube::core::Selector>,
+    /// The kind and name of the object's controlling owner - a ReplicaSet's
+    /// Deployment - from its `ownerReferences`.
+    pub(crate) controller: Option<(String, String)>,
 }
 
 impl ObjectFacts {
@@ -49,8 +56,37 @@ impl ObjectFacts {
                 .filter_map(|rule| rule["host"].as_str())
                 .find(|host| openable(host))
                 .map(str::to_string),
+            pod_selector: pod_selector(&spec["selector"]),
+            controller: object
+                .metadata
+                .owner_references
+                .iter()
+                .flatten()
+                .find(|owner| owner.controller == Some(true))
+                .map(|owner| (owner.kind.clone(), owner.name.clone())),
         }
     }
+}
+
+/// `spec.selector` as a selector: a `LabelSelector` (`matchLabels`,
+/// `matchExpressions`) as workloads have, or a plain label map as a Service
+/// has. `None` when there is none, or it selects everything.
+fn pod_selector(selector: &Value) -> Option<kube::core::Selector> {
+    use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
+    use kube::core::{Expression, Selector};
+    let object = selector.as_object()?;
+    let selector: Selector = if object.contains_key("matchLabels")
+        || object.contains_key("matchExpressions")
+    {
+        let label_selector: LabelSelector = serde_json::from_value(selector.clone()).ok()?;
+        label_selector.try_into().ok()?
+    } else {
+        object
+            .iter()
+            .filter_map(|(key, value)| Some(Expression::Equal(key.clone(), value.as_str()?.into())))
+            .collect()
+    };
+    (!selector.selects_all()).then_some(selector)
 }
 
 /// Whether `host` is a DNS name a browser can open: lowercase letters, digits,

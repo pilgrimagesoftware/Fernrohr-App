@@ -160,6 +160,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::pod_detail::register_commands(registry);
     crate::ui::link::register_commands(registry);
     crate::ui::status_bar::register_commands(registry);
+    crate::ui::exec_library::commands::register_commands(registry);
     crate::ui::bulk::register_commands(registry);
     crate::ui::kind_actions::register_commands(registry);
     crate::ui::add_context_window::register_commands(registry);
@@ -210,6 +211,8 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     ]));
     super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
+    crate::ui::key_hint_row::init(cx);
+    crate::ui::exec_library::window::init(cx);
     crate::tunnel::manual::ManualConfirmations::init(cx);
     crate::ui::manual_tunnel::register_handler(cx);
     crate::ui::text_size::register_handlers(cx);

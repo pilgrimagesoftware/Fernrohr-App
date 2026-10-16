@@ -96,3 +96,74 @@ async fn an_app_started_mid_session_is_picked_up() {
     let after = client.request("tools/list", json!({})).await;
     assert_eq!(after["result"]["tools"][0]["name"], "echo");
 }
+
+/// `serve` on an in-memory pipe whose client end the test keeps open, so only
+/// `shutdown` can end it. Returns the client end and the running `serve`.
+fn serve_until(
+    shutdown: tokio::sync::oneshot::Receiver<Stop>,
+) -> (
+    tokio::io::DuplexStream,
+    tokio::task::JoinHandle<Result<Stop, String>>,
+) {
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let shutdown = async move { shutdown.await.unwrap_or(Stop::Closed) };
+    let task = tokio::spawn(serve(
+        AppClient::new(temp_endpoint_paths()),
+        tokio::io::split(theirs),
+        shutdown,
+    ));
+    (ours, task)
+}
+
+async fn ended_within_a_second(
+    task: tokio::task::JoinHandle<Result<Stop, String>>,
+) -> Result<Stop, String> {
+    tokio::time::timeout(std::time::Duration::from_secs(1), task)
+        .await
+        .expect("serve should end promptly")
+        .expect("serve should not panic")
+}
+
+#[tokio::test]
+async fn shutdown_ends_an_initialized_session_with_stdin_still_open() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let (fire, shutdown) = tokio::sync::oneshot::channel();
+    let (ours, task) = serve_until(shutdown);
+    let (reader, mut writer) = tokio::io::split(ours);
+    let initialize = json!({
+        "jsonrpc": "2.0", "id": 0, "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "fixture", "version": "0"},
+        },
+    });
+    writer
+        .write_all(format!("{initialize}\n").as_bytes())
+        .await
+        .unwrap();
+    let mut lines = BufReader::new(reader).lines();
+    let reply = lines.next_line().await.unwrap().unwrap();
+    assert!(reply.contains("\"serverInfo\""), "{reply}");
+
+    fire.send(Stop::Signal(15)).unwrap();
+    assert_eq!(ended_within_a_second(task).await, Ok(Stop::Signal(15)));
+    drop(writer);
+}
+
+#[tokio::test]
+async fn shutdown_ends_a_session_still_waiting_for_its_handshake() {
+    let (fire, shutdown) = tokio::sync::oneshot::channel();
+    let (_ours, task) = serve_until(shutdown);
+
+    fire.send(Stop::ParentGone).unwrap();
+    assert_eq!(ended_within_a_second(task).await, Ok(Stop::ParentGone));
+}
+
+#[test]
+fn exit_codes_follow_the_shell_convention() {
+    assert_eq!(Stop::Closed.exit_code(), 0);
+    assert_eq!(Stop::ParentGone.exit_code(), 0);
+    assert_eq!(Stop::Signal(15).exit_code(), 143);
+    assert_eq!(Stop::Signal(1).exit_code(), 129);
+}

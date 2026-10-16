@@ -58,4 +58,4 @@ mod test_support;
 #[cfg(unix)]
 mod tools;
 
-pub(crate) use entry::{run_subcommand, start};
+pub(crate) use entry::{run_command, start};

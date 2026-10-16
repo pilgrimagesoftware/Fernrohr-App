@@ -12,7 +12,7 @@ use super::row::EventRow;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::resource::load_phase::LoadPhase;
-use crate::ui::list_search::ListSearch;
+use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use crate::ui::list_state::{self, TableArea};
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
@@ -23,13 +23,16 @@ use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+/// The hint row's id, which keeps whether it is collapsed.
+pub(super) const HINTS_ID: &str = "events-hints";
+
 /// What the loading and empty states call this list's rows.
 const KIND_LABEL: &str = "events";
 
 impl EventsPanel {
     /// One hint: `action`'s live key (or `fallback`) and what it does.
-    fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &mut Window) -> Div {
-        ListSearch::hint(action, PANEL_KEY_CONTEXT, fallback, label, window)
+    fn hint(action: &dyn Action, fallback: &str, label: &'static str, window: &Window) -> KeyHint {
+        KeyHint::for_action(action, Some(PANEL_KEY_CONTEXT), fallback, label, window)
     }
 
     /// The filter buttons, each opening its facet's picker, then a chip per
@@ -206,29 +209,24 @@ impl EventsPanel {
         let strip = self
             .selected_event(cx)
             .map(|row| self.detail_strip(&row, cx));
-        let hints = div()
-            .flex()
-            .flex_wrap()
-            .gap(space.control_gap)
+        // Open object and Search, its filter, stay when a narrow panel
+        // collapses the row (`key-hint-rows` D2).
+        let hints = KeyHintRow::new(HINTS_ID)
+            .hint_gap(space.control_gap)
             .text_sm()
             .text_color(cx.theme().muted_foreground)
-            .child(Self::hint(
-                &OpenInvolvedObject,
-                OPEN_KEY,
-                "Open object",
-                window,
-            ))
-            .child(Self::hint(&FocusSearch, SEARCH_KEY, "Search", window))
-            .child(Self::hint(
+            .hint(Self::hint(&OpenInvolvedObject, OPEN_KEY, "Open object", window).essential())
+            .hint(Self::hint(&FocusSearch, SEARCH_KEY, "Search", window).essential())
+            .hint(Self::hint(
                 &crate::ui::namespace_picker::PickNamespaces,
                 crate::ui::namespace_picker::PICK_NAMESPACES_KEY,
                 "Namespaces",
                 window,
             ))
-            .child(Self::hint(&FilterByType, TYPE_KEY, "Type", window))
-            .child(Self::hint(&FilterByKind, KIND_KEY, "Kind", window))
-            .child(Self::hint(&FilterByReason, REASON_KEY, "Reason", window))
-            .child(Self::hint(
+            .hint(Self::hint(&FilterByType, TYPE_KEY, "Type", window))
+            .hint(Self::hint(&FilterByKind, KIND_KEY, "Kind", window))
+            .hint(Self::hint(&FilterByReason, REASON_KEY, "Reason", window))
+            .hint(Self::hint(
                 &ClearFilters,
                 CLEAR_KEY,
                 "Clear filters",

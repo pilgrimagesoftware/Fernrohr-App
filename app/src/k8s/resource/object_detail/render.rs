@@ -11,6 +11,7 @@ use super::panel::ObjectDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::events;
 use crate::k8s::resource::pod_detail::DetailView;
+use crate::ui::key_hint_row::KeyHint;
 use crate::ui::{detail, link, panel_title};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
@@ -20,6 +21,9 @@ use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use jiff::Timestamp;
+
+/// The header hint row's id, which keeps whether it is collapsed.
+pub(super) const HEADER_HINTS_ID: &str = "object-detail-hints";
 
 impl ObjectDetailPanel {
     fn render_field(&self, section: &str, field: &ObjectField, cx: &Context<Self>) -> AnyElement {
@@ -299,17 +303,8 @@ impl Render for ObjectDetailPanel {
                 .unwrap_or_else(|| {
                     Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
                 });
-        let hint = |key: Kbd, label: &'static str| {
-            div()
-                .flex()
-                .flex_shrink_0()
-                .items_center()
-                .gap_1()
-                .whitespace_nowrap()
-                .child(key)
-                .child(label)
-        };
         let logs_hint = self.logs_hint(window, cx);
+        let (kind_buttons, kind_hints) = self.kind_header(window, cx);
         let header = div()
             .flex()
             .items_center()
@@ -331,37 +326,35 @@ impl Render for ObjectDetailPanel {
                 cx,
             )))
             .child(
-                panel_title::header_hints()
-                    .gap_x(space.control_gap)
-                    .gap_y_1()
+                panel_title::header_hints(HEADER_HINTS_ID)
+                    .hint_gap(space.control_gap)
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .when(has_links, |this| {
-                        this.child(
-                            hint(link::go_to_key(window), "Go to…")
-                                .id("go-to-hint")
-                                .test_support(),
-                        )
-                    })
-                    .children(self.kind_header(window, cx))
-                    .children(logs_hint)
-                    .when(deletable, |this| {
-                        this.child(hint(
-                            Kbd::binding_for_action(
-                                &DeleteObject,
-                                Some(super::delete::DELETABLE_KEY_CONTEXT),
-                                window,
-                            )
-                            .unwrap_or_else(|| {
-                                Kbd::new(Keystroke::parse(DELETE_KEY).expect("valid keybinding"))
-                            }),
-                            "Delete",
+                        this.hint(KeyHint::styled(
+                            link::go_to_key(window),
+                            "Go to…",
+                            |body| body.id("go-to-hint").test_support(),
                         ))
                     })
-                    .child(hint(
-                        toggle_key,
-                        if yaml { "Show fields" } else { "Show YAML" },
-                    )),
+                    .controls(kind_buttons)
+                    .hints(kind_hints)
+                    .hints(logs_hint)
+                    .when(deletable, |this| {
+                        this.hint(KeyHint::for_action(
+                            &DeleteObject,
+                            Some(super::delete::DELETABLE_KEY_CONTEXT),
+                            DELETE_KEY,
+                            "Delete",
+                            window,
+                        ))
+                    })
+                    // Essential (`key-hint-rows` D2): it switches what the
+                    // panel shows.
+                    .hint(
+                        KeyHint::new(toggle_key, if yaml { "Show fields" } else { "Show YAML" })
+                            .essential(),
+                    ),
             );
 
         let mut context = key_context(
@@ -371,7 +364,8 @@ impl Render for ObjectDetailPanel {
             self.pod_logs_workload().is_some(),
         );
         crate::ui::kind_actions::add_key_contexts(self, &mut context, false, cx);
-        crate::ui::kind_actions::on_kind_actions(div(), cx)
+        self.add_exec_library_context(&mut context);
+        Self::on_exec_library_actions(crate::ui::kind_actions::on_kind_actions(div(), cx), cx)
             .size_full()
             .key_context(context)
             .track_focus(&self.focus_handle)

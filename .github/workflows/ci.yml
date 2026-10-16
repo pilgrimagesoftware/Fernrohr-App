@@ -13,9 +13,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A pull request that only changes documentation (`docs/**`, top-level
+      # `*.md`) skips the rest, so the job still reports success under the same
+      # name and matrix the rulesets require. Pushes always build.
+      - id: changes
+        uses: ./.github/actions/changes
+
+      - name: Skip the build for a docs-only change
+        if: steps.changes.outputs.docs-only == 'true'
+        run: echo "Docs-only pull request; skipping build and tests." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.changes.outputs.docs-only != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -27,15 +39,18 @@ jobs:
             libgtk-3-dev \
             mesa-vulkan-drivers
 
-      - uses: dtolnay/rust-toolchain@stable
+      - if: steps.changes.outputs.docs-only != 'true'
+        uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2
+      - if: steps.changes.outputs.docs-only != 'true'
+        uses: Swatinem/rust-cache@v2
 
       # Warnings fail the build, as they do in package.yml, whose
       # actions-rust-lang/setup-rust-toolchain sets CARGO_BUILD_WARNINGS=deny by
       # default. This non-test build is the one that sees platform-only dead code
       # (a Linux-only unused variant, say) before a package build trips on it.
       - name: Build
+        if: steps.changes.outputs.docs-only != 'true'
         env:
           CARGO_BUILD_WARNINGS: deny
         run: cargo build --workspace --locked
@@ -44,7 +59,7 @@ jobs:
       # `cargo test` never pops a macOS Keychain access prompt) running here, since
       # macOS is the only runner with a real keychain daemon to test against.
       - name: Test
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && steps.changes.outputs.docs-only != 'true'
         timeout-minutes: 15
         run: cargo test --workspace --locked -- --include-ignored
 
@@ -52,6 +67,6 @@ jobs:
       # Both Test steps are bounded so a hung test fails fast instead of holding the
       # runner for the 6-hour job default.
       - name: Test
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.changes.outputs.docs-only != 'true'
         timeout-minutes: 15
         run: cargo test --workspace --locked

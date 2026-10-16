@@ -2070,13 +2070,13 @@ dependencies = [
 
 [[package]]
 name = "fernrohr"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "ashpd",
  "base64 0.23.1",
  "dirs 7.0.0",
  "futures-util",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "gpui-kit",
  "gpui-terminal",
  "http",
@@ -3269,8 +3269,8 @@ checksum = "829258540ea51bb9ea4a71686beffe5c99586901ba9f39944d06e4a180ab63fe"
 
 [[package]]
 name = "gpui-terminal"
-version = "0.2.1"
-source = "git+https://github.com/pilgrimagesoftware/gpui-terminal?tag=v0.2.1#c257c2720959bfafca3c9eb7e861631dd19b6a47"
+version = "0.2.2"
+source = "git+https://github.com/pilgrimagesoftware/gpui-terminal?tag=v0.2.2#d1a5f007d1be92f415b8774fcc9a3678747034e0"
 dependencies = [
  "alacritty_terminal",
  "async-channel",
@@ -4853,9 +4853,9 @@ dependencies = [
 
 [[package]]
 name = "notify-rust"
-version = "4.18.1"
+version = "4.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe430c879247371c47fdedd328ad4e301e6b30b533c5fd5db1c06d75253d0e46"
+checksum = "4587364a9a0074333429b3df75a30a205340c56a536ca3eb6ca0e59b87bbf8af"
 dependencies = [
  "futures-lite",
  "log",
@@ -7075,10 +7075,11 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.151"
+version = "1.0.154"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
+checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
 dependencies = [
+ "foldhash 0.2.0",
  "indexmap",
  "itoa",
  "memchr",
@@ -7925,9 +7926,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-rustls"
-version = "0.26.5"
+version = "0.26.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0c85f2c3ef0b1cd58b36682f4b17aaa995f0e5db534d85692b4903abce21f67"
+checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls",
  "tokio",

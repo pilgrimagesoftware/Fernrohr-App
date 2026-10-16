@@ -18,7 +18,7 @@ actions!(key_hints, [ShowKeyHints]);
 
 pub const SHOW_KEY_HINTS_COMMAND_ID: &str = "global.show_key_hints";
 /// k9s's help key. Bound outside text fields, where `?` is just a character.
-const SHOW_KEY_HINTS_KEY: &str = "?";
+pub(crate) const SHOW_KEY_HINTS_KEY: &str = "?";
 const SHOW_KEY_HINTS_CONTEXT: &str = "!Input";
 
 /// What a row of the overlay shows for a command.

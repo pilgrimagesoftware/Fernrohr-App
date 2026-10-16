@@ -8,10 +8,14 @@
 
 mod panel;
 mod render;
+mod target;
 mod theme;
 mod transport;
 
-pub use panel::{ExecPanel, ExecTarget, register_restore};
+pub use panel::{ExecPanel, register_restore};
+pub use target::{ExecTarget, LibraryCommand};
 
+#[cfg(test)]
+mod command_tests;
 #[cfg(test)]
 mod tests;

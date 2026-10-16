@@ -14,6 +14,7 @@ mod edit;
 mod fetch;
 mod fixtures;
 mod header;
+mod hints;
 mod ingress_links;
 mod live;
 mod metadata;

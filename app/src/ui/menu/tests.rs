@@ -211,6 +211,7 @@ fn the_context_menu_puts_tunnels_last() {
         [
             "Add Context to Window…",
             "Disconnect Active Context…",
+            "Open Exec Library",
             "---",
             "Set Tunnel for Context",
             "Manage Tunnels…",

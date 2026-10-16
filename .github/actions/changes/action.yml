@@ -1,0 +1,50 @@
+name: Classify changes
+description: >-
+  Classifies a pull request's changes against its base, so workflows can skip
+  work a PR doesn't need. Needs a prior `actions/checkout` with `fetch-depth: 0`.
+  Outside pull requests both outputs are `false`, so pushes always do full work.
+
+outputs:
+  docs-only:
+    description: >-
+      `true` when every changed file is under `docs/` or is a top-level `*.md`.
+      Anything else counts as code, as does an empty diff.
+    value: ${{ steps.classify.outputs.docs-only }}
+  docs-site:
+    description: >-
+      `true` when a changed file is under `docs/` or is
+      `.github/workflows/docs-pages.yml`.
+    value: ${{ steps.classify.outputs.docs-site }}
+
+runs:
+  using: composite
+  steps:
+    - id: classify
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        docs_only=false
+        docs_site=false
+        if [ "$EVENT_NAME" = pull_request ]; then
+          # `--no-renames` lists both sides of a rename, so moving code into
+          # docs/ still counts as a code change.
+          files=$(git diff --name-only --no-renames "$BASE_SHA" HEAD)
+          if [ -n "$files" ]; then
+            docs_only=true
+            while IFS= read -r f; do
+              case "$f" in
+                docs/*) docs_site=true ;;
+                .github/workflows/docs-pages.yml) docs_site=true; docs_only=false ;;
+                */*) docs_only=false ;;
+                *.md) ;;
+                *) docs_only=false ;;
+              esac
+            done <<< "$files"
+          fi
+        fi
+        echo "docs-only=$docs_only" >> "$GITHUB_OUTPUT"
+        echo "docs-site=$docs_site" >> "$GITHUB_OUTPUT"
+        echo "Changes: docs-only=$docs_only, docs-site=$docs_site"

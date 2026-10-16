@@ -6,10 +6,9 @@ on:
     paths:
       - docs/site/**
       - .github/workflows/docs-pages.yml
+  # No paths filter, so `docs-check` reports on every pull request and can be a
+  # required status check; it skips the site check itself when nothing changed.
   pull_request:
-    paths:
-      - docs/site/**
-      - .github/workflows/docs-pages.yml
   workflow_dispatch:
 
 permissions:
@@ -20,11 +19,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Every run checks the site first: a warning-free build, the version manifest
-  # against the pages, and every internal link (`_scripts/check.rb`). Pull
-  # requests stop there. Pushes to master and manual runs then build with the
+  # Pull requests: check the site (a warning-free build, the version manifest
+  # against the pages, and every internal link, via `_scripts/check.rb`) when the
+  # PR changes `docs/**` or this workflow, and succeed with a note
+  # otherwise. Named apart from CI's `build` so a ruleset can require it.
+  docs-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: changes
+        uses: ./.github/actions/changes
+      - name: Skip the site check
+        if: steps.changes.outputs.docs-site != 'true'
+        run: echo "No changes under docs/ or to docs-pages.yml; skipping the site check." >> "$GITHUB_STEP_SUMMARY"
+      - if: steps.changes.outputs.docs-site == 'true'
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          working-directory: docs/site
+      - name: Check the site
+        if: steps.changes.outputs.docs-site == 'true'
+        run: bundle exec ruby _scripts/check.rb
+        working-directory: docs/site
+
+  # Pushes to master and manual runs check the site first, then build with the
   # Pages base path, upload and deploy, so a failed check blocks the deploy.
   build:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
