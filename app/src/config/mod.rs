@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 pub mod dock_layouts;
+pub mod exec_library;
 pub mod namespaces;
 pub mod saved_layouts;
 pub mod tunnels;
