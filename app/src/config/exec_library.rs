@@ -53,6 +53,35 @@ pub enum Target {
     },
 }
 
+impl Target {
+    /// The target in words, for a list row or an error: "any pod",
+    /// "namespace <ns>, selector <s>", "Deployment <ns>/<name>".
+    pub fn describe(&self) -> String {
+        match self {
+            Target::Any => "any pod".to_string(),
+            Target::Selector {
+                namespace,
+                selector,
+            } => {
+                let namespace = match namespace {
+                    Some(namespace) => format!("namespace {namespace}"),
+                    None => "all namespaces".to_string(),
+                };
+                if selector.is_empty() {
+                    format!("{namespace}, every pod")
+                } else {
+                    format!("{namespace}, selector {selector}")
+                }
+            }
+            Target::Workload {
+                namespace,
+                workload_kind,
+                name,
+            } => format!("{} {namespace}/{name}", workload_kind.as_str()),
+        }
+    }
+}
+
 /// The kinds a workload target can name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WorkloadKind {

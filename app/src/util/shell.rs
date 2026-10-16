@@ -55,7 +55,7 @@ mod new_instance;
 mod sort_defaults;
 mod tab_menu;
 mod warp;
-pub(crate) use exec::OpenExecSession;
+pub(crate) use exec::{OpenExecSession, open_exec};
 pub(crate) use warp::WarpContextToNamespace;
 #[cfg(test)]
 mod bulk_logs_tests;

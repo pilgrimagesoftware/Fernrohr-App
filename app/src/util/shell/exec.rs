@@ -34,5 +34,32 @@ impl MainWindow {
     }
 }
 
+/// Opens a session in `target` on `context_name`'s cluster in the main window
+/// `window` holds - from wherever the request comes, a dialog or another
+/// window's flow included, so it needs no focus path to the window.
+pub(crate) fn open_exec(
+    context_name: String,
+    target: ExecTarget,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let Some(Some(root)) = window.root::<gpui_kit::component::Root>() else {
+        return;
+    };
+    let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
+        return;
+    };
+    let action = OpenExecSession {
+        context_name,
+        target,
+    };
+    // Deferred: the caller is mid-update in a panel's action, or a dialog's.
+    window.defer(cx, move |window, cx| {
+        main_window.update(cx, |main_window, cx| {
+            main_window.on_action_open_exec(&action, window, cx)
+        });
+    });
+}
+
 #[cfg(test)]
 mod tests;
