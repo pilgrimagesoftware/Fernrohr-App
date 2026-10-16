@@ -101,3 +101,6 @@ impl PodsPanel {
             })
     }
 }
+
+#[cfg(test)]
+mod tests;

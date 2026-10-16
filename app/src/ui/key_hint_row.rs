@@ -18,6 +18,8 @@ mod overflow;
 #[cfg(test)]
 pub(crate) use overflow::{TOOLTIP, control_selector, hidden_selector};
 
+pub use overflow::init;
+
 use fit::{Fit, ItemKind, Measured};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;

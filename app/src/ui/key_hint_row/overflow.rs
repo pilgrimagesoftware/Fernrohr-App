@@ -12,6 +12,32 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::*;
 
+/// The key context around the overflow control's button, which [`init`]'s
+/// interceptor looks for.
+const KEY_CONTEXT: &str = "KeyHintOverflow";
+
+/// Lets Enter and Space activate a focused overflow control. A button acts on
+/// a key's release, but key bindings are matched on its press, first: in a
+/// panel that binds Space (Pods' Quick Look) or Enter (a list's Open), the
+/// panel's command would run instead. While focus is on the control, those
+/// two keys are its own, as they are for any focused button; nothing is bound,
+/// so no other key or context changes.
+pub fn init(cx: &mut App) {
+    cx.intercept_keystrokes(|event, window, cx| {
+        let activates = matches!(event.keystroke.key.as_str(), "enter" | "space")
+            && !event.keystroke.modifiers.modified();
+        let on_control = event
+            .context_stack
+            .iter()
+            .any(|context| context.contains(KEY_CONTEXT));
+        if activates && on_control {
+            window.dispatch_action(Box::new(ShowKeyHints), cx);
+            cx.stop_propagation();
+        }
+    })
+    .detach();
+}
+
 /// The overflow control's tooltip title.
 pub(crate) const TOOLTIP: &str = "More keys";
 
@@ -40,6 +66,7 @@ pub(super) fn control(
     div()
         .id(ElementId::Name(format!("{row}-more-tooltip").into()))
         .flex_shrink_0()
+        .key_context(KEY_CONTEXT)
         .debug_selector({
             let selector = control_selector(row);
             move || selector
