@@ -116,20 +116,26 @@ pub(super) fn packed_lines(widths: &[Pixels], gap: Pixels, available: Pixels) ->
     lines
 }
 
-/// Which items a row draws, in order: every item when expanded; when
-/// collapsed, the controls and the essential hints, or the first hint when
-/// none is essential, so a collapsed row always keeps one.
+/// Which items a row draws, in order: every item but the summaries when
+/// expanded; when collapsed, the controls, the essential hints and the
+/// summaries, or the first hint when there are none of the latter two, so a
+/// collapsed row always keeps one.
 pub(super) fn shown(kinds: &[ItemKind], collapsed: bool) -> Vec<bool> {
     if !collapsed {
-        return vec![true; kinds.len()];
+        return kinds
+            .iter()
+            .map(|kind| *kind != ItemKind::Summary)
+            .collect();
     }
-    let any_essential = kinds.contains(&ItemKind::EssentialHint);
-    let first_hint = kinds.iter().position(|kind| *kind != ItemKind::Control);
+    let any_essential = kinds
+        .iter()
+        .any(|kind| matches!(kind, ItemKind::EssentialHint | ItemKind::Summary));
+    let first_hint = kinds.iter().position(|kind| *kind == ItemKind::Hint);
     kinds
         .iter()
         .enumerate()
         .map(|(index, kind)| match kind {
-            ItemKind::Control | ItemKind::EssentialHint => true,
+            ItemKind::Control | ItemKind::EssentialHint | ItemKind::Summary => true,
             ItemKind::Hint => !any_essential && Some(index) == first_hint,
         })
         .collect()
@@ -144,4 +150,6 @@ pub(super) enum ItemKind {
     EssentialHint,
     /// A hint the row hides when it collapses.
     Hint,
+    /// A hint drawn only while the row is collapsed.
+    Summary,
 }

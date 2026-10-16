@@ -54,7 +54,7 @@ pub(crate) fn control_selector(row: &str) -> String {
 /// The overflow control for row `row`, listing `hidden` hints.
 pub(super) fn control(
     row: &SharedString,
-    hidden: Vec<(Kbd, SharedString)>,
+    hidden: Vec<(Vec<Kbd>, SharedString)>,
     window: &Window,
 ) -> Stateful<Div> {
     let every_key = super::live_key(&ShowKeyHints, None, SHOW_KEY_HINTS_KEY, window);
@@ -81,15 +81,15 @@ pub(super) fn control(
 
 /// "More keys", each hidden hint's key and label in row order, then where to
 /// find every key.
-fn tooltip(hidden: &[(Kbd, SharedString)], every_key: Kbd) -> Div {
+fn tooltip(hidden: &[(Vec<Kbd>, SharedString)], every_key: Kbd) -> Div {
     div()
         .debug_selector(|| crate::ui::icon_tooltip::selector(TOOLTIP))
         .flex()
         .flex_col()
         .gap_1()
         .child(TOOLTIP)
-        .children(hidden.iter().map(|(key, label)| {
-            super::KeyHint::body(key.clone(), label.clone()).debug_selector({
+        .children(hidden.iter().map(|(keys, label)| {
+            super::KeyHint::body(keys.clone(), label.clone()).debug_selector({
                 let label = label.clone();
                 move || hidden_selector(&label)
             })

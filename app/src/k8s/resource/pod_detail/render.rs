@@ -1,6 +1,7 @@
 //! Drawing the panel: the header with its shortcut hints, the tabbed
 //! structured view, the Events tab and the YAML view.
 
+use super::actions::hint_selector;
 use super::commands::{
     CONFIGURATION_TAB_KEY, CONTAINERS_TAB_KEY, EVENTS_TAB_KEY, MANAGED_FIELDS_TAB_KEY,
     OVERVIEW_TAB_KEY, PANEL_KEY_CONTEXT, SelectConfigurationTab, SelectContainersTab,
@@ -285,10 +286,22 @@ impl Render for PodDetailPanel {
                     .hint_gap(space.control_gap)
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
+                    // The tab keys switch what the panel shows, so they stay
+                    // when the row collapses (`key-hint-rows` D2) - as one
+                    // group, so a collapsed header stays short.
                     .when(!yaml, |this| {
-                        this.hints(DetailSection::ALL.iter().map(|section| {
-                            KeyHint::new(tab_key(*section), section.label()).essential()
-                        }))
+                        let keys = DetailSection::ALL.iter().map(|section| tab_key(*section));
+                        this.hint(
+                            KeyHint::styled_group(keys.collect(), "Tabs", |body| {
+                                body.debug_selector(|| hint_selector("Tabs"))
+                            })
+                            .summary(),
+                        )
+                        .hints(
+                            DetailSection::ALL
+                                .iter()
+                                .map(|section| KeyHint::new(tab_key(*section), section.label())),
+                        )
                     })
                     .when(has_links, |this| {
                         this.hint(KeyHint::styled(

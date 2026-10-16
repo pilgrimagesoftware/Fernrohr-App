@@ -66,6 +66,15 @@ fn collapsed_shows_controls_and_essential_hints_in_order() {
 }
 
 #[test]
+fn a_summary_is_drawn_only_while_collapsed_and_stands_for_essentials() {
+    use ItemKind::{Hint, Summary};
+    let kinds = [Summary, Hint, Hint];
+    assert_eq!(shown(&kinds, false), vec![false, true, true]);
+    // With a summary, the first hint isn't kept as well.
+    assert_eq!(shown(&kinds, true), vec![true, false, false]);
+}
+
+#[test]
 fn with_nothing_essential_a_collapsed_row_keeps_its_first_hint() {
     use ItemKind::{Control, Hint};
     assert_eq!(shown(&[Control, Hint, Hint], true), vec![true, true, false]);

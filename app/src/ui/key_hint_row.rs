@@ -24,13 +24,25 @@ use fit::{Fit, ItemKind, Measured};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
 
-/// One hint: a key and what it does, drawn as the key then the label. The
-/// overflow control's tooltip lists a hidden hint by the same key and label.
+/// One hint: a key (or a group of keys) and what it does, drawn as the keys
+/// then the label. The overflow control's tooltip lists a hidden hint by the
+/// same keys and label.
 pub struct KeyHint {
-    key: Kbd,
+    keys: Vec<Kbd>,
     label: SharedString,
-    essential: bool,
+    role: Role,
     element: AnyElement,
+}
+
+/// When a hint is drawn.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Role {
+    /// Always, until the row collapses.
+    Hint,
+    /// Always, collapsed or not.
+    Essential,
+    /// Only while the row is collapsed: a compact stand-in for hints it hides.
+    Summary,
 }
 
 impl KeyHint {
@@ -46,12 +58,22 @@ impl KeyHint {
         label: impl Into<SharedString>,
         style: impl FnOnce(Div) -> E,
     ) -> Self {
+        Self::styled_group(vec![key], label, style)
+    }
+
+    /// One hint for several keys, such as a panel's tab keys - every key,
+    /// then `label` - its element passed through `style`.
+    pub fn styled_group<E: IntoElement>(
+        keys: Vec<Kbd>,
+        label: impl Into<SharedString>,
+        style: impl FnOnce(Div) -> E,
+    ) -> Self {
         let label = label.into();
-        let element = style(Self::body(key.clone(), label.clone())).into_any_element();
+        let element = style(Self::body(keys.clone(), label.clone())).into_any_element();
         Self {
-            key,
+            keys,
             label,
-            essential: false,
+            role: Role::Hint,
             element,
         }
     }
@@ -71,19 +93,28 @@ impl KeyHint {
     /// Kept when the row collapses (D2). Each row decides which of its hints
     /// matter most; a row that marks none keeps its first.
     pub fn essential(mut self) -> Self {
-        self.essential = true;
+        self.role = Role::Essential;
         self
     }
 
-    /// A hint's standard element: the key, then the label, on one line.
-    pub fn body(key: Kbd, label: SharedString) -> Div {
+    /// Drawn only while the row is collapsed, standing in for hints it hides,
+    /// such as one group of tab keys for a tab hint each, so a collapsed row
+    /// stays short. It isn't part of the fit: the row expands once the hints
+    /// it stands in for fit.
+    pub fn summary(mut self) -> Self {
+        self.role = Role::Summary;
+        self
+    }
+
+    /// A hint's standard element: the keys, then the label, on one line.
+    pub fn body(keys: Vec<Kbd>, label: SharedString) -> Div {
         div()
             .flex()
             .flex_shrink_0()
             .items_center()
             .gap_1()
             .whitespace_nowrap()
-            .child(key)
+            .children(keys)
             .child(label)
     }
 }
@@ -101,15 +132,19 @@ pub fn live_key(
 
 enum Item {
     Control(AnyElement),
-    Hint(KeyHint),
+    // Boxed: a hint carries its keys and element, far larger than a control.
+    Hint(Box<KeyHint>),
 }
 
 impl Item {
     fn kind(&self) -> ItemKind {
         match self {
             Item::Control(_) => ItemKind::Control,
-            Item::Hint(hint) if hint.essential => ItemKind::EssentialHint,
-            Item::Hint(_) => ItemKind::Hint,
+            Item::Hint(hint) => match hint.role {
+                Role::Hint => ItemKind::Hint,
+                Role::Essential => ItemKind::EssentialHint,
+                Role::Summary => ItemKind::Summary,
+            },
         }
     }
 }
@@ -145,12 +180,13 @@ impl KeyHintRow {
     }
 
     pub fn hint(mut self, hint: KeyHint) -> Self {
-        self.items.push(Item::Hint(hint));
+        self.items.push(Item::Hint(Box::new(hint)));
         self
     }
 
     pub fn hints(mut self, hints: impl IntoIterator<Item = KeyHint>) -> Self {
-        self.items.extend(hints.into_iter().map(Item::Hint));
+        self.items
+            .extend(hints.into_iter().map(|hint| Item::Hint(Box::new(hint))));
         self
     }
 
@@ -188,7 +224,12 @@ impl RenderOnce for KeyHintRow {
                 Item::Control(_) => SharedString::from(format!("\u{0}control {index}")),
                 Item::Hint(hint) => hint.label.clone(),
             };
-            all.push(key.clone());
+            // A summary isn't drawn expanded, so it isn't packed to decide
+            // whether the row fits.
+            let summary = item.kind() == ItemKind::Summary;
+            if !summary {
+                all.push(key.clone());
+            }
             match (item, shown) {
                 (Item::Control(element), _) => {
                     drawn.push(key);
@@ -198,7 +239,8 @@ impl RenderOnce for KeyHintRow {
                     drawn.push(key);
                     elements.push(hint.element);
                 }
-                (Item::Hint(hint), false) => hidden.push((hint.key, hint.label)),
+                (Item::Hint(hint), false) if !summary => hidden.push((hint.keys, hint.label)),
+                (Item::Hint(_), false) => {}
             }
         }
         let overflow = (!hidden.is_empty()).then(|| overflow::control(&self.id, hidden, window));

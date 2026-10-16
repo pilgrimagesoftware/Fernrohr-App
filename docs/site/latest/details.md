@@ -51,8 +51,8 @@ that Tab also reaches.
 
 The header's key hints wrap beside the name. When a narrow panel would need
 more than three lines for them, the header shows only the keys that switch
-what the panel shows: the pod detail's tab keys and **Show YAML** or
-**Show fields**. A **⋯** button follows them. Every hidden key still works.
+what the panel shows: the pod detail's tab keys, grouped as **Tabs**, and
+**Show YAML** or **Show fields**. A **⋯** button follows them. Every hidden key still works.
 
 - Hover the **⋯** button to list the hidden keys.
 - Press <kbd>Tab</kbd> to reach it, then <kbd>↵</kbd> or <kbd>Space</kbd> to
