@@ -88,7 +88,7 @@ async fn pods_at(client: kube::Client, target: &Target, place: Place) -> Result<
             _ => pod_resolver::resolve_pods(client, target).await,
         },
         Place::Pod(pod) => Ok(pod_resolver::is_running(&pod)
-            .then(|| *pod)
+            .then_some(*pod)
             .into_iter()
             .collect()),
         Place::Workload {

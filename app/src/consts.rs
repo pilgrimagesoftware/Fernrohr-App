@@ -362,6 +362,12 @@ pub(crate) const BULK_EVICTION_TIMEOUT: std::time::Duration = std::time::Duratio
 /// (`exec-command-library`).
 pub(crate) const EXEC_LIBRARY_FILE: &str = "exec-library.toml";
 
+/// The Exec Library window's starting and smallest sizes.
+pub(crate) const EXEC_LIBRARY_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(720.), gpui_kit::px(520.));
+pub(crate) const EXEC_LIBRARY_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(480.), gpui_kit::px(320.));
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.
