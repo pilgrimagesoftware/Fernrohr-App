@@ -254,3 +254,17 @@ async fn the_context_chooser_picks_the_first_by_enter(cx: &mut TestAppContext) {
     harness.press("enter");
     assert_eq!(*picked.borrow(), Some(0));
 }
+
+/// Run on a pod that isn't Running: the error names that pod, not the entry's
+/// scope, and nothing opens.
+#[gpui_kit::test]
+async fn a_pod_that_isnt_running_is_named_in_the_error(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    let from: k8s_openapi::api::core::v1::Pod =
+        serde_json::from_value(pod("db-0", "Pending", "db")).unwrap();
+    harness.run(entry(Target::Any, None), Place::Pod(Box::new(from)));
+    assert!(harness.sessions().is_empty());
+    let reported = harness.reported();
+    assert_eq!(reported.len(), 1);
+    assert_eq!(reported[0].1, "Pod shop/db-0 is not Running.");
+}

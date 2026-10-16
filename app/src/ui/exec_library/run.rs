@@ -87,10 +87,13 @@ async fn pods_at(client: kube::Client, target: &Target, place: Place) -> Result<
             ),
             _ => pod_resolver::resolve_pods(client, target).await,
         },
-        Place::Pod(pod) => Ok(pod_resolver::is_running(&pod)
-            .then_some(*pod)
-            .into_iter()
-            .collect()),
+        // The pod was given, not matched: if it isn't Running, say so of it.
+        Place::Pod(pod) if pod_resolver::is_running(&pod) => Ok(vec![*pod]),
+        Place::Pod(pod) => Err(format!(
+            "Pod {}/{} is not Running.",
+            pod.metadata.namespace.as_deref().unwrap_or_default(),
+            pod.metadata.name.as_deref().unwrap_or_default()
+        )),
         Place::Workload {
             kind,
             namespace,

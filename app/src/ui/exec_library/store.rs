@@ -2,10 +2,11 @@
 //! written back, atomically, on every change, so an edit needs no separate save
 //! step (D6). Views observing the store hear each change.
 //!
-//! A file that doesn't parse is left exactly as it is - a hand edit with a typo
-//! in it isn't overwritten - and the library is empty and read-only until it's
-//! fixed, with the file and the error kept for the window's banner. A missing
-//! file is an empty library; nothing is written until the first change.
+//! A file that can't be read or doesn't parse is left exactly as it is - a hand
+//! edit with a typo in it isn't overwritten - and the library is empty and
+//! read-only until it's fixed, with the file and the error kept for the
+//! window's banner. Only a missing file is an empty library; nothing is
+//! written until the first change.
 
 use crate::config::exec_library::{EntryError, ExecLibrary};
 use gpui_kit::{App, BorrowAppContext as _, Global};
@@ -34,7 +35,13 @@ fn load(path: &Path) -> Loaded {
             Ok(library) => Loaded::Library(library),
             Err(error) => Loaded::Broken(format!("{}: {error}", path.display())),
         },
-        Err(_) => Loaded::Library(ExecLibrary::default()),
+        // Only a missing file is an empty library. Any other read error -
+        // permission denied, not UTF-8, a directory - is a file that is there
+        // and can't be read, so it isn't overwritten either.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Loaded::Library(ExecLibrary::default())
+        }
+        Err(error) => Loaded::Broken(format!("{}: {error}", path.display())),
     }
 }
 

@@ -83,3 +83,26 @@ fn a_missing_file_is_an_empty_library_until_the_first_change(cx: &mut TestAppCon
     assert!(path.exists());
     let _ = std::fs::remove_file(&path);
 }
+
+/// A file that can't be read as text - not UTF-8 - is no empty library: it is
+/// reported, read-only, and its bytes survive an attempted save.
+#[gpui_kit::test]
+fn an_unreadable_file_is_read_only_and_untouched(cx: &mut TestAppContext) {
+    let path = crate::util::test_paths::temp_path("exec-library-not-utf8");
+    let bytes = [b'n', b'a', b'm', b'e', 0xff, 0xfe, b'\n'];
+    std::fs::write(&path, bytes).expect("written");
+    cx.update(|cx| {
+        ExecLibraryStore::init(path.clone(), cx);
+        let reason = ExecLibraryStore::broken(cx).expect("reported");
+        assert!(
+            reason.contains("exec-library-not-utf8"),
+            "names the file: {reason}"
+        );
+        assert_eq!(
+            ExecLibraryStore::update(cx, |library| library.create(entry("x"))),
+            Err(EntryError::ReadOnly)
+        );
+    });
+    assert_eq!(std::fs::read(&path).expect("still there"), bytes);
+    let _ = std::fs::remove_file(&path);
+}
