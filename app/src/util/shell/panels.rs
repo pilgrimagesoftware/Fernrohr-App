@@ -139,11 +139,7 @@ fn panel_key(state: &PanelState) -> Option<PanelKey> {
             }),
             None => NavTarget::Logs,
         },
-        "Exec" => NavTarget::Exec(crate::k8s::resource::exec::ExecTarget {
-            namespace: data["namespace"].as_str()?.to_string(),
-            pod: data["pod"].as_str()?.to_string(),
-            container: data["container"].as_str()?.to_string(),
-        }),
+        "Exec" => NavTarget::Exec(crate::k8s::resource::exec::ExecTarget::from_saved(data)?),
         "PodDetail" => NavTarget::pod(
             data["pod_namespace"].as_str()?.to_string(),
             data["pod_name"].as_str()?.to_string(),

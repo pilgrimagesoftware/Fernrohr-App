@@ -6,6 +6,7 @@
 //! from a saved layout starts no session: the one it showed ended when the app
 //! quit, and opening a shell is the user's call.
 
+use super::target::ExecTarget;
 use super::transport::{ExecEnd, ExecTransport};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::ui::nav::NavTarget;
@@ -17,23 +18,16 @@ use gpui_kit::*;
 use gpui_terminal::{Terminal, TerminalBuilder, TerminalEvent, TerminalView};
 use tokio::sync::mpsc;
 
-/// Which container a shell is in.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExecTarget {
-    pub namespace: String,
-    pub pod: String,
-    pub container: String,
-}
-
 pub fn register_restore(cx: &mut App) {
     register_panel(cx, "Exec", |context, window, cx| {
         use crate::ui::unrestored::{required_str, restore_with};
         restore_with(&context, cx, |state, cx| {
-            let target = ExecTarget {
-                namespace: required_str(state, "namespace")?.to_string(),
-                pod: required_str(state, "pod")?.to_string(),
-                container: required_str(state, "container")?.to_string(),
-            };
+            // `required_str` names a missing field; the target then reads them all.
+            for field in ["namespace", "pod", "container"] {
+                required_str(state, field)?;
+            }
+            let target = ExecTarget::from_saved(state)
+                .ok_or_else(|| "The saved shell's command can't be read.".to_string())?;
             let context_name = required_str(state, "context_name")?.to_string();
             let scope =
                 PanelScope::new(NavTarget::Exec(target.clone()), context_name).restored_from(state);
@@ -91,17 +85,20 @@ impl ExecPanel {
     }
 
     /// A panel whose session is already over - a restored one.
-    fn ended(
+    pub(super) fn ended(
         target: ExecTarget,
         scope: PanelScope,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let reason = if target.command.is_some() {
+            "This command ended when Fernrohr closed. Run it again from the Exec Library."
+        } else {
+            "This shell ended when Fernrohr closed. Open a new one from the Pods panel."
+        };
         let ended = SessionState::Ended(ExecEnd {
             code: None,
-            reason: Some(
-                "This shell ended when Fernrohr closed. Open a new one from the Pods panel.".into(),
-            ),
+            reason: Some(reason.into()),
         });
         Self::build(target, scope, None, ended, cx)
     }
@@ -219,7 +216,12 @@ impl ExecPanel {
     /// session ends with it (`panel-move-keybindings`' Close Group asks first).
     pub(crate) fn close_warning(&self) -> Option<crate::ui::confirm_text::ConfirmText> {
         (self.state == SessionState::Running).then(|| {
-            crate::ui::confirm_text::ConfirmText::from("The shell in ")
+            let what = if self.target.command.is_some() {
+                "The command in "
+            } else {
+                "The shell in "
+            };
+            crate::ui::confirm_text::ConfirmText::from(what)
                 .name(&self.target.pod)
                 .text(" \u{00b7} ")
                 .name(&self.target.container)
@@ -245,15 +247,11 @@ impl BasePanel for ExecPanel {
         PanelState {
             panel_name: self.panel_name().to_string(),
             children: Vec::new(),
-            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(
-                &self.scope,
-                serde_json::json!({
-                    "context_name": self.scope.context_name,
-                    "namespace": self.target.namespace,
-                    "pod": self.target.pod,
-                    "container": self.target.container,
-                }),
-            )),
+            info: PanelInfo::Panel(crate::ui::panel_title::with_saved_scope(&self.scope, {
+                let mut saved = self.target.saved();
+                saved["context_name"] = self.scope.context_name.clone().into();
+                saved
+            })),
         }
     }
 }

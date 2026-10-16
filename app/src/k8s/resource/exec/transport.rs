@@ -25,14 +25,7 @@ use kube::api::{AttachParams, TerminalSize};
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::{mpsc, watch};
 
-use super::panel::ExecTarget;
-
-/// The shell the session starts: bash where the image has it, else sh.
-pub(super) const SHELL: [&str; 3] = [
-    "/bin/sh",
-    "-c",
-    "command -v bash >/dev/null 2>&1 && exec bash || exec sh",
-];
+use super::target::ExecTarget;
 
 /// How a session ended, for the panel's notice.
 #[derive(Clone, Debug, PartialEq)]
@@ -128,6 +121,8 @@ async fn run(
     ended: mpsc::Sender<ExecEnd>,
 ) {
     let api: Api<Pod> = Api::namespaced(client, &target.namespace);
+    // A library entry's argv in place of the shell, with the same TTY (D1).
+    let argv = target.argv();
     let params = AttachParams::default()
         .container(target.container)
         .stdin(true)
@@ -135,7 +130,7 @@ async fn run(
         // With a TTY the container's stderr arrives on stdout.
         .stderr(false)
         .tty(true);
-    let mut attached = match api.exec(&target.pod, SHELL, &params).await {
+    let mut attached = match api.exec(&target.pod, argv, &params).await {
         Ok(attached) => attached,
         Err(error) => {
             let reason = crate::k8s::error::describe(&error);

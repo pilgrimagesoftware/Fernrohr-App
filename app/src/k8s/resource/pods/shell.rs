@@ -128,6 +128,7 @@ fn open_shell(selection: &PodSelection, container: &str, window: &mut Window, cx
                 namespace: selection.namespace.clone(),
                 pod: selection.name.clone(),
                 container: container.to_string(),
+                command: None,
             },
         }),
         cx,
