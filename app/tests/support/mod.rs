@@ -24,23 +24,33 @@ impl FreshHome {
         Self { root }
     }
 
-    /// `fernrohr` with `args`, its home and XDG directories inside this one.
-    pub fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_fernrohr"));
-        command.args(args).env("HOME", self.root.join("home"));
-        for (var, dir) in [
+    /// The environment that points `HOME` and the XDG directories inside this
+    /// one.
+    pub fn vars(&self) -> Vec<(&'static str, PathBuf)> {
+        [
+            ("HOME", "home"),
             ("XDG_CONFIG_HOME", "config"),
             ("XDG_DATA_HOME", "data"),
             ("XDG_STATE_HOME", "state"),
             ("XDG_CACHE_HOME", "cache"),
             ("XDG_RUNTIME_DIR", "runtime"),
-        ] {
-            command.env(var, self.root.join(dir));
-        }
+        ]
+        .into_iter()
+        .map(|(var, dir)| (var, self.root.join(dir)))
+        .collect()
+    }
+
+    /// `fernrohr` with `args`, in this home.
+    pub fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fernrohr"));
+        command.args(args).envs(self.vars());
         command
     }
 
     /// Every path created under this home, relative to it.
+    // Each test crate compiles its own copy of this module, and not every one
+    // asks what was created.
+    #[allow(dead_code)]
     pub fn created(&self) -> Vec<PathBuf> {
         let mut found = Vec::new();
         walk(&self.root, &self.root, &mut found);
@@ -48,6 +58,7 @@ impl FreshHome {
     }
 }
 
+#[allow(dead_code)] // Only `created` walks; see there.
 fn walk(root: &Path, dir: &Path, found: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
