@@ -62,7 +62,7 @@ getrandom = "=0.4.3"
 # The MCP tools' input schemas, derived from their typed inputs
 # (`mcp::tools::ToolSpec::for_input`). Already in the build through gpui-base
 # and rmcp, with its derive; pinned to that same version.
-schemars = "=1.2.2"
+schemars = "=1.2.3"
 
 # Desktop notifications (`notify`, manual-confirmation-tunnels D6): the macOS
 # notification center and the freedesktop D-Bus service. Already in the Linux
