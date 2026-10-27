@@ -92,7 +92,7 @@ windows-sys = { version = "=0.61.2", features = ["Win32_Graphics_Dwm"] }
 [dev-dependencies]
 gpui-kit = { version = "=0.7.0", features = ["test-support"] }
 rcgen = "=0.14.10"
-rustls = "=0.23.45"
+rustls = "=0.23.46"
 tokio-rustls = "=0.26.6"
 tokio-tungstenite = "=0.30.0"
 
