@@ -44,6 +44,9 @@ Custom Resources is split into subgroups headed by API group, in alphabetical
 order. Every subgroup starts collapsed, and so does a group the cluster adds
 later.
 
+A collapsed section or subgroup shows how many kinds it holds beside its name.
+Expanded, its rows show them instead.
+
 | Command | Default key |
 | --- | --- |
 | Toggle Resource Group | <kbd>Space</kbd> |
