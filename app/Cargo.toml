@@ -33,7 +33,7 @@ log = "=0.4.34"
 jiff = "=0.2.38"
 futures-util = "=0.3.34"
 keyring = "=4.2.0"
-parking_lot = "=0.12.5"
+parking_lot = "=0.13.0"
 percent-encoding = "=2.3.2"
 # Splitting a command tunnel's command line with POSIX quoting (`tunnel::command::argv`).
 # Already in the build through a transitive dependency; pinned to that same version.
