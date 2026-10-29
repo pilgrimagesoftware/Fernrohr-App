@@ -360,7 +360,7 @@ impl Panel for ObjectDetailPanel {
     fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         panel_title::title_element(
             &self.scope,
-            panel_title::title(&self.scope),
+            panel_title::title_in(&self.scope, cx),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
             cx.entity_id(),
