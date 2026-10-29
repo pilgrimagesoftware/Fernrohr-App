@@ -1,8 +1,8 @@
 //! What a list panel shows besides its rows (`list-loading-indicator` D2-D4):
 //! a loading indicator while its first list is under way, an empty state once
-//! a list has come back with nothing (or a filter has hidden everything), and
-//! a small refreshing spinner in its header while it relists with rows on
-//! screen. The object list, Pods and events browser panels all decide and draw
+//! a list has come back with nothing, a no-match row under the table's header
+//! once a filter has hidden everything (#312), and a small refreshing spinner
+//! in its header while it relists with rows on screen. The object list, Pods and events browser panels all decide and draw
 //! these here, from their store's [`LoadPhase`].
 //!
 //! Both indicators wait out [`LIST_INDICATOR_DELAY`] first ([`Delay`]), so a
@@ -17,8 +17,11 @@ use gpui_kit::*;
 
 /// The loading indicator's debug selector.
 pub(crate) const LOADING_SELECTOR: &str = "list-loading";
-/// The empty state's.
+/// The empty state's, and the no-match row's.
 pub(crate) const EMPTY_SELECTOR: &str = "list-empty";
+/// What's laid over the table while it shows no rows: the loading or empty
+/// state.
+pub(crate) const OVERLAY_SELECTOR: &str = "list-overlay";
 /// The header's refreshing spinner's.
 pub(crate) const REFRESHING_SELECTOR: &str = "list-refreshing";
 /// The refreshing spinner's tooltip.
@@ -35,6 +38,10 @@ pub(crate) enum TableArea {
     Loading { received: usize },
     /// No rows to show, and why, in words.
     Empty(String),
+    /// Rows exist but the filter hides them all. The table stays, header and
+    /// all, with the no-match row as its body ([`empty_body`]), so the columns
+    /// being filtered on stay in view.
+    NoMatch,
 }
 
 /// Decides the table area from the store's `phase`, how many rows are in the
@@ -53,9 +60,7 @@ pub(crate) fn table_area(
         LoadPhase::Loaded | LoadPhase::Refreshing { .. } if scoped == 0 => {
             TableArea::Empty(empty_text(kind, namespaces))
         }
-        LoadPhase::Loaded | LoadPhase::Refreshing { .. } if visible == 0 => {
-            TableArea::Empty(FILTERED_EMPTY.to_string())
-        }
+        LoadPhase::Loaded | LoadPhase::Refreshing { .. } if visible == 0 => TableArea::NoMatch,
         LoadPhase::Loaded | LoadPhase::Refreshing { .. } => TableArea::Table,
     }
 }
@@ -112,12 +117,30 @@ fn placeholder(area: &TableArea, kind: &str, shown: bool, cx: &App) -> AnyElemen
             .debug_selector(|| EMPTY_SELECTOR.to_string())
             .child(line(text.clone()))
             .into_any_element(),
-        TableArea::Table => div().into_any_element(),
+        TableArea::Table | TableArea::NoMatch => div().into_any_element(),
     }
 }
 
+/// A table's body while it has no rows: the no-match row while the filter
+/// hides every row (`no_match`), else nothing - the loading or empty state is
+/// laid over the table then. Each list's `TableDelegate::render_empty`.
+pub(crate) fn empty_body(no_match: bool, cx: &App) -> AnyElement {
+    if !no_match {
+        return div().into_any_element();
+    }
+    div()
+        .w_full()
+        .flex()
+        .justify_center()
+        .py_4()
+        .text_color(cx.theme().muted_foreground)
+        .debug_selector(|| EMPTY_SELECTOR.to_string())
+        .child(line(FILTERED_EMPTY.to_string()))
+        .into_any_element()
+}
+
 /// The table area: `table` itself, with the loading or empty view laid over
-/// it for anything but [`TableArea::Table`]. The table stays mounted under
+/// it for anything but [`TableArea::Table`] and [`TableArea::NoMatch`]. The table stays mounted under
 /// the overlay so it keeps keyboard focus, and the panel's keys - a
 /// namespace jump back out of an empty scope, say - still reach the panel.
 pub(crate) fn table_area_element(
@@ -128,11 +151,12 @@ pub(crate) fn table_area_element(
     cx: &App,
 ) -> AnyElement {
     let overlay = match area {
-        TableArea::Table => None,
+        TableArea::Table | TableArea::NoMatch => None,
         area => Some(
             div()
                 .absolute()
                 .inset_0()
+                .debug_selector(|| OVERLAY_SELECTOR.to_string())
                 .bg(cx.theme().background)
                 .child(placeholder(area, kind, shown, cx)),
         ),
@@ -201,6 +225,30 @@ impl Delay {
 pub(crate) struct Indicators {
     pub(crate) loading: Delay,
     pub(crate) refreshing: Delay,
+}
+
+/// Test-only (#312): the table's header is drawn with no overlay over it, and
+/// the no-match row, reading [`FILTERED_EMPTY`], sits below it.
+#[cfg(test)]
+pub(crate) fn assert_no_match_under_header(vcx: &mut VisualTestContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    vcx.update(|window, cx| window.render_frame(cx));
+    assert!(
+        vcx.debug_bounds(OVERLAY_SELECTOR).is_none(),
+        "nothing laid over the table"
+    );
+    let header = vcx
+        .debug_bounds("table-header-0")
+        .expect("the header is drawn");
+    let row = vcx
+        .debug_bounds(EMPTY_SELECTOR)
+        .expect("the no-match row is drawn");
+    assert!(
+        row.top() >= header.bottom(),
+        "the row {row:?} is below the header {header:?}"
+    );
+    let text: &'static str = text_selector(FILTERED_EMPTY).leak();
+    assert!(vcx.debug_bounds(text).is_some(), "it says why");
 }
 
 #[cfg(test)]

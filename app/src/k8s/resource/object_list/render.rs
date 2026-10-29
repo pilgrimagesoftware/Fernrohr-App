@@ -100,6 +100,11 @@ impl ObjectListPanel {
             cx,
         );
         let table = self.sync_table(rows, window, cx);
+        table.update(cx, |table, _| {
+            table
+                .delegate_mut()
+                .set_no_match(area == TableArea::NoMatch);
+        });
         // Open, Filter and Describe stay when a narrow panel collapses the
         // row (`key-hint-rows` D2).
         let mut hints = KeyHintRow::new(HINTS_ID)

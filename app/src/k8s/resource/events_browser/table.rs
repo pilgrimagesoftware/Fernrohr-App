@@ -29,9 +29,18 @@ pub struct EventsTableDelegate {
     /// When the rows were supplied, which their Last Seen ages read against.
     now: Timestamp,
     header: HeaderBounds,
+    /// Whether the filter hides every row (#312): the body then reads so,
+    /// under the header ([`crate::ui::list_state::empty_body`]).
+    no_match: bool,
 }
 
 impl EventsTableDelegate {
+    /// Whether the filter hides every row - set each render from the panel's
+    /// table area.
+    pub(super) fn set_no_match(&mut self, no_match: bool) {
+        self.no_match = no_match;
+    }
+
     pub fn new(sort: Option<(EventColumn, ColumnSort)>) -> Self {
         Self {
             natural: Vec::new(),
@@ -43,6 +52,7 @@ impl EventsTableDelegate {
             selected: None,
             now: Timestamp::now(),
             header: HeaderBounds::default(),
+            no_match: false,
         }
     }
 
@@ -117,6 +127,15 @@ impl EventsTableDelegate {
 }
 
 impl TableDelegate for EventsTableDelegate {
+    /// No rows: the no-match row while the filter hides them all.
+    fn render_empty(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::ui::list_state::empty_body(self.no_match, cx)
+    }
+
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
     }

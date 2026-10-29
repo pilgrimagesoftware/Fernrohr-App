@@ -121,6 +121,8 @@ async fn a_filter_that_hides_every_row_says_so(cx: &mut TestAppContext) {
     focus_table(&mut h);
     press(&mut h.vcx, "/ z z z");
     assert!(says(&mut h, "No rows match the filter"));
+    // #312: under the header, which stays.
+    crate::ui::list_state::assert_no_match_under_header(&mut h.vcx);
 }
 
 #[gpui_kit::test]

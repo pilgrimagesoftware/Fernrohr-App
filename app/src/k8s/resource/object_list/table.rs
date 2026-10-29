@@ -93,6 +93,9 @@ pub(super) struct ObjectTableDelegate {
     /// items dispatch from.
     kind_menu: Option<menu::KindMenu>,
     action_context: Option<FocusHandle>,
+    /// Whether the filter hides every row (#312): the body then reads so,
+    /// under the header ([`crate::ui::list_state::empty_body`]).
+    no_match: bool,
 }
 
 impl ObjectTableDelegate {
@@ -119,7 +122,14 @@ impl ObjectTableDelegate {
             checked: Default::default(),
             kind_menu: None,
             action_context: None,
+            no_match: false,
         }
+    }
+
+    /// Whether the filter hides every row - set each render from the panel's
+    /// table area.
+    pub(super) fn set_no_match(&mut self, no_match: bool) {
+        self.no_match = no_match;
     }
 
     /// Sets the sort a third click returns to, and the key the user's sorts
@@ -307,6 +317,15 @@ impl crate::ui::background_rows::BackgroundRows for ObjectTableDelegate {
 }
 
 impl TableDelegate for ObjectTableDelegate {
+    /// No rows: the no-match row while the filter hides them all.
+    fn render_empty(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::ui::list_state::empty_body(self.no_match, cx)
+    }
+
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
     }

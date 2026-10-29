@@ -13,6 +13,7 @@ use super::pods::{PodRow, PodSelection};
 mod checked;
 mod columns;
 pub(in crate::k8s::resource) mod list_sort;
+mod menu;
 use columns::cell_text;
 pub(super) use columns::{PodColumn, compare};
 
@@ -100,6 +101,9 @@ pub(super) struct PodTableDelegate {
     /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
     /// the cursor `selected` tracks.
     checked: crate::ui::bulk::CheckedRows,
+    /// Whether the filter hides every row (#312): the body then reads so,
+    /// under the header ([`crate::ui::list_state::empty_body`]).
+    no_match: bool,
 }
 
 impl Default for PodTableDelegate {
@@ -117,11 +121,18 @@ impl Default for PodTableDelegate {
             action_context: None,
             background_click: Default::default(),
             checked: Default::default(),
+            no_match: false,
         }
     }
 }
 
 impl PodTableDelegate {
+    /// Whether the filter hides every row - set each render from the panel's
+    /// table area.
+    pub(in crate::k8s::resource) fn set_no_match(&mut self, no_match: bool) {
+        self.no_match = no_match;
+    }
+
     /// Replaces the rows, keeping the active sort applied - the delegate's
     /// half of `PodsPanel::sync_table`'s per-render row refresh.
     pub(super) fn set_rows(&mut self, rows: Vec<PodTableRow>) {
@@ -280,6 +291,15 @@ impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
 }
 
 impl TableDelegate for PodTableDelegate {
+    /// No rows: the no-match row while the filter hides them all.
+    fn render_empty(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::ui::list_state::empty_body(self.no_match, cx)
+    }
+
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
     }
@@ -308,11 +328,7 @@ impl TableDelegate for PodTableDelegate {
         }
     }
 
-    /// The row's context menu (`pod-quick-look` 2.1): right-clicking selects
-    /// the row - deferred, since the table is mid-update here - and offers the
-    /// panel's registered pod commands, dispatched from the table so each runs
-    /// exactly as its key does, with that key shown beside it. Check All Rows,
-    /// last, acts on the whole list.
+    /// The row's context menu ([`menu`]).
     fn context_menu(
         &mut self,
         row_ix: usize,
@@ -320,40 +336,7 @@ impl TableDelegate for PodTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        use super::pods::{
-            DescribePod, OpenInNewPanel, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml,
-        };
-        use crate::ui::bulk::commands::CheckAll;
-        use crate::ui::exec_library::commands::{RunFromLibrary, SaveToLibrary};
-        if row_ix >= self.rows.len() {
-            return menu;
-        }
-        cx.defer_in(window, move |table, _window, cx| {
-            table.set_selected_row(row_ix, cx);
-        });
-        let menu = match &self.action_context {
-            Some(focus) => menu.action_context(focus.clone()),
-            None => menu,
-        };
-        menu.menu("Quick Look", Box::new(QuickLook))
-            .menu("Open Details", Box::new(DescribePod))
-            .menu("Open in New Panel", Box::new(OpenInNewPanel))
-            .menu("Logs", Box::new(ShowPodLogs))
-            .menu(
-                crate::ui::logs_panels::flipped_label(cx),
-                Box::new(ShowPodLogsFlipped),
-            )
-            .menu("YAML", Box::new(ShowPodYaml))
-            .menu_with_disabled(
-                "Port Forward…",
-                Box::new(super::pods::PortForwardPod),
-                !self.rows[row_ix].row.forwardable(),
-            )
-            .separator()
-            .menu("Run from Library…", Box::new(RunFromLibrary))
-            .menu("Save to Library…", Box::new(SaveToLibrary))
-            .separator()
-            .menu("Check All Rows", Box::new(CheckAll))
+        self.row_menu(row_ix, menu, window, cx)
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,
