@@ -12,7 +12,7 @@ use super::commands::{
 use super::fetch::PodDetailState;
 use super::model::{DetailSection, DetailView};
 use super::panel::PodDetailPanel;
-use crate::ui::key_hint_row::KeyHint;
+use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use crate::ui::panel_title;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
@@ -269,51 +269,53 @@ impl Render for PodDetailPanel {
         //
         // The name takes the width it needs first, and the hints wrap onto
         // further rows to make room; only once they're down to their floor does
-        // the name give way, ellipsizing (`panel_title::header_title`).
+        // the name give way, ellipsizing. Too narrow for both, the name stacks
+        // above the hints (`panel_title::HeaderRow`).
         let header = div()
             .flex()
-            .items_center()
-            .justify_between()
-            .gap(space.control_gap)
             .px(space.panel_inset)
             .py(space.control_gap)
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(panel_title::header_title(heading))
             .child(
-                panel_title::header_hints(HEADER_HINTS_ID)
-                    .hint_gap(space.control_gap)
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    // The tab keys switch what the panel shows, so they stay
-                    // when the row collapses (`key-hint-rows` D2) - as one
-                    // group, so a collapsed header stays short.
-                    .when(!yaml, |this| {
-                        let keys = DetailSection::ALL.iter().map(|section| tab_key(*section));
-                        this.hint(
-                            KeyHint::styled_group(keys.collect(), "Tabs", |body| {
-                                body.debug_selector(|| hint_selector("Tabs"))
-                            })
-                            .summary(),
-                        )
-                        .hints(
-                            DetailSection::ALL
-                                .iter()
-                                .map(|section| KeyHint::new(tab_key(*section), section.label())),
-                        )
-                    })
-                    .when(has_links, |this| {
-                        this.hint(KeyHint::styled(
-                            crate::ui::link::go_to_key(window),
-                            "Go to…",
-                            |body| body.id("go-to-hint").test_support(),
-                        ))
-                    })
-                    .hint(logs_hint)
-                    .hint(logs_flipped_hint)
-                    .hints(acting_hints)
-                    .hint(toggle_hint),
+                panel_title::HeaderRow::new(
+                    HEADER_HINTS_ID,
+                    heading,
+                    KeyHintRow::new(HEADER_HINTS_ID)
+                        .hint_gap(space.control_gap)
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        // The tab keys switch what the panel shows, so they stay
+                        // when the row collapses (`key-hint-rows` D2) - as one
+                        // group, so a collapsed header stays short.
+                        .when(!yaml, |this| {
+                            let keys = DetailSection::ALL.iter().map(|section| tab_key(*section));
+                            this.hint(
+                                KeyHint::styled_group(keys.collect(), "Tabs", |body| {
+                                    body.debug_selector(|| hint_selector("Tabs"))
+                                })
+                                .summary(),
+                            )
+                            .hints(
+                                DetailSection::ALL.iter().map(|section| {
+                                    KeyHint::new(tab_key(*section), section.label())
+                                }),
+                            )
+                        })
+                        .when(has_links, |this| {
+                            this.hint(KeyHint::styled(
+                                crate::ui::link::go_to_key(window),
+                                "Go to…",
+                                |body| body.id("go-to-hint").test_support(),
+                            ))
+                        })
+                        .hint(logs_hint)
+                        .hint(logs_flipped_hint)
+                        .hints(acting_hints)
+                        .hint(toggle_hint),
+                )
+                .gap(space.control_gap),
             );
 
         Self::with_exec_library_actions(Self::with_window_actions(div(), cx), cx)

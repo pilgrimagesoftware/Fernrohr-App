@@ -49,7 +49,9 @@ that Tab also reaches.
 
 ### Key hints in a narrow panel
 
-The header's key hints wrap beside the name. When a narrow panel would need
+The header's key hints wrap beside the name, and a long name is cut short with
+an ellipsis to make room. In a panel too narrow for both side by side, the name
+moves onto its own line with the hints beneath it. When a narrow panel would need
 more than three lines for them, the header shows only the keys that switch
 what the panel shows: the pod detail's tab keys, grouped as **Tabs**, and
 **Show YAML** or **Show fields**. A **⋯** button follows them. Every hidden key still works.

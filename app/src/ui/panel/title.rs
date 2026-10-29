@@ -477,7 +477,7 @@ mod header;
 pub use error::REPORT_ERROR_BUTTON;
 pub(crate) use error::escape_markdown;
 pub use error::{error_content, report_button};
-pub use header::{header_hints, header_title};
+pub use header::HeaderRow;
 mod tooltip;
 use tooltip::title_tooltip;
 #[cfg(test)]

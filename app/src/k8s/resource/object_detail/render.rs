@@ -11,7 +11,7 @@ use super::panel::ObjectDetailPanel;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::events;
 use crate::k8s::resource::pod_detail::DetailView;
-use crate::ui::key_hint_row::KeyHint;
+use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use crate::ui::{detail, link, panel_title};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::TestSupportExt as _;
@@ -305,56 +305,61 @@ impl Render for ObjectDetailPanel {
                 });
         let logs_hint = self.logs_hint(window, cx);
         let (kind_buttons, kind_hints) = self.kind_header(window, cx);
+        let heading = panel_title::with_header_icon(
+            crate::ui::icon::for_kind(&self.target.kind.gvk.group, &self.target.kind.gvk.kind),
+            panel_title::item_heading(
+                self.target.name.clone(),
+                panel_title::heading_context(&self.scope, window_contexts),
+                cx.theme().muted_foreground,
+            ),
+            window,
+            cx,
+        );
         let header = div()
             .flex()
-            .items_center()
-            .justify_between()
-            .gap(space.control_gap)
             .px(space.panel_inset)
             .py(space.control_gap)
             .bg(crate::ui::style::surface_raised(cx))
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(panel_title::header_title(panel_title::with_header_icon(
-                crate::ui::icon::for_kind(&self.target.kind.gvk.group, &self.target.kind.gvk.kind),
-                panel_title::item_heading(
-                    self.target.name.clone(),
-                    panel_title::heading_context(&self.scope, window_contexts),
-                    cx.theme().muted_foreground,
-                ),
-                window,
-                cx,
-            )))
             .child(
-                panel_title::header_hints(HEADER_HINTS_ID)
-                    .hint_gap(space.control_gap)
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .when(has_links, |this| {
-                        this.hint(KeyHint::styled(
-                            link::go_to_key(window),
-                            "Go to…",
-                            |body| body.id("go-to-hint").test_support(),
-                        ))
-                    })
-                    .controls(kind_buttons)
-                    .hints(kind_hints)
-                    .hints(logs_hint)
-                    .when(deletable, |this| {
-                        this.hint(KeyHint::for_action(
-                            &DeleteObject,
-                            Some(super::delete::DELETABLE_KEY_CONTEXT),
-                            DELETE_KEY,
-                            "Delete",
-                            window,
-                        ))
-                    })
-                    // Essential (`key-hint-rows` D2): it switches what the
-                    // panel shows.
-                    .hint(
-                        KeyHint::new(toggle_key, if yaml { "Show fields" } else { "Show YAML" })
+                panel_title::HeaderRow::new(
+                    HEADER_HINTS_ID,
+                    heading,
+                    KeyHintRow::new(HEADER_HINTS_ID)
+                        .hint_gap(space.control_gap)
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .when(has_links, |this| {
+                            this.hint(KeyHint::styled(
+                                link::go_to_key(window),
+                                "Go to…",
+                                |body| body.id("go-to-hint").test_support(),
+                            ))
+                        })
+                        .controls(kind_buttons)
+                        .hints(kind_hints)
+                        .hints(logs_hint)
+                        .when(deletable, |this| {
+                            this.hint(KeyHint::for_action(
+                                &DeleteObject,
+                                Some(super::delete::DELETABLE_KEY_CONTEXT),
+                                DELETE_KEY,
+                                "Delete",
+                                window,
+                            ))
+                        })
+                        // Essential (`key-hint-rows` D2): it switches what the
+                        // panel shows.
+                        .hint(
+                            KeyHint::new(
+                                toggle_key,
+                                if yaml { "Show fields" } else { "Show YAML" },
+                            )
                             .essential(),
-                    ),
+                        ),
+                )
+                .gap(space.control_gap),
             );
 
         let mut context = key_context(
