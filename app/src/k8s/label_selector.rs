@@ -10,6 +10,9 @@ use kube::core::{Expression, GroupVersionKind, Selector, SelectorExt as _};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+mod readable;
+pub use readable::{readable, readable_text};
+
 /// Why a selector's text didn't parse: the requirement at fault, as typed, and
 /// what is wrong with it.
 #[derive(Clone, Debug, PartialEq, Eq)]
