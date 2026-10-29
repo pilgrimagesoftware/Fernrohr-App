@@ -116,21 +116,8 @@ impl DiscoveredKind {
         }
     }
 
-    /// What a *list* panel of this kind titles itself - the plural form
-    /// (`"Pods"`), as opposed to [`label`]'s singular Kind name (`"Pod"`),
-    /// which is right for a single item but wrong for a panel showing many.
-    pub fn plural_label(&self) -> String {
-        let plural = self.plural_name();
-        if self.gvk.group.is_empty() {
-            plural
-        } else {
-            format!("{} · {}", plural, self.gvk.group)
-        }
-    }
-
     /// The plural alone (`"Certificates"`), with no group qualifier - what a
-    /// custom resource's list tab reads, its group going to the tab's tooltip
-    /// instead.
+    /// kind's list tab reads, its group going to the tab's tooltip instead.
     ///
     /// The API plural is all lowercase (`replicasets`), so the casing comes
     /// from the Kind the Resource list shows: the stretch of the plural that

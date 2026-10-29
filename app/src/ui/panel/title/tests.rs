@@ -134,16 +134,37 @@ fn a_custom_resource_list_titles_by_kind_with_its_group_in_the_tooltip() {
     );
 }
 
-/// A built-in kind outside the core group keeps its group in the title, and its
-/// tooltip names the context alone - 5.3 changes custom resources only.
+/// #206: a built-in kind outside the core group titles by its plural alone
+/// too - the Gateway API's HTTPRoutes as well as `apps`' Deployments - and its
+/// tooltip names the group above the context, so two groups' same-named kinds
+/// stay tellable apart.
 #[test]
-fn a_built_in_grouped_list_keeps_its_group_in_the_title() {
+fn a_built_in_grouped_list_titles_by_kind_with_its_group_in_the_tooltip() {
+    let routes = scope(
+        grouped("gateway.networking.k8s.io", "HTTPRoute", "httproutes"),
+        1,
+    );
+    assert_eq!(title(&routes), "HTTPRoutes");
+    assert_eq!(
+        tooltip_lines(&routes),
+        (
+            Some("gateway.networking.k8s.io".into()),
+            "Context: kind-dev".into()
+        )
+    );
     let deployments = scope(grouped("apps", "Deployment", "deployments"), 1);
-    assert_eq!(title(&deployments), "Deployments · apps");
+    assert_eq!(title(&deployments), "Deployments");
     assert_eq!(
         tooltip_lines(&deployments),
-        (None, "Context: kind-dev".into())
+        (Some("apps".into()), "Context: kind-dev".into())
     );
+}
+
+/// A core kind has no group to name: its tooltip is the context alone.
+#[test]
+fn a_core_lists_tooltip_names_the_context_alone() {
+    let pods = scope(kind("Pod", true), 1);
+    assert_eq!(tooltip_lines(&pods), (None, "Context: kind-dev".into()));
 }
 
 /// Error text goes through markdown (the only selectable-text primitive), so

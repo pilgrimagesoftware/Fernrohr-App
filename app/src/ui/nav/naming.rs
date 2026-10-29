@@ -39,14 +39,13 @@ impl NavTarget {
     }
 
     /// What a panel *listing* this target titles itself: the plural form for
-    /// a resource kind (`"Pods"`), same as [`Self::label`] for anything that
-    /// isn't a list of many items. A custom resource's plural stands alone
-    /// (`"Certificates"`); [`Self::custom_group`] carries its group to the
-    /// tab's tooltip instead.
+    /// a resource kind (`"Pods"`, `"HTTPRoutes"`), same as [`Self::label`] for
+    /// anything that isn't a list of many items. The plural stands alone
+    /// whatever the kind's API group (#206); [`Self::api_group`] carries the
+    /// group to the tab's tooltip instead.
     pub fn list_label(&self) -> String {
         match self {
-            NavTarget::Kind(kind) if self.custom_group().is_some() => kind.plural_name(),
-            NavTarget::Kind(kind) => kind.plural_label(),
+            NavTarget::Kind(kind) => kind.plural_name(),
             NavTarget::Logs
             | NavTarget::PodLogs(_)
             | NavTarget::LabelLogs(_)
@@ -56,18 +55,13 @@ impl NavTarget {
         }
     }
 
-    /// The API group of a custom resource kind's list - a kind outside the
-    /// built-in API groups - and `None` for every other target. The core
-    /// group (`""`) never counts: a core kind the taxonomy hasn't caught up
-    /// with has no group to show.
-    pub fn custom_group(&self) -> Option<&str> {
+    /// The API group of a kind's list outside the core group (`apps`,
+    /// `gateway.networking.k8s.io`, a custom resource's), which tells two
+    /// groups' same-named kinds apart in the tab's tooltip, and `None` for the
+    /// core group and every other target.
+    pub fn api_group(&self) -> Option<&str> {
         match self {
-            NavTarget::Kind(kind)
-                if !kind.gvk.group.is_empty()
-                    && !crate::ui::panel::resource::is_built_in(&kind.gvk.group, &kind.plural) =>
-            {
-                Some(&kind.gvk.group)
-            }
+            NavTarget::Kind(kind) if !kind.gvk.group.is_empty() => Some(&kind.gvk.group),
             NavTarget::Kind(_)
             | NavTarget::Logs
             | NavTarget::PodLogs(_)

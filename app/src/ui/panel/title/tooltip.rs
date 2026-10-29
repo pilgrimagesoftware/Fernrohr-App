@@ -7,11 +7,11 @@ use gpui_kit::{
     AnyView, App, InteractiveElement as _, ParentElement as _, Styled as _, Window, div,
 };
 
-/// A title's tooltip lines: the API group for a custom resource list, whose
+/// A title's tooltip lines: the API group for a list of a non-core kind, whose
 /// title leaves the group out, then "Context: <name>".
 pub(super) fn tooltip_lines(scope: &PanelScope) -> (Option<String>, String) {
     (
-        scope.target.custom_group().map(str::to_string),
+        scope.target.api_group().map(str::to_string),
         format!("Context: {}", scope.context_name),
     )
 }
