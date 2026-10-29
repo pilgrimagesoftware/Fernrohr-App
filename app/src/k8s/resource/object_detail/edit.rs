@@ -25,6 +25,22 @@ pub(super) struct YamlEdit {
 }
 
 impl ObjectDetailPanel {
+    /// Whether Edit is offered, and so its hint shown: the object is loaded and
+    /// not known gone, its kind can be patched, it isn't a Secret, and no edit
+    /// is open already.
+    pub(super) fn editable(&self, cx: &App) -> bool {
+        let loaded = matches!(self.state, ObjectDetailState::Loaded(..));
+        let gone = matches!(
+            self.lifecycle,
+            Some(crate::ui::detail::lifecycle::Lifecycle::Deleted { .. })
+        );
+        loaded && !gone && self.edit.is_none() && self.verbs(cx).patch && !self.is_secret()
+    }
+
+    fn is_secret(&self) -> bool {
+        self.target.kind.gvk.group.is_empty() && self.target.kind.gvk.kind == "Secret"
+    }
+
     /// `EditObject`: opens the editor over the object's manifest, focused.
     pub(super) fn on_action_edit(
         &mut self,
@@ -69,7 +85,7 @@ impl ObjectDetailPanel {
             cx.notify();
             return;
         }
-        if self.target.kind.gvk.group.is_empty() && self.target.kind.gvk.kind == "Secret" {
+        if self.is_secret() {
             self.edit_notice =
                 Some("A Secret can't be edited here: its values are hidden in this view.".into());
             cx.notify();
