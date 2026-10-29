@@ -2,7 +2,8 @@
 //! stacked sections, the events, and the YAML view.
 
 use super::commands::{
-    DELETE_KEY, DeleteObject, PANEL_KEY_CONTEXT, TOGGLE_VIEW_KEY, ToggleObjectView,
+    DELETE_KEY, DeleteObject, EDIT_KEY, EDITABLE_KEY_CONTEXT, EditObject, PANEL_KEY_CONTEXT,
+    TOGGLE_VIEW_KEY, ToggleObjectView,
 };
 use super::fetch::ObjectDetailState;
 use super::model::{FieldValue, ObjectField};
@@ -24,6 +25,8 @@ use jiff::Timestamp;
 
 /// The header hint row's id, which keeps whether it is collapsed.
 pub(super) const HEADER_HINTS_ID: &str = "object-detail-hints";
+/// The Edit hint's element id.
+pub(in crate::k8s::resource::object_detail) const EDIT_HINT_ID: &str = "edit-hint";
 
 impl ObjectDetailPanel {
     fn render_field(&self, section: &str, field: &ObjectField, cx: &Context<Self>) -> AnyElement {
@@ -298,6 +301,7 @@ impl Render for ObjectDetailPanel {
         let yaml = self.viewing == DetailView::Yaml;
         let has_links = !self.followable(cx).is_empty();
         let deletable = self.deletable(cx);
+        let editable = self.editable(cx);
         let toggle_key =
             Kbd::binding_for_action(&ToggleObjectView, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| {
@@ -340,6 +344,19 @@ impl Render for ObjectDetailPanel {
                         .controls(kind_buttons)
                         .hints(kind_hints)
                         .hints(logs_hint)
+                        // #322: as discoverable here as on the list's row.
+                        .when(editable, |this| {
+                            this.hint(KeyHint::styled(
+                                crate::ui::key_hint_row::live_key(
+                                    &EditObject,
+                                    Some(EDITABLE_KEY_CONTEXT),
+                                    EDIT_KEY,
+                                    window,
+                                ),
+                                "Edit",
+                                |body| body.id(EDIT_HINT_ID).test_support(),
+                            ))
+                        })
                         .when(deletable, |this| {
                             this.hint(KeyHint::for_action(
                                 &DeleteObject,
