@@ -50,6 +50,17 @@ impl DiscoveryRegistry {
             .map(<[DiscoveredKind]>::to_vec)
     }
 
+    /// Whether `context_name`'s discovered kinds hold another group's kind
+    /// named like `kind` ([`DiscoveredKind::shares_name_in`]). `false` until its
+    /// discovery has succeeded. Borrows rather than copying the kinds, since a
+    /// panel's title asks every frame.
+    pub fn name_is_shared(cx: &App, context_name: &str, kind: &DiscoveredKind) -> bool {
+        cx.try_global::<Self>()
+            .and_then(|registry| registry.0.get(context_name))
+            .and_then(|kinds| kinds.read(cx).kinds())
+            .is_some_and(|kinds| kind.shares_name_in(kinds))
+    }
+
     /// Makes `kinds` `context_name`'s discovery: the Resource panel's latest result,
     /// newer than any this registry ran itself.
     pub fn publish(cx: &mut App, context_name: &str, kinds: Vec<DiscoveredKind>) {

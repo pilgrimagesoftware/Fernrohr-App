@@ -97,8 +97,11 @@ double-click it, to read the whole message in the object's detail panel.
   first row, and <kbd>↑</kbd> picks the last. Hovering never moves the
   selection.
 
-Each tab is titled with the kind's plural name, such as "Pods". A custom
-resource tab shows the kind only, and hovering the tab shows its API group.
+Each tab is titled with the kind's plural name only, such as "Pods" or
+"HTTPRoutes", and hovering the tab shows the kind's API group and version, such
+as `apps/v1`. When two API groups have a kind of the same name, such as the
+core Event and `events.k8s.io`'s Event, the grouped one's tab adds its group:
+"Events · events.k8s.io".
 
 ### Open an object
 

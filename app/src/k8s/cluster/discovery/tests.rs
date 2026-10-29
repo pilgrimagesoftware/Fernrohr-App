@@ -292,14 +292,14 @@ fn kinds_sort_by_group_then_kind_with_core_first() {
 }
 
 #[test]
-fn plural_label_capitalizes_the_plural_and_keeps_the_group_qualifier() {
+fn plural_name_capitalizes_the_plural_and_leaves_the_group_out() {
     let pod = DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", "Pod"),
         plural: "pods".into(),
         namespaced: true,
         verbs: Default::default(),
     };
-    assert_eq!(pod.plural_label(), "Pods");
+    assert_eq!(pod.plural_name(), "Pods");
 
     let widget = DiscoveredKind {
         gvk: GroupVersionKind::gvk("example.com", "v1", "Widget"),
@@ -307,7 +307,6 @@ fn plural_label_capitalizes_the_plural_and_keeps_the_group_qualifier() {
         namespaced: true,
         verbs: Default::default(),
     };
-    assert_eq!(widget.plural_label(), "Widgets · example.com");
     assert_eq!(widget.plural_name(), "Widgets");
 }
 
@@ -329,8 +328,8 @@ fn plural_name_keeps_the_kinds_casing() {
         "ReplicaSets"
     );
     assert_eq!(
-        kind("apps", "StatefulSet", "statefulsets").plural_label(),
-        "StatefulSets · apps"
+        kind("apps", "StatefulSet", "statefulsets").plural_name(),
+        "StatefulSets"
     );
     assert_eq!(
         kind("networking.k8s.io", "NetworkPolicy", "networkpolicies").plural_name(),
