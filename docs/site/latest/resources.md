@@ -88,7 +88,9 @@ double-click it, to read the whole message in the object's detail panel.
   third time to return to the default sort, which is the first column of the
   kind's default order. An arrow on the header shows the current sort. Numeric
   columns sort as numbers.
-- **Filter.** Press <kbd>/</kbd> and type to narrow the rows by name.
+- **Filter.** Press <kbd>/</kbd> and type to narrow the rows to those with the
+  text in any visible column, ignoring case. When nothing matches, the column
+  headers stay and the list reads "No rows match the filter".
 - **Resize and reorder.** Drag a column boundary to resize it, or drag a header
   to move it.
 - **Move the selection.** <kbd>↓</kbd> on a list with no selection picks the
