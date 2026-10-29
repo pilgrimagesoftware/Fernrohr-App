@@ -136,7 +136,12 @@ selected row alone, whatever else is checked.
 | --- | --- | --- |
 | Check or uncheck the selected row | <kbd>X</kbd> | Click the row's checkbox |
 | Check every row from the last one checked | <kbd>⇧X</kbd> | <kbd>⇧</kbd>-click a checkbox |
+| Check all rows (Select All) | <kbd>⌘A</kbd> | Right-click a row, then **Check All Rows** |
 | Uncheck all | **Checked: Uncheck All** in the command palette | The bar's ✕ button |
+
+Check All Rows checks the rows the list shows, so with a filter applied it
+checks only the rows that match. In the filter box, <kbd>⌘A</kbd> selects the
+filter's text instead.
 
 While rows are checked, a bar above the list counts them and offers each action
 that every checked row's kind takes. The bar's buttons are icons, and hovering

@@ -244,6 +244,7 @@ while every checked row's kind takes that action.
 | --- | --- | --- | --- | --- |
 | List: Check or Uncheck Selected Row | <kbd>X</kbd> | `CheckableList && !Input` | — | `bulk.toggle_checked` |
 | List: Check Rows Up to Selected | <kbd>⇧X</kbd> | `CheckableList && !Input` | — | `bulk.check_range` |
+| List: Check All Rows (Select All) | <kbd>⌘A</kbd> | `CheckableList && !Input` | — | `bulk.check_all` |
 | Checked: Uncheck All | — | `CheckedRows && !Input` | — | `bulk.clear_checked` |
 | Checked: View Logs | — | `BulkViewLogs && !Input` | — | `bulk.view_logs` |
 | Checked: Restart Rollout… | — | `BulkRestartRollout && !Input` | — | `bulk.restart_rollout` |
