@@ -24,7 +24,11 @@ pub(super) const ROUTE_LINE: &str = "report-issue-route";
 /// Debug selectors, for layout tests.
 pub(super) const KIND_SELECTOR: &str = "report-issue-kind";
 pub(super) const SUBJECT_LABEL: &str = "report-issue-subject-label";
+pub(super) const DESCRIPTION: &str = "report-issue-description";
 pub(super) const FOOTER: &str = "report-issue-footer";
+
+/// The Description field's height in a window with no spare height.
+pub(super) const DESCRIPTION_MIN_HEIGHT: f32 = 160.;
 
 /// The debug selector of `kind`'s radio button.
 pub(super) fn kind_selector_of(kind: IssueKind) -> String {
@@ -77,7 +81,17 @@ impl Render for ReportIssueWindow {
             .child(label("Subject").debug_selector(|| SUBJECT_LABEL.into()))
             .child(Input::new(&self.subject).w_full())
             .child(label("Description"))
-            .child(Textarea::new(&self.description).w_full().h(px(160.)))
+            // The one part that grows: it takes the window's spare height,
+            // so every other part keeps one control gap from the next.
+            .child(
+                div()
+                    .debug_selector(|| DESCRIPTION.into())
+                    .flex_1()
+                    .min_h(px(DESCRIPTION_MIN_HEIGHT))
+                    .flex()
+                    .flex_col()
+                    .child(Textarea::new(&self.description).w_full().flex_1()),
+            )
             .children(
                 self.kind
                     .offers_log()
@@ -101,9 +115,7 @@ impl Render for ReportIssueWindow {
             .child(
                 div()
                     .id(ROUTE_LINE)
-                    // Any spare height goes above how Report files and the
-                    // buttons, which stay at the window's foot.
-                    .mt_auto()
+                    .debug_selector(|| ROUTE_LINE.into())
                     .text_xs()
                     .text_color(theme.muted_foreground)
                     .child(route_line),
