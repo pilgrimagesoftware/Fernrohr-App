@@ -13,6 +13,7 @@ use super::pods::{PodRow, PodSelection};
 mod checked;
 mod columns;
 pub(in crate::k8s::resource) mod list_sort;
+mod menu;
 use columns::cell_text;
 pub(super) use columns::{PodColumn, compare};
 
@@ -308,11 +309,7 @@ impl TableDelegate for PodTableDelegate {
         }
     }
 
-    /// The row's context menu (`pod-quick-look` 2.1): right-clicking selects
-    /// the row - deferred, since the table is mid-update here - and offers the
-    /// panel's registered pod commands, dispatched from the table so each runs
-    /// exactly as its key does, with that key shown beside it. Check All Rows,
-    /// last, acts on the whole list.
+    /// The row's context menu ([`menu`]).
     fn context_menu(
         &mut self,
         row_ix: usize,
@@ -320,40 +317,7 @@ impl TableDelegate for PodTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        use super::pods::{
-            DescribePod, OpenInNewPanel, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml,
-        };
-        use crate::ui::bulk::commands::CheckAll;
-        use crate::ui::exec_library::commands::{RunFromLibrary, SaveToLibrary};
-        if row_ix >= self.rows.len() {
-            return menu;
-        }
-        cx.defer_in(window, move |table, _window, cx| {
-            table.set_selected_row(row_ix, cx);
-        });
-        let menu = match &self.action_context {
-            Some(focus) => menu.action_context(focus.clone()),
-            None => menu,
-        };
-        menu.menu("Quick Look", Box::new(QuickLook))
-            .menu("Open Details", Box::new(DescribePod))
-            .menu("Open in New Panel", Box::new(OpenInNewPanel))
-            .menu("Logs", Box::new(ShowPodLogs))
-            .menu(
-                crate::ui::logs_panels::flipped_label(cx),
-                Box::new(ShowPodLogsFlipped),
-            )
-            .menu("YAML", Box::new(ShowPodYaml))
-            .menu_with_disabled(
-                "Port Forward…",
-                Box::new(super::pods::PortForwardPod),
-                !self.rows[row_ix].row.forwardable(),
-            )
-            .separator()
-            .menu("Run from Library…", Box::new(RunFromLibrary))
-            .menu("Save to Library…", Box::new(SaveToLibrary))
-            .separator()
-            .menu("Check All Rows", Box::new(CheckAll))
+        self.row_menu(row_ix, menu, window, cx)
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,
