@@ -70,3 +70,15 @@ async fn a_relist_of_events_keeps_them_and_shows_it_is_refreshing(cx: &mut TestA
     feed(&mut h, vec![watcher::Event::InitDone]);
     assert!(!drawn(&mut h, REFRESHING_SELECTOR.into()));
 }
+
+/// #312: a search that hides every event keeps the table's header, with the
+/// no-match row under it.
+#[gpui_kit::test]
+async fn a_search_that_hides_every_event_keeps_the_header(cx: &mut TestAppContext) {
+    let mut h = harness(cx, fixture());
+    focus_table(&mut h);
+    press(&mut h.vcx, "/");
+    h.vcx.simulate_input("zzz");
+    h.vcx.run_until_parked();
+    crate::ui::list_state::assert_no_match_under_header(&mut h.vcx);
+}

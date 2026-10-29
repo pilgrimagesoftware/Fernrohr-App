@@ -154,8 +154,14 @@ impl Render for PodsPanel {
                     // `list-loading-indicator`: the table only once the first
                     // list is in, else what is loading or why it is empty. A
                     // node's embedded table keeps its own empty text above.
+                    // A node's search that hides every pod still says so
+                    // under the header (#312).
                     let area = if self.node.is_some() {
-                        TableArea::Table
+                        if items.is_empty() {
+                            TableArea::NoMatch
+                        } else {
+                            TableArea::Table
+                        }
                     } else {
                         list_state::table_area(
                             self.table.read(cx).phase(),
@@ -171,6 +177,11 @@ impl Render for PodsPanel {
                         cx,
                     );
                     let table = self.sync_table(items, window, cx);
+                    table.update(cx, |table, _| {
+                        table
+                            .delegate_mut()
+                            .set_no_match(area == TableArea::NoMatch);
+                    });
                     // The shell command's context, only while the selected pod has a
                     // running container (`shell`).
                     let shellable = self.shell_candidates(cx).is_some();

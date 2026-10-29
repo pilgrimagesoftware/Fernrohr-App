@@ -1,7 +1,7 @@
 //! Named imports, not `use super::*`: see `util/shell.rs` on the
 //! macro-expansion budget.
 
-use super::{FILTERED_EMPTY, TableArea, empty_text, table_area};
+use super::{TableArea, empty_text, table_area};
 use crate::k8s::resource::load_phase::LoadPhase;
 
 fn ns(names: &[&str]) -> Vec<String> {
@@ -34,10 +34,10 @@ fn a_loaded_list_with_nothing_says_so_by_scope() {
 }
 
 #[test]
-fn a_filter_that_hides_everything_says_so() {
+fn a_filter_that_hides_everything_keeps_the_table() {
     assert_eq!(
         table_area(LoadPhase::Loaded, 3, 0, "Pods", Some(&[])),
-        TableArea::Empty(FILTERED_EMPTY.into())
+        TableArea::NoMatch
     );
 }
 

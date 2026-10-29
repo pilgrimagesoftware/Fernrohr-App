@@ -198,6 +198,19 @@ async fn slash_filters_and_escape_clears(cx: &mut TestAppContext) {
     assert_eq!(names, ["api-1", "web-1"], "escape restored every row");
 }
 
+/// #312: a search that hides every pod on the node keeps the region's
+/// header, with the no-match row under it.
+#[gpui_kit::test]
+async fn a_search_that_hides_every_pod_keeps_the_header(cx: &mut TestAppContext) {
+    let mut harness = open(cx, "node-a", &[pod("shop", "u1", "web-1", "node-a")]);
+    harness.wait_for("listed the pod", |names| names.len() == 1);
+    harness.focus_pods();
+    harness.press("/");
+    harness.vcx.simulate_input("zzz");
+    harness.vcx.run_until_parked();
+    crate::ui::list_state::assert_no_match_under_header(&mut harness.vcx);
+}
+
 /// With no pods on it, the region says so rather than showing an empty table
 /// with nothing to explain it.
 #[gpui_kit::test]

@@ -101,6 +101,9 @@ pub(super) struct PodTableDelegate {
     /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
     /// the cursor `selected` tracks.
     checked: crate::ui::bulk::CheckedRows,
+    /// Whether the filter hides every row (#312): the body then reads so,
+    /// under the header ([`crate::ui::list_state::empty_body`]).
+    no_match: bool,
 }
 
 impl Default for PodTableDelegate {
@@ -118,11 +121,18 @@ impl Default for PodTableDelegate {
             action_context: None,
             background_click: Default::default(),
             checked: Default::default(),
+            no_match: false,
         }
     }
 }
 
 impl PodTableDelegate {
+    /// Whether the filter hides every row - set each render from the panel's
+    /// table area.
+    pub(in crate::k8s::resource) fn set_no_match(&mut self, no_match: bool) {
+        self.no_match = no_match;
+    }
+
     /// Replaces the rows, keeping the active sort applied - the delegate's
     /// half of `PodsPanel::sync_table`'s per-render row refresh.
     pub(super) fn set_rows(&mut self, rows: Vec<PodTableRow>) {
@@ -281,6 +291,15 @@ impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
 }
 
 impl TableDelegate for PodTableDelegate {
+    /// No rows: the no-match row while the filter hides them all.
+    fn render_empty(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::ui::list_state::empty_body(self.no_match, cx)
+    }
+
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
     }

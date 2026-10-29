@@ -206,6 +206,11 @@ impl EventsPanel {
             cx,
         );
         let table = self.sync_table(rows, window, cx);
+        table.update(cx, |table, _| {
+            table
+                .delegate_mut()
+                .set_no_match(area == TableArea::NoMatch);
+        });
         let strip = self
             .selected_event(cx)
             .map(|row| self.detail_strip(&row, cx));

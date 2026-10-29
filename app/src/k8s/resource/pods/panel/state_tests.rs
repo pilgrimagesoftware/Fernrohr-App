@@ -143,3 +143,18 @@ async fn a_relist_of_pods_keeps_them_and_shows_it_is_refreshing(cx: &mut TestApp
     feed(&mut h, vec![watcher::Event::InitDone]);
     assert!(!drawn(&mut h, REFRESHING_SELECTOR.into()));
 }
+
+/// #312: a filter that hides every pod keeps the table's header, with the
+/// no-match row under it.
+#[gpui_kit::test]
+async fn a_filter_that_hides_every_pod_keeps_the_header(cx: &mut TestAppContext) {
+    let mut h = crate::k8s::resource::pods::test_window::open_with(
+        cx,
+        &[("u1", "api", false), ("u2", "web", false)],
+        "",
+    );
+    h.press("/");
+    h.vcx.simulate_input("zzz");
+    h.vcx.run_until_parked();
+    crate::ui::list_state::assert_no_match_under_header(&mut h.vcx);
+}
