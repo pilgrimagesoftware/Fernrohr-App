@@ -21,6 +21,15 @@ pub(super) const CLOSE_BUTTON: &str = "report-issue-close";
 pub(super) const LOG_CHECKBOX: &str = "report-issue-attach-log";
 pub(super) const LOG_PREVIEW: &str = "report-issue-log-preview";
 pub(super) const ROUTE_LINE: &str = "report-issue-route";
+/// Debug selectors, for layout tests.
+pub(super) const KIND_SELECTOR: &str = "report-issue-kind";
+pub(super) const SUBJECT_LABEL: &str = "report-issue-subject-label";
+pub(super) const FOOTER: &str = "report-issue-footer";
+
+/// The debug selector of `kind`'s radio button.
+pub(super) fn kind_selector_of(kind: IssueKind) -> String {
+    format!("{KIND_SELECTOR} {}", kind.label())
+}
 
 impl Render for ReportIssueWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -65,7 +74,7 @@ impl Render for ReportIssueWindow {
             .bg(theme.background)
             .text_color(theme.foreground)
             .child(kind_selector(&entity, self.kind))
-            .child(label("Subject"))
+            .child(label("Subject").debug_selector(|| SUBJECT_LABEL.into()))
             .child(Input::new(&self.subject).w_full())
             .child(label("Description"))
             .child(Textarea::new(&self.description).w_full().h(px(160.)))
@@ -92,6 +101,9 @@ impl Render for ReportIssueWindow {
             .child(
                 div()
                     .id(ROUTE_LINE)
+                    // Any spare height goes above how Report files and the
+                    // buttons, which stay at the window's foot.
+                    .mt_auto()
                     .text_xs()
                     .text_color(theme.muted_foreground)
                     .child(route_line),
@@ -100,10 +112,17 @@ impl Render for ReportIssueWindow {
     }
 }
 
+/// The type as a row of radio buttons, only as tall as they are: a wrapping
+/// row in this column otherwise takes the window's spare height (#295).
 fn kind_selector(entity: &Entity<ReportIssueWindow>, selected: IssueKind) -> RadioGroup {
     let entity = entity.clone();
-    RadioGroup::horizontal("report-issue-kind")
-        .children(IssueKind::ALL.map(|kind| Radio::new(kind.label()).label(kind.label())))
+    RadioGroup::horizontal(KIND_SELECTOR)
+        .flex_none()
+        .children(IssueKind::ALL.map(|kind| {
+            Radio::new(kind.label())
+                .label(kind.label())
+                .debug_selector(move || kind_selector_of(kind))
+        }))
         .selected_index(IssueKind::ALL.iter().position(|kind| *kind == selected))
         .on_click(move |index, window, cx| {
             if let Some(&kind) = IssueKind::ALL.get(*index) {
@@ -240,6 +259,7 @@ fn screenshots_section(
 fn footer(enabled: bool, sending: bool, window: &mut Window) -> Div {
     let key = |action: &dyn Action| Kbd::binding_for_action(action, Some(KEY_CONTEXT), window);
     div()
+        .debug_selector(|| FOOTER.into())
         .flex()
         .justify_end()
         .gap_2()
