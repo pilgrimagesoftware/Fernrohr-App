@@ -12,6 +12,7 @@ use super::{
 use crate::command::CommandRegistry;
 
 mod keyboard;
+mod layout;
 mod prefill;
 mod route;
 mod window_tests;
