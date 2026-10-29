@@ -373,4 +373,5 @@ async fn the_row_menus_check_all_rows_checks_every_row(cx: &mut TestAppContext) 
     harness.press("up");
     harness.press("enter");
     assert_eq!(checked(&mut harness), ["api", "web", "worker"]);
+    assert!(harness.drawn(BAR_SELECTOR), "the bar shows");
 }

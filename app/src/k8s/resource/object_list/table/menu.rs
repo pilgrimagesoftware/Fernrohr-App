@@ -67,16 +67,14 @@ impl ObjectTableDelegate {
                 }
             }
         }
-        let table = cx.entity().downgrade();
-        menu.separator().item(
-            PopupMenuItem::new("Check All Rows")
-                .action(Box::new(CheckAll))
-                .on_click(move |_event, _window, cx| {
-                    let _ = table.update(cx, |table, cx| {
-                        table.delegate_mut().check_all();
-                        cx.notify();
-                    });
-                }),
-        )
+        // Through the panel, as its key does, so the panel redraws its bulk
+        // bar too.
+        match self.action_context.clone() {
+            Some(focus) => menu
+                .separator()
+                .action_context(focus)
+                .menu("Check All Rows", Box::new(CheckAll)),
+            None => menu,
+        }
     }
 }
