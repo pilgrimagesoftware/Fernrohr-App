@@ -40,6 +40,9 @@ pub(crate) trait BulkHost: Sized + 'static {
     /// `x` (`range` false) or Shift+`x` on the cursor's row.
     fn check_cursor_row(&mut self, range: bool, cx: &mut Context<Self>);
 
+    /// Cmd/Ctrl+`a`: checks every row the table shows.
+    fn check_all_rows(&mut self, cx: &mut Context<Self>);
+
     /// Where the last batch's outcome is shown from.
     fn bulk_outcome(&mut self) -> &mut Option<BatchOutcome>;
 }
@@ -66,6 +69,7 @@ pub(crate) fn on_bulk_actions<T: BulkHost>(div: Div, cx: &mut Context<T>) -> Div
         .on_action(
             cx.listener(|this: &mut T, _: &CheckRange, _, cx| this.check_cursor_row(true, cx)),
         )
+        .on_action(cx.listener(|this: &mut T, _: &CheckAll, _, cx| this.check_all_rows(cx)))
         .on_action(cx.listener(|this: &mut T, _: &ClearChecked, _, cx| {
             this.edit_checked(cx, CheckedRows::clear)
         }));

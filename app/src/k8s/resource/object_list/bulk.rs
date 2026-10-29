@@ -54,6 +54,16 @@ impl BulkHost for ObjectListPanel {
         cx.notify();
     }
 
+    fn check_all_rows(&mut self, cx: &mut Context<Self>) {
+        if let Some(table) = &self.table {
+            table.update(cx, |table, cx| {
+                table.delegate_mut().check_all();
+                cx.notify();
+            });
+        }
+        cx.notify();
+    }
+
     fn bulk_outcome(&mut self) -> &mut Option<BatchOutcome> {
         &mut self.bulk_outcome
     }

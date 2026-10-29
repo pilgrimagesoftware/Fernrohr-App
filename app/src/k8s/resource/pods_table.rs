@@ -311,7 +311,8 @@ impl TableDelegate for PodTableDelegate {
     /// The row's context menu (`pod-quick-look` 2.1): right-clicking selects
     /// the row - deferred, since the table is mid-update here - and offers the
     /// panel's registered pod commands, dispatched from the table so each runs
-    /// exactly as its key does, with that key shown beside it.
+    /// exactly as its key does, with that key shown beside it. Check All Rows,
+    /// last, acts on the whole list.
     fn context_menu(
         &mut self,
         row_ix: usize,
@@ -322,6 +323,7 @@ impl TableDelegate for PodTableDelegate {
         use super::pods::{
             DescribePod, OpenInNewPanel, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml,
         };
+        use crate::ui::bulk::commands::CheckAll;
         use crate::ui::exec_library::commands::{RunFromLibrary, SaveToLibrary};
         if row_ix >= self.rows.len() {
             return menu;
@@ -350,6 +352,8 @@ impl TableDelegate for PodTableDelegate {
             .separator()
             .menu("Run from Library…", Box::new(RunFromLibrary))
             .menu("Save to Library…", Box::new(SaveToLibrary))
+            .separator()
+            .menu("Check All Rows", Box::new(CheckAll))
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,

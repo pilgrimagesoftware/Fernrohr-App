@@ -267,3 +267,72 @@ async fn copy_names_copies_one_name_per_line_without_asking(cx: &mut TestAppCont
         .update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()));
     assert_eq!(copied.as_deref(), Some("web-0\nweb-1\nweb-2"));
 }
+
+/// #308: Cmd/Ctrl+`a` checks every row, leaving the cursor where it is.
+#[gpui_kit::test]
+async fn select_all_checks_every_row(cx: &mut TestAppContext) {
+    let mut harness = open(cx, 3);
+    harness.press("down");
+    harness.press("secondary-a");
+    assert_eq!(checked(&mut harness), ["web-0", "web-1", "web-2"]);
+    assert_eq!(harness.selected().as_deref(), Some("web-1"), "cursor kept");
+    assert!(bar_drawn(&mut harness));
+}
+
+/// In the filter box, Cmd/Ctrl+`a` is the text field's own Select All: it
+/// checks nothing.
+#[gpui_kit::test]
+async fn select_all_in_the_filter_checks_nothing(cx: &mut TestAppContext) {
+    let mut harness = open(cx, 3);
+    harness.press("/");
+    harness.vcx.simulate_input("web");
+    harness.press("secondary-a");
+    assert!(checked(&mut harness).is_empty());
+}
+
+/// With a filter applied, Select All checks only the rows the filter shows.
+#[gpui_kit::test]
+async fn select_all_checks_only_the_filtered_rows(cx: &mut TestAppContext) {
+    let mut harness = open(cx, 12);
+    harness.press("/");
+    harness.vcx.simulate_input("web-1");
+    harness.vcx.run_until_parked();
+    let panel = harness.panel.clone();
+    harness.vcx.update(|window, cx| {
+        let table = panel.read(cx).pod_table.clone().expect("built");
+        let focus = gpui_kit::Focusable::focus_handle(table.read(cx), cx);
+        window.focus(&focus, cx);
+    });
+    harness.press("secondary-a");
+    assert_eq!(checked(&mut harness), ["web-1", "web-10", "web-11"]);
+}
+
+/// The mouse route: a row's context menu ends with Check All Rows.
+#[gpui_kit::test]
+async fn the_row_menus_check_all_rows_checks_every_row(cx: &mut TestAppContext) {
+    let mut harness = open(cx, 3);
+    harness.vcx.update(|window, cx| window.render_frame(cx));
+    let row = harness
+        .vcx
+        .debug_bounds("pod-cell-1-0")
+        .expect("the row is drawn")
+        .center();
+    harness.vcx.simulate_event(MouseDownEvent {
+        position: row,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Right,
+        click_count: 1,
+        first_mouse: false,
+    });
+    harness.vcx.simulate_event(MouseUpEvent {
+        position: row,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Right,
+        click_count: 1,
+    });
+    harness.vcx.run_until_parked();
+    // Check All Rows is last: Up wraps to it.
+    harness.press("up");
+    harness.press("enter");
+    assert_eq!(checked(&mut harness), ["web-0", "web-1", "web-2"]);
+}

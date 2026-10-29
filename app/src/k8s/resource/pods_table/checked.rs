@@ -45,6 +45,12 @@ impl PodTableDelegate {
         }
     }
 
+    /// Checks every displayed row.
+    pub(in crate::k8s::resource) fn check_all(&mut self) {
+        let rows = self.row_keys();
+        self.checked.check_all(&rows);
+    }
+
     /// Unchecks the pods a watch update no longer lists.
     pub(super) fn prune_checked(&mut self) {
         let rows = self.row_keys();

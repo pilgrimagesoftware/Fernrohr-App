@@ -78,6 +78,11 @@ impl CheckedRows {
         self.anchor = Some(target.clone());
     }
 
+    /// Checks every row in `rows`, keeping where the next range starts.
+    pub(crate) fn check_all(&mut self, rows: &[RowKey]) {
+        self.checked.extend(rows.iter().cloned());
+    }
+
     /// Drops every checked row `listed` no longer has - a deleted object's.
     pub(crate) fn retain_listed(&mut self, listed: &[RowKey]) {
         let listed: HashSet<&RowKey> = listed.iter().collect();

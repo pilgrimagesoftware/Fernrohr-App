@@ -132,6 +132,7 @@ impl ObjectListPanel {
             .hint(Self::hint(&DescribeSelected, DESCRIBE_KEY, "Describe", window).essential())
             .hint(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
             .hint(crate::ui::bulk::commands::check_hint(window))
+            .hint(crate::ui::bulk::commands::check_all_hint(window))
             .hints(self.kind_hints(window, cx));
         // A Service with a forward running can stop it (`port-forward-indicators` 4.1).
         if !self.selected_forwards(cx).is_empty() {
