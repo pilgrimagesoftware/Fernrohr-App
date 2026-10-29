@@ -41,8 +41,9 @@ impl NavTarget {
     /// What a panel *listing* this target titles itself: the plural form for
     /// a resource kind (`"Pods"`, `"HTTPRoutes"`), same as [`Self::label`] for
     /// anything that isn't a list of many items. The plural stands alone
-    /// whatever the kind's API group (#206); [`Self::api_group`] carries the
-    /// group to the tab's tooltip instead.
+    /// unless another group's kind shares its name (#206,
+    /// [`Self::item_label_qualified`]); [`Self::api_version`] carries the
+    /// group to the tab's tooltip.
     pub fn list_label(&self) -> String {
         match self {
             NavTarget::Kind(kind) => kind.plural_name(),
@@ -55,20 +56,30 @@ impl NavTarget {
         }
     }
 
-    /// The API group of a kind's list outside the core group (`apps`,
-    /// `gateway.networking.k8s.io`, a custom resource's), which tells two
-    /// groups' same-named kinds apart in the tab's tooltip, and `None` for the
-    /// core group and every other target.
-    pub fn api_group(&self) -> Option<&str> {
+    /// The `group/version` of the kind this target shows (`"apps/v1"`, `"v1"`)
+    /// for the title's tooltip, and `None` for a target that isn't one kind.
+    pub fn api_version(&self) -> Option<String> {
         match self {
-            NavTarget::Kind(kind) if !kind.gvk.group.is_empty() => Some(&kind.gvk.group),
-            NavTarget::Kind(_)
-            | NavTarget::Logs
+            NavTarget::Kind(kind) => Some(kind.api_version()),
+            NavTarget::Object(object) => Some(object.kind.api_version()),
+            NavTarget::Pod(_) => Some(Self::pod_kind().api_version()),
+            NavTarget::Logs
             | NavTarget::PodLogs(_)
             | NavTarget::LabelLogs(_)
-            | NavTarget::Pod(_)
-            | NavTarget::Object(_)
             | NavTarget::Exec(_) => None,
+        }
+    }
+
+    /// [`Self::item_label`], with the kind's API group added where
+    /// `shares_name` says another group's kind has its name (#206), so the
+    /// two panels' titles differ. A core kind keeps its bare name.
+    pub fn item_label_qualified(&self, shares_name: impl Fn(&DiscoveredKind) -> bool) -> String {
+        match self {
+            NavTarget::Kind(kind) if shares_name(kind) => kind.qualified(&kind.plural_name()),
+            NavTarget::Object(object) if shares_name(&object.kind) => {
+                format!("{}: {}", object.kind.label(), object.name)
+            }
+            _ => self.item_label(),
         }
     }
 

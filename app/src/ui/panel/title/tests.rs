@@ -130,14 +130,16 @@ fn a_custom_resource_list_titles_by_kind_with_its_group_in_the_tooltip() {
     assert_eq!(title(&certificates), "Certificates");
     assert_eq!(
         tooltip_lines(&certificates),
-        (Some("cert-manager.io".into()), "Context: kind-dev".into())
+        (
+            Some("cert-manager.io/v1".into()),
+            "Context: kind-dev".into()
+        )
     );
 }
 
 /// #206: a built-in kind outside the core group titles by its plural alone
 /// too - the Gateway API's HTTPRoutes as well as `apps`' Deployments - and its
-/// tooltip names the group above the context, so two groups' same-named kinds
-/// stay tellable apart.
+/// tooltip gives its `group/version`.
 #[test]
 fn a_built_in_grouped_list_titles_by_kind_with_its_group_in_the_tooltip() {
     let routes = scope(
@@ -148,7 +150,7 @@ fn a_built_in_grouped_list_titles_by_kind_with_its_group_in_the_tooltip() {
     assert_eq!(
         tooltip_lines(&routes),
         (
-            Some("gateway.networking.k8s.io".into()),
+            Some("gateway.networking.k8s.io/v1".into()),
             "Context: kind-dev".into()
         )
     );
@@ -156,15 +158,79 @@ fn a_built_in_grouped_list_titles_by_kind_with_its_group_in_the_tooltip() {
     assert_eq!(title(&deployments), "Deployments");
     assert_eq!(
         tooltip_lines(&deployments),
-        (Some("apps".into()), "Context: kind-dev".into())
+        (Some("apps/v1".into()), "Context: kind-dev".into())
     );
 }
 
-/// A core kind has no group to name: its tooltip is the context alone.
+/// A core kind's tooltip gives its version alone, as its `apiVersion` reads.
 #[test]
-fn a_core_lists_tooltip_names_the_context_alone() {
+fn a_core_lists_tooltip_gives_its_version() {
     let pods = scope(kind("Pod", true), 1);
-    assert_eq!(tooltip_lines(&pods), (None, "Context: kind-dev".into()));
+    assert_eq!(title(&pods), "Pods");
+    assert_eq!(
+        tooltip_lines(&pods),
+        (Some("v1".into()), "Context: kind-dev".into())
+    );
+}
+
+fn discovered(target: &NavTarget) -> DiscoveredKind {
+    match target {
+        NavTarget::Kind(kind) => kind.clone(),
+        _ => panic!("a kind"),
+    }
+}
+
+/// #206: two groups' kinds of one name - core `Event` and `events.k8s.io`'s -
+/// title apart: the grouped one adds its group, the core one keeps its bare
+/// name. A kind whose name nothing else has stays unqualified.
+#[test]
+fn two_kinds_sharing_a_name_title_apart() {
+    let core = grouped("", "Event", "events");
+    let events_api = grouped("events.k8s.io", "Event", "events");
+    let certificates = grouped("cert-manager.io", "Certificate", "certificates");
+    let kinds = [
+        discovered(&core),
+        discovered(&events_api),
+        discovered(&certificates),
+    ];
+    let shares = |kind: &DiscoveredKind| kind.shares_name_in(&kinds);
+    assert_eq!(core.item_label_qualified(shares), "Events");
+    assert_eq!(
+        events_api.item_label_qualified(shares),
+        "Events · events.k8s.io"
+    );
+    assert_eq!(certificates.item_label_qualified(shares), "Certificates");
+}
+
+/// An object of a kind sharing its name says which group's it is, too.
+#[test]
+fn an_object_of_a_shared_name_kind_titles_with_its_group() {
+    let events_api = discovered(&grouped("events.k8s.io", "Event", "events"));
+    let core = discovered(&grouped("", "Event", "events"));
+    let object = NavTarget::Object(crate::ui::nav::ObjectTarget {
+        kind: events_api.clone(),
+        namespace: Some("shop".into()),
+        name: "web.1".into(),
+    });
+    let kinds = [core, events_api];
+    assert_eq!(
+        object.item_label_qualified(|kind| kind.shares_name_in(&kinds)),
+        "Event · events.k8s.io: web.1"
+    );
+    assert_eq!(object.item_label(), "Event: web.1", "unqualified alone");
+}
+
+/// Two versions of one kind aren't two kinds: nothing to tell apart.
+#[test]
+fn another_version_of_the_same_kind_is_no_clash() {
+    let v1 = discovered(&grouped(
+        "autoscaling",
+        "HorizontalPodAutoscaler",
+        "horizontalpodautoscalers",
+    ));
+    let mut v2 = v1.clone();
+    v2.gvk.version = "v2".into();
+    assert!(!v1.shares_name_in(&[v1.clone(), v2]));
 }
 
 /// Error text goes through markdown (the only selectable-text primitive), so
@@ -299,5 +365,30 @@ fn instances_save_and_read_back() {
     assert_eq!(
         super::saved_instance(&serde_json::json!({ "instance": "two" })),
         0
+    );
+}
+
+/// `title_in` reads the context's discovery: once it holds both `Event`s, the
+/// grouped one's tab says its group; before discovery, nothing qualifies it.
+#[gpui_kit::test]
+async fn title_in_qualifies_from_the_contexts_discovery(cx: &mut gpui_kit::TestAppContext) {
+    use super::title_in;
+    use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
+    let events_api = grouped("events.k8s.io", "Event", "events");
+    let events = scope(events_api.clone(), 1);
+    assert_eq!(cx.update(|cx| title_in(&events, cx)), "Events");
+    cx.update(|cx| {
+        DiscoveryRegistry::insert_test(
+            cx,
+            "kind-dev",
+            vec![
+                discovered(&grouped("", "Event", "events")),
+                discovered(&events_api),
+            ],
+        )
+    });
+    assert_eq!(
+        cx.update(|cx| title_in(&events, cx)),
+        "Events · events.k8s.io"
     );
 }

@@ -109,10 +109,36 @@ impl DiscoveredKind {
     /// and need no qualifier; anything else carries its group, so two groups'
     /// same-named kinds stay tellable apart at a glance.
     pub fn label(&self) -> String {
+        self.qualified(&self.gvk.kind)
+    }
+
+    /// Whether another group's kind in `discovered` has this kind's name, so a
+    /// title naming the kind alone can't tell the two apart (`Event` in the
+    /// core group and in `events.k8s.io`). Another version of this same kind
+    /// doesn't count.
+    pub fn shares_name_in(&self, discovered: &[DiscoveredKind]) -> bool {
+        discovered.iter().any(|other| {
+            other.gvk.group != self.gvk.group && other.gvk.kind.eq_ignore_ascii_case(&self.gvk.kind)
+        })
+    }
+
+    /// `text` with this kind's API group after it - `"Events · events.k8s.io"`
+    /// - or `text` alone for a core kind, which has no group to show.
+    pub fn qualified(&self, text: &str) -> String {
         if self.gvk.group.is_empty() {
-            self.gvk.kind.clone()
+            text.to_string()
         } else {
-            format!("{} · {}", self.gvk.kind, self.gvk.group)
+            format!("{text} · {}", self.gvk.group)
+        }
+    }
+
+    /// The kind's `group/version` - `"apps/v1"` - or the version alone for the
+    /// core group (`"v1"`), as a manifest's `apiVersion` reads.
+    pub fn api_version(&self) -> String {
+        if self.gvk.group.is_empty() {
+            self.gvk.version.clone()
+        } else {
+            format!("{}/{}", self.gvk.group, self.gvk.version)
         }
     }
 
