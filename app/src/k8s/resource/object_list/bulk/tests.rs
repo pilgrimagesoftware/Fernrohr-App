@@ -320,3 +320,58 @@ async fn label_refuses_an_invalid_key_in_the_prompt(cx: &mut TestAppContext) {
     assert!(harness.dialog_open(), "and stays open");
     assert!(harness.cluster.patches().is_empty());
 }
+
+/// The names of the checked objects, top to bottom.
+fn checked(harness: &mut Harness) -> Vec<String> {
+    use crate::ui::bulk::BulkHost as _;
+    let panel = harness.panel.clone();
+    harness.vcx.update(|_, cx| {
+        panel
+            .read(cx)
+            .bulk_selection(cx)
+            .map(|selection| selection.targets.into_iter().map(|t| t.name).collect())
+            .unwrap_or_default()
+    })
+}
+
+/// #308: Cmd/Ctrl+`a` checks every row of any kind's list.
+#[gpui_kit::test]
+async fn select_all_checks_every_row(cx: &mut TestAppContext) {
+    let mut harness = deployments(cx, &["api", "web", "worker"]);
+    harness.press("secondary-a");
+    assert_eq!(checked(&mut harness), ["api", "web", "worker"]);
+    assert!(harness.drawn(BAR_SELECTOR));
+}
+
+/// The mouse route: a row's context menu ends with Check All Rows.
+#[gpui_kit::test]
+async fn the_row_menus_check_all_rows_checks_every_row(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{Modifiers, MouseButton, MouseDownEvent, MouseUpEvent};
+    let mut harness = deployments(cx, &["api", "web", "worker"]);
+    harness.vcx.update(|window, cx| window.render_frame(cx));
+    let row = harness
+        .vcx
+        .debug_bounds("object-cell-1-0")
+        .expect("the row is drawn")
+        .center();
+    harness.vcx.simulate_event(MouseDownEvent {
+        position: row,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Right,
+        click_count: 1,
+        first_mouse: false,
+    });
+    harness.vcx.simulate_event(MouseUpEvent {
+        position: row,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Right,
+        click_count: 1,
+    });
+    harness.vcx.run_until_parked();
+    // Check All Rows is last: Up wraps to it.
+    harness.press("up");
+    harness.press("enter");
+    assert_eq!(checked(&mut harness), ["api", "web", "worker"]);
+    assert!(harness.drawn(BAR_SELECTOR), "the bar shows");
+}

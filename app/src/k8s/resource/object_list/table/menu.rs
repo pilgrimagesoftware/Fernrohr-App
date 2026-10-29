@@ -1,10 +1,12 @@
 //! A list row's context menu: Open and Open in New Panel, then the actions the
-//! row's kind and object are offered (`resource-specific-actions`). Each is
+//! row's kind and object are offered (`resource-specific-actions`), and last
+//! Check All Rows, which acts on the whole list. Each of the row's is
 //! built for the row the menu opened on and acts on that row, whatever the
 //! selection is when it's clicked; it shows its command's key, read from the
 //! panel's focus. Right-clicking a row selects it too.
 
 use super::{ListRow, ObjectTableDelegate};
+use crate::ui::bulk::commands::CheckAll;
 use crate::ui::kind_actions::MenuEntry;
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::table::TableState;
@@ -52,22 +54,27 @@ impl ObjectTableDelegate {
                     .on_click(move |_event, window, cx| open(&row, window, cx)),
             );
         }
-        let (Some(items), Some(focus)) = (self.kind_menu.clone(), self.action_context.clone())
-        else {
-            return menu;
-        };
-        let items = items(&row);
-        if items.is_empty() {
-            return menu;
+        if let (Some(items), Some(focus)) = (self.kind_menu.clone(), self.action_context.clone()) {
+            let items = items(&row);
+            if !items.is_empty() {
+                menu = menu.separator().action_context(focus);
+                for MenuEntry { label, action, run } in items {
+                    menu = menu.item(
+                        PopupMenuItem::new(label)
+                            .action(action)
+                            .on_click(move |_event, window, cx| run(window, cx)),
+                    );
+                }
+            }
         }
-        let mut menu = menu.separator().action_context(focus);
-        for MenuEntry { label, action, run } in items {
-            menu = menu.item(
-                PopupMenuItem::new(label)
-                    .action(action)
-                    .on_click(move |_event, window, cx| run(window, cx)),
-            );
+        // Through the panel, as its key does, so the panel redraws its bulk
+        // bar too.
+        match self.action_context.clone() {
+            Some(focus) => menu
+                .separator()
+                .action_context(focus)
+                .menu("Check All Rows", Box::new(CheckAll)),
+            None => menu,
         }
-        menu
     }
 }

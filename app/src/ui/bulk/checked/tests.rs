@@ -82,3 +82,23 @@ fn an_object_no_longer_listed_drops_out() {
     assert_eq!(checked.len(), 1);
     assert!(checked.contains(&rows[2]));
 }
+
+#[test]
+fn check_all_checks_every_row_whatever_was_checked_before() {
+    let rows = rows(5);
+    let mut checked = CheckedRows::default();
+    checked.toggle(rows[3].clone());
+    checked.check_all(&rows);
+    assert_eq!(checked.len(), 5);
+}
+
+#[test]
+fn check_all_keeps_where_the_next_range_starts() {
+    let rows = rows(5);
+    let mut checked = CheckedRows::default();
+    checked.toggle(rows[1].clone());
+    checked.check_all(&rows);
+    checked.uncheck(&rows);
+    checked.check_range(&rows, &rows[3]);
+    assert_eq!(names(&checked, &rows), ["web-1", "web-2", "web-3"]);
+}
