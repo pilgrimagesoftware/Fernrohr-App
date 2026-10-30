@@ -38,7 +38,7 @@ cluster isn't shown. Each header shows how many kinds it holds.
 | Collapse a section | <kbd>←</kbd> | Click its header |
 | Expand a section | <kbd>→</kbd> | Click its header |
 | Focus the filter | <kbd>/</kbd> | Click the filter box at the bottom of the panel |
-| Clear the filter and return to the list | <kbd>Esc</kbd> | Clear the box |
+| Clear the filter and return to the list | <kbd>Esc</kbd> | Click the ✕ in the box |
 
 Custom Resources is split into subgroups headed by API group, in alphabetical
 order. Every subgroup starts collapsed, and so does a group the cluster adds
@@ -93,7 +93,8 @@ double-click it, to read the whole message in the object's detail panel.
   columns sort as numbers.
 - **Filter.** Press <kbd>/</kbd> and type to narrow the rows to those with the
   text in any visible column, ignoring case. When nothing matches, the column
-  headers stay and the list reads "No rows match the filter".
+  headers stay and the list reads "No rows match the filter". While the box holds
+  text, the ✕ at its right clears it.
 - **Resize and reorder.** Drag a column boundary to resize it, or drag a header
   to move it.
 - **Move the selection.** <kbd>↓</kbd> on a list with no selection picks the
