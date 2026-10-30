@@ -165,6 +165,35 @@ async fn its_key_opens_the_panel_empty(cx: &mut TestAppContext) {
     );
 }
 
+/// #248: Open Logs by Label…'s key is its alone, in every context where it
+/// is active - no command shares it, shadows it, or starts a chord with it.
+#[test]
+fn its_key_collides_with_nothing() {
+    use crate::keymap::{KeymapConfig, conflicts};
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    let key = registry
+        .get("logs.follow_labels")
+        .expect("Open Logs by Label is registered")
+        .default_binding;
+    let found = conflicts(
+        &registry,
+        &KeymapConfig::default(),
+        "logs.follow_labels",
+        key,
+    );
+    assert!(
+        !found.any_clash() && found.shadows.is_empty(),
+        "{key} collides: {:?} / {} shadows / {} prefixes",
+        found.same_scope,
+        found.shadows.len(),
+        found.prefixes.len()
+    );
+    // The check sees this key: another global command given it clashes.
+    let other = conflicts(&registry, &KeymapConfig::default(), "nav.show_logs", key);
+    assert_eq!(other.same_scope, ["logs.follow_labels"]);
+}
+
 /// A `shop` pod labelled `app=web` running `app` and `sidecar`.
 fn two_container_pod(name: &str) -> serde_json::Value {
     let status = |container: &str| {
