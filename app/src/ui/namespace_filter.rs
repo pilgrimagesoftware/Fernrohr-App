@@ -1,9 +1,12 @@
 //! A filterable, multi-select namespace list (`namespace-picker-filter`): a
-//! filter input over "All namespaces" and the cluster's namespaces, each row
-//! checked when picked.
+//! filter input over "All namespaces", the saved namespace groups (#311), and
+//! the cluster's namespaces, each row checked when picked.
 //!
-//! Typing narrows the namespaces to those containing the text, ignoring case;
-//! "All namespaces" stays listed first whatever the filter says. Up and Down
+//! Typing narrows the groups and namespaces to those whose name contains the
+//! text, ignoring case; "All namespaces" stays listed first whatever the
+//! filter says. A group's row scopes to all of its namespaces at once - the
+//! ones the cluster still has, and any it doesn't, which match nothing - and
+//! is checked while the selection is exactly that group's. Up and Down
 //! move the highlight, Enter or a click toggles the highlighted entry, and the
 //! first Escape clears the filter text - the second goes on to whatever hosts
 //! the list, which closes. A filter matching no namespace says so.
@@ -15,9 +18,11 @@
 //! hears each toggle as the selection that results ([`OnPick`]). That keeps it
 //! usable both in the title bar's picker and inline in another editor.
 
+use crate::config::namespaces::NamespaceSetConfig;
+use crate::ui::namespace_sets::store::NamespaceSets;
 use crate::ui::panel_title::namespaces_offered;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use std::cell::Cell;
@@ -46,6 +51,60 @@ pub fn entries(namespaces: &[String], query: &str) -> Vec<Option<String>> {
             Some(name) => name.to_lowercase().contains(&query),
         })
         .collect()
+}
+
+/// One row of the list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Entry {
+    /// "All namespaces": picking it clears the selection.
+    All,
+    /// A saved namespace group, picked whole.
+    Group(NamespaceSetConfig),
+    Namespace(String),
+}
+
+/// The saved groups whose name contains `query`, ignoring case, in their
+/// saved order.
+pub fn groups_matching<'a>(
+    groups: &'a [NamespaceSetConfig],
+    query: &str,
+) -> impl Iterator<Item = &'a NamespaceSetConfig> {
+    let query = query.trim().to_lowercase();
+    groups
+        .iter()
+        .filter(move |group| group.name.to_lowercase().contains(&query))
+}
+
+/// A group row's badge: how many namespaces it holds - and, once the
+/// cluster's namespaces are known, how many of them it still has, when that's
+/// fewer.
+pub fn member_count(members: &[String], cluster: &[String]) -> String {
+    let total = members.len();
+    let present = members
+        .iter()
+        .filter(|member| cluster.contains(member))
+        .count();
+    let noun = if total == 1 {
+        "namespace"
+    } else {
+        "namespaces"
+    };
+    if cluster.is_empty() || present == total {
+        format!("{total} {noun}")
+    } else {
+        format!("{present} of {total} {noun}")
+    }
+}
+
+/// Whether `selected` is exactly `group`'s namespaces, in any order.
+fn is_group(selected: &[String], group: &NamespaceSetConfig) -> bool {
+    let mut members = group.namespaces.clone();
+    members.sort_unstable();
+    members.dedup();
+    let mut selected = selected.to_vec();
+    selected.sort_unstable();
+    selected.dedup();
+    !members.is_empty() && members == selected
 }
 
 /// The selection after toggling `entry` in `selected`: "All namespaces"
@@ -83,6 +142,21 @@ pub fn absent_selector(namespace: &str) -> String {
     format!("namespace-absent {namespace}")
 }
 
+/// The debug selector of group `name`'s row label.
+pub fn group_selector(name: &str) -> String {
+    format!("namespace-group {name}")
+}
+
+/// The debug selector group `name`'s row label carries while it is checked.
+pub fn group_checked_selector(name: &str) -> String {
+    format!("namespace-group-checked {name}")
+}
+
+/// The debug selector of group `name`'s member count.
+pub fn group_count_selector(name: &str) -> String {
+    format!("namespace-group-count {name}")
+}
+
 /// The mark beside a listed namespace the connected cluster doesn't have.
 pub const ABSENT: &str = "not in this cluster";
 
@@ -99,8 +173,9 @@ pub const NO_MATCH_SELECTOR: &str = "namespace-filter-empty";
 pub struct NamespaceFilter {
     command: Entity<CommandState>,
     selected: Rc<Cell<Option<usize>>>,
-    /// Whether "All namespaces" is listed first - the picker's way to clear a
-    /// scope. A set editor has no "all", so it leaves it out.
+    /// Whether "All namespaces" is listed first, then the saved groups - the
+    /// picker's ways to clear a scope or set a group's at once. A set editor
+    /// picks a group's members one by one, so it leaves both out.
     pin_all: bool,
 }
 
@@ -165,52 +240,37 @@ impl NamespaceFilter {
         cx: &App,
     ) -> AnyElement {
         let query = self.query(cx);
-        let mut listed = entries(namespaces, &query);
-        if !self.pin_all {
-            listed.retain(Option::is_some);
+        let groups: Vec<Entry> = if self.pin_all {
+            groups_matching(&NamespaceSets::get(cx).sets, &query)
+                .cloned()
+                .map(Entry::Group)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut listed: Vec<Entry> = Vec::new();
+        for entry in entries(namespaces, &query) {
+            match entry {
+                None if self.pin_all => {
+                    listed.push(Entry::All);
+                    listed.extend(groups.iter().cloned());
+                }
+                None => {}
+                Some(namespace) => listed.push(Entry::Namespace(namespace)),
+            }
         }
         let pinned = usize::from(self.pin_all);
         let no_match = listed.len() == pinned && !query.trim().is_empty();
         let muted = cx.theme().muted_foreground;
-        let items = listed.iter().map(|entry| {
-            let checked = match entry {
-                None => selected.is_empty(),
-                Some(namespace) => selected.contains(namespace),
-            };
-            let label = entry.clone().unwrap_or_else(|| ALL_NAMESPACES.to_string());
-            let selector = option_selector(entry.as_deref());
-            let checked_selector = checked.then(|| checked_selector(entry.as_deref()));
-            let absent = entry
-                .as_ref()
-                .filter(|namespace| absent.contains(namespace))
-                .map(|namespace| absent_selector(namespace));
-            let text = label.clone();
-            CommandItem::new()
-                .label(label)
-                .checked(checked)
-                .child(move |_window, _cx| {
-                    let selector = selector.clone();
-                    div()
-                        .flex_1()
-                        .flex()
-                        .gap_2()
-                        .debug_selector(move || selector)
-                        .child(
-                            div()
-                                .when_some(checked_selector.clone(), |this, selector| {
-                                    this.debug_selector(move || selector)
-                                })
-                                .child(text.clone()),
-                        )
-                        .when_some(absent.clone(), |this, selector| {
-                            this.child(
-                                div()
-                                    .debug_selector(move || selector)
-                                    .text_color(muted)
-                                    .child(ABSENT),
-                            )
-                        })
-                })
+        let items = listed.iter().map(|entry| match entry {
+            Entry::Group(group) => group_item(group, namespaces, selected, muted),
+            Entry::All | Entry::Namespace(_) => {
+                let entry = match entry {
+                    Entry::Namespace(namespace) => Some(namespace.clone()),
+                    _ => None,
+                };
+                namespace_item(entry, selected, absent, muted)
+            }
         });
         let selected = selected.to_vec();
         let keyboard_row = self.selected.clone();
@@ -239,9 +299,13 @@ impl NamespaceFilter {
                 };
                 // A click chooses its row, as the arrows do.
                 confirmed_row.set(Some(row));
-                if let Some(entry) = listed.get(row) {
-                    on_pick(toggled(&selected, entry.as_deref()), window, cx);
-                }
+                let next = match listed.get(row) {
+                    Some(Entry::All) => toggled(&selected, None),
+                    Some(Entry::Namespace(namespace)) => toggled(&selected, Some(namespace)),
+                    Some(Entry::Group(group)) => group.namespaces.clone(),
+                    None => return,
+                };
+                on_pick(next, window, cx);
             });
         div()
             .flex()
@@ -260,6 +324,100 @@ impl NamespaceFilter {
             })
             .into_any_element()
     }
+}
+
+/// The row for "All namespaces" (`entry` `None`) or a namespace: checked
+/// while picked, and marked when the cluster doesn't have it.
+fn namespace_item(
+    entry: Option<String>,
+    selected: &[String],
+    absent: &[String],
+    muted: Hsla,
+) -> CommandItem {
+    let checked = match &entry {
+        None => selected.is_empty(),
+        Some(namespace) => selected.contains(namespace),
+    };
+    let label = entry.clone().unwrap_or_else(|| ALL_NAMESPACES.to_string());
+    let selector = option_selector(entry.as_deref());
+    let checked_selector = checked.then(|| checked_selector(entry.as_deref()));
+    let absent = entry
+        .as_ref()
+        .filter(|namespace| absent.contains(namespace))
+        .map(|namespace| absent_selector(namespace));
+    let text = label.clone();
+    CommandItem::new()
+        .label(label)
+        .checked(checked)
+        .child(move |_window, _cx| {
+            let selector = selector.clone();
+            div()
+                .flex_1()
+                .flex()
+                .gap_2()
+                .debug_selector(move || selector)
+                .child(
+                    div()
+                        .when_some(checked_selector.clone(), |this, selector| {
+                            this.debug_selector(move || selector)
+                        })
+                        .child(text.clone()),
+                )
+                .when_some(absent.clone(), |this, selector| {
+                    this.child(
+                        div()
+                            .debug_selector(move || selector)
+                            .text_color(muted)
+                            .child(ABSENT),
+                    )
+                })
+        })
+}
+
+/// A saved group's row: a group icon, its name, and how many namespaces it
+/// holds; checked while the selection is exactly its namespaces.
+fn group_item(
+    group: &NamespaceSetConfig,
+    cluster: &[String],
+    selected: &[String],
+    muted: Hsla,
+) -> CommandItem {
+    let checked = is_group(selected, group);
+    let name = group.name.clone();
+    let count = member_count(&group.namespaces, cluster);
+    CommandItem::new()
+        .label(name.clone())
+        .checked(checked)
+        .child(move |_window, _cx| {
+            let row = group_selector(&name);
+            let checked_selector = checked.then(|| group_checked_selector(&name));
+            let count_selector = group_count_selector(&name);
+            div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .gap_2()
+                .debug_selector(move || row)
+                .child(
+                    gpui_kit::component::Icon::new(gpui_kit::assets::IconName::Folder)
+                        .xsmall()
+                        .text_color(muted),
+                )
+                .child(
+                    div()
+                        .when_some(checked_selector, |this, selector| {
+                            this.debug_selector(move || selector)
+                        })
+                        .child(name.clone()),
+                )
+                .child(
+                    div()
+                        .debug_selector(move || count_selector)
+                        .text_xs()
+                        .text_color(muted)
+                        .child(count.clone()),
+                )
+        })
 }
 
 #[cfg(test)]

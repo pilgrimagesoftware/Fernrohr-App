@@ -19,6 +19,7 @@ use gpui_kit::{AppContext as _, Entity, TestAppContext, VisualTestContext, Windo
 use kube::core::GroupVersionKind;
 
 mod editor;
+mod picker_groups;
 mod switch;
 
 fn kind(kind: &str, plural: &str, namespaced: bool) -> DiscoveredKind {
