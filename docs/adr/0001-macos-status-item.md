@@ -1,6 +1,6 @@
 # ADR-0001: A macOS status item through objc2
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-10-30
 
