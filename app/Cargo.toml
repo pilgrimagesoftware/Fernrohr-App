@@ -75,10 +75,14 @@ vte = "=0.15.0"
 [target.'cfg(unix)'.dependencies]
 notify-rust = "=4.18.2"
 
-# The user's accent colour for the focused-panel mark (`ui::accent`). Already
-# in the build through gpui's macOS backend; pinned to that same version.
+# The user's accent colour for the focused-panel mark (`ui::accent`), and the
+# menu bar status item quiet mode runs in (`ui::status_menu::macos`, #236;
+# docs/adr/0001-macos-status-item.md). All three are already in the build through gpui's macOS
+# backend; pinned to those same versions. The status item adds only features.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation"] }
+objc2 = "=0.6.4"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSObject", "NSString"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView"] }
 
 # The system accent colour (Fernrohr#100). Both are already in the graph, so
 # naming them adds no crate, only the portal's `settings` API and DWM's

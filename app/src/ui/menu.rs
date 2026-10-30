@@ -44,7 +44,7 @@ pub fn rebuild_menus(cx: &mut App) {
     cx.set_menus(menus);
 }
 
-fn register_handlers(cx: &mut App) {
+pub(in crate::ui) fn register_handlers(cx: &mut App) {
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
     cx.on_action(|_: &Hide, cx: &mut App| cx.hide());
     cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());

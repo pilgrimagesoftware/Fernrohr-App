@@ -207,6 +207,17 @@ impl PortForwards {
         stopped
     }
 
+    /// Stops every forward - what the last window closing does (quiet mode,
+    /// #236), as quitting does. How many there were.
+    pub fn stop_all(&mut self, cx: &mut Context<Self>) -> usize {
+        let stopped = self.held.len();
+        self.held.clear();
+        if stopped > 0 {
+            cx.notify();
+        }
+        stopped
+    }
+
     /// Every running forward: what it forwards, where it listens, and its state.
     pub fn list(&self) -> Vec<(PortForwardRequest, SocketAddr, ForwardState)> {
         self.held

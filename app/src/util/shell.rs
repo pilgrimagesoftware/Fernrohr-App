@@ -75,6 +75,11 @@ mod panels;
 #[cfg(test)]
 mod pending_chord_tests;
 mod persist;
+mod quiet;
+pub(crate) use quiet::{
+    Hooks as QuietHooks, OpenContextWindow, QUIET_MODE, ensure_main_window, init as init_quiet,
+    quit_mode, reopen,
+};
 #[cfg(test)]
 mod pod_detail_logs_tests;
 #[cfg(test)]

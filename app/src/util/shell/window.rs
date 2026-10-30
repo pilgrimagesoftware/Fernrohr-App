@@ -69,6 +69,8 @@ pub(super) enum WindowMode {
 /// directly into a connected workspace (seeded from the restored layout's contexts)
 /// otherwise.
 pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
+    // A main window opening ends quiet mode (#236), if the app was quiet.
+    super::quiet::leave(cx);
     let bounds = window_bounds(&layout, cx);
     let contexts = restored_contexts(&layout);
     let resource_width = restored_resource_width(&layout);
