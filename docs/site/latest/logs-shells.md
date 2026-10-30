@@ -13,6 +13,10 @@ as a terminal panel. Both start from a pod, in the Pods panel or in the pod's de
 Select a pod and open its logs. The panel shows the recent log history and keeps adding new lines as
 the container writes them.
 
+Lines a container writes in colour show in colour, bold, dim, italic or underlined, as they would
+in a terminal, with the colours adjusted to stay readable in the light and dark themes. Other
+terminal escape codes are left out. Selecting and copying a line gives its plain text.
+
 - **Keyboard:** press <kbd>L</kbd> in the Pods panel or in a pod's detail panel. The **Show Logs**
   command (<kbd>⌘2</kbd>) also brings up the Logs panel, and every command is in the command palette
   (<kbd>⌘⇧P</kbd>).

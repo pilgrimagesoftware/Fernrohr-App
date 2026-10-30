@@ -6,8 +6,8 @@
 //!
 //! Left out: a masked field (a tunnel's private key), where one stray click
 //! shouldn't wipe a secret, and multi-line text areas, which `Input` never
-//! gives the button. The logs panel's selector field is the logs lane's to
-//! adopt.
+//! gives the button. The logs panel's selector field has it too, where it
+//! clears only the text: the selector streamed changes on Enter.
 
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{App, Entity};
