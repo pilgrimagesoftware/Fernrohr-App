@@ -85,10 +85,8 @@ pub(super) fn row_name_selector(index: usize) -> String {
 /// file named alongside the layouts that did parse - the same wording the
 /// saved layouts picker uses for both (`ui::picker::saved_layouts::render`).
 pub(super) fn section(cache: &LayoutsCache, cx: &App) -> impl IntoElement {
-    let space = crate::ui::space::spacing(cx);
     let Some((layouts, unreadable)) = &cache.loaded else {
-        return div()
-            .p(space.panel_inset)
+        return super::card::body(cx)
             .child(
                 div()
                     .debug_selector(|| LOADING_SELECTOR.into())
@@ -115,14 +113,17 @@ pub(super) fn section(cache: &LayoutsCache, cx: &App) -> impl IntoElement {
 
     let unreadable_notice = (!unreadable.is_empty()).then(|| unreadable_list(unreadable, cx));
 
-    div()
-        .p(space.panel_inset)
-        .flex()
-        .flex_col()
-        .gap(space.control_gap)
-        .children(empty)
-        .children(rows)
-        .children(unreadable_notice)
+    super::card::body(cx)
+        .child(
+            super::card::card("Saved layouts", cx)
+                .children(empty)
+                .children(rows)
+                .children(unreadable_notice)
+                .child(super::card::hint(
+                    "Save, open and rename layouts from the saved layouts picker.",
+                    cx,
+                )),
+        )
         .into_any_element()
 }
 

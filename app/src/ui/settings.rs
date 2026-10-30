@@ -1,12 +1,14 @@
 //! The Settings window: `settings.open` (Settings…, `cmd-,`, the App menu), a
-//! single-instance window with a sections sidebar: Keyboard Shortcuts
-//! ([`shortcuts`], with the Shortcut Timeout above the list) and Appearance
-//! ([`appearance`]: Text Size and the theme). Later settings join the sidebar
-//! rather than each opening a window of its own.
+//! single-instance window with a tab per section across the top ([`tabs`]):
+//! Keyboard Shortcuts ([`shortcuts`], with the Shortcut Timeout above the
+//! list), Appearance ([`appearance`]: Text Size and the theme), Panels, Layouts
+//! and Agent Access. Later settings join the tabs rather than each opening a
+//! window of its own. Each section groups its controls in titled cards, with
+//! hints in the data font ([`card`]).
 //!
-//! The sidebar's entries are buttons - Tab reaches them, Enter or Space shows
-//! the section - and Show Keyboard Shortcuts and Show Appearance are palette
-//! commands while the window has focus. They have no default key: a plain
+//! The tabs are buttons - Tab reaches them, Enter or Space shows the section -
+//! and Next Tab and Previous Tab step through them. Each Show <section> is a
+//! palette command while the window has focus, with no default key: a plain
 //! `cmd-<digit>` would tie with the global show-panel keys. Showing a section
 //! moves focus into it, so the next Tab reaches its first control.
 
@@ -17,12 +19,14 @@ use gpui_kit::*;
 
 mod agent_access;
 mod appearance;
+mod card;
 mod layouts;
 mod panels;
 mod recorder;
 mod rows;
 mod shortcut_timeout;
 pub mod shortcuts;
+mod tabs;
 #[cfg(test)]
 mod tests;
 mod text_size;
@@ -43,9 +47,6 @@ actions!(
 
 /// The window's key context: where the section commands are bound.
 pub(crate) const KEY_CONTEXT: &str = "SettingsWindow";
-
-/// The sections sidebar, for layout tests.
-pub(crate) const SIDEBAR: &str = "settings-sidebar";
 
 /// Which section the window shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -74,7 +75,7 @@ impl Section {
         }
     }
 
-    /// The sidebar button's element id.
+    /// The section's tab's element id.
     pub(crate) fn button_id(self) -> &'static str {
         match self {
             Section::KeyboardShortcuts => "settings-section-shortcuts",
@@ -85,7 +86,7 @@ impl Section {
         }
     }
 
-    /// The debug selector of the sidebar button's title, for layout tests.
+    /// The debug selector of the section's tab's title, for layout tests.
     pub(crate) fn label_selector(self) -> &'static str {
         match self {
             Section::KeyboardShortcuts => "settings-section-shortcuts-label",
@@ -148,6 +149,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
+    tabs::register_commands(registry);
     shortcuts::register_commands(registry);
 }
 
@@ -317,33 +319,6 @@ impl SettingsWindow {
         self.section
     }
 
-    /// A sidebar entry: a button that shows `section`, marked while shown.
-    ///
-    /// The button fills the sidebar's width, so its selected background does,
-    /// and its title starts at the left like a list's. The title is the
-    /// button's own content rather than its `label`: a `Button` centres its
-    /// label and ellipsizes it to its natural width.
-    fn sidebar_button(&self, section: Section, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_kit::component::Selectable as _;
-        use gpui_kit::component::button::{Button, ButtonVariants as _};
-        use gpui_kit::prelude::FluentBuilder as _;
-        let shown = self.section == section;
-        let label = section.label_selector();
-        Button::new(section.button_id())
-            .accessibility_label(section.title())
-            .child(
-                div()
-                    .debug_selector(move || label.into())
-                    .w_full()
-                    .whitespace_nowrap()
-                    .child(section.title()),
-            )
-            .w_full()
-            .ghost()
-            .when(shown, |button| button.selected(true))
-            .on_click(cx.listener(move |this, _event, window, cx| this.show(section, window, cx)))
-    }
-
     /// Test-only: the Keyboard Shortcuts section.
     #[cfg(test)]
     fn shortcuts(&self) -> Entity<ShortcutsSection> {
@@ -355,25 +330,6 @@ impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let space = crate::ui::space::spacing(cx);
-        // At least 180px, wider when a title needs it - at a larger text
-        // size, say - so a section's name is never cut short.
-        let sidebar = div()
-            .debug_selector(|| SIDEBAR.into())
-            .flex_none()
-            .min_w(px(180.))
-            .h_full()
-            .p(space.control_gap)
-            .flex()
-            .flex_col()
-            .gap_1()
-            .border_r_1()
-            .border_color(theme.border)
-            .bg(theme.sidebar)
-            .child(self.sidebar_button(Section::KeyboardShortcuts, cx))
-            .child(self.sidebar_button(Section::Appearance, cx))
-            .child(self.sidebar_button(Section::Panels, cx))
-            .child(self.sidebar_button(Section::Layouts, cx))
-            .child(self.sidebar_button(Section::AgentAccess, cx));
         let content = match self.section {
             Section::KeyboardShortcuts => div()
                 .flex_1()
@@ -383,10 +339,15 @@ impl Render for SettingsWindow {
                 // Inset like the Shortcuts list below it, whose own top inset
                 // is the gap between the two.
                 .child(
-                    div()
-                        .px(space.panel_inset)
-                        .pt(space.panel_inset)
-                        .child(shortcut_timeout::row(cx)),
+                    div().px(space.panel_inset).pt(space.panel_inset).child(
+                        card::card("Two-key shortcuts", cx)
+                            .child(shortcut_timeout::row(cx))
+                            .child(card::hint(
+                                "How long a key that starts a longer shortcut, and is a \
+                                 shortcut itself, waits for the next key.",
+                                cx,
+                            )),
+                    ),
                 )
                 .child(div().flex_1().min_h_0().child(self.shortcuts.clone()))
                 .into_any_element(),
@@ -434,11 +395,18 @@ impl Render for SettingsWindow {
             .on_action(cx.listener(|this, _: &ShowAgentAccess, window, cx| {
                 this.show(Section::AgentAccess, window, cx)
             }))
+            .on_action(cx.listener(|this, _: &tabs::NextTab, window, cx| {
+                this.show(this.section.stepped(1), window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &tabs::PreviousTab, window, cx| {
+                this.show(this.section.stepped(-1), window, cx)
+            }))
             .size_full()
             .flex()
+            .flex_col()
             .bg(theme.background)
             .text_color(theme.foreground)
-            .child(sidebar)
-            .child(content)
+            .child(self.tab_bar(cx))
+            .child(div().flex_1().min_h_0().flex().child(content))
     }
 }

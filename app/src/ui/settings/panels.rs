@@ -47,20 +47,12 @@ fn logs_row(cx: &App) -> impl IntoElement {
         ))
 }
 
-/// The section: the Logs row, and what `shift-l` does meanwhile.
+/// The section: a Logs card - the Logs row, and what `shift-l` does meanwhile.
 pub(super) fn section(cx: &App) -> impl IntoElement {
-    use gpui_kit::component::ActiveTheme as _;
-    let space = crate::ui::space::spacing(cx);
-    div()
-        .p(space.panel_inset)
-        .flex()
-        .flex_col()
-        .gap(space.control_gap)
-        .child(logs_row(cx))
-        .child(
-            div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child("Shift-L opens a pod's logs the other way, once."),
-        )
+    use super::card::{body, card, hint};
+    body(cx).child(
+        card("Logs", cx)
+            .child(logs_row(cx))
+            .child(hint("Shift-L opens a pod's logs the other way, once.", cx)),
+    )
 }
