@@ -3,6 +3,7 @@
 //! kept apart from the text so the tag can be drawn in its pod's colour
 //! (`selector-logs`). GPUI-free, like the view-model that holds these.
 
+use super::ansi::Span;
 use std::fmt;
 use std::sync::Arc;
 
@@ -36,25 +37,38 @@ impl LineSource {
     }
 }
 
-/// A line the panel shows: its text, and its source when it came from one of
+/// A line the panel shows: its text, with any ANSI escapes taken out (#309),
+/// the styled runs of that text, and its source when it came from one of
 /// several streams.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LogLine {
     source: Option<LineSource>,
     text: String,
+    /// `None` for a line plain throughout - most of them. An `Arc`, as the
+    /// panel clones its lines for each frame it draws.
+    spans: Option<Arc<[Span]>>,
 }
 
 impl LogLine {
-    /// A single stream's line, with no tag.
+    /// A single stream's line, with no tag and no styling.
+    #[cfg(test)]
     pub fn plain(text: String) -> Self {
-        Self { source: None, text }
+        Self::styled(None, text, Vec::new())
     }
 
-    /// One of several streams' lines, tagged with where it came from.
+    /// One of several streams' lines, tagged with where it came from, with no
+    /// styling.
     pub fn tagged(source: LineSource, text: String) -> Self {
+        Self::styled(Some(source), text, Vec::new())
+    }
+
+    /// A line whose escapes `ansi::parse` took out: its plain `text` and the
+    /// `spans` styling it.
+    pub fn styled(source: Option<LineSource>, text: String, spans: Vec<Span>) -> Self {
         Self {
-            source: Some(source),
+            source,
             text,
+            spans: (!spans.is_empty()).then(|| spans.into()),
         }
     }
 
@@ -62,11 +76,25 @@ impl LogLine {
         self.source.as_ref()
     }
 
-    /// The line's own text, without its tag. Only tests read it apart: the
-    /// panel shows and copies the whole line ([`fmt::Display`]).
+    /// The styled runs of the line's text, by byte range in it - not in the
+    /// tagged line [`fmt::Display`] shows. Empty for a plain line.
+    pub fn spans(&self) -> &[Span] {
+        self.spans.as_deref().unwrap_or_default()
+    }
+
+    /// The line's own text, without its tag or escapes. Only tests read it
+    /// apart: the panel shows and copies the whole line ([`fmt::Display`]).
     #[cfg(test)]
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// Where the line's own text starts in the line [`fmt::Display`] shows:
+    /// after `tag │ `, or at 0 with no tag.
+    pub fn text_offset(&self) -> usize {
+        self.source.as_ref().map_or(0, |source| {
+            source.tag().len() + 1 + SOURCE_SEPARATOR.len() + 1
+        })
     }
 
     /// Whether this line reads as `shown`: its text, after `tag │ ` when it
