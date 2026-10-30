@@ -351,6 +351,8 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Settings: Show Panels | — | `SettingsWindow` | — | `settings.show_panels` |
 | Settings: Show Layouts | — | `SettingsWindow` | — | `settings.show_layouts` |
 | Settings: Show Agent Access | — | `SettingsWindow` | — | `settings.show_agent_access` |
+| Settings: Next Tab | <kbd>⌃Tab</kbd> | `SettingsWindow` | — | `settings.next_tab` |
+| Settings: Previous Tab | <kbd>⌃⇧Tab</kbd> | `SettingsWindow` | — | `settings.previous_tab` |
 | Record Shortcut | <kbd>↵</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.record` |
 | Reset Shortcut to Default | <kbd>⌘⌫</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.reset` |
 | Remove Shortcut | <kbd>⌫</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.remove` |

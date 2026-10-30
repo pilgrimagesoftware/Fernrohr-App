@@ -130,6 +130,32 @@ fn every_mode_meets_the_contrast_floor(cx: &mut TestAppContext) {
     }
 }
 
+/// #275: a row flashing at its strongest - each change's tone behind it -
+/// still carries text and muted text at 4.5:1, in both modes.
+#[gpui_kit::test]
+fn a_flashing_row_keeps_its_text_readable(cx: &mut TestAppContext) {
+    use crate::consts::ROW_FLASH_ALPHA;
+    for mode in [ThemeMode::Light, ThemeMode::Dark] {
+        cx.update(|cx| {
+            in_mode(mode, cx);
+            let theme = cx.theme().clone();
+            for tone in [Tone::Good, Tone::Warning, Tone::Bad] {
+                let row = over(status(tone, cx).opacity(ROW_FLASH_ALPHA), theme.background);
+                for (text, colour) in [
+                    ("text", theme.foreground),
+                    ("muted text", theme.muted_foreground),
+                ] {
+                    let ratio = contrast(colour, row);
+                    assert!(
+                        ratio >= TEXT_CONTRAST,
+                        "{mode:?}: {text} on a {tone:?} flash is {ratio:.2}:1"
+                    );
+                }
+            }
+        });
+    }
+}
+
 /// A system accent too light for the light background is darkened until it
 /// meets 3:1, and the theme's own widgets get that darkened accent.
 #[gpui_kit::test]

@@ -20,7 +20,12 @@ impl PodTableDelegate {
 
     /// The displayed rows' keys, top to bottom.
     fn row_keys(&self) -> Vec<RowKey> {
-        self.rows.iter().map(PodTableRow::key).collect()
+        // A deleted pod's row still drawn for its flash (#275) can't be
+        // checked, and drops out if it was.
+        (0..self.rows.len())
+            .filter_map(|row_ix| self.live_row(row_ix))
+            .map(PodTableRow::key)
+            .collect()
     }
 
     /// The checked rows, top to bottom.
@@ -34,7 +39,7 @@ impl PodTableDelegate {
     /// Row `row_ix`'s checkbox clicked, or `x` pressed on it: toggles it, or -
     /// `range` - checks everything from the last toggled row to it.
     pub(in crate::k8s::resource) fn check_row(&mut self, row_ix: usize, range: bool) {
-        let Some(key) = self.rows.get(row_ix).map(PodTableRow::key) else {
+        let Some(key) = self.live_row(row_ix).map(PodTableRow::key) else {
             return;
         };
         if range {

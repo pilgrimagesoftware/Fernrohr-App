@@ -49,51 +49,49 @@ const ABOUT: &str = "Agents that speak MCP can read the clusters you have connec
      a few everyday actions, each one only once you approve it in this window. Fernrohr must \
      be running for an agent to reach it.";
 
-/// The section.
+/// The section: what agents can do, then how to add Fernrohr to one - each
+/// its own card (#251).
 pub(super) fn section(window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let space = crate::ui::space::spacing(cx);
+    use super::card::{body, card};
     let muted = cx.theme().muted_foreground;
-    let body = match crate::ui::agent_setup::setup(cx) {
+    let setup = match crate::ui::agent_setup::setup(cx) {
         AgentSetup::Ready { exe } => commands(&exe, window, cx).into_any_element(),
         AgentSetup::Unstable { why, .. } => {
             let warning = cx.theme().warning;
-            div()
+            let notice = div()
                 .debug_selector(|| UNSTABLE_SELECTOR.into())
                 .flex()
                 .items_start()
                 .gap_2()
                 .text_color(warning)
                 .child(Icon::new(IconName::TriangleAlert).small())
-                .child(div().flex_1().min_w_0().child(why.explanation()))
-                .into_any_element()
+                .child(div().flex_1().min_w_0().child(why.explanation()));
+            card("Setup", cx).child(notice).into_any_element()
         }
-        AgentSetup::Unavailable => div()
-            .debug_selector(|| UNAVAILABLE_SELECTOR.into())
-            .text_color(muted)
-            .child("Agent access isn't available on this platform: its MCP endpoint needs a Unix-domain socket.")
+        AgentSetup::Unavailable => card("Setup", cx)
+            .child(
+                div()
+                    .debug_selector(|| UNAVAILABLE_SELECTOR.into())
+                    .text_color(muted)
+                    .child("Agent access isn't available on this platform: its MCP endpoint needs a Unix-domain socket."),
+            )
             .into_any_element(),
     };
-    div()
-        .p(space.panel_inset)
-        .flex()
-        .flex_col()
-        .gap(space.control_gap)
-        .child(ABOUT)
-        .child(body)
+    body(cx)
+        .child(card("About", cx).child(div().text_sm().child(ABOUT)))
         .children(crate::util::shell::QUIET_MODE.then(|| background(cx)))
+        .child(setup)
 }
 
-/// The background MCP setting: a checkbox dispatching the same commands the
-/// palette offers, and what it changes. Only where quiet mode exists (macOS):
-/// elsewhere the server stops with the app, when the last window closes.
+/// The background MCP setting, in its own card: a checkbox dispatching the
+/// same commands the palette offers, and what it changes. Only where quiet
+/// mode exists (macOS): elsewhere the server stops with the app, when the
+/// last window closes.
 fn background(cx: &App) -> impl IntoElement + use<> {
+    use super::card::{card, hint};
     let keep =
         crate::ui::background_mcp::current(cx) == crate::config::ui::BackgroundMcp::KeepRunning;
-    let muted = cx.theme().muted_foreground;
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
+    card("Background", cx)
         .child(
             gpui_kit::component::checkbox::Checkbox::new(BACKGROUND_CHECKBOX)
                 .label(crate::ui::background_mcp::LABEL)
@@ -107,48 +105,56 @@ fn background(cx: &App) -> impl IntoElement + use<> {
                     window.dispatch_action(action, cx);
                 }),
         )
-        .child(div().text_sm().text_color(muted).child(BACKGROUND_NOTE))
+        .child(hint(BACKGROUND_NOTE, cx))
 }
 
-/// One row per harness: its name, its command, and the copy button.
+/// A card with one row per harness - its name, its command, and the copy
+/// button - then OpenCode's config snippet in a card of its own.
 fn commands(exe: &Path, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    use super::card::{card, hint};
     let space = crate::ui::space::spacing(cx);
-    let muted = cx.theme().muted_foreground;
-    let mut rows = Vec::new();
-    for harness in &HARNESSES {
-        rows.push(row(
-            harness.name,
-            harness.command(exe),
-            copy_id(harness.id),
-            harness.copy_tooltip,
-            window,
-            cx,
-        ));
-        if harness.id == SNIPPET_HARNESS {
-            rows.push(
-                div()
-                    .text_sm()
-                    .text_color(muted)
-                    .child(SNIPPET_NOTE)
-                    .into_any_element(),
-            );
-            rows.push(row(
-                "",
-                opencode_snippet(exe),
-                SNIPPET_COPY_ID.to_string(),
-                SNIPPET_TOOLTIP,
+    let rows: Vec<AnyElement> = HARNESSES
+        .iter()
+        .map(|harness| {
+            row(
+                harness.name,
+                harness.command(exe),
+                copy_id(harness.id),
+                harness.copy_tooltip,
                 window,
                 cx,
-            ));
-        }
-    }
+            )
+        })
+        .collect();
+    let snippet = HARNESSES
+        .iter()
+        .any(|harness| harness.id == SNIPPET_HARNESS)
+        .then(|| {
+            card("OpenCode config file", cx)
+                .child(hint(SNIPPET_NOTE, cx))
+                .child(row(
+                    "",
+                    opencode_snippet(exe),
+                    SNIPPET_COPY_ID.to_string(),
+                    SNIPPET_TOOLTIP,
+                    window,
+                    cx,
+                ))
+        });
     div()
         .debug_selector(|| COMMANDS_SELECTOR.into())
         .flex()
         .flex_col()
-        .gap(space.control_gap)
-        .child("Add Fernrohr to your agent, for every project, by running:")
-        .children(rows)
+        .gap(space.section_gap)
+        .child(
+            card("Add Fernrohr to your agent", cx)
+                .child(hint(
+                    "Run one of these once: it adds Fernrohr for every project.",
+                    cx,
+                ))
+                .children(rows),
+        )
+        .children(snippet)
 }
 
 /// A label, `text` in the code face, and a copy button `id` copying it.

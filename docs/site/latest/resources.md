@@ -95,6 +95,11 @@ double-click it, to read the whole message in the object's detail panel.
   text in any visible column, ignoring case. When nothing matches, the column
   headers stay and the list reads "No rows match the filter". While the box holds
   text, the ✕ at its right clears it.
+- **Changes flash.** When the cluster adds, changes or deletes an object
+  while you watch, its row briefly flashes green, yellow or red and fades. A
+  deleted row stays for the flash, then goes. The first list, a reconnect's
+  relist, and a change that leaves every column the same don't flash. The
+  Pods list and the events browser flash the same way.
 - **Resize and reorder.** Drag a column boundary to resize it, or drag a header
   to move it.
 - **Move the selection.** <kbd>↓</kbd> on a list with no selection picks the

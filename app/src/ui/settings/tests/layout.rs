@@ -3,6 +3,7 @@
 
 use super::super::appearance::theme_button_id;
 use super::super::panels::logs_button_id;
+use super::super::tabs::TAB_BAR;
 use super::super::{Section, SettingsWindow, ShowAppearance, ShowKeyboardShortcuts, ShowPanels};
 use super::{app, open, press};
 use gpui_kit::test::TestWindowExt as _;
@@ -194,32 +195,23 @@ async fn the_panels_section_sets_where_pod_logs_open(cx: &mut TestAppContext) {
     );
 }
 
-/// #166: each sidebar button spans the sidebar - so its selected background
-/// does - and its title starts at the left, whole: at the default text size
-/// the title's natural width fits the room the button gives it, so nothing
-/// is ellipsized.
+/// #251: each tab sits in the strip across the top with its title whole -
+/// at the default text size its natural width fits the room the tab gives it,
+/// so nothing is ellipsized.
 #[gpui_kit::test]
-async fn sidebar_buttons_span_the_sidebar_with_whole_left_aligned_titles(cx: &mut TestAppContext) {
+async fn tabs_sit_in_the_strip_with_whole_titles(cx: &mut TestAppContext) {
     use gpui_kit::component::ActiveTheme as _;
     let main = app(cx);
     let (handle, _) = open(main, cx);
     let mut vcx = VisualTestContext::from_window(handle.into(), cx);
 
-    for section in [
-        Section::KeyboardShortcuts,
-        Section::Appearance,
-        Section::Panels,
-        Section::Layouts,
-        Section::AgentAccess,
-    ] {
-        // The title's natural width, in the font and size the window draws
-        // it in, and the button's bounds, from a fresh frame.
-        let (natural, button) = vcx
+    for section in Section::ALL {
+        let natural = vcx
             .update_window(handle.into(), |_, window, cx| {
                 window.render_frame(cx);
                 let theme = cx.theme();
                 let title: gpui_kit::SharedString = section.title().into();
-                let natural = window
+                window
                     .text_system()
                     .shape_line(
                         title.clone(),
@@ -234,30 +226,16 @@ async fn sidebar_buttons_span_the_sidebar_with_whole_left_aligned_titles(cx: &mu
                         }],
                         None,
                     )
-                    .width;
-                let button = window
-                    .try_find(ElementId::Name(section.button_id().into()))
-                    .unwrap_or_else(|| panic!("{} is drawn", section.button_id()))
-                    .bounds();
-                (natural, button)
+                    .width
             })
             .unwrap();
-        let sidebar = vcx
-            .debug_bounds(super::super::SIDEBAR)
-            .expect("the sidebar is drawn");
+        let strip = vcx.debug_bounds(TAB_BAR).expect("the tab strip is drawn");
         let label = vcx
             .debug_bounds(section.label_selector())
             .expect("the title is drawn");
-        // The same padding both sides, plus the sidebar's 1px right border.
-        let inset = button.left() - sidebar.left();
         assert!(
-            (sidebar.right() - button.right() - inset - gpui_kit::px(1.)).abs() < gpui_kit::px(0.5),
-            "{section:?} spans the sidebar, inset alike both sides: \
-             sidebar {sidebar:?}, button {button:?}"
-        );
-        assert!(
-            label.left() - button.left() < gpui_kit::px(20.),
-            "{section:?}'s title starts at the left: button {button:?}, title {label:?}"
+            label.top() >= strip.top() && label.bottom() <= strip.bottom(),
+            "{section:?}'s tab is in the strip: strip {strip:?}, title {label:?}"
         );
         assert!(
             natural <= label.size.width,
@@ -265,4 +243,80 @@ async fn sidebar_buttons_span_the_sidebar_with_whole_left_aligned_titles(cx: &mu
             label.size.width
         );
     }
+}
+
+/// #251: a click on a tab shows its section, as Tab then Space on it does.
+#[gpui_kit::test]
+async fn a_click_or_tab_and_space_shows_a_tabs_section(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (handle, _) = open(main, cx);
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    vcx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(ElementId::Name(Section::Panels.button_id().into()), cx);
+    })
+    .unwrap();
+    vcx.run_until_parked();
+    assert_eq!(shown(cx, handle), Section::Panels, "a click");
+
+    press_button(&mut vcx, handle.into(), Section::Layouts.button_id());
+    assert_eq!(shown(cx, handle), Section::Layouts, "Tab, then Space");
+}
+
+/// #251: Next Tab and Previous Tab (`ctrl-tab`, `ctrl-shift-tab`) step through
+/// the tabs from anywhere in the window, wrapping at either end.
+#[gpui_kit::test]
+async fn ctrl_tab_steps_through_the_tabs_and_wraps(cx: &mut TestAppContext) {
+    let main = app(cx);
+    let (handle, _) = open(main, cx);
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    assert_eq!(shown(cx, handle), Section::KeyboardShortcuts);
+    press(&mut vcx, "ctrl-tab");
+    assert_eq!(shown(cx, handle), Section::Appearance);
+    press(&mut vcx, "ctrl-shift-tab");
+    press(&mut vcx, "ctrl-shift-tab");
+    assert_eq!(
+        shown(cx, handle),
+        Section::AgentAccess,
+        "wraps back to the last"
+    );
+    press(&mut vcx, "ctrl-tab");
+    assert_eq!(
+        shown(cx, handle),
+        Section::KeyboardShortcuts,
+        "and on to the first"
+    );
+}
+
+/// #251: at the window's minimum size, the tab strip and Agent Access - the
+/// section with the widest content - stay inside the window.
+#[gpui_kit::test]
+async fn the_minimum_size_keeps_the_tabs_and_cards_inside(cx: &mut TestAppContext) {
+    use crate::ui::settings::agent_access::{
+        COMMANDS_SELECTOR, UNAVAILABLE_SELECTOR, UNSTABLE_SELECTOR,
+    };
+    let main = app(cx);
+    let (handle, _) = open(main, cx);
+    let mut vcx = VisualTestContext::from_window(handle.into(), cx);
+    vcx.simulate_resize(crate::consts::SETTINGS_WINDOW_MIN_SIZE);
+    show(&mut vcx, Box::new(super::super::ShowAgentAccess));
+    let width = vcx
+        .update_window(handle.into(), |_, window, cx| {
+            window.render_frame(cx);
+            window.viewport_size().width
+        })
+        .unwrap();
+    let strip = vcx.debug_bounds(TAB_BAR).expect("the tab strip is drawn");
+    assert!(
+        strip.right() <= width,
+        "the strip fits: {strip:?}, width {width:?}"
+    );
+    let body = [COMMANDS_SELECTOR, UNSTABLE_SELECTOR, UNAVAILABLE_SELECTOR]
+        .into_iter()
+        .find_map(|selector| vcx.debug_bounds(selector))
+        .expect("Agent Access shows one of its states");
+    assert!(
+        body.right() <= width,
+        "its cards fit: {body:?}, width {width:?}"
+    );
 }

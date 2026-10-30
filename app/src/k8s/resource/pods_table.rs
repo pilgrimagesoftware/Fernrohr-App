@@ -12,6 +12,7 @@ use super::pods::{PodRow, PodSelection};
 
 mod checked;
 mod columns;
+mod flash;
 pub(in crate::k8s::resource) mod list_sort;
 mod menu;
 use columns::cell_text;
@@ -35,6 +36,8 @@ pub(super) fn visible_texts(row: &PodRow) -> Vec<String> {
 /// click on it should publish.
 #[derive(Clone)]
 pub(super) struct PodTableRow {
+    /// The pod's uid: which row a watch event's change flashes (#275).
+    pub(super) uid: String,
     pub(super) row: PodRow,
     pub(super) selection: PodSelection,
     /// The forwards reaching the pod, for the Forwards cell's tooltip.
@@ -104,6 +107,8 @@ pub(super) struct PodTableDelegate {
     /// Whether the filter hides every row (#312): the body then reads so,
     /// under the header ([`crate::ui::list_state::empty_body`]).
     no_match: bool,
+    /// The rows flashing for a change (#275), and deleted ones still drawn.
+    flashes: crate::ui::row_flash::RowFlashes<PodTableRow>,
 }
 
 impl Default for PodTableDelegate {
@@ -121,6 +126,7 @@ impl Default for PodTableDelegate {
             action_context: None,
             background_click: Default::default(),
             checked: Default::default(),
+            flashes: Default::default(),
             no_match: false,
         }
     }
@@ -274,13 +280,13 @@ impl PodTableDelegate {
 
 impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
     fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let Some(row) = self.rows.get(row_ix) {
+        if let Some(row) = self.live_row(row_ix) {
             window.dispatch_action(Box::new(row.selection.background_open()), cx);
         }
     }
 
     fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let Some(row) = self.rows.get(row_ix) {
+        if let Some(row) = self.live_row(row_ix) {
             window.dispatch_action(Box::new(row.selection.new_panel_open()), cx);
         }
     }
@@ -310,7 +316,11 @@ impl TableDelegate for PodTableDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
-        crate::ui::background_rows::row(row_ix, cx)
+        let row = crate::ui::background_rows::row(row_ix, cx);
+        match self.flash_tint(row_ix, cx) {
+            Some(tint) => row.bg(tint),
+            None => row,
+        }
     }
 
     fn rows_count(&self, _: &App) -> usize {
