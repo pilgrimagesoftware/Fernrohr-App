@@ -173,6 +173,9 @@ impl Render for LogsPanel {
             .on_action(cx.listener(|this, _: &PickLogsContext, window, cx| {
                 this.open_context_picker(window, cx);
             }))
+            .on_action(cx.listener(|this, _: &ResetLabelLogs, window, cx| {
+                this.reset_labels(window, cx);
+            }))
             .flex()
             .flex_col()
             .children(control_bar)
