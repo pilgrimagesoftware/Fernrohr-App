@@ -137,6 +137,24 @@ impl Harness {
         })
     }
 
+    /// Whether `name`'s detail panel is open with its object loaded.
+    fn object_loaded(&mut self, name: &str) -> bool {
+        let main = self.main.clone();
+        self.vcx.update(|_, cx| {
+            let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
+                return false;
+            };
+            open_panels
+                .iter()
+                .any(|open| match (&open.key.target, &open.panel) {
+                    (NavTarget::Object(target), Some(OpenedPanel::ObjectDetail(panel))) => {
+                        target.name == name && panel.read(cx).test_loaded()
+                    }
+                    _ => false,
+                })
+        })
+    }
+
     /// Selects the list's first row and presses `e`, then waits for the
     /// object's panel to load and settle.
     fn edit_first_row(&mut self, name: &str) -> (bool, Option<String>) {
@@ -203,9 +221,8 @@ fn e_in_the_detail_panel_edits(cx: &mut TestAppContext, list: DiscoveredKind, na
     h.wait_for("listed the object", |h| h.row_drawn());
     h.press("down");
     h.press("enter");
-    h.wait_for("opened the object's panel", |h| {
-        h.object_panel(name).is_some()
-    });
+    // Loaded, not just open: Edit does nothing before the object is in.
+    h.wait_for("loaded the object's panel", |h| h.object_loaded(name));
     h.press("e");
     let mut state = None;
     h.wait_for("started the edit", |h| {
