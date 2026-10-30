@@ -129,3 +129,23 @@ fn a_flash_holds_then_fades_or_just_ends_with_reduced_motion() {
     assert_eq!(strength(ROW_FLASH, false), 0.0);
     assert_eq!(strength(ROW_FLASH, true), 0.0);
 }
+
+/// A deleted row is drawn back where it was, not at the end, so an unsorted
+/// list doesn't jump while it flashes.
+#[test]
+fn a_deleted_row_is_drawn_where_it_was() {
+    let at = Instant::now();
+    let mut journal = ChangeJournal::default();
+    let old = [row("a", "1"), row("b", "1"), row("c", "1")];
+    let mut flashes = primed(&journal, &old, at);
+    journal.record("b".into(), RowChange::Deleted);
+    let drawn = flashes.update(
+        journal.since(flashes.seen()),
+        &old,
+        vec![row("a", "1"), row("c", "1")],
+        at,
+    );
+    let uids: Vec<&str> = drawn.iter().map(|row| row.uid).collect();
+    assert_eq!(uids, ["a", "b", "c"]);
+    assert!(flashes.is_ghost("b") && !flashes.is_ghost("a"));
+}

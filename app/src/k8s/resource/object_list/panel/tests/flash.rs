@@ -4,6 +4,7 @@
 
 use super::{Harness, deployments, harness, object};
 use crate::consts::ROW_FLASH;
+use crate::k8s::resource::object_list::table::ObjectTableDelegate;
 use crate::ui::row_flash::RowChange;
 use gpui_kit::test::TestWindowExt as _;
 use kube::api::DynamicObject;
@@ -147,4 +148,145 @@ async fn a_flash_ends_and_a_deleted_row_goes(cx: &mut gpui_kit::TestAppContext) 
     assert_eq!(flash(&mut h, "web"), None, "the flash ended");
     assert_eq!(flash(&mut h, "api"), None);
     assert_eq!(names(&mut h), ["web"], "and the deleted row is gone");
+}
+
+/// The bulk selection's object names, from the panel the bar reads it from.
+fn checked(h: &mut Harness) -> Vec<String> {
+    use crate::ui::bulk::BulkHost as _;
+    let panel = h.panel.clone();
+    h.vcx.update(|_, cx| {
+        panel
+            .read(cx)
+            .bulk_selection(cx)
+            .map(|selection| {
+                selection
+                    .targets
+                    .into_iter()
+                    .map(|target| target.name)
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
+/// Review fix (1): a deleted row still drawn for its flash is never checked -
+/// one that was drops out, and select-all passes it by.
+#[gpui_kit::test]
+async fn a_deleted_rows_ghost_is_never_checked(cx: &mut gpui_kit::TestAppContext) {
+    let mut h = listed(cx);
+    // The delegate's own checks - what `x` and select-all run, whose keys this
+    // harness doesn't bind (their keystrokes are covered in `bulk`'s tests).
+    fn edit(h: &mut Harness, check: fn(&mut ObjectTableDelegate)) {
+        let panel = h.panel.clone();
+        h.vcx.update(|_, cx| {
+            let table = panel.read(cx).table.clone().expect("drawn");
+            table.update(cx, |table, cx| {
+                check(table.delegate_mut());
+                cx.notify();
+            });
+        });
+        h.vcx.run_until_parked();
+    }
+    edit(&mut h, |delegate| delegate.check_row(0, false));
+    let first = checked(&mut h).remove(0);
+    let (gone, kept) = if first == "api" {
+        ("api", "web")
+    } else {
+        ("web", "api")
+    };
+
+    feed(
+        &mut h,
+        vec![watcher::Event::Delete(deployment(gone, 1, "1"))],
+    );
+    assert!(
+        names(&mut h).contains(&gone.to_string()),
+        "still drawn, flashing"
+    );
+    assert!(checked(&mut h).is_empty(), "the checked row dropped out");
+
+    edit(&mut h, |delegate| delegate.check_all());
+    assert_eq!(
+        checked(&mut h),
+        [kept],
+        "select-all checks only the live row"
+    );
+}
+
+/// Review fix (2): the cursor stays on a row as it is deleted, but nothing acts
+/// on its ghost - no selection to act on, and Enter opens nothing.
+#[gpui_kit::test]
+async fn no_action_reaches_a_ghost_under_the_cursor(cx: &mut gpui_kit::TestAppContext) {
+    let opened = super::record_opens(cx);
+    let mut h = listed(cx);
+    super::focus_table(&mut h);
+    super::press(&mut h.vcx, "down");
+    let panel = h.panel.clone();
+    let cursor_name = h.vcx.update(|_, cx| {
+        let panel = panel.read(cx);
+        let row_ix = panel.selected_row(cx).expect("a row is selected");
+        let table = panel.table.clone().expect("drawn");
+        table.read(cx).delegate().rows()[row_ix].object.name.clone()
+    });
+
+    feed(
+        &mut h,
+        vec![watcher::Event::Delete(deployment(&cursor_name, 1, "1"))],
+    );
+    let (cursor, acted_on) = h.vcx.update(|_, cx| {
+        let panel = panel.read(cx);
+        let table = panel.table.clone().expect("drawn");
+        (table.read(cx).selected_row(), panel.selected_row(cx))
+    });
+    assert!(cursor.is_some(), "the cursor stays on the ghost");
+    assert_eq!(acted_on, None, "but no action sees a selection there");
+
+    super::press(&mut h.vcx, "enter");
+    assert!(opened.borrow().is_empty(), "Enter opens nothing");
+}
+
+/// Review fix (3): emptiness is judged without ghosts - a filter matching only
+/// a deleted row reads "No rows match" once its flash ends, and a list whose
+/// last row is deleted ends empty.
+#[gpui_kit::test]
+async fn emptiness_ignores_ghosts(cx: &mut gpui_kit::TestAppContext) {
+    use crate::ui::list_state::{EMPTY_SELECTOR, FILTERED_EMPTY, text_selector};
+    let mut h = listed(cx);
+    super::focus_table(&mut h);
+    super::press(&mut h.vcx, "/");
+    h.vcx.simulate_input("api");
+    h.vcx.run_until_parked();
+    feed(
+        &mut h,
+        vec![watcher::Event::Delete(deployment("api", 1, "1"))],
+    );
+    assert_eq!(names(&mut h), ["api"], "only the ghost is drawn");
+
+    h.vcx.executor().advance_clock(ROW_FLASH);
+    h.vcx.run_until_parked();
+    let filtered: &'static str = text_selector(FILTERED_EMPTY).leak();
+    h.vcx.update(|window, cx| window.render_frame(cx));
+    assert!(h.vcx.debug_bounds(EMPTY_SELECTOR).is_some());
+    assert!(
+        h.vcx.debug_bounds(filtered).is_some(),
+        "No rows match the filter"
+    );
+}
+
+#[gpui_kit::test]
+async fn a_list_whose_last_row_is_deleted_ends_empty(cx: &mut gpui_kit::TestAppContext) {
+    use crate::ui::list_state::text_selector;
+    let mut h = harness(cx, deployments(), vec![deployment("web", 1, "1")]);
+    h.vcx.update(|window, cx| window.render_frame(cx));
+    feed(
+        &mut h,
+        vec![watcher::Event::Delete(deployment("web", 1, "1"))],
+    );
+
+    h.vcx.executor().advance_clock(ROW_FLASH);
+    h.vcx.run_until_parked();
+    h.vcx.update(|window, cx| window.render_frame(cx));
+    assert!(names(&mut h).is_empty(), "the ghost is gone");
+    let empty: &'static str = text_selector("No Deployments in any namespace").leak();
+    assert!(h.vcx.debug_bounds(empty).is_some(), "the empty state shows");
 }

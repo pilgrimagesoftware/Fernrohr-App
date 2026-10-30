@@ -304,14 +304,14 @@ impl ObjectTableDelegate {
 
 impl crate::ui::background_rows::BackgroundRows for ObjectTableDelegate {
     fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let (Some(open), Some(row)) = (self.on_open_in_background.clone(), self.rows.get(row_ix))
+        if let (Some(open), Some(row)) = (self.on_open_in_background.clone(), self.live_row(row_ix))
         {
             open(row, window, cx);
         }
     }
 
     fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let (Some(open), Some(row)) = (self.on_open_in_new_panel.clone(), self.rows.get(row_ix))
+        if let (Some(open), Some(row)) = (self.on_open_in_new_panel.clone(), self.live_row(row_ix))
         {
             open(row, window, cx);
         }

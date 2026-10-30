@@ -22,7 +22,8 @@ impl PodTableDelegate {
         };
         use crate::ui::bulk::commands::CheckAll;
         use crate::ui::exec_library::commands::{RunFromLibrary, SaveToLibrary};
-        if row_ix >= self.rows.len() {
+        // No menu on a deleted pod's row still drawn for its flash (#275).
+        if self.live_row(row_ix).is_none() {
             return menu;
         }
         cx.defer_in(window, move |table, _window, cx| {

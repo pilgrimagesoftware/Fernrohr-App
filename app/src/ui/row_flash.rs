@@ -12,6 +12,11 @@
 //!   panel hands it new rows - while the rows it last drew are still at hand -
 //!   and flashes only what changed what a row shows ([`FlashRow::shows_same`]).
 //!
+//! A deleted row still drawn for its flash is a ghost, and inert: the tables
+//! leave it out of their checks and hand it to no action
+//! ([`RowFlashes::is_ghost`]), and the panels count and judge emptiness from
+//! their own rows, which never hold one.
+//!
 //! A flash holds, then fades out over [`ROW_FLASH`]. The panel keeps one timer
 //! while any row flashes ([`redraw_after`]), however many do. With reduced
 //! motion a flash holds and then ends, without fading.
@@ -102,8 +107,9 @@ struct Flash {
 pub(crate) struct RowFlashes<R> {
     seen: Option<u64>,
     flashes: HashMap<String, Flash>,
-    /// Deleted rows, kept until their flash ends.
-    ghosts: Vec<R>,
+    /// Deleted rows, kept until their flash ends, each with the position it
+    /// had among the rows the table drew - where it is drawn back.
+    ghosts: Vec<(usize, R)>,
     /// When the table last took rows, for each flash's strength.
     now: Option<Instant>,
     /// The panel's one timer that redraws it while rows flash.
@@ -144,16 +150,20 @@ impl<R: FlashRow> RowFlashes<R> {
         self.flashes
             .retain(|_, flash| now.saturating_duration_since(flash.started) < ROW_FLASH);
         if !changes.is_empty() {
-            let before: HashMap<&str, &R> = old.iter().map(|row| (row.flash_uid(), row)).collect();
+            let before: HashMap<&str, (usize, &R)> = old
+                .iter()
+                .enumerate()
+                .map(|(ix, row)| (row.flash_uid(), (ix, row)))
+                .collect();
             let after: HashMap<&str, &R> = new.iter().map(|row| (row.flash_uid(), row)).collect();
             let mut deleted = Vec::new();
             for (uid, change) in changes {
                 let (was, is) = (before.get(uid.as_str()), after.get(uid.as_str()));
                 let flashes = match (change, was, is) {
                     (RowChange::Added, _, Some(_)) => true,
-                    (RowChange::Modified, Some(was), Some(is)) => !was.shows_same(is),
-                    (RowChange::Deleted, Some(was), None) => {
-                        deleted.push((*was).clone());
+                    (RowChange::Modified, Some((_, was)), Some(is)) => !was.shows_same(is),
+                    (RowChange::Deleted, Some((ix, was)), None) => {
+                        deleted.push((*ix, (*was).clone()));
                         true
                     }
                     _ => false,
@@ -168,23 +178,36 @@ impl<R: FlashRow> RowFlashes<R> {
                     );
                 }
             }
-            for row in deleted {
+            for (ix, row) in deleted {
                 self.ghosts
-                    .retain(|ghost| ghost.flash_uid() != row.flash_uid());
-                self.ghosts.push(row);
+                    .retain(|(_, ghost)| ghost.flash_uid() != row.flash_uid());
+                self.ghosts.push((ix, row));
             }
         }
         // A deleted row leaves with its flash, or as soon as it is back.
         let flashes = &self.flashes;
-        self.ghosts.retain(|ghost| {
+        self.ghosts.retain(|(_, ghost)| {
             let uid = ghost.flash_uid();
             flashes
                 .get(uid)
                 .is_some_and(|flash| flash.change == RowChange::Deleted)
                 && !new.iter().any(|row| row.flash_uid() == uid)
         });
-        new.extend(self.ghosts.iter().cloned());
+        // Each where it was, in order, so an unsorted list doesn't jump; a
+        // sorted one places it by its own values anyway.
+        self.ghosts.sort_by_key(|(ix, _)| *ix);
+        for (ix, ghost) in &self.ghosts {
+            new.insert((*ix).min(new.len()), ghost.clone());
+        }
         new
+    }
+
+    /// Whether `uid`'s row is a deleted row still drawn for its flash - one no
+    /// action, check or count reaches (#275).
+    pub(crate) fn is_ghost(&self, uid: &str) -> bool {
+        self.ghosts
+            .iter()
+            .any(|(_, ghost)| ghost.flash_uid() == uid)
     }
 
     /// The change `uid`'s row is flashing for, if it is. Test-only: the

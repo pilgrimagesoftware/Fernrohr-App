@@ -324,7 +324,7 @@ impl ObjectListPanel {
     /// The object on row `row_ix`, remembering it as the selection.
     pub(super) fn row_target(&self, row_ix: usize, cx: &mut Context<Self>) -> Option<ObjectTarget> {
         let table = self.table.as_ref()?;
-        let row = table.read(cx).delegate().rows().get(row_ix).cloned()?;
+        let row = table.read(cx).delegate().live_row(row_ix).cloned()?;
         table.update(cx, |table, _| {
             table.delegate_mut().remember_selection(row_ix)
         });
@@ -335,9 +335,13 @@ impl ObjectListPanel {
         })
     }
 
-    /// The table's selected row, if any.
+    /// The table's selected row, if any - none while the cursor is on a deleted
+    /// row still drawn for its flash (#275), so no action reaches it.
     pub(super) fn selected_row(&self, cx: &App) -> Option<usize> {
-        self.table.as_ref()?.read(cx).selected_row()
+        let table = self.table.as_ref()?.read(cx);
+        table
+            .selected_row()
+            .filter(|row_ix| table.delegate().live_row(*row_ix).is_some())
     }
 
     pub(super) fn on_action_open_selected(

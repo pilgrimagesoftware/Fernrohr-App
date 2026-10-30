@@ -45,6 +45,14 @@ impl PodTableDelegate {
         &mut self.flashes
     }
 
+    /// Row `row_ix`, unless it is a deleted row still drawn for its flash -
+    /// which no action, check or open reaches (#275).
+    pub(in crate::k8s::resource) fn live_row(&self, row_ix: usize) -> Option<&PodTableRow> {
+        self.rows
+            .get(row_ix)
+            .filter(|row| !self.flashes.is_ghost(row.flash_uid()))
+    }
+
     /// Row `row_ix`'s background while it flashes.
     pub(super) fn flash_tint(&self, row_ix: usize, cx: &Context<TableState<Self>>) -> Option<Hsla> {
         let row = self.rows.get(row_ix)?;

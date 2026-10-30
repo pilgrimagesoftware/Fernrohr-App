@@ -66,11 +66,12 @@ impl PodsPanel {
                     // detail panel is the double-click, matching the
                     // resource panel's own row convention (section 9.1).
                     TableEvent::DoubleClickedRow(row_ix) => {
+                        // A deleted pod's row still drawn for its flash
+                        // (#275) opens nothing.
                         let Some(selection) = table
                             .read(cx)
                             .delegate()
-                            .rows()
-                            .get(*row_ix)
+                            .live_row(*row_ix)
                             .map(|row| row.selection.clone())
                         else {
                             return;
@@ -82,13 +83,16 @@ impl PodsPanel {
                     }
                     _ => return,
                 };
+                // The cursor may rest on a deleted pod's row still drawn for
+                // its flash (#275), but no pod is selected there to act on.
                 let Some(selection) = table
                     .read(cx)
                     .delegate()
-                    .rows()
-                    .get(row_ix)
+                    .live_row(row_ix)
                     .map(|row| row.selection.clone())
                 else {
+                    cx.set_global(SelectedPod(None));
+                    cx.notify();
                     return;
                 };
                 remember_selection(table, &selection, cx);
@@ -113,6 +117,19 @@ impl PodsPanel {
             pods_table::reselect(table, cx);
             cx.notify();
         });
+        // The selected pod deleted, its row drawn on for its flash (#275):
+        // nothing acts on it from here.
+        let ghost = {
+            let table = table.read(cx);
+            table
+                .selected_row()
+                .filter(|row_ix| table.delegate().live_row(*row_ix).is_none())
+                .and_then(|row_ix| table.delegate().rows().get(row_ix))
+                .map(|row| row.selection.clone())
+        };
+        if ghost.is_some() && Self::selected(cx) == ghost {
+            cx.set_global(SelectedPod(None));
+        }
         let delay = table
             .read(cx)
             .delegate()

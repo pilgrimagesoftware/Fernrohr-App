@@ -117,10 +117,14 @@ impl EventsTableDelegate {
         self.selected = self.rows.get(row_ix).map(|row| row.uid.clone());
     }
 
-    /// The selected event, if it is still listed.
+    /// The selected event, if it is still listed - not one deleted and only
+    /// drawn on for its flash (#275), which no action reaches.
     pub fn selected(&self) -> Option<&EventRow> {
         let uid = self.selected.as_deref()?;
-        self.rows.iter().find(|row| row.uid == uid)
+        self.rows
+            .iter()
+            .find(|row| row.uid == uid)
+            .filter(|row| !self.flashes.is_ghost(&row.uid))
     }
 
     fn selected_index(&self) -> Option<usize> {

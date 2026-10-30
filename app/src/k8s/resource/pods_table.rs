@@ -280,13 +280,13 @@ impl PodTableDelegate {
 
 impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
     fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let Some(row) = self.rows.get(row_ix) {
+        if let Some(row) = self.live_row(row_ix) {
             window.dispatch_action(Box::new(row.selection.background_open()), cx);
         }
     }
 
     fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let Some(row) = self.rows.get(row_ix) {
+        if let Some(row) = self.live_row(row_ix) {
             window.dispatch_action(Box::new(row.selection.new_panel_open()), cx);
         }
     }
