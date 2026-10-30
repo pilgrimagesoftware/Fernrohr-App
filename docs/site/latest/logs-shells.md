@@ -80,7 +80,7 @@ searches, and you can change that without leaving the panel:
 | What | Keyboard | Mouse |
 | --- | --- | --- |
 | Edit the selector | <kbd>/</kbd> | Click the selector field |
-| Choose the namespaces | <kbd>N</kbd> | Click the namespace button |
+| Choose the namespaces, or a namespace set | <kbd>N</kbd> | Click the namespace button |
 | Stream only one container from each pod | <kbd>C</kbd> cycles through the containers | Click the container button |
 | Choose the context | <kbd>X</kbd>, then <kbd>↓</kbd> or <kbd>↑</kbd> and <kbd>Enter</kbd> | Click the context button |
 | Start over | <kbd>⌃L</kbd>, also from the selector field | Click the clear button beside the selector |

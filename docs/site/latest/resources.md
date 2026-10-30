@@ -271,11 +271,17 @@ context's default namespace.
 | --- | --- | --- |
 | Open the picker | <kbd>N</kbd> | Click the namespace button |
 | Narrow the list | Type; the filter has focus when the picker opens | Click the filter box |
-| Toggle the highlighted namespace | <kbd>↓</kbd>, then <kbd>Enter</kbd> | Click it |
+| Toggle the highlighted namespace, or pick the highlighted set | <kbd>↓</kbd>, then <kbd>Enter</kbd> | Click it |
 | Clear the filter, then close | <kbd>Esc</kbd>, then <kbd>Esc</kbd> again | Click away |
 
 The picker stays open while you toggle several namespaces, and the filter is
-empty each time it reopens. "All namespaces" is always listed first.
+empty each time it reopens. "All namespaces" is always listed first, followed by
+your [namespace sets](#namespace-sets), each with how many namespaces it holds,
+then the cluster's namespaces. Typing narrows the sets by name as well. Picking a
+set scopes the panel to all of its namespaces at once, and the button then shows
+the set's name. A set that names namespaces the cluster no longer has still
+applies to the ones that remain, and its count says so, for example
+`2 of 3 namespaces`.
 
 In a Pods list, <kbd>W</kbd> (**Pods: Filter to Selected Pod's Namespace**) scopes
 that panel to the selected pod's namespace. <kbd>⇧W</kbd> (**Pods: Warp All to
