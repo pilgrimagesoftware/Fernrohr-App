@@ -42,5 +42,7 @@ pub use commands::{
 pub(crate) use labels::TypedId;
 pub(crate) use labels::labels_from_state;
 pub use labels::{LabelLogs, WorkloadRef};
+#[cfg(test)]
+pub(in crate::util) use labels::{SELECTOR_HELP, SELECTOR_INPUT, WORKLOAD_SELECTOR};
 pub(crate) use panel::pinned_from_state;
 pub use panel::{LogsPanel, register_restore};

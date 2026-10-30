@@ -291,5 +291,6 @@ async fn a_selector_typed_into_follow_labels_streams_the_pods_it_picks(cx: &mut 
 
 mod context;
 mod instances;
+mod readable;
 mod scope;
 mod selector;

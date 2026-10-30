@@ -49,7 +49,8 @@ fn two_panels(
     (cluster, main, vcx, web, db)
 }
 
-/// 2.2: each panel streams its own selector's pods alone, and is titled by it.
+/// 2.2: each panel streams its own selector's pods alone, and is titled by it,
+/// readably (#244).
 #[gpui_kit::test]
 async fn two_panels_in_one_context_stream_independently(cx: &mut TestAppContext) {
     let (_cluster, _main, mut vcx, web, db) = two_panels(cx);
@@ -58,7 +59,7 @@ async fn two_panels_in_one_context_stream_independently(cx: &mut TestAppContext)
     let titles = vcx.update(|_, cx| (web.read(cx).test_title(), db.read(cx).test_title()));
     assert_eq!(
         titles,
-        ("Logs: app=web".to_string(), "Logs: app=db".to_string())
+        ("Logs: app: web".to_string(), "Logs: app: db".to_string())
     );
 }
 
