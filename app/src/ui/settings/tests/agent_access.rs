@@ -4,8 +4,8 @@
 //! commands.
 
 use super::super::agent_access::{
-    BACKGROUND_CHECKBOX, COMMANDS_SELECTOR, SNIPPET_COPY_ID, SNIPPET_TOOLTIP, UNAVAILABLE_SELECTOR,
-    UNSTABLE_SELECTOR, copy_id,
+    COMMANDS_SELECTOR, SNIPPET_COPY_ID, SNIPPET_TOOLTIP, UNAVAILABLE_SELECTOR, UNSTABLE_SELECTOR,
+    copy_id,
 };
 use super::super::{Section, ShowAgentAccess};
 use super::layout::{drawn, press_button, show, shown};
@@ -182,6 +182,7 @@ async fn the_palette_command_shows_the_section(cx: &mut TestAppContext) {
 #[cfg(target_os = "macos")]
 #[gpui_kit::test]
 async fn the_background_mcp_checkbox_toggles_from_the_keyboard(cx: &mut TestAppContext) {
+    use super::super::agent_access::BACKGROUND_CHECKBOX;
     use crate::config::ui::BackgroundMcp;
     use crate::ui::background_mcp::current;
     let (handle, mut vcx) = opened(cx, ready());

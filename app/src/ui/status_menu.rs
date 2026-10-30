@@ -12,7 +12,7 @@
 //! ([`macos`]); nothing elsewhere yet (#336).
 
 use crate::util::shell::OpenContextWindow;
-use gpui_kit::{Action, App};
+use gpui_kit::Action;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -20,6 +20,7 @@ pub mod macos;
 /// The Contexts submenu's title.
 pub const CONTEXTS: &str = "Contexts";
 /// The Contexts submenu's one, disabled item when the kubeconfig has none.
+#[cfg(target_os = "macos")]
 pub const NO_CONTEXTS: &str = "No contexts in your kubeconfig";
 
 /// One entry of the menu.
@@ -89,7 +90,8 @@ pub fn items(contexts: &[String]) -> Vec<Item> {
 
 /// Does what `choice` stands for, through its command's app-wide handler -
 /// there may be no window to dispatch from.
-pub fn choose(choice: &Choice, cx: &mut App) {
+#[cfg(target_os = "macos")]
+pub fn choose(choice: &Choice, cx: &mut gpui_kit::App) {
     cx.dispatch_action(choice.action().as_ref());
 }
 
