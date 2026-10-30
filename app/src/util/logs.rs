@@ -6,9 +6,11 @@
 //! identity (saved-layout dump, title/tab/toolbar/zoom). [`labels`] is the
 //! panel following every pod a label selector picks (#150).
 
+mod ansi;
 mod commands;
 mod labels;
 mod line;
+mod line_style;
 mod panel;
 mod render;
 mod stream;

@@ -63,6 +63,10 @@ getrandom = "=0.4.3"
 # (`mcp::tools::ToolSpec::for_input`). Already in the build through gpui-base
 # and rmcp, with its derive; pinned to that same version.
 schemars = "=1.2.3"
+# ANSI escapes in log lines (`util::logs::ansi`, #309): SGR styling kept,
+# every other sequence stripped. Already in the build through
+# `alacritty_terminal`; pinned to that same version.
+vte = "=0.15.0"
 
 # Desktop notifications (`notify`, manual-confirmation-tunnels D6): the macOS
 # notification center and the freedesktop D-Bus service. Already in the Linux

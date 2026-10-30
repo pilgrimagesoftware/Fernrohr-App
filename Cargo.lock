@@ -2105,6 +2105,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "toml 1.1.6+spec-1.1.0",
  "url",
+ "vte",
  "windows-sys 0.61.2",
 ]
 

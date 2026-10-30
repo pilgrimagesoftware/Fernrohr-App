@@ -135,3 +135,54 @@ fn a_tagged_line_keeps_its_source_apart() {
     assert_eq!(view.row_count(), 2);
     assert_eq!(view.end_marker(), None, "and not the view's end");
 }
+
+/// #309: a stream's styling carries into its next lines until reset, and the
+/// lines' text is plain.
+#[test]
+fn a_streams_ansi_style_carries_into_its_next_lines() {
+    use crate::util::logs::ansi::{Colour, Style};
+    let red = Style {
+        foreground: Some(Colour::Base(1)),
+        ..Style::default()
+    };
+    let mut view = LogsView::new(vec!["app".into()]);
+    view.apply(LogEvent::Line("\x1b[31mpanic: boom".into()));
+    view.apply(LogEvent::Line("  at main.go:12\x1b[0m".into()));
+    view.apply(LogEvent::Line("recovered".into()));
+    let lines = view.lines();
+    assert_eq!(lines[0], "panic: boom");
+    assert_eq!(
+        lines[1].spans()[0].style,
+        red,
+        "carried from the line before"
+    );
+    assert!(
+        lines[2].spans().is_empty(),
+        "reset at the end of the one before"
+    );
+}
+
+/// Several streams' styling stays apart, and a stream that ends starts plain.
+#[test]
+fn each_tagged_stream_carries_its_own_style() {
+    let mut view = LogsView::new(Vec::new());
+    let web = LineSource::new("web-1", "web-1");
+    let db = LineSource::new("db-1", "db-1");
+    view.apply_from(&web, LogEvent::Line("\x1b[32mstarting".into()));
+    view.apply_from(&db, LogEvent::Line("ready".into()));
+    view.apply_from(&web, LogEvent::Line("listening".into()));
+    view.apply_from(&web, LogEvent::Ended);
+    view.apply_from(&web, LogEvent::Line("again".into()));
+    let lines = view.lines();
+    assert_eq!(
+        lines[0], "web-1 \u{2502} starting",
+        "shown and compared plain"
+    );
+    assert!(lines[1].spans().is_empty(), "db-1 isn't coloured by web-1");
+    assert!(!lines[2].spans().is_empty(), "web-1's next line is");
+    assert!(lines[3].spans().is_empty(), "the end marker is plain");
+    assert!(
+        lines[4].spans().is_empty(),
+        "and the stream starts plain after it"
+    );
+}
