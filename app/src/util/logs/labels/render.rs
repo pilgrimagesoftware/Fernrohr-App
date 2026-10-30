@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::consts::LABEL_LOGS_MAX_STREAMS;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 
@@ -121,7 +121,9 @@ impl LogsPanel {
                 SELECTOR_HELP,
                 div()
                     .debug_selector(|| SELECTOR_INPUT.into())
-                    .child(Input::new(&input).small()),
+                    // The clear button empties the field's text only; Enter
+                    // applies what's in it, and ctrl-l resets the panel (#247).
+                    .child(crate::ui::text_field::text_field(&input, cx).small()),
             )
             .into_any_element(),
             (LabelLogs::Workload(workload), None) => div()
