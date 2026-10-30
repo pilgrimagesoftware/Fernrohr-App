@@ -1,5 +1,6 @@
 //! The bulk selection's keyboard routes as registered commands: checking rows
-//! (`x`, Shift+`x`), clearing them, and one command per bulk action.
+//! (`x`, Shift+`x`, Cmd/Ctrl+`a` for all), clearing them, and one command per
+//! bulk action.
 //!
 //! Each bulk action is gated by its own key context, which a list panel adds
 //! only while its checked set is offered that action ([`add_contexts`]). So the
@@ -17,6 +18,7 @@ actions!(
     [
         ToggleChecked,
         CheckRange,
+        CheckAll,
         ClearChecked,
         BulkViewLogs,
         BulkRestartRollout,
@@ -40,6 +42,9 @@ pub(crate) const CHECKED_CONTEXT: &str = "CheckedRows";
 
 pub(crate) const TOGGLE_KEY: &str = "x";
 pub(crate) const RANGE_KEY: &str = "shift-x";
+/// Select All's platform key: Cmd+`a` on macOS, Ctrl+`a` elsewhere. Outside a
+/// text field only, so a filter's own Select All still selects its text.
+pub(crate) const CHECK_ALL_KEY: &str = "secondary-a";
 
 /// The key context that gates `action`'s command.
 fn context(action: BulkAction) -> &'static str {
@@ -124,6 +129,16 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         menu: None,
     });
     registry.register(Command {
+        id: "bulk.check_all",
+        // "Select All" in the title so the palette finds it by the name
+        // users know from other apps.
+        title: "List: Check All Rows (Select All)",
+        default_binding: CHECK_ALL_KEY,
+        context: Some(checkable),
+        action: Box::new(CheckAll),
+        menu: None,
+    });
+    registry.register(Command {
         id: "bulk.clear_checked",
         title: "Checked: Uncheck All",
         default_binding: "",
@@ -169,6 +184,17 @@ pub(crate) fn check_hint(window: &Window) -> crate::ui::key_hint_row::KeyHint {
         Some(CHECKABLE_CONTEXT),
         TOGGLE_KEY,
         "Check",
+        window,
+    )
+}
+
+/// The hint row's Check All entry (Cmd/Ctrl+`a`), read from the live keymap.
+pub(crate) fn check_all_hint(window: &Window) -> crate::ui::key_hint_row::KeyHint {
+    crate::ui::key_hint_row::KeyHint::for_action(
+        &CheckAll,
+        Some(CHECKABLE_CONTEXT),
+        CHECK_ALL_KEY,
+        "Check All",
         window,
     )
 }

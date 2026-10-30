@@ -12,7 +12,9 @@ use super::pods::{PodRow, PodSelection};
 
 mod checked;
 mod columns;
+mod flash;
 pub(in crate::k8s::resource) mod list_sort;
+mod menu;
 use columns::cell_text;
 pub(super) use columns::{PodColumn, compare};
 
@@ -34,6 +36,8 @@ pub(super) fn visible_texts(row: &PodRow) -> Vec<String> {
 /// click on it should publish.
 #[derive(Clone)]
 pub(super) struct PodTableRow {
+    /// The pod's uid: which row a watch event's change flashes (#275).
+    pub(super) uid: String,
     pub(super) row: PodRow,
     pub(super) selection: PodSelection,
     /// The forwards reaching the pod, for the Forwards cell's tooltip.
@@ -100,6 +104,11 @@ pub(super) struct PodTableDelegate {
     /// The rows checked for a bulk action (`bulk-select-list-actions`), beside
     /// the cursor `selected` tracks.
     checked: crate::ui::bulk::CheckedRows,
+    /// Whether the filter hides every row (#312): the body then reads so,
+    /// under the header ([`crate::ui::list_state::empty_body`]).
+    no_match: bool,
+    /// The rows flashing for a change (#275), and deleted ones still drawn.
+    flashes: crate::ui::row_flash::RowFlashes<PodTableRow>,
 }
 
 impl Default for PodTableDelegate {
@@ -117,11 +126,19 @@ impl Default for PodTableDelegate {
             action_context: None,
             background_click: Default::default(),
             checked: Default::default(),
+            flashes: Default::default(),
+            no_match: false,
         }
     }
 }
 
 impl PodTableDelegate {
+    /// Whether the filter hides every row - set each render from the panel's
+    /// table area.
+    pub(in crate::k8s::resource) fn set_no_match(&mut self, no_match: bool) {
+        self.no_match = no_match;
+    }
+
     /// Replaces the rows, keeping the active sort applied - the delegate's
     /// half of `PodsPanel::sync_table`'s per-render row refresh.
     pub(super) fn set_rows(&mut self, rows: Vec<PodTableRow>) {
@@ -263,13 +280,13 @@ impl PodTableDelegate {
 
 impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
     fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let Some(row) = self.rows.get(row_ix) {
+        if let Some(row) = self.live_row(row_ix) {
             window.dispatch_action(Box::new(row.selection.background_open()), cx);
         }
     }
 
     fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let Some(row) = self.rows.get(row_ix) {
+        if let Some(row) = self.live_row(row_ix) {
             window.dispatch_action(Box::new(row.selection.new_panel_open()), cx);
         }
     }
@@ -280,6 +297,15 @@ impl crate::ui::background_rows::BackgroundRows for PodTableDelegate {
 }
 
 impl TableDelegate for PodTableDelegate {
+    /// No rows: the no-match row while the filter hides them all.
+    fn render_empty(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::ui::list_state::empty_body(self.no_match, cx)
+    }
+
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
     }
@@ -290,7 +316,11 @@ impl TableDelegate for PodTableDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
-        crate::ui::background_rows::row(row_ix, cx)
+        let row = crate::ui::background_rows::row(row_ix, cx);
+        match self.flash_tint(row_ix, cx) {
+            Some(tint) => row.bg(tint),
+            None => row,
+        }
     }
 
     fn rows_count(&self, _: &App) -> usize {
@@ -308,10 +338,7 @@ impl TableDelegate for PodTableDelegate {
         }
     }
 
-    /// The row's context menu (`pod-quick-look` 2.1): right-clicking selects
-    /// the row - deferred, since the table is mid-update here - and offers the
-    /// panel's registered pod commands, dispatched from the table so each runs
-    /// exactly as its key does, with that key shown beside it.
+    /// The row's context menu ([`menu`]).
     fn context_menu(
         &mut self,
         row_ix: usize,
@@ -319,37 +346,7 @@ impl TableDelegate for PodTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        use super::pods::{
-            DescribePod, OpenInNewPanel, QuickLook, ShowPodLogs, ShowPodLogsFlipped, ShowPodYaml,
-        };
-        use crate::ui::exec_library::commands::{RunFromLibrary, SaveToLibrary};
-        if row_ix >= self.rows.len() {
-            return menu;
-        }
-        cx.defer_in(window, move |table, _window, cx| {
-            table.set_selected_row(row_ix, cx);
-        });
-        let menu = match &self.action_context {
-            Some(focus) => menu.action_context(focus.clone()),
-            None => menu,
-        };
-        menu.menu("Quick Look", Box::new(QuickLook))
-            .menu("Open Details", Box::new(DescribePod))
-            .menu("Open in New Panel", Box::new(OpenInNewPanel))
-            .menu("Logs", Box::new(ShowPodLogs))
-            .menu(
-                crate::ui::logs_panels::flipped_label(cx),
-                Box::new(ShowPodLogsFlipped),
-            )
-            .menu("YAML", Box::new(ShowPodYaml))
-            .menu_with_disabled(
-                "Port Forward…",
-                Box::new(super::pods::PortForwardPod),
-                !self.rows[row_ix].row.forwardable(),
-            )
-            .separator()
-            .menu("Run from Library…", Box::new(RunFromLibrary))
-            .menu("Save to Library…", Box::new(SaveToLibrary))
+        self.row_menu(row_ix, menu, window, cx)
     }
 
     /// Status in its tone's colour, Ready with a dot in its readiness tone,

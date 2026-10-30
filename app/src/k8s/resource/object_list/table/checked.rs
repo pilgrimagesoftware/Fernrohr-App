@@ -19,9 +19,13 @@ impl ObjectTableDelegate {
         &mut self.checked
     }
 
-    /// The displayed rows' keys, top to bottom.
+    /// The displayed rows' keys, top to bottom - but a deleted row still drawn
+    /// for its flash (#275), which can't be checked, and drops out if it was.
     fn row_keys(&self) -> Vec<RowKey> {
-        self.rows.iter().map(ListRow::row_key).collect()
+        (0..self.rows.len())
+            .filter_map(|row_ix| self.live_row(row_ix))
+            .map(ListRow::row_key)
+            .collect()
     }
 
     /// The checked rows, top to bottom.
@@ -35,7 +39,7 @@ impl ObjectTableDelegate {
     /// Row `row_ix`'s checkbox clicked, or `x` pressed on it: toggles it, or -
     /// `range` - checks everything from the last toggled row to it.
     pub(in crate::k8s::resource) fn check_row(&mut self, row_ix: usize, range: bool) {
-        let Some(key) = self.rows.get(row_ix).map(ListRow::row_key) else {
+        let Some(key) = self.live_row(row_ix).map(ListRow::row_key) else {
             return;
         };
         if range {
@@ -44,6 +48,12 @@ impl ObjectTableDelegate {
         } else {
             self.checked.toggle(key);
         }
+    }
+
+    /// Checks every displayed row.
+    pub(in crate::k8s::resource) fn check_all(&mut self) {
+        let rows = self.row_keys();
+        self.checked.check_all(&rows);
     }
 
     /// Unchecks the objects a watch update no longer lists.

@@ -5,6 +5,7 @@ use super::columns::{self, ConditionsSeen, KindColumns};
 use super::row::ObjectRow;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::load_phase::LoadPhase;
+use crate::ui::row_flash::{ChangeJournal, RowChange};
 use crate::util::resource_index::ResourceIndex;
 use kube::api::DynamicObject;
 use kube_runtime::watcher;
@@ -32,6 +33,8 @@ pub struct ObjectsTable {
     /// Where the table is in its lists (`list-loading-indicator`); `synced`
     /// once a list has completed (`live-detail-panels` D2).
     phase: LoadPhase,
+    /// The live changes the list flashes (#275).
+    journal: ChangeJournal,
 }
 
 /// How a kind's rows are kept current (`unwatchable-kinds`).
@@ -80,6 +83,18 @@ impl ObjectsTable {
     /// Where the table is in its lists.
     pub fn phase(&self) -> LoadPhase {
         self.phase
+    }
+
+    /// The live changes a list flashes (#275).
+    pub(crate) fn journal(&self) -> &ChangeJournal {
+        &self.journal
+    }
+
+    /// Whether a watch event now is a live change - after the first list and
+    /// outside a relist or a poll - rather than part of a list, which never
+    /// flashes.
+    fn live(&self) -> bool {
+        self.relisting.is_none() && self.phase.has_loaded()
     }
 
     /// The row named `name` in `namespace` (`None` for a cluster-scoped kind),
@@ -151,6 +166,14 @@ impl ObjectsTable {
         match event {
             watcher::Event::Apply(object) => {
                 let row = ObjectRow::new(&object, self.columns);
+                if self.live() {
+                    let change = if self.index.contains(&row.uid) {
+                        RowChange::Modified
+                    } else {
+                        RowChange::Added
+                    };
+                    self.journal.record(row.uid.clone(), change);
+                }
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::InitApply(object) => {
@@ -162,8 +185,11 @@ impl ObjectsTable {
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::Delete(object) => {
-                self.index
-                    .apply_deleted(object.metadata.uid.as_deref().unwrap_or_default());
+                let uid = object.metadata.uid.as_deref().unwrap_or_default();
+                if self.live() && self.index.contains(uid) {
+                    self.journal.record(uid.to_string(), RowChange::Deleted);
+                }
+                self.index.apply_deleted(uid);
             }
             watcher::Event::Init => {
                 self.refused = None;

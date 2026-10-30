@@ -11,7 +11,9 @@ This page covers the settings you can change, the notifications Fernrohr sends, 
 
 Choose **Settings…** from the App menu, run it from the command palette, or press <kbd>⌘,</kbd>. There is only one Settings window. Opening it again brings the open one to the front.
 
-A sidebar lists the sections: Keyboard Shortcuts, Appearance, Panels, Layouts and Agent Access. Tab to a section and press <kbd>Enter</kbd> or <kbd>Space</kbd> to show it, or click it. Showing a section moves focus into it, so the next <kbd>Tab</kbd> reaches its first control. While the Settings window has focus, the palette also offers **Settings: Show Keyboard Shortcuts**, **Settings: Show Appearance**, **Settings: Show Panels**, **Settings: Show Layouts** and **Settings: Show Agent Access**. They have no default keys.
+Tabs across the top of the window show the sections: Keyboard Shortcuts, Appearance, Panels, Layouts and Agent Access, each with its icon. Click a tab, or <kbd>Tab</kbd> to it and press <kbd>Enter</kbd> or <kbd>Space</kbd>. <kbd>⌃Tab</kbd> and <kbd>⌃⇧Tab</kbd> (**Settings: Next Tab** and **Settings: Previous Tab**) step through the tabs from anywhere in the window. Showing a section moves focus into it, so the next <kbd>Tab</kbd> reaches its first control. In a narrow window the tabs scroll sideways.
+
+Each section groups its controls in titled cards, with a short hint under a setting where it helps. While the Settings window has focus, the palette also offers **Settings: Show Keyboard Shortcuts**, **Settings: Show Appearance**, **Settings: Show Panels**, **Settings: Show Layouts** and **Settings: Show Agent Access**. They have no default keys.
 
 This page covers Appearance. For Layouts, see {{ '/latest/windows-panels/' | relative_url }}. For Agent Access, see {{ '/latest/agents/' | relative_url }}. For Keyboard Shortcuts, see {{ '/latest/reference/keybindings/' | relative_url }}.
 
@@ -58,6 +60,9 @@ text_size = 110
 ```
 
 The theme is `"system"`, `"light"` or `"dark"`. The text size is a percentage. A hand-edited value between steps, or out of range, loads as the nearest step.
+
+On macOS, `background_mcp` is `"keep_running"` (the default) or `"stop_with_last_window"`. It is the
+**Keep the MCP server running in the background** setting in Agent Access.
 
 Window state and saved layouts are not meant for hand-editing. They live in Fernrohr's state directory, `~/Library/Application Support/com.pilgrimagesoftware.fernrohr/` on macOS and `~/.local/share/fernrohr/` on Linux.
 

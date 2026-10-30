@@ -171,6 +171,42 @@ impl LogsPanel {
         cx.notify();
     }
 
+    /// `ResetLabelLogs` (#247): a typed panel starts over. Every stream stops -
+    /// dropping its task cancels it, whether it's connecting, streaming or
+    /// failing - the lines go with a fresh empty view, and the selector, its
+    /// error and the container filter clear, leaving the panel as it opened:
+    /// the field empty and focused. The panel keeps its context's Pods
+    /// subscription, which streams nothing without a selector and is shared
+    /// with the context's other panels.
+    pub(in crate::util::logs) fn reset_labels(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.is_typed_labels() {
+            return;
+        }
+        let Some(following) = &mut self.labels else {
+            return;
+        };
+        following.selector = None;
+        following.error = None;
+        following.container = None;
+        following.containers.clear();
+        following.streams.clear();
+        following.stopped.clear();
+        following.matched = Matched::default();
+        let input = following.input.clone();
+        let view = cx.new(|_| LogsView::new(Vec::new()));
+        self.follow(&view, cx);
+        self.view = view;
+        if let Some(input) = input {
+            input.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        self.focus_selector(window, cx);
+        cx.notify();
+    }
+
     /// Streams only the containers named `container` from each matching pod,
     /// or - `None` - all of them. Streams the filter excludes are dropped, not
     /// hidden, so they don't count toward the cap.
@@ -251,6 +287,23 @@ impl LogsPanel {
             .collect();
         streams.sort();
         streams
+    }
+
+    /// Test-only: how many lines the view holds.
+    #[cfg(test)]
+    pub(crate) fn test_line_count(&self, cx: &App) -> usize {
+        self.view.read(cx).lines().len()
+    }
+
+    /// Test-only: a typed panel's selector field - its text, and whether it
+    /// has focus - once it has been drawn.
+    #[cfg(test)]
+    pub(crate) fn test_selector_field(&self, window: &Window, cx: &App) -> Option<(String, bool)> {
+        let input = self.labels.as_ref()?.input.as_ref()?.read(cx);
+        Some((
+            input.value().to_string(),
+            input.focus_handle(cx).is_focused(window),
+        ))
     }
 }
 

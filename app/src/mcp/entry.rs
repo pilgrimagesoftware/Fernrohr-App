@@ -14,10 +14,21 @@ pub(crate) fn run_command() -> i32 {
     }
 }
 
-/// Starts the app's MCP endpoint; see `server::start`.
+/// Starts the app's MCP endpoint, unless it already runs; see
+/// `server::start`.
 pub(crate) fn start(cx: &mut gpui_kit::App) {
     #[cfg(unix)]
     super::server::start(cx, super::tools::ToolRegistry::app());
+    #[cfg(not(unix))]
+    let _ = cx;
+}
+
+/// Stops the app's MCP endpoint, if it runs; see `server::stop`. Quiet mode
+/// (#236) does this when the last window closes with the background setting
+/// off.
+pub(crate) fn stop(cx: &mut gpui_kit::App) {
+    #[cfg(unix)]
+    super::server::stop(cx);
     #[cfg(not(unix))]
     let _ = cx;
 }

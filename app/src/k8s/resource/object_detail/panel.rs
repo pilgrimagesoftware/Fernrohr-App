@@ -73,6 +73,12 @@ impl ObjectDetailPanel {
         (self.edit.is_some(), self.edit_notice.clone())
     }
 
+    /// Test-only: whether the object has loaded - what Edit needs first.
+    #[cfg(test)]
+    pub(crate) fn test_loaded(&self) -> bool {
+        self.object().is_some()
+    }
+
     /// Test-only: the Node's own embedded pods region (#186), if this panel
     /// built one - `None` for every kind but Node.
     #[cfg(test)]
@@ -360,7 +366,7 @@ impl Panel for ObjectDetailPanel {
     fn title(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         panel_title::title_element(
             &self.scope,
-            panel_title::title(&self.scope),
+            panel_title::title_in(&self.scope, cx),
             &self.focus_handle,
             panel_title::close_button(cx.entity()),
             cx.entity_id(),

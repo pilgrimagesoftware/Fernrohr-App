@@ -45,8 +45,8 @@ struct Harness {
     vcx: VisualTestContext,
 }
 
-/// A window over a fake cluster holding a Deployment, a Secret and a Pod, all
-/// in `shop`, showing `target`, focused.
+/// A window over a fake cluster holding a Deployment, a ConfigMap, a Secret
+/// and a Pod, all in `shop`, showing `target`, focused.
 fn harness(cx: &mut TestAppContext, target: NavTarget) -> Harness {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
@@ -60,6 +60,11 @@ fn harness(cx: &mut TestAppContext, target: NavTarget) -> Harness {
         "/apis/apps/v1",
         "deployments",
         object("apps/v1", "Deployment", "web"),
+    );
+    cluster.apply(
+        "/api/v1",
+        "configmaps",
+        object("v1", "ConfigMap", "settings"),
     );
     cluster.apply("/api/v1", "secrets", object("v1", "Secret", "creds"));
     cluster.apply("/api/v1", "pods", pod());
@@ -132,6 +137,24 @@ impl Harness {
         })
     }
 
+    /// Whether `name`'s detail panel is open with its object loaded.
+    fn object_loaded(&mut self, name: &str) -> bool {
+        let main = self.main.clone();
+        self.vcx.update(|_, cx| {
+            let WindowMode::Workspace { open_panels, .. } = &main.read(cx).mode else {
+                return false;
+            };
+            open_panels
+                .iter()
+                .any(|open| match (&open.key.target, &open.panel) {
+                    (NavTarget::Object(target), Some(OpenedPanel::ObjectDetail(panel))) => {
+                        target.name == name && panel.read(cx).test_loaded()
+                    }
+                    _ => false,
+                })
+        })
+    }
+
     /// Selects the list's first row and presses `e`, then waits for the
     /// object's panel to load and settle.
     fn edit_first_row(&mut self, name: &str) -> (bool, Option<String>) {
@@ -189,6 +212,33 @@ async fn e_in_a_pods_detail_panel_edits_its_yaml(cx: &mut TestAppContext) {
         state = h.object_panel("web-1");
         matches!(&state, Some((true, _)))
     });
+}
+
+/// #322: `e` in an object's detail panel, opened from its list with Enter,
+/// edits it - as `e` on the row does.
+fn e_in_the_detail_panel_edits(cx: &mut TestAppContext, list: DiscoveredKind, name: &str) {
+    let mut h = harness(cx, NavTarget::Kind(list));
+    h.wait_for("listed the object", |h| h.row_drawn());
+    h.press("down");
+    h.press("enter");
+    // Loaded, not just open: Edit does nothing before the object is in.
+    h.wait_for("loaded the object's panel", |h| h.object_loaded(name));
+    h.press("e");
+    let mut state = None;
+    h.wait_for("started the edit", |h| {
+        state = h.object_panel(name);
+        matches!(&state, Some((true, _)))
+    });
+}
+
+#[gpui_kit::test]
+async fn e_in_a_configmaps_detail_panel_edits_its_yaml(cx: &mut TestAppContext) {
+    e_in_the_detail_panel_edits(cx, kind("", "ConfigMap", "configmaps"), "settings");
+}
+
+#[gpui_kit::test]
+async fn e_in_a_deployments_detail_panel_edits_its_yaml(cx: &mut TestAppContext) {
+    e_in_the_detail_panel_edits(cx, kind("apps", "Deployment", "deployments"), "web");
 }
 
 /// Every kind but a Secret: a Secret's panel says why, and opens no editor.

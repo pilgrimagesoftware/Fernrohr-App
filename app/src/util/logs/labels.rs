@@ -19,6 +19,12 @@ mod follow;
 mod render;
 mod scope;
 
+// For the window tests in `util::shell`.
+#[cfg(test)]
+pub(in crate::util) use render::{
+    RESET_BUTTON, RESET_TOOLTIP, SELECTOR_HELP, SELECTOR_INPUT, WORKLOAD_SELECTOR,
+};
+
 /// Which pods a label-following Logs panel streams - the identity its
 /// `NavTarget::LabelLogs` dedups on.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

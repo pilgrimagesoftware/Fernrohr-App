@@ -3,8 +3,12 @@
 
 use super::columns::EventColumn;
 use super::row::EventRow;
+#[cfg(test)]
+use crate::ui::row_flash::RowChange;
+use crate::ui::row_flash::{Changes, RowFlashes};
 use crate::ui::table_fit::{FitColumns, HeaderBounds};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use jiff::Timestamp;
 
@@ -29,9 +33,20 @@ pub struct EventsTableDelegate {
     /// When the rows were supplied, which their Last Seen ages read against.
     now: Timestamp,
     header: HeaderBounds,
+    /// Whether the filter hides every row (#312): the body then reads so,
+    /// under the header ([`crate::ui::list_state::empty_body`]).
+    no_match: bool,
+    /// The rows flashing for a change (#275), and deleted ones still drawn.
+    flashes: RowFlashes<EventRow>,
 }
 
 impl EventsTableDelegate {
+    /// Whether the filter hides every row - set each render from the panel's
+    /// table area.
+    pub(super) fn set_no_match(&mut self, no_match: bool) {
+        self.no_match = no_match;
+    }
+
     pub fn new(sort: Option<(EventColumn, ColumnSort)>) -> Self {
         Self {
             natural: Vec::new(),
@@ -43,6 +58,8 @@ impl EventsTableDelegate {
             selected: None,
             now: Timestamp::now(),
             header: HeaderBounds::default(),
+            no_match: false,
+            flashes: RowFlashes::default(),
         }
     }
 
@@ -56,6 +73,33 @@ impl EventsTableDelegate {
         self.natural = rows;
         self.now = now;
         self.apply_sort();
+    }
+
+    /// [`Self::set_rows`], flashing what the store's live `changes` did to the
+    /// rows drawn until now (#275), at `at` on the executor's clock.
+    pub(super) fn set_rows_flashing(
+        &mut self,
+        changes: Changes,
+        rows: Vec<EventRow>,
+        now: Timestamp,
+        at: std::time::Instant,
+    ) {
+        let rows = self.flashes.update(changes, &self.natural, rows, at);
+        self.set_rows(rows, now);
+    }
+
+    pub(super) fn flashes(&self) -> &RowFlashes<EventRow> {
+        &self.flashes
+    }
+
+    pub(super) fn flashes_mut(&mut self) -> &mut RowFlashes<EventRow> {
+        &mut self.flashes
+    }
+
+    /// The change `uid`'s row is flashing for. Test-only.
+    #[cfg(test)]
+    pub(super) fn flash_of(&self, uid: &str) -> Option<RowChange> {
+        self.flashes.change(uid)
     }
 
     /// The rows in displayed order. Test-only: the panel reads the selection.
@@ -73,10 +117,14 @@ impl EventsTableDelegate {
         self.selected = self.rows.get(row_ix).map(|row| row.uid.clone());
     }
 
-    /// The selected event, if it is still listed.
+    /// The selected event, if it is still listed - not one deleted and only
+    /// drawn on for its flash (#275), which no action reaches.
     pub fn selected(&self) -> Option<&EventRow> {
         let uid = self.selected.as_deref()?;
-        self.rows.iter().find(|row| row.uid == uid)
+        self.rows
+            .iter()
+            .find(|row| row.uid == uid)
+            .filter(|row| !self.flashes.is_ghost(&row.uid))
     }
 
     fn selected_index(&self) -> Option<usize> {
@@ -117,6 +165,31 @@ impl EventsTableDelegate {
 }
 
 impl TableDelegate for EventsTableDelegate {
+    /// A row, tinted while it flashes for a change (#275).
+    fn render_tr(
+        &mut self,
+        row_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Stateful<Div> {
+        let tint = self
+            .rows
+            .get(row_ix)
+            .and_then(|row| self.flashes.tint(&row.uid, cx));
+        div()
+            .id(("row", row_ix))
+            .when_some(tint, |row, tint| row.bg(tint))
+    }
+
+    /// No rows: the no-match row while the filter hides them all.
+    fn render_empty(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::ui::list_state::empty_body(self.no_match, cx)
+    }
+
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
     }

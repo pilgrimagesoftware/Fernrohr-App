@@ -43,13 +43,18 @@ over the open panel and the panel notes that it replaced the deleted pod.
 
 In the palette these are prefixed "Pod Detail:" or "Object Detail:" for the panel
 that has focus. The YAML view scrolls, and you can fold and unfold each nested
-block with the keyboard or the mouse. Hovering a copyable value, such as a
+block with the keyboard or the mouse. `metadata.managedFields` starts folded,
+since it is long and rarely read; unfold it with its chevron or
+<kbd>⇧Z</kbd>, and it stays open while the object updates. Editing the YAML
+leaves `managedFields` out. Hovering a copyable value, such as a
 container image, a ConfigMap value or a status message, shows a copy control
 that Tab also reaches.
 
 ### Key hints in a narrow panel
 
-The header's key hints wrap beside the name. When a narrow panel would need
+The header's key hints wrap beside the name, and a long name is cut short with
+an ellipsis to make room. In a panel too narrow for both side by side, the name
+moves onto its own line with the hints beneath it. When a narrow panel would need
 more than three lines for them, the header shows only the keys that switch
 what the panel shows: the pod detail's tab keys, grouped as **Tabs**, and
 **Show YAML** or **Show fields**. A **⋯** button follows them. Every hidden key still works.

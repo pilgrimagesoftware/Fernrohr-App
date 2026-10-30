@@ -9,12 +9,15 @@ use gpui_kit::*;
 
 mod checked;
 mod fit;
+mod flash;
 mod list_model;
 mod menu;
+mod sort;
 pub(super) use list_model::{
     ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout, reconcile,
 };
 use list_model::{FORWARDS, NAME, cell_text, compare};
+pub(super) use sort::reselect;
 
 use super::columns;
 
@@ -93,6 +96,11 @@ pub(super) struct ObjectTableDelegate {
     /// items dispatch from.
     kind_menu: Option<menu::KindMenu>,
     action_context: Option<FocusHandle>,
+    /// Whether the filter hides every row (#312): the body then reads so,
+    /// under the header ([`crate::ui::list_state::empty_body`]).
+    no_match: bool,
+    /// The rows flashing for a change (#275), and deleted ones still drawn.
+    flashes: crate::ui::row_flash::RowFlashes<ListRow>,
 }
 
 impl ObjectTableDelegate {
@@ -119,7 +127,15 @@ impl ObjectTableDelegate {
             checked: Default::default(),
             kind_menu: None,
             action_context: None,
+            no_match: false,
+            flashes: Default::default(),
         }
+    }
+
+    /// Whether the filter hides every row - set each render from the panel's
+    /// table area.
+    pub(super) fn set_no_match(&mut self, no_match: bool) {
+        self.no_match = no_match;
     }
 
     /// Sets the sort a third click returns to, and the key the user's sorts
@@ -288,14 +304,14 @@ impl ObjectTableDelegate {
 
 impl crate::ui::background_rows::BackgroundRows for ObjectTableDelegate {
     fn open_in_background(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let (Some(open), Some(row)) = (self.on_open_in_background.clone(), self.rows.get(row_ix))
+        if let (Some(open), Some(row)) = (self.on_open_in_background.clone(), self.live_row(row_ix))
         {
             open(row, window, cx);
         }
     }
 
     fn open_in_new_panel(&mut self, row_ix: usize, window: &mut Window, cx: &mut App) {
-        if let (Some(open), Some(row)) = (self.on_open_in_new_panel.clone(), self.rows.get(row_ix))
+        if let (Some(open), Some(row)) = (self.on_open_in_new_panel.clone(), self.live_row(row_ix))
         {
             open(row, window, cx);
         }
@@ -307,6 +323,15 @@ impl crate::ui::background_rows::BackgroundRows for ObjectTableDelegate {
 }
 
 impl TableDelegate for ObjectTableDelegate {
+    /// No rows: the no-match row while the filter hides them all.
+    fn render_empty(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        crate::ui::list_state::empty_body(self.no_match, cx)
+    }
+
     fn columns_count(&self, _: &App) -> usize {
         self.columns.len()
     }
@@ -317,7 +342,12 @@ impl TableDelegate for ObjectTableDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
-        crate::ui::background_rows::row(row_ix, cx)
+        let tint = self.flash_tint(row_ix, cx);
+        let row = crate::ui::background_rows::row(row_ix, cx);
+        match tint {
+            Some(tint) => row.bg(tint),
+            None => row,
+        }
     }
 
     fn rows_count(&self, _: &App) -> usize {
@@ -426,54 +456,6 @@ impl TableDelegate for ObjectTableDelegate {
         // The table's own next step is ignored: `list_sort` decides it.
         let _ = sort;
         crate::ui::list_sort::header_clicked(self, col_ix, window, cx);
-    }
-}
-
-impl crate::ui::list_sort::SortableTable for ObjectTableDelegate {
-    fn sort_columns(&self) -> Vec<SharedString> {
-        self.columns
-            .iter()
-            .map(|column| column.id.clone())
-            .collect()
-    }
-
-    fn current_sort(&self) -> Option<crate::ui::list_sort::Sort> {
-        self.sort_state()
-            .map(|(column, descending)| (SharedString::from(column.to_string()), descending))
-    }
-
-    fn sort_by(&mut self, (column, descending): &crate::ui::list_sort::Sort) {
-        self.set_sort(column, *descending);
-    }
-
-    fn default_sort(&self) -> crate::ui::list_sort::Sort {
-        self.default_sort.clone()
-    }
-
-    fn remember_as(&self) -> Option<&str> {
-        self.remember_as.as_deref()
-    }
-
-    fn after_sort(table: &mut TableState<Self>, cx: &mut Context<TableState<Self>>) {
-        reselect(table, cx);
-    }
-}
-
-/// Re-points the table's row selection - which [`TableState`] keeps as a bare
-/// index - at the object this table last selected, after a sort or a watch update
-/// changed what sits at each index. Clears it if the object is gone.
-pub(super) fn reselect(
-    table: &mut TableState<ObjectTableDelegate>,
-    cx: &mut Context<TableState<ObjectTableDelegate>>,
-) {
-    if table.delegate().selected.is_none() {
-        return;
-    }
-    match table.delegate().selected_index() {
-        Some(row_ix) if table.selected_row() != Some(row_ix) => table.set_selected_row(row_ix, cx),
-        Some(_) => {}
-        None if table.selected_row().is_some() => table.clear_selection(cx),
-        None => {}
     }
 }
 

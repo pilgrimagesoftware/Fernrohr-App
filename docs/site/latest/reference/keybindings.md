@@ -46,6 +46,9 @@ This list matches the commands registered in `app/src/command.rs`.
 | Reset Shortcut Timeout | — | Global | — | `settings.reset_shortcut_timeout` |
 | Open Each Pod's Logs in Its Own Panel | — | Global | — | `settings.logs_per_pod` |
 | Open Every Pod's Logs in One Reused Panel | — | Global | — | `settings.logs_reuse_panel` |
+| Open MCP Settings… | — | Global | — | `settings.open_agent_access` |
+| Keep the MCP Server Running in the Background (macOS) | — | Global | — | `settings.mcp_keep_in_background` |
+| Stop the MCP Server When the Last Window Closes (macOS) | — | Global | — | `settings.mcp_stop_with_last_window` |
 | Report Issue | <kbd>⌘⇧/</kbd> | Global | Help | `help.report_issue` |
 | Copy MCP Setup Command | — | Global | — | `mcp.copy_setup_command` |
 
@@ -76,7 +79,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Show Logs | <kbd>⌘2</kbd> | Global | — | `nav.show_logs` |
 | Show Logs (Other Panel Mode) | — | Global | — | `nav.show_logs_flipped` |
 | Show Events | — | Global | — | `nav.show_events` |
-| Open Logs by Label… | — | Global | Window | `logs.follow_labels` |
+| Open Logs by Label… | <kbd>⌘⇧L</kbd> | Global | Window | `logs.follow_labels` |
 | Fit Columns to Contents | — | Global | View | `table.fit_columns` |
 | Focus Resources | <kbd>⌘0</kbd> | Global | Navigate | `resource.focus` |
 | Resources: Refresh | <kbd>⌘R</kbd> | Global | View | `resource.refresh` |
@@ -203,6 +206,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Logs: Pick Namespaces | <kbd>N</kbd> | `TypedLabelLogs && !Input` | — | `logs.pick_namespaces` |
 | Logs: Edit Label Selector | <kbd>/</kbd> | `TypedLabelLogs && !Input` | — | `logs.focus_selector` |
 | Logs: Pick Context… | <kbd>X</kbd> | `TypedLabelLogs && !Input` | — | `logs.pick_context` |
+| Logs: Clear Selector and Logs | <kbd>⌃L</kbd> | `TypedLabelLogs` | — | `logs.reset_labels` |
 
 ### Object lists
 
@@ -244,6 +248,7 @@ while every checked row's kind takes that action.
 | --- | --- | --- | --- | --- |
 | List: Check or Uncheck Selected Row | <kbd>X</kbd> | `CheckableList && !Input` | — | `bulk.toggle_checked` |
 | List: Check Rows Up to Selected | <kbd>⇧X</kbd> | `CheckableList && !Input` | — | `bulk.check_range` |
+| List: Check All Rows (Select All) | <kbd>⌘A</kbd> | `CheckableList && !Input` | — | `bulk.check_all` |
 | Checked: Uncheck All | — | `CheckedRows && !Input` | — | `bulk.clear_checked` |
 | Checked: View Logs | — | `BulkViewLogs && !Input` | — | `bulk.view_logs` |
 | Checked: Restart Rollout… | — | `BulkRestartRollout && !Input` | — | `bulk.restart_rollout` |
@@ -346,6 +351,8 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Settings: Show Panels | — | `SettingsWindow` | — | `settings.show_panels` |
 | Settings: Show Layouts | — | `SettingsWindow` | — | `settings.show_layouts` |
 | Settings: Show Agent Access | — | `SettingsWindow` | — | `settings.show_agent_access` |
+| Settings: Next Tab | <kbd>⌃Tab</kbd> | `SettingsWindow` | — | `settings.next_tab` |
+| Settings: Previous Tab | <kbd>⌃⇧Tab</kbd> | `SettingsWindow` | — | `settings.previous_tab` |
 | Record Shortcut | <kbd>↵</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.record` |
 | Reset Shortcut to Default | <kbd>⌘⌫</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.reset` |
 | Remove Shortcut | <kbd>⌫</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.remove` |

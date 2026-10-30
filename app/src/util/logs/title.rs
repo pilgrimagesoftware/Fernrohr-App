@@ -64,15 +64,15 @@ impl LogsPanel {
     }
 
     fn streaming_title(&self) -> String {
-        // A typed label panel is named by what it follows; a workload's by
-        // the workload, as its target says.
+        // A typed label panel is named by what it follows, readably (#244); a
+        // workload's by the workload, as its target says.
         if let Some(super::labels::Following {
             source: super::labels::LabelLogs::Typed(_),
-            selector: Some((selector, _)),
+            selector: Some((_, selector)),
             ..
         }) = &self.labels
         {
-            return format!("Logs: {selector}");
+            return format!("Logs: {}", crate::k8s::label_selector::readable(selector));
         }
         let title = streaming_title(self.current.as_ref(), || panel_title::title(&self.scope));
         if self.previous && self.current.is_some() {

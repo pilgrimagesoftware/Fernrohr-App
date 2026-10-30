@@ -10,7 +10,6 @@ use crate::ui::list_state::{self, TableArea};
 const KIND_LABEL: &str = "Pods";
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
-use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 
 /// Up/Down with no pod selected, or with focus on the panel rather than its table
@@ -139,6 +138,7 @@ impl Render for PodsPanel {
                             let mut row = pod_row(pod, now);
                             row.forwards = forwards.len();
                             PodTableRow {
+                                uid: pod.metadata.uid.clone().unwrap_or_default(),
                                 row,
                                 selection,
                                 forwards,
@@ -154,8 +154,14 @@ impl Render for PodsPanel {
                     // `list-loading-indicator`: the table only once the first
                     // list is in, else what is loading or why it is empty. A
                     // node's embedded table keeps its own empty text above.
+                    // A node's search that hides every pod still says so
+                    // under the header (#312).
                     let area = if self.node.is_some() {
-                        TableArea::Table
+                        if items.is_empty() {
+                            TableArea::NoMatch
+                        } else {
+                            TableArea::Table
+                        }
                     } else {
                         list_state::table_area(
                             self.table.read(cx).phase(),
@@ -171,6 +177,11 @@ impl Render for PodsPanel {
                         cx,
                     );
                     let table = self.sync_table(items, window, cx);
+                    table.update(cx, |table, _| {
+                        table
+                            .delegate_mut()
+                            .set_no_match(area == TableArea::NoMatch);
+                    });
                     // The shell command's context, only while the selected pod has a
                     // running container (`shell`).
                     let shellable = self.shell_candidates(cx).is_some();
@@ -191,7 +202,7 @@ impl Render for PodsPanel {
                         .child(
                             div()
                                 .on_action(cx.listener(Self::on_action_clear_filter))
-                                .child(Input::new(&filter_input)),
+                                .child(crate::ui::text_field::text_field(&filter_input, cx)),
                         )
                         .child(
                             div()

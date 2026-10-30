@@ -32,7 +32,7 @@ use crate::ui::picker::saved_layouts::SavedLayoutsPicker;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{Enter, Input, InputEvent, InputState};
+use gpui_kit::component::input::{Enter, InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 
 /// The name field's element id.
@@ -277,7 +277,9 @@ impl Render for SaveLayoutDialog {
             .child(
                 div()
                     .on_action(cx.listener(|this, _: &Enter, window, cx| this.save(window, cx)))
-                    .child(Input::new(&self.name_input).id(NAME_INPUT_ID)),
+                    .child(
+                        crate::ui::text_field::text_field(&self.name_input, cx).id(NAME_INPUT_ID),
+                    ),
             )
             .children(self.error.clone().map(|error| {
                 div()

@@ -128,6 +128,72 @@ async fn the_menu_item_opens_the_panel_empty(cx: &mut TestAppContext) {
     );
 }
 
+/// #248: Open Logs by Label… has a default key, and pressing it opens the
+/// typed panel with its field focused.
+#[gpui_kit::test]
+async fn its_key_opens_the_panel_empty(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let (_cluster, client) = FakeCluster::start(cx);
+    let (main, mut vcx) = window(ConnectionState::Connected(client), cx);
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    let command = registry
+        .get("logs.follow_labels")
+        .expect("Open Logs by Label is registered");
+    assert_eq!(command.default_binding, "secondary-shift-l");
+
+    vcx.update(|window, cx| {
+        let focus = main.read(cx).focus_handle.clone();
+        window.focus(&focus, cx);
+    });
+    let key = if cfg!(target_os = "macos") {
+        "cmd-shift-l"
+    } else {
+        "ctrl-shift-l"
+    };
+    vcx.simulate_keystrokes(key);
+    vcx.run_until_parked();
+    let panel = super::typed_panel(&main, &mut vcx);
+    assert_eq!(vcx.update(|_, cx| panel.read(cx).test_selector()), None);
+    vcx.simulate_keystrokes("a p p = w e b enter");
+    vcx.run_until_parked();
+    assert_eq!(
+        vcx.update(|_, cx| panel.read(cx).test_selector()),
+        Some("app=web".to_string()),
+        "the field has focus"
+    );
+}
+
+/// #248: Open Logs by Label…'s key is its alone, in every context where it
+/// is active - no command shares it, shadows it, or starts a chord with it.
+#[test]
+fn its_key_collides_with_nothing() {
+    use crate::keymap::{KeymapConfig, conflicts};
+    let mut registry = crate::command::CommandRegistry::new();
+    crate::util::shell::register_commands(&mut registry);
+    let key = registry
+        .get("logs.follow_labels")
+        .expect("Open Logs by Label is registered")
+        .default_binding;
+    let found = conflicts(
+        &registry,
+        &KeymapConfig::default(),
+        "logs.follow_labels",
+        key,
+    );
+    assert!(
+        !found.any_clash() && found.shadows.is_empty(),
+        "{key} collides: {:?} / {} shadows / {} prefixes",
+        found.same_scope,
+        found.shadows.len(),
+        found.prefixes.len()
+    );
+    // The check sees this key: another global command given it clashes.
+    let other = conflicts(&registry, &KeymapConfig::default(), "nav.show_logs", key);
+    assert_eq!(other.same_scope, ["logs.follow_labels"]);
+}
+
 /// A `shop` pod labelled `app=web` running `app` and `sidecar`.
 fn two_container_pod(name: &str) -> serde_json::Value {
     let status = |container: &str| {

@@ -129,6 +129,7 @@ fn set_rows_keeps_an_active_sort_applied() {
     updated.insert(
         1,
         crate::k8s::resource::pods_table::PodTableRow {
+            uid: String::new(),
             row: PodRow {
                 status_tone: crate::ui::style::Tone::Neutral,
                 ready_tone: crate::ui::style::Tone::Neutral,
@@ -185,6 +186,7 @@ fn moving_columns_renders_each_visual_position_from_its_own_column() {
 
     let mut delegate = PodTableDelegate::default();
     delegate.set_rows(vec![crate::k8s::resource::pods_table::PodTableRow {
+        uid: String::new(),
         row: PodRow {
             status_tone: crate::ui::style::Tone::Neutral,
             ready_tone: crate::ui::style::Tone::Neutral,

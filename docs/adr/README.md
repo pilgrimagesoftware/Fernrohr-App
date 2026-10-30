@@ -31,6 +31,7 @@ An ADR documents a significant architectural or design decision made in the proj
 | Title | Status |
 |-------|--------|
 | [Template](0000-template.md) | Template |
+| [ADR-0001: A macOS status item through objc2](0001-macos-status-item.md) | Accepted |
 
 ## Platform ADRs
 

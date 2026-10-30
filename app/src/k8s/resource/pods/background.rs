@@ -19,7 +19,7 @@ impl PodsPanel {
         let table = table.read(cx);
         let Some(row) = table
             .selected_row()
-            .and_then(|row_ix| table.delegate().rows().get(row_ix))
+            .and_then(|row_ix| table.delegate().live_row(row_ix))
         else {
             return;
         };
@@ -39,7 +39,7 @@ impl PodsPanel {
         let table = table.read(cx);
         let Some(row) = table
             .selected_row()
-            .and_then(|row_ix| table.delegate().rows().get(row_ix))
+            .and_then(|row_ix| table.delegate().live_row(row_ix))
         else {
             return;
         };

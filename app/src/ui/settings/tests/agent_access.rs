@@ -96,16 +96,37 @@ async fn every_copy_button_names_what_it_copies(cx: &mut TestAppContext) {
         .chain([(SNIPPET_COPY_ID.to_string(), SNIPPET_TOOLTIP)])
         .collect();
     for (id, tooltip) in buttons {
-        let at = vcx
-            .update_window(handle.into(), |_, window, cx| {
+        let locate = |vcx: &mut VisualTestContext| {
+            vcx.update_window(handle.into(), |_, window, cx| {
                 window.render_frame(cx);
-                window
+                let at = window
                     .try_find(ElementId::Name(id.clone().into()))
                     .unwrap_or_else(|| panic!("{id} is drawn"))
                     .bounds()
-                    .center()
+                    .center();
+                (at, window.viewport_size().height)
             })
-            .unwrap();
+            .unwrap()
+        };
+        // The section scrolls (#251's cards make it taller than the window):
+        // bring the button into view first, as a user would.
+        let (mut at, mut height) = locate(&mut vcx);
+        for _ in 0..20 {
+            if at.y < height {
+                break;
+            }
+            vcx.simulate_event(gpui_kit::ScrollWheelEvent {
+                position: gpui_kit::point(gpui_kit::px(300.), height / 2.),
+                delta: gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
+                    gpui_kit::px(0.),
+                    gpui_kit::px(-200.),
+                )),
+                modifiers: Modifiers::none(),
+                touch_phase: gpui_kit::TouchPhase::Moved,
+            });
+            vcx.run_until_parked();
+            (at, height) = locate(&mut vcx);
+        }
         // Away first, so the last button's tooltip is gone and can't cover
         // this one.
         vcx.simulate_mouse_move(
@@ -154,4 +175,24 @@ async fn the_palette_command_shows_the_section(cx: &mut TestAppContext) {
     show(&mut vcx, Box::new(super::super::ShowKeyboardShortcuts));
     show(&mut vcx, Box::new(ShowAgentAccess));
     assert_eq!(shown(cx, handle), Section::AgentAccess);
+}
+
+/// #236: the background MCP checkbox sets the setting by keystrokes - Tab to
+/// it, Space - each way.
+#[cfg(target_os = "macos")]
+#[gpui_kit::test]
+async fn the_background_mcp_checkbox_toggles_from_the_keyboard(cx: &mut TestAppContext) {
+    use super::super::agent_access::BACKGROUND_CHECKBOX;
+    use crate::config::ui::BackgroundMcp;
+    use crate::ui::background_mcp::current;
+    let (handle, mut vcx) = opened(cx, ready());
+    vcx.update(|_, cx| crate::ui::background_mcp::register_handlers(cx));
+    assert_eq!(vcx.update(|_, cx| current(cx)), BackgroundMcp::KeepRunning);
+    press_button(&mut vcx, handle.into(), BACKGROUND_CHECKBOX);
+    assert_eq!(
+        vcx.update(|_, cx| current(cx)),
+        BackgroundMcp::StopWithLastWindow
+    );
+    press_button(&mut vcx, handle.into(), BACKGROUND_CHECKBOX);
+    assert_eq!(vcx.update(|_, cx| current(cx)), BackgroundMcp::KeepRunning);
 }

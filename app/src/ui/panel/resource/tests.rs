@@ -16,6 +16,7 @@ use kube::core::GroupVersionKind;
 // section 4's keyboard route needs real keystrokes (`keyboard_panel`).
 // Children of this module rather than this file's own line count, per
 // `.claude/rules/rust-structure.md`.
+mod counts;
 mod filter;
 mod grouping;
 mod keyboard_panel;

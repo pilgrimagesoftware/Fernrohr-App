@@ -73,4 +73,20 @@ Connecting a context asks too. The prompt names the context and the tunnel it is
 
 Reads and navigation need no approval.
 
+## When no window is open
+
+On macOS, Fernrohr keeps running in the menu bar after you close its last window (see
+[Quiet mode]({{ '/latest/windows-panels/' | relative_url }}#quiet-mode)). Closing the last window
+disconnects every cluster, so an agent's reads find nothing connected until a window connects one.
+
+An agent request that needs a window brings one back: the window you closed last reopens, Fernrohr
+comes to the front, and the request shows there. That covers approvals for actions and connections,
+opening a panel, and loading a layout.
+
+**Keep the MCP server running in the background**, in Settings > Agent Access, is on by default.
+Turn it off and the MCP server stops when the last window closes, then starts again with the next
+window. The palette offers the same choice as **Keep the MCP Server Running in the Background** and
+**Stop the MCP Server When the Last Window Closes**. On Linux, Fernrohr quits with its last window,
+and the MCP server stops with it.
+
 *Summarizes the capability specs: `agent-mcp`.*

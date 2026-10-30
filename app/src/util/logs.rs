@@ -6,9 +6,11 @@
 //! identity (saved-layout dump, title/tab/toolbar/zoom). [`labels`] is the
 //! panel following every pod a label selector picks (#150).
 
+mod ansi;
 mod commands;
 mod labels;
 mod line;
+mod line_style;
 mod panel;
 mod render;
 mod stream;
@@ -36,11 +38,16 @@ use view::*;
 use commands::{FOLLOW_KEY, PREVIOUS_KEY};
 pub use commands::{
     FocusLabelSelector, NextLabelContainer, OpenWorkloadLogs, PANEL_KEY_CONTEXT, PickLogsContext,
-    ShowLabelLogs, SwitchLabelLogsContext, ToggleFollow, TogglePreviousLogs, register_commands,
+    ResetLabelLogs, ShowLabelLogs, SwitchLabelLogsContext, ToggleFollow, TogglePreviousLogs,
+    register_commands,
 };
 #[cfg(test)]
 pub(crate) use labels::TypedId;
 pub(crate) use labels::labels_from_state;
 pub use labels::{LabelLogs, WorkloadRef};
+#[cfg(test)]
+pub(in crate::util) use labels::{
+    RESET_BUTTON, RESET_TOOLTIP, SELECTOR_HELP, SELECTOR_INPUT, WORKLOAD_SELECTOR,
+};
 pub(crate) use panel::pinned_from_state;
 pub use panel::{LogsPanel, register_restore};

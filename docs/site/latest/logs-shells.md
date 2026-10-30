@@ -13,6 +13,10 @@ as a terminal panel. Both start from a pod, in the Pods panel or in the pod's de
 Select a pod and open its logs. The panel shows the recent log history and keeps adding new lines as
 the container writes them.
 
+Lines a container writes in colour show in colour, bold, dim, italic or underlined, as they would
+in a terminal, with the colours adjusted to stay readable in the light and dark themes. Other
+terminal escape codes are left out. Selecting and copying a line gives its plain text.
+
 - **Keyboard:** press <kbd>L</kbd> in the Pods panel or in a pod's detail panel. The **Show Logs**
   command (<kbd>⌘2</kbd>) also brings up the Logs panel, and every command is in the command palette
   (<kbd>⌘⇧P</kbd>).
@@ -60,15 +64,15 @@ panel to the container.
 
 ## Follow pods by label
 
-**Open Logs by Label…**, in the Window menu and the command palette, opens a Logs panel that streams
-every pod a label selector picks. Type a selector in `kubectl -l` form, such as `app=web` or
-`tier in (front, back)`, and press <kbd>Enter</kbd>. Each line is tagged with its pod, in a colour of
+Press <kbd>⌘⇧L</kbd>, or choose **Open Logs by Label…** in the Window menu or the command palette,
+to open a Logs panel that streams every pod a label selector picks. Type a selector in `kubectl -l`
+form, such as `app=web` or `tier in (front, back)`, and press <kbd>Enter</kbd>. Each line is tagged with its pod, in a colour of
 its own. Pods that start or stop matching join and leave the stream as the cluster changes.
 
 Each time you run Open Logs by Label…, it opens a new, empty panel, so you can follow several
 selectors side by side. For example, follow `app=web` in one panel and `app=worker` in another, in
 the same context or in different ones. Each panel keeps its own selector, namespaces, container
-filter and context, and its tab is named by its selector, such as **Logs: app=web**.
+filter and context, and its tab is named by its selector, such as **Logs: app: web**.
 
 The panel opens in the context and namespaces of the list that had focus. Its bar shows where it
 searches, and you can change that without leaving the panel:
@@ -76,9 +80,14 @@ searches, and you can change that without leaving the panel:
 | What | Keyboard | Mouse |
 | --- | --- | --- |
 | Edit the selector | <kbd>/</kbd> | Click the selector field |
-| Choose the namespaces | <kbd>N</kbd> | Click the namespace button |
+| Choose the namespaces, or a namespace set | <kbd>N</kbd> | Click the namespace button |
 | Stream only one container from each pod | <kbd>C</kbd> cycles through the containers | Click the container button |
 | Choose the context | <kbd>X</kbd>, then <kbd>↓</kbd> or <kbd>↑</kbd> and <kbd>Enter</kbd> | Click the context button |
+| Start over | <kbd>⌃L</kbd>, also from the selector field | Click the clear button beside the selector |
+
+Starting over stops every stream the panel holds, even one still connecting, and empties both the
+log lines and the selector field. The panel is then as it opened, with the field focused, ready for a
+new selector. Its namespaces and context stay as they were.
 
 The context control appears only in a window holding more than one context. Choosing another
 context keeps your selector and container filter, searches all of that context's namespaces, and
@@ -87,6 +96,27 @@ searches that context, and it stays in its tab with focus. A saved layout restor
 panel, each in the context it last searched with its own selector. For example,
 with `my-cluster` and `my-other-cluster` in one window, press <kbd>X</kbd> in a panel following
 `app=web` on `my-cluster` and choose `my-other-cluster` to see the same selector's pods there.
+
+### Label selectors
+
+A selector is one or more requirements separated by commas, and a pod must meet all of them.
+Hover the selector field to see these forms:
+
+| Requirement | Picks pods whose labels | Shown as |
+| --- | --- | --- |
+| `app=web` | have `app` set to `web` | app: web |
+| `app!=web` | don't have `app` set to `web` | app: not web |
+| `tier in (front, back)` | have `tier` set to `front` or `back` | tier: back, front |
+| `tier notin (front, back)` | don't have `tier` set to `front` or `back` | tier: not back, front |
+| `canary` | have a `canary` label, whatever its value | has canary |
+| `!canary` | have no `canary` label | no canary |
+
+For example, `app=web, !canary` follows the `web` pods that aren't canaries.
+
+Where Fernrohr shows a selector rather than letting you type it, it uses the **Shown as** form,
+with requirements separated by a dot. That covers the tab of a panel you typed a selector into, and
+the bar of a panel following a workload's pods, such as a Deployment's. The workload's bar keeps
+the selector as typed, `kubectl -l` form, in a tooltip.
 
 ## Open a shell in a container
 

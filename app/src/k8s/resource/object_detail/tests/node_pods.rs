@@ -116,6 +116,23 @@ impl Harness {
         panic!("never {what} (watch has {watch_count} pods)");
     }
 
+    /// Runs the app until the watch behind the region holds `count` pods.
+    fn wait_for_watch(&mut self, what: &str, count: usize) {
+        let pods = self.pods();
+        for _ in 0..400 {
+            self.vcx.run_until_parked();
+            if self
+                .vcx
+                .update(|_, cx| pods.read(cx).test_watch_pod_count(cx))
+                == count
+            {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("never {what}");
+    }
+
     fn row_names(&mut self) -> Vec<String> {
         let pods = self.pods();
         self.vcx.update(|_, cx| pods.read(cx).test_row_names(cx))
@@ -170,7 +187,14 @@ async fn a_scheduled_pod_appears_live_and_a_deleted_one_disappears(cx: &mut Test
     harness.wait_for("listed both pods", |names| names.len() == 2);
 
     harness.cluster.delete("/api/v1", "pods", "shop", "web-1");
-    harness.wait_for("dropped the deleted pod", |names| names == ["web-2"]);
+    // The watch drops it at once; its row stays for its flash (#275), then goes.
+    harness.wait_for_watch("dropped the deleted pod", 1);
+    assert_eq!(harness.row_names().len(), 2, "still drawn, flashing");
+    harness
+        .vcx
+        .executor()
+        .advance_clock(crate::consts::ROW_FLASH);
+    harness.wait_for("dropped the deleted pod's row", |names| names == ["web-2"]);
 }
 
 /// `/` plus typing narrows the region to matching pods; Escape clears it.
@@ -196,6 +220,19 @@ async fn slash_filters_and_escape_clears(cx: &mut TestAppContext) {
     let mut names = harness.row_names();
     names.sort();
     assert_eq!(names, ["api-1", "web-1"], "escape restored every row");
+}
+
+/// #312: a search that hides every pod on the node keeps the region's
+/// header, with the no-match row under it.
+#[gpui_kit::test]
+async fn a_search_that_hides_every_pod_keeps_the_header(cx: &mut TestAppContext) {
+    let mut harness = open(cx, "node-a", &[pod("shop", "u1", "web-1", "node-a")]);
+    harness.wait_for("listed the pod", |names| names.len() == 1);
+    harness.focus_pods();
+    harness.press("/");
+    harness.vcx.simulate_input("zzz");
+    harness.vcx.run_until_parked();
+    crate::ui::list_state::assert_no_match_under_header(&mut harness.vcx);
 }
 
 /// With no pods on it, the region says so rather than showing an empty table

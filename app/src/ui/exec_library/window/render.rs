@@ -14,7 +14,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Enter, Input};
+use gpui_kit::component::input::Enter;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -225,7 +225,7 @@ impl Render for LibraryWindow {
             .child(
                 div()
                     .on_action(cx.listener(|this, _: &Enter, window, cx| this.run_selected(window, cx)))
-                    .child(Input::new(&self.filter).id(FILTER_ID)),
+                    .child(crate::ui::text_field::text_field(&self.filter, cx).id(FILTER_ID)),
             )
             .child(
                 div()

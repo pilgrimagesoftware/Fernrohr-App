@@ -27,7 +27,7 @@ impl Render for TunnelEditor {
                         .text_color(theme.muted_foreground)
                         .child(label),
                 )
-                .child(Input::new(input))
+                .child(crate::ui::text_field::text_field(input, cx))
                 .children(
                     error.map(|message| div().text_xs().text_color(theme.danger).child(message)),
                 )

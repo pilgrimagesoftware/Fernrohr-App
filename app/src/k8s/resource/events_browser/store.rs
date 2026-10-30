@@ -3,6 +3,7 @@
 
 use super::row::EventRow;
 use crate::k8s::resource::load_phase::LoadPhase;
+use crate::ui::row_flash::{ChangeJournal, RowChange};
 use crate::util::resource_index::ResourceIndex;
 use k8s_openapi::api::core::v1::Event as K8sEvent;
 use kube_runtime::watcher;
@@ -21,6 +22,8 @@ pub struct EventsTable {
     refused: Option<String>,
     /// Where the table is in its lists (`list-loading-indicator`).
     phase: LoadPhase,
+    /// The live changes the browser flashes (#275).
+    journal: ChangeJournal,
 }
 
 impl EventsTable {
@@ -36,6 +39,17 @@ impl EventsTable {
     /// Where the table is in its lists.
     pub fn phase(&self) -> LoadPhase {
         self.phase
+    }
+
+    /// The live changes the browser flashes (#275).
+    pub(crate) fn journal(&self) -> &ChangeJournal {
+        &self.journal
+    }
+
+    /// Whether a watch event now is a live change - after the first list and
+    /// outside a relist - rather than part of a list, which never flashes.
+    fn live(&self) -> bool {
+        self.relisting.is_none() && self.phase.has_loaded()
     }
 
     pub fn set_refused(&mut self, message: String) {
@@ -59,6 +73,14 @@ impl EventsTable {
         match event {
             watcher::Event::Apply(event) => {
                 let row = EventRow::new(&event);
+                if self.live() {
+                    let change = if self.index.contains(&row.uid) {
+                        RowChange::Modified
+                    } else {
+                        RowChange::Added
+                    };
+                    self.journal.record(row.uid.clone(), change);
+                }
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::InitApply(event) => {
@@ -70,8 +92,11 @@ impl EventsTable {
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::Delete(event) => {
-                self.index
-                    .apply_deleted(event.metadata.uid.as_deref().unwrap_or_default());
+                let uid = event.metadata.uid.as_deref().unwrap_or_default();
+                if self.live() && self.index.contains(uid) {
+                    self.journal.record(uid.to_string(), RowChange::Deleted);
+                }
+                self.index.apply_deleted(uid);
             }
             watcher::Event::Init => {
                 self.refused = None;

@@ -227,6 +227,7 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
     updated.insert(
         0,
         crate::k8s::resource::pods_table::PodTableRow {
+            uid: String::new(),
             row: PodRow {
                 status_tone: crate::ui::style::Tone::Neutral,
                 ready_tone: crate::ui::style::Tone::Neutral,

@@ -4,18 +4,34 @@
 
 use super::*;
 use crate::consts::LABEL_LOGS_MAX_STREAMS;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 
 /// A typed panel's selector field, for tests.
-pub(in crate::util::logs) const SELECTOR_INPUT: &str = "logs-selector";
+pub(in crate::util) const SELECTOR_INPUT: &str = "logs-selector";
+/// A typed panel's reset button (#247), for tests.
+pub(in crate::util) const RESET_BUTTON: &str = "logs-label-reset";
+/// The reset button's tooltip.
+pub(in crate::util) const RESET_TOOLTIP: &str = "Clear selector and logs";
 /// The container filter's button, for tests.
 pub(in crate::util::logs) const CONTAINER_FILTER: &str = "logs-label-container";
 /// The container filter's label while it streams every container.
 const ALL_CONTAINERS: &str = "All containers";
+/// A workload's selector, shown readably with its own text in a tooltip, for
+/// tests.
+pub(in crate::util) const WORKLOAD_SELECTOR: &str = "logs-workload-selector";
 /// What a typed panel's field shows while it's empty.
-const SELECTOR_PLACEHOLDER: &str = "Label selector, such as app=web, tier in (front)";
+const SELECTOR_PLACEHOLDER: &str = "Pod labels to match, such as app=web";
+/// The typed field's tooltip: the forms a selector's requirements take (#244).
+pub(in crate::util) const SELECTOR_HELP: &str = "Pods whose labels match every requirement. \
+     Separate requirements with commas.\n\
+     key=value: key is value\n\
+     key!=value: key isn't value\n\
+     key in (a,b): key is a or b\n\
+     key notin (a,b): key is neither a nor b\n\
+     key: has the label key\n\
+     !key: doesn't have the label key";
 
 impl LogsPanel {
     /// A typed panel's selector field, made the first time the panel renders:
@@ -91,16 +107,25 @@ impl LogsPanel {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let input = self.selector_input(window, cx);
+        let reset = self
+            .is_typed_labels()
+            .then(|| self.reset_control(window, cx));
         let context_control = self.context_control(window, cx);
         let scope_picker = self.scope_picker(window, cx);
         let following = self.labels.as_ref()?;
         let space = crate::ui::space::spacing(cx);
         let muted = cx.theme().muted_foreground;
         let what = match (&following.source, input) {
-            (_, Some(input)) => div()
-                .debug_selector(|| SELECTOR_INPUT.into())
-                .child(Input::new(&input).small())
-                .into_any_element(),
+            (_, Some(input)) => crate::ui::icon_tooltip::with_tooltip(
+                SELECTOR_INPUT,
+                SELECTOR_HELP,
+                div()
+                    .debug_selector(|| SELECTOR_INPUT.into())
+                    // The clear button empties the field's text only; Enter
+                    // applies what's in it, and ctrl-l resets the panel (#247).
+                    .child(crate::ui::text_field::text_field(&input, cx).small()),
+            )
+            .into_any_element(),
             (LabelLogs::Workload(workload), None) => div()
                 .flex()
                 .items_center()
@@ -114,12 +139,22 @@ impl LogsPanel {
                     ),
                     muted,
                 ))
+                // Readable - `tier: front` for `tier in (front)` (#244) - with
+                // the selector's own text in its tooltip.
                 .child(
-                    div()
-                        .text_sm()
-                        .text_color(muted)
-                        .truncate()
-                        .child(workload.selector.clone()),
+                    crate::ui::icon_tooltip::with_tooltip_text(
+                        WORKLOAD_SELECTOR,
+                        format!("Label selector: {}", workload.selector),
+                        div()
+                            .debug_selector(|| WORKLOAD_SELECTOR.into())
+                            .text_sm()
+                            .text_color(muted)
+                            .truncate()
+                            .child(crate::k8s::label_selector::readable_text(
+                                &workload.selector,
+                            )),
+                    )
+                    .min_w_0(),
                 )
                 .into_any_element(),
             (LabelLogs::Typed(_), None) => div().into_any_element(),
@@ -164,6 +199,7 @@ impl LogsPanel {
                         .px(space.panel_inset)
                         .py(space.control_gap)
                         .child(div().flex_1().min_w_0().child(what))
+                        .children(reset)
                         .children(context_control)
                         .children(scope_picker)
                         .children(counts)
@@ -180,6 +216,42 @@ impl LogsPanel {
                 .children(error)
                 .into_any_element(),
         )
+    }
+
+    /// A typed panel's reset (#247): its key, then an icon button that clears
+    /// the selector and the lines and stops every stream.
+    fn reset_control(&self, window: &Window, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let key = Kbd::binding_for_action(
+            &super::super::commands::ResetLabelLogs,
+            Some(PANEL_KEY_CONTEXT),
+            window,
+        )
+        .unwrap_or_else(|| {
+            Kbd::new(
+                Keystroke::parse(super::super::commands::RESET_LABELS_KEY)
+                    .expect("valid keybinding"),
+            )
+        });
+        let this = cx.weak_entity();
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .flex_shrink_0()
+            .child(key)
+            .child(crate::ui::icon_tooltip::with_tooltip(
+                RESET_BUTTON,
+                RESET_TOOLTIP,
+                Button::new(RESET_BUTTON)
+                    .icon(gpui_kit::assets::IconName::Delete)
+                    .xsmall()
+                    .ghost()
+                    .tab_stop(false)
+                    .on_click(move |_event, window, cx| {
+                        let _ =
+                            this.update(cx, |this: &mut Self, cx| this.reset_labels(window, cx));
+                    }),
+            ))
     }
 
     /// The container filter: its key, then a button reading the filter that

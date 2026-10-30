@@ -38,11 +38,14 @@ cluster isn't shown. Each header shows how many kinds it holds.
 | Collapse a section | <kbd>←</kbd> | Click its header |
 | Expand a section | <kbd>→</kbd> | Click its header |
 | Focus the filter | <kbd>/</kbd> | Click the filter box at the bottom of the panel |
-| Clear the filter and return to the list | <kbd>Esc</kbd> | Clear the box |
+| Clear the filter and return to the list | <kbd>Esc</kbd> | Click the ✕ in the box |
 
 Custom Resources is split into subgroups headed by API group, in alphabetical
 order. Every subgroup starts collapsed, and so does a group the cluster adds
 later.
+
+A collapsed section or subgroup shows how many kinds it holds beside its name.
+Expanded, its rows show them instead.
 
 | Command | Default key |
 | --- | --- |
@@ -88,15 +91,26 @@ double-click it, to read the whole message in the object's detail panel.
   third time to return to the default sort, which is the first column of the
   kind's default order. An arrow on the header shows the current sort. Numeric
   columns sort as numbers.
-- **Filter.** Press <kbd>/</kbd> and type to narrow the rows by name.
+- **Filter.** Press <kbd>/</kbd> and type to narrow the rows to those with the
+  text in any visible column, ignoring case. When nothing matches, the column
+  headers stay and the list reads "No rows match the filter". While the box holds
+  text, the ✕ at its right clears it.
+- **Changes flash.** When the cluster adds, changes or deletes an object
+  while you watch, its row briefly flashes green, yellow or red and fades. A
+  deleted row stays for the flash, then goes. The first list, a reconnect's
+  relist, and a change that leaves every column the same don't flash. The
+  Pods list and the events browser flash the same way.
 - **Resize and reorder.** Drag a column boundary to resize it, or drag a header
   to move it.
 - **Move the selection.** <kbd>↓</kbd> on a list with no selection picks the
   first row, and <kbd>↑</kbd> picks the last. Hovering never moves the
   selection.
 
-Each tab is titled with the kind's plural name, such as "Pods". A custom
-resource tab shows the kind only, and hovering the tab shows its API group.
+Each tab is titled with the kind's plural name only, such as "Pods" or
+"HTTPRoutes", and hovering the tab shows the kind's API group and version, such
+as `apps/v1`. When two API groups have a kind of the same name, such as the
+core Event and `events.k8s.io`'s Event, the grouped one's tab adds its group:
+"Events · events.k8s.io".
 
 ### Open an object
 
@@ -136,7 +150,12 @@ selected row alone, whatever else is checked.
 | --- | --- | --- |
 | Check or uncheck the selected row | <kbd>X</kbd> | Click the row's checkbox |
 | Check every row from the last one checked | <kbd>⇧X</kbd> | <kbd>⇧</kbd>-click a checkbox |
+| Check all rows (Select All) | <kbd>⌘A</kbd> | Right-click a row, then **Check All Rows** |
 | Uncheck all | **Checked: Uncheck All** in the command palette | The bar's ✕ button |
+
+Check All Rows checks the rows the list shows, so with a filter applied it
+checks only the rows that match. In the filter box, <kbd>⌘A</kbd> selects the
+filter's text instead.
 
 While rows are checked, a bar above the list counts them and offers each action
 that every checked row's kind takes. The bar's buttons are icons, and hovering
@@ -252,11 +271,17 @@ context's default namespace.
 | --- | --- | --- |
 | Open the picker | <kbd>N</kbd> | Click the namespace button |
 | Narrow the list | Type; the filter has focus when the picker opens | Click the filter box |
-| Toggle the highlighted namespace | <kbd>↓</kbd>, then <kbd>Enter</kbd> | Click it |
+| Toggle the highlighted namespace, or pick the highlighted set | <kbd>↓</kbd>, then <kbd>Enter</kbd> | Click it |
 | Clear the filter, then close | <kbd>Esc</kbd>, then <kbd>Esc</kbd> again | Click away |
 
 The picker stays open while you toggle several namespaces, and the filter is
-empty each time it reopens. "All namespaces" is always listed first.
+empty each time it reopens. "All namespaces" is always listed first, followed by
+your [namespace sets](#namespace-sets), each with how many namespaces it holds,
+then the cluster's namespaces. Typing narrows the sets by name as well. Picking a
+set scopes the panel to all of its namespaces at once, and the button then shows
+the set's name. A set that names namespaces the cluster no longer has still
+applies to the ones that remain, and its count says so, for example
+`2 of 3 namespaces`.
 
 In a Pods list, <kbd>W</kbd> (**Pods: Filter to Selected Pod's Namespace**) scopes
 that panel to the selected pod's namespace. <kbd>⇧W</kbd> (**Pods: Warp All to

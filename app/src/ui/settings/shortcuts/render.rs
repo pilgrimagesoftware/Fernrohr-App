@@ -10,7 +10,6 @@ use crate::keymap;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::Input;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -45,7 +44,7 @@ impl Render for ShortcutsSection {
             .gap(crate::ui::space::spacing(cx).control_gap)
             .p(crate::ui::space::spacing(cx).panel_inset)
             .child(div().text_lg().child("Keyboard Shortcuts"))
-            .child(Input::new(&self.filter))
+            .child(crate::ui::text_field::text_field(&self.filter, cx))
             .children(
                 self.error
                     .clone()

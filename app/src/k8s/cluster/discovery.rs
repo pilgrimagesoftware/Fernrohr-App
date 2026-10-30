@@ -109,28 +109,41 @@ impl DiscoveredKind {
     /// and need no qualifier; anything else carries its group, so two groups'
     /// same-named kinds stay tellable apart at a glance.
     pub fn label(&self) -> String {
+        self.qualified(&self.gvk.kind)
+    }
+
+    /// Whether another group's kind in `discovered` has this kind's name, so a
+    /// title naming the kind alone can't tell the two apart (`Event` in the
+    /// core group and in `events.k8s.io`). Another version of this same kind
+    /// doesn't count.
+    pub fn shares_name_in(&self, discovered: &[DiscoveredKind]) -> bool {
+        discovered.iter().any(|other| {
+            other.gvk.group != self.gvk.group && other.gvk.kind.eq_ignore_ascii_case(&self.gvk.kind)
+        })
+    }
+
+    /// `text` with this kind's API group after it - `"Events · events.k8s.io"`
+    /// - or `text` alone for a core kind, which has no group to show.
+    pub fn qualified(&self, text: &str) -> String {
         if self.gvk.group.is_empty() {
-            self.gvk.kind.clone()
+            text.to_string()
         } else {
-            format!("{} · {}", self.gvk.kind, self.gvk.group)
+            format!("{text} · {}", self.gvk.group)
         }
     }
 
-    /// What a *list* panel of this kind titles itself - the plural form
-    /// (`"Pods"`), as opposed to [`label`]'s singular Kind name (`"Pod"`),
-    /// which is right for a single item but wrong for a panel showing many.
-    pub fn plural_label(&self) -> String {
-        let plural = self.plural_name();
+    /// The kind's `group/version` - `"apps/v1"` - or the version alone for the
+    /// core group (`"v1"`), as a manifest's `apiVersion` reads.
+    pub fn api_version(&self) -> String {
         if self.gvk.group.is_empty() {
-            plural
+            self.gvk.version.clone()
         } else {
-            format!("{} · {}", plural, self.gvk.group)
+            format!("{}/{}", self.gvk.group, self.gvk.version)
         }
     }
 
     /// The plural alone (`"Certificates"`), with no group qualifier - what a
-    /// custom resource's list tab reads, its group going to the tab's tooltip
-    /// instead.
+    /// kind's list tab reads, its group going to the tab's tooltip instead.
     ///
     /// The API plural is all lowercase (`replicasets`), so the casing comes
     /// from the Kind the Resource list shows: the stretch of the plural that

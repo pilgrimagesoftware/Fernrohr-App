@@ -18,7 +18,6 @@ use crate::ui::list_state::{self, TableArea};
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -100,6 +99,11 @@ impl ObjectListPanel {
             cx,
         );
         let table = self.sync_table(rows, window, cx);
+        table.update(cx, |table, _| {
+            table
+                .delegate_mut()
+                .set_no_match(area == TableArea::NoMatch);
+        });
         // Open, Filter and Describe stay when a narrow panel collapses the
         // row (`key-hint-rows` D2).
         let mut hints = KeyHintRow::new(HINTS_ID)
@@ -132,6 +136,7 @@ impl ObjectListPanel {
             .hint(Self::hint(&DescribeSelected, DESCRIBE_KEY, "Describe", window).essential())
             .hint(Self::hint(&ShowSelectedYaml, YAML_KEY, "YAML", window))
             .hint(crate::ui::bulk::commands::check_hint(window))
+            .hint(crate::ui::bulk::commands::check_all_hint(window))
             .hints(self.kind_hints(window, cx));
         // A Service with a forward running can stop it (`port-forward-indicators` 4.1).
         if !self.selected_forwards(cx).is_empty() {
@@ -181,7 +186,7 @@ impl ObjectListPanel {
             .child(
                 div()
                     .on_action(cx.listener(Self::on_action_clear_filter))
-                    .child(Input::new(&filter)),
+                    .child(crate::ui::text_field::text_field(&filter, cx)),
             )
             .children(self.render_refusal(cx))
             .children(crate::ui::bulk::render_bulk(self, cx))

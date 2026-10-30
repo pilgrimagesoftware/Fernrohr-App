@@ -39,7 +39,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
-use gpui_kit::component::input::{Enter, Escape, Input, InputEvent, InputState};
+use gpui_kit::component::input::{Enter, Escape, InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{IndexPath, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;

@@ -1,6 +1,6 @@
 [package]
 name = "fernrohr"
-version = "0.14.0"
+version = "0.15.0"
 edition = "2024"
 
 [lints.rust]
@@ -19,7 +19,7 @@ gpui-kit = "=0.7.0"
 # (`k8s::resource::exec`). The user's own crate, extracted from Knot; its `pty`
 # feature is off, since the session is a remote kube exec, not a local process.
 gpui-terminal = { git = "https://github.com/pilgrimagesoftware/gpui-terminal", tag = "v0.2.2", default-features = false }
-tokio = { version = "=1.53.2", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time", "signal"] }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time", "signal"] }
 kube = { version = "=4.2.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws", "http-proxy"] }
 kube-runtime = "=4.2.0"
 k8s-openapi = { version = "=0.28.0", features = ["v1_36"] }
@@ -30,10 +30,10 @@ serde_yaml_ng = "=0.10.0"
 toml = "=1.1.6"
 rust-i18n = "=4.2.4"
 log = "=0.4.34"
-jiff = "=0.2.37"
+jiff = "=0.2.38"
 futures-util = "=0.3.34"
 keyring = "=4.2.0"
-parking_lot = "=0.12.5"
+parking_lot = "=0.13.0"
 percent-encoding = "=2.3.2"
 # Splitting a command tunnel's command line with POSIX quoting (`tunnel::command::argv`).
 # Already in the build through a transitive dependency; pinned to that same version.
@@ -55,14 +55,18 @@ base64 = "=0.23.1"
 # MCP SDK, for protocol negotiation and JSON-RPC framing. Only its server role
 # and stdio transport; its schemars, uuid, chrono and tracing are already in the
 # build, so it adds itself, its macros crate and their proc-macro helpers.
-rmcp = { version = "=3.5.1", default-features = false, features = ["server", "transport-io"] }
+rmcp = { version = "=3.7.0", default-features = false, features = ["server", "transport-io"] }
 # The MCP endpoint's per-launch token (`mcp::endpoint`). Already in the build
 # through ahash and rand_core; pinned to that same version.
 getrandom = "=0.4.3"
 # The MCP tools' input schemas, derived from their typed inputs
 # (`mcp::tools::ToolSpec::for_input`). Already in the build through gpui-base
 # and rmcp, with its derive; pinned to that same version.
-schemars = "=1.2.2"
+schemars = "=1.2.3"
+# ANSI escapes in log lines (`util::logs::ansi`, #309): SGR styling kept,
+# every other sequence stripped. Already in the build through
+# `alacritty_terminal`; pinned to that same version.
+vte = "=0.15.0"
 
 # Desktop notifications (`notify`, manual-confirmation-tunnels D6): the macOS
 # notification center and the freedesktop D-Bus service. Already in the Linux
@@ -71,10 +75,14 @@ schemars = "=1.2.2"
 [target.'cfg(unix)'.dependencies]
 notify-rust = "=4.18.2"
 
-# The user's accent colour for the focused-panel mark (`ui::accent`). Already
-# in the build through gpui's macOS backend; pinned to that same version.
+# The user's accent colour for the focused-panel mark (`ui::accent`), and the
+# menu bar status item quiet mode runs in (`ui::status_menu::macos`, #236;
+# docs/adr/0001-macos-status-item.md). All three are already in the build through gpui's macOS
+# backend; pinned to those same versions. The status item adds only features.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation"] }
+objc2 = "=0.6.4"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSObject", "NSString"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSColor", "NSColorSpace", "objc2-core-foundation", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView"] }
 
 # The system accent colour (Fernrohr#100). Both are already in the graph, so
 # naming them adds no crate, only the portal's `settings` API and DWM's
@@ -92,7 +100,7 @@ windows-sys = { version = "=0.61.2", features = ["Win32_Graphics_Dwm"] }
 [dev-dependencies]
 gpui-kit = { version = "=0.7.0", features = ["test-support"] }
 rcgen = "=0.14.10"
-rustls = "=0.23.45"
+rustls = "=0.23.46"
 tokio-rustls = "=0.26.6"
 tokio-tungstenite = "=0.30.0"
 

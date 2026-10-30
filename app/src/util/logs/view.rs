@@ -3,7 +3,10 @@
 //! history, container selection, and terminal-state handling ([`LogsView`]).
 //! GPUI-free so it's directly unit-testable.
 
+use super::ansi::{self, Style};
 use super::line::{LineSource, LogLine};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// One event off a pod container's log stream. Kept separate from the
 /// resource-index coalescing path (runtime::drain_coalescing) - logs are
@@ -67,6 +70,12 @@ pub struct LogsView {
     /// only for [`LogEvent::RequestFailed`], never for the plain "stream
     /// ended" state, which has no error behind it to detail.
     terminal_detail: Option<String>,
+    /// The ANSI style a single stream's last line ended in, which its next
+    /// starts in (#309).
+    carried: Style,
+    /// The same for each of several streams, by tag: one pod's colour never
+    /// runs into another's lines.
+    carried_by_tag: HashMap<Arc<str>, Style>,
 }
 
 impl LogsView {
@@ -81,6 +90,8 @@ impl LogsView {
             terminal_message: None,
             ended: false,
             terminal_detail: None,
+            carried: Style::default(),
+            carried_by_tag: HashMap::new(),
         }
     }
 
@@ -137,8 +148,13 @@ impl LogsView {
         self.containers.len() > 1
     }
 
+    /// Appends a single stream's line, its escapes parsed into styling once,
+    /// here, in the style the stream's last line ended in.
     pub fn append_line(&mut self, line: String) {
-        self.lines.push(LogLine::plain(line));
+        let parsed = ansi::parse(line, self.carried);
+        self.carried = parsed.end;
+        self.lines
+            .push(LogLine::styled(None, parsed.text, parsed.spans));
     }
 
     pub fn scroll_up(&mut self) {
@@ -173,17 +189,35 @@ impl LogsView {
     /// its own rather than the view's terminal state - the other containers
     /// keep streaming.
     pub fn apply_from(&mut self, source: &LineSource, event: LogEvent) {
+        // The stream's own lines carry its styling from one to the next; the
+        // panel's lines about it are plain, and end that styling.
         let line = match event {
-            LogEvent::Line(line) => line,
-            LogEvent::Ended => ENDED_MARKER.to_string(),
+            LogEvent::Line(line) => {
+                let carried = self
+                    .carried_by_tag
+                    .get(source.tag())
+                    .copied()
+                    .unwrap_or_default();
+                let parsed = ansi::parse(line, carried);
+                self.carried_by_tag.insert(source.tag().into(), parsed.end);
+                LogLine::styled(Some(source.clone()), parsed.text, parsed.spans)
+            }
+            LogEvent::Ended => {
+                self.carried_by_tag.remove(source.tag());
+                LogLine::tagged(source.clone(), ENDED_MARKER.to_string())
+            }
             LogEvent::RequestFailed { message, .. } => {
-                format!("\u{2014} couldn't stream logs: {message}")
+                self.carried_by_tag.remove(source.tag());
+                LogLine::tagged(
+                    source.clone(),
+                    format!("\u{2014} couldn't stream logs: {message}"),
+                )
             }
             // Only a previous-instance request gets this, and a tagged stream
             // never makes one.
             LogEvent::NoPreviousInstance => return,
         };
-        self.lines.push(LogLine::tagged(source.clone(), line));
+        self.lines.push(line);
     }
 
     pub fn apply(&mut self, event: LogEvent) {
