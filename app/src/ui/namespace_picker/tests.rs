@@ -9,6 +9,8 @@ use crate::ui::namespace_filter::{NO_MATCH_SELECTOR, checked_selector, option_se
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
+
+mod groups;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, Modifiers,
