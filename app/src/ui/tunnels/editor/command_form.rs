@@ -218,7 +218,7 @@ impl TunnelEditor {
                 .flex_col()
                 .gap_1()
                 .child(label("Local port (optional; the command must then use it)"))
-                .child(Input::new(&self.local_port))
+                .child(crate::ui::text_field::text_field(&self.local_port, cx))
                 .children(error(
                     TunnelFieldError::InvalidLocalPort,
                     "Local port must be between 1 and 65535.",
@@ -230,7 +230,7 @@ impl TunnelEditor {
                 .gap_1()
                 .debug_selector(|| TIMEOUT_FIELD_SELECTOR.into())
                 .child(label("Startup timeout (seconds)"))
-                .child(Input::new(&self.startup_timeout))
+                .child(crate::ui::text_field::text_field(&self.startup_timeout, cx))
                 .children(error(
                     TunnelFieldError::InvalidTimeout,
                     "Startup timeout must be a positive number of seconds.",

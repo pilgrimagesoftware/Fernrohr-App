@@ -179,7 +179,7 @@ fn row(
                                 let _ = picker.update(cx, |this, cx| this.cancel_rename(cx));
                             }
                         })
-                        .child(Input::new(input).id(RENAME_INPUT_ID))
+                        .child(crate::ui::text_field::text_field(input, cx).id(RENAME_INPUT_ID))
                         .children(error.clone().map(|error| {
                             div()
                                 .debug_selector(|| RENAME_ERROR_SELECTOR.into())

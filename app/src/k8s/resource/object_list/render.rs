@@ -18,7 +18,6 @@ use crate::ui::list_state::{self, TableArea};
 use crate::ui::panel_title::{self, ScopeEvent};
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -187,7 +186,7 @@ impl ObjectListPanel {
             .child(
                 div()
                     .on_action(cx.listener(Self::on_action_clear_filter))
-                    .child(Input::new(&filter)),
+                    .child(crate::ui::text_field::text_field(&filter, cx)),
             )
             .children(self.render_refusal(cx))
             .children(crate::ui::bulk::render_bulk(self, cx))

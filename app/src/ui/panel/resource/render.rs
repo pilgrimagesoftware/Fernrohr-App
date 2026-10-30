@@ -11,7 +11,6 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::h_flex;
-use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::sidebar::{Sidebar, SidebarMenuItem};
@@ -188,7 +187,7 @@ impl ResourcePanel {
                     .flex()
                     .flex_col()
                     .gap(space.control_gap)
-                    .child(Input::new(&self.filter_input))
+                    .child(crate::ui::text_field::text_field(&self.filter_input, cx))
                     .child(super::keyboard::hint_row(window, cx)),
             );
 
