@@ -57,6 +57,8 @@ pub(crate) struct FakeCluster {
     get_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
     /// Every create, as (plural, body); a TokenRequest as ("token", body).
     creates: Arc<Mutex<Vec<(String, Value)>>>,
+    /// Every container log request's path, `/api/v1/namespaces/<ns>/pods/<pod>/log`.
+    log_requests: Arc<Mutex<Vec<String>>>,
 }
 
 /// The token the fake answers every TokenRequest with.
@@ -75,6 +77,7 @@ impl FakeCluster {
             patch_refusal: Arc::default(),
             get_refusal: Arc::default(),
             creates: Arc::default(),
+            log_requests: Arc::default(),
         };
         let handle = cx.update(|cx| crate::runtime::handle(cx));
         let addr = handle.block_on(cluster.clone().serve());
@@ -164,6 +167,11 @@ impl FakeCluster {
     /// The patches sent so far: each object's name and its patch body.
     pub(crate) fn patches(&self) -> Vec<(String, Value)> {
         self.patches.lock().clone()
+    }
+
+    /// Every container log request so far, by path.
+    pub(crate) fn log_requests(&self) -> Vec<String> {
+        self.log_requests.lock().clone()
     }
 
     /// Every create so far, as (plural, body) - a TokenRequest as `("token", body)`.
@@ -329,6 +337,9 @@ impl FakeCluster {
     /// The status and body for a request to `target` (path and query).
     async fn answer(&self, target: &str) -> (&'static str, String) {
         let (path, query) = target.split_once('?').unwrap_or((target, ""));
+        if path.ends_with("/log") {
+            self.log_requests.lock().push(path.to_string());
+        }
         let Some(request) = Request::parse(path) else {
             return not_found();
         };
