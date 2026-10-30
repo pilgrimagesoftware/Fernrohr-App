@@ -129,28 +129,54 @@ async fn the_yaml_view_scrolls(cx: &mut TestAppContext) {
     assert!(offset.y < px(0.), "the view scrolled down: {offset:?}");
 }
 
-/// Spec: "A large manifest" - folding `managedFields` shows it as one line until
-/// unfolded, by click.
+/// #182: `managedFields` starts folded - one line - and a click on its toggle
+/// unfolds it, another folds it again.
 #[gpui_kit::test]
-async fn managed_fields_fold_and_unfold_on_click(cx: &mut TestAppContext) {
+async fn managed_fields_starts_folded_and_toggles_on_click(cx: &mut TestAppContext) {
     let (window, panel, mut vcx) = yaml_panel(cx);
     let lines = lines(&panel, &mut vcx);
     let managed = line_of(&lines, "managedFields:");
     let inside = managed + 1;
-    assert!(drawn(window, &mut vcx, inside), "unfolded at first");
+    assert!(drawn(window, &mut vcx, managed), "its own line shows");
+    assert!(!drawn(window, &mut vcx, inside), "folded at first");
 
     click_toggle(window, &mut vcx, managed);
-    assert!(
-        drawn(window, &mut vcx, managed),
-        "the block's own line stays"
-    );
+    assert!(drawn(window, &mut vcx, inside), "a click unfolds it");
+
+    click_toggle(window, &mut vcx, managed);
     assert!(
         !drawn(window, &mut vcx, inside),
-        "its contents are folded away"
+        "and another folds it again"
     );
+}
 
-    click_toggle(window, &mut vcx, managed);
-    assert!(drawn(window, &mut vcx, inside), "and come back unfolded");
+/// #182: unfolded from the keyboard, `managedFields` stays open when a watch
+/// update changes the object - its other folds start over, it doesn't fold
+/// itself again.
+#[gpui_kit::test]
+async fn unfolded_managed_fields_stays_open_across_an_update(cx: &mut TestAppContext) {
+    let (window, panel, mut vcx) = yaml_panel(cx);
+    let managed = line_of(&lines(&panel, &mut vcx), "managedFields:");
+    assert!(!drawn(window, &mut vcx, managed + 1), "folded at first");
+
+    vcx.simulate_keystrokes("shift-z");
+    vcx.run_until_parked();
+    assert!(drawn(window, &mut vcx, managed + 1), "shift-z unfolded it");
+
+    let mut updated = big_config_map();
+    updated.metadata.resource_version = Some("2".into());
+    updated.data["data"]["key-new"] = json!("added by the update");
+    window
+        .update(&mut vcx, |_, _, cx| {
+            panel.update(cx, |panel, cx| panel.test_set_loaded(updated, cx))
+        })
+        .unwrap();
+    vcx.run_until_parked();
+    let managed = line_of(&lines(&panel, &mut vcx), "managedFields:");
+    assert!(
+        drawn(window, &mut vcx, managed + 1),
+        "still open after the update"
+    );
 }
 
 /// The keyboard: `z` folds everything to the top-level keys, `shift-z`
