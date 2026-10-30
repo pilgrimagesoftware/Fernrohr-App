@@ -41,7 +41,8 @@ actions!(
         ShowAppearance,
         ShowPanels,
         ShowLayouts,
-        ShowAgentAccess
+        ShowAgentAccess,
+        OpenAgentAccess
     ]
 );
 
@@ -149,14 +150,29 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
+    // From anywhere, with Settings open or not: the status menu's "MCP…"
+    // (quiet mode, #236) and the palette.
+    registry.register(Command {
+        id: OPEN_AGENT_ACCESS_COMMAND_ID,
+        title: "Open MCP Settings\u{2026}",
+        default_binding: "",
+        context: None,
+        action: Box::new(OpenAgentAccess),
+        menu: None,
+    });
     tabs::register_commands(registry);
     shortcuts::register_commands(registry);
 }
+
+/// The command opening Settings at Agent Access, where the MCP server's
+/// setting and agent setup are.
+pub const OPEN_AGENT_ACCESS_COMMAND_ID: &str = "settings.open_agent_access";
 
 /// The app-wide handler and the section's raw ↑/↓ bindings. Called once at
 /// startup, next to the other windows' handlers.
 pub fn init(cx: &mut App) {
     cx.on_action(|_: &OpenSettings, cx: &mut App| open_or_focus(cx));
+    cx.on_action(|_: &OpenAgentAccess, cx: &mut App| open_at(Section::AgentAccess, cx));
     cx.bind_keys(shortcuts::list_bindings());
 }
 

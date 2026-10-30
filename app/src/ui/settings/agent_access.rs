@@ -24,6 +24,14 @@ pub(crate) const COMMANDS_SELECTOR: &str = "agent-access-commands";
 pub(crate) const UNSTABLE_SELECTOR: &str = "agent-access-unstable";
 pub(crate) const UNAVAILABLE_SELECTOR: &str = "agent-access-unavailable";
 
+/// The background MCP checkbox (quiet mode, #236), for tests.
+pub(crate) const BACKGROUND_CHECKBOX: &str = "agent-access-background-mcp";
+
+/// What the checkbox's note says it changes.
+const BACKGROUND_NOTE: &str = "When the last window closes, Fernrohr keeps running in the menu \
+     bar. With this on, agents can still reach it; with it off, the MCP server stops then and \
+     starts again with the next window.";
+
 /// The snippet's copy button's tooltip.
 pub(crate) const SNIPPET_TOOLTIP: &str = "Copy OpenCode config snippet";
 
@@ -71,7 +79,33 @@ pub(super) fn section(window: &mut Window, cx: &mut App) -> impl IntoElement {
     };
     body(cx)
         .child(card("About", cx).child(div().text_sm().child(ABOUT)))
+        .children(crate::util::shell::QUIET_MODE.then(|| background(cx)))
         .child(setup)
+}
+
+/// The background MCP setting, in its own card: a checkbox dispatching the
+/// same commands the palette offers, and what it changes. Only where quiet
+/// mode exists (macOS): elsewhere the server stops with the app, when the
+/// last window closes.
+fn background(cx: &App) -> impl IntoElement + use<> {
+    use super::card::{card, hint};
+    let keep =
+        crate::ui::background_mcp::current(cx) == crate::config::ui::BackgroundMcp::KeepRunning;
+    card("Background", cx)
+        .child(
+            gpui_kit::component::checkbox::Checkbox::new(BACKGROUND_CHECKBOX)
+                .label(crate::ui::background_mcp::LABEL)
+                .checked(keep)
+                .on_click(|checked, window, cx| {
+                    let action: Box<dyn Action> = if *checked {
+                        Box::new(crate::ui::background_mcp::KeepMcpInBackground)
+                    } else {
+                        Box::new(crate::ui::background_mcp::StopMcpWithLastWindow)
+                    };
+                    window.dispatch_action(action, cx);
+                }),
+        )
+        .child(hint(BACKGROUND_NOTE, cx))
 }
 
 /// A card with one row per harness - its name, its command, and the copy

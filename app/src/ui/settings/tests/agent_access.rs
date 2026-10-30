@@ -176,3 +176,23 @@ async fn the_palette_command_shows_the_section(cx: &mut TestAppContext) {
     show(&mut vcx, Box::new(ShowAgentAccess));
     assert_eq!(shown(cx, handle), Section::AgentAccess);
 }
+
+/// #236: the background MCP checkbox sets the setting by keystrokes - Tab to
+/// it, Space - each way.
+#[cfg(target_os = "macos")]
+#[gpui_kit::test]
+async fn the_background_mcp_checkbox_toggles_from_the_keyboard(cx: &mut TestAppContext) {
+    use super::super::agent_access::BACKGROUND_CHECKBOX;
+    use crate::config::ui::BackgroundMcp;
+    use crate::ui::background_mcp::current;
+    let (handle, mut vcx) = opened(cx, ready());
+    vcx.update(|_, cx| crate::ui::background_mcp::register_handlers(cx));
+    assert_eq!(vcx.update(|_, cx| current(cx)), BackgroundMcp::KeepRunning);
+    press_button(&mut vcx, handle.into(), BACKGROUND_CHECKBOX);
+    assert_eq!(
+        vcx.update(|_, cx| current(cx)),
+        BackgroundMcp::StopWithLastWindow
+    );
+    press_button(&mut vcx, handle.into(), BACKGROUND_CHECKBOX);
+    assert_eq!(vcx.update(|_, cx| current(cx)), BackgroundMcp::KeepRunning);
+}

@@ -44,7 +44,7 @@ pub(super) struct ServerState {
     pub(super) context: ToolContext,
 }
 
-/// The running endpoint, kept for the app's lifetime.
+/// The endpoint this app serves, from [`start`] until [`stop`].
 struct McpEndpoint {
     files: EndpointFiles,
     task: JoinHandle<()>,
@@ -58,11 +58,21 @@ impl Drop for McpEndpoint {
     }
 }
 
-/// Binds the app's endpoint and serves `registry` on it until the app quits,
-/// when the socket and token are removed. Without an endpoint - another
-/// Fernrohr already serves it, or the files couldn't be written - the app runs
-/// as usual and `fernrohr mcp` reaches the other instance or none.
+/// Marks that the quit hook removing the endpoint's files is registered, so
+/// starting the endpoint again after [`stop`] doesn't register a second.
+struct QuitHook;
+
+impl Global for QuitHook {}
+
+/// Binds the app's endpoint and serves `registry` on it until [`stop`] or the
+/// app quits, when the socket and token are removed. A no-op while it already
+/// runs. Without an endpoint - another Fernrohr already serves it, or the files
+/// couldn't be written - the app runs as usual and `fernrohr mcp` reaches the
+/// other instance or none.
 pub(super) fn start(cx: &mut App, registry: ToolRegistry) {
+    if running(cx) {
+        return;
+    }
     let handle = crate::runtime::handle(cx);
     let bound = {
         let _runtime = handle.enter();
@@ -97,16 +107,35 @@ pub(super) fn start(cx: &mut App, registry: ToolRegistry) {
     });
     let task = handle.spawn(serve(endpoint.listener, state));
     cx.set_global(McpEndpoint { files, task });
+    if cx.has_global::<QuitHook>() {
+        return;
+    }
+    cx.set_global(QuitHook);
     // GPUI never drops app globals on quit (see `util::pidfile`), so the
     // files are removed here, synchronously, before the process exits.
     cx.on_app_quit(|cx| {
-        if let Some(endpoint) = cx.try_global::<McpEndpoint>() {
-            endpoint.task.abort();
-            endpoint.files.remove();
-        }
+        stop(cx);
         async {}
     })
     .detach();
+}
+
+/// Whether this app serves the endpoint now.
+pub(super) fn running(cx: &App) -> bool {
+    cx.has_global::<McpEndpoint>()
+}
+
+/// Stops serving the endpoint, if this app serves it: every connection is
+/// dropped, and the socket and token are removed, so `fernrohr mcp` finds no
+/// app until [`start`] binds it again.
+pub(super) fn stop(cx: &mut App) {
+    if !running(cx) {
+        return;
+    }
+    let endpoint = cx.remove_global::<McpEndpoint>();
+    endpoint.files.remove();
+    // Dropping it aborts the serving task, and with it every connection.
+    drop(endpoint);
 }
 
 /// Accepts connections on `listener` forever, serving at most

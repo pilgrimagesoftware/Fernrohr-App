@@ -35,13 +35,15 @@ struct OpenQuestion(Option<u64>);
 impl Global for OpenQuestion {}
 
 /// Shows `request` in the frontmost main window, raising it, and answers
-/// `reply` with the user's choice: `true` to allow. `None` when the app has no
-/// main window to ask in.
+/// `reply` with the user's choice: `true` to allow. With no main window open -
+/// the app running quiet in the menu bar (#236) - one is reopened to ask in,
+/// so an agent can bring the app back. `None` only when even that fails.
 pub(crate) fn open(
     request: ApprovalRequest,
     reply: oneshot::Sender<bool>,
     cx: &mut App,
 ) -> Option<Question> {
+    crate::util::shell::ensure_main_window(cx);
     let window = asking_window(cx)?;
     open_in(window, request, reply, cx)
 }

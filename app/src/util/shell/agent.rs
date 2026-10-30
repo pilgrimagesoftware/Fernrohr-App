@@ -35,6 +35,9 @@ pub(crate) fn open_panel(
     namespaces: Vec<String>,
     cx: &mut App,
 ) -> Result<ShownPanel, NavigateError> {
+    // With no window open (quiet mode, #236), the one that closed last comes
+    // back - holding the context the agent asks for, if it held it before.
+    super::quiet::ensure_main_window(cx);
     let windows = workspace_windows(cx);
     if windows.is_empty() {
         return Err(NavigateError::NoWindow);
@@ -71,6 +74,7 @@ pub(crate) fn load_layout(
     mode: LoadMode,
     cx: &mut App,
 ) -> Option<LoadedLayout> {
+    super::quiet::ensure_main_window(cx);
     let (handle, main) = workspace_windows(cx).into_iter().next()?;
     let loaded = handle
         .update(cx, |_, window, cx| {

@@ -4,6 +4,7 @@ pub(crate) mod add_context_window;
 #[cfg(unix)]
 pub(crate) mod agent_approval;
 pub(crate) mod agent_setup;
+pub mod background_mcp;
 pub mod background_rows;
 pub(crate) mod bulk;
 pub mod confirm_dialog;
@@ -43,6 +44,9 @@ pub mod settings;
 pub mod shortcut_timeout;
 pub mod space;
 pub mod status_bar;
+// Drawn only on macOS (quiet mode, #236); built for tests everywhere.
+#[cfg(any(target_os = "macos", test))]
+pub mod status_menu;
 pub mod style;
 pub mod table_fit;
 pub mod text_field;

@@ -18,6 +18,9 @@ pub struct UiConfig {
     /// the one Logs panel (`logs-panel-instancing`). Each open can do the
     /// other once.
     pub logs_panels: LogsPanels,
+    /// Whether the MCP server keeps serving once the last window closes and
+    /// the app runs on in the menu bar (quiet mode, #236; macOS).
+    pub background_mcp: BackgroundMcp,
 }
 
 impl Default for UiConfig {
@@ -29,6 +32,7 @@ impl Default for UiConfig {
             pod_events_window: PodEventsWindow::default(),
             shortcut_timeout_secs: ShortcutTimeout::DEFAULT,
             logs_panels: LogsPanels::default(),
+            background_mcp: BackgroundMcp::default(),
         }
     }
 }
@@ -190,6 +194,18 @@ impl LogsPanels {
     }
 }
 
+/// What the MCP server does when the last window closes (quiet mode, #236).
+/// Stored as `background_mcp = "keep_running"` or `"stop_with_last_window"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundMcp {
+    /// It keeps serving with no window open.
+    #[default]
+    KeepRunning,
+    /// It stops, and starts again when a main window opens.
+    StopWithLastWindow,
+}
+
 /// A window edge the Resource panel docks to. `ui::resource_panel` draws it;
 /// this is the stored vocabulary (`resource_side = "right"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -282,10 +298,22 @@ mod tests {
             pod_events_window: PodEventsWindow::Hours6,
             shortcut_timeout_secs: ShortcutTimeout::from(7),
             logs_panels: LogsPanels::Reuse,
+            background_mcp: BackgroundMcp::StopWithLastWindow,
         };
         let text = toml::to_string(&config).unwrap();
         let parsed: UiConfig = toml::from_str(&text).unwrap();
         assert_eq!(parsed, config);
+    }
+
+    /// #236: stored by name, and a file from before it keeps the MCP server
+    /// running in the background.
+    #[test]
+    fn background_mcp_is_stored_by_name_and_defaults_to_keep_running() {
+        let parsed: UiConfig =
+            toml::from_str("background_mcp = \"stop_with_last_window\"").unwrap();
+        assert_eq!(parsed.background_mcp, BackgroundMcp::StopWithLastWindow);
+        let old: UiConfig = toml::from_str("theme = \"dark\"").unwrap();
+        assert_eq!(old.background_mcp, BackgroundMcp::KeepRunning);
     }
 
     /// `logs-panel-instancing`: stored by name, and a file from before it
