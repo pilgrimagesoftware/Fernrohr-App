@@ -53,14 +53,18 @@ fn theme_row(cx: &App) -> impl IntoElement {
         ))
 }
 
-/// The section: Text Size, then Theme.
+/// The section: a Text card, then a Theme card.
 pub(super) fn section(window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let space = crate::ui::space::spacing(cx);
-    div()
-        .p(space.panel_inset)
-        .flex()
-        .flex_col()
-        .gap(space.control_gap)
+    use super::card::{body, card, hint};
+    let text = card("Text", cx)
         .child(super::text_size::row(window, cx))
-        .child(theme_row(cx))
+        .child(hint(
+            "Sizes every window's text, and the spacing around it.",
+            cx,
+        ));
+    let theme = card("Theme", cx).child(theme_row(cx)).child(hint(
+        "System follows your computer's light or dark appearance.",
+        cx,
+    ));
+    body(cx).child(text).child(theme)
 }
