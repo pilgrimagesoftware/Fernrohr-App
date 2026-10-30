@@ -77,9 +77,11 @@ mod pending_chord_tests;
 mod persist;
 mod quiet;
 pub(crate) use quiet::{
-    Hooks as QuietHooks, OpenContextWindow, QUIET_MODE, ensure_main_window, init as init_quiet,
-    quit_mode, reopen,
+    Hooks as QuietHooks, QUIET_MODE, ensure_main_window, init as init_quiet, quit_mode, reopen,
 };
+// For the status menu, which is built only on macOS and for tests.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) use quiet::OpenContextWindow;
 #[cfg(test)]
 mod pod_detail_logs_tests;
 #[cfg(test)]
