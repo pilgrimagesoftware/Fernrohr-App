@@ -59,6 +59,10 @@ pub(super) const PREVIOUS_KEY: &str = "p";
 pub(super) const FOLLOW_KEY: &str = "s";
 /// The lists' filter key, for the field a selector is typed into.
 pub(super) const FOCUS_SELECTOR_KEY: &str = "/";
+/// Open Logs by Label… (#248): `l` for logs, as the lists' and detail
+/// panels' own Logs keys are, with the modifiers a global command takes.
+/// `secondary` is ⌘ on macOS and Ctrl elsewhere.
+pub(super) const OPEN_LABEL_LOGS_KEY: &str = "secondary-shift-l";
 /// A typed panel's context picker: `x`, since `c` is the container filter's
 /// and `n` the namespace picker's (`selector-logs-context-picker` D4).
 pub(super) const PICK_CONTEXT_KEY: &str = "x";
@@ -85,7 +89,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     registry.register(Command {
         id: "logs.follow_labels",
         title: "Open Logs by Label\u{2026}",
-        default_binding: "",
+        default_binding: OPEN_LABEL_LOGS_KEY,
         context: None,
         action: Box::new(ShowLabelLogs),
         menu: Some(crate::command::MenuSlot::Window),
