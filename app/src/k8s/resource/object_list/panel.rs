@@ -266,6 +266,10 @@ impl ObjectListPanel {
         }
         let table = self.table.clone().expect("built above");
         let defaults = self.default_columns(cx);
+        // #275: the store's live changes since the last draw flash their rows.
+        let seen = table.read(cx).delegate().flashes().seen();
+        let changes = self.objects.read(cx).journal().since(seen);
+        let at = cx.background_executor().now();
         table.update(cx, |table, cx| {
             if table
                 .delegate_mut()
@@ -273,9 +277,18 @@ impl ObjectListPanel {
             {
                 table.refresh(cx);
             }
-            table.delegate_mut().set_rows(rows);
+            table.delegate_mut().set_rows_flashing(changes, rows, at);
             reselect(table, cx);
             cx.notify();
+        });
+        let delay = table
+            .read(cx)
+            .delegate()
+            .flashes()
+            .next_redraw(cx.reduce_motion());
+        let redraw = crate::ui::row_flash::redraw_after(delay, cx);
+        table.update(cx, |table, _| {
+            table.delegate_mut().flashes_mut().set_redraw(redraw)
         });
         table
     }

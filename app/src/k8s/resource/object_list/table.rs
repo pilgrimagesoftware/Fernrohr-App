@@ -9,14 +9,15 @@ use gpui_kit::*;
 
 mod checked;
 mod fit;
+mod flash;
 mod list_model;
 mod menu;
 mod sort;
-pub(super) use sort::reselect;
 pub(super) use list_model::{
     ColumnLayout, ListColumn, ListRow, SavedColumn, apply_layout, reconcile,
 };
 use list_model::{FORWARDS, NAME, cell_text, compare};
+pub(super) use sort::reselect;
 
 use super::columns;
 
@@ -98,6 +99,8 @@ pub(super) struct ObjectTableDelegate {
     /// Whether the filter hides every row (#312): the body then reads so,
     /// under the header ([`crate::ui::list_state::empty_body`]).
     no_match: bool,
+    /// The rows flashing for a change (#275), and deleted ones still drawn.
+    flashes: crate::ui::row_flash::RowFlashes<ListRow>,
 }
 
 impl ObjectTableDelegate {
@@ -125,6 +128,7 @@ impl ObjectTableDelegate {
             kind_menu: None,
             action_context: None,
             no_match: false,
+            flashes: Default::default(),
         }
     }
 
@@ -338,7 +342,12 @@ impl TableDelegate for ObjectTableDelegate {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
-        crate::ui::background_rows::row(row_ix, cx)
+        let tint = self.flash_tint(row_ix, cx);
+        let row = crate::ui::background_rows::row(row_ix, cx);
+        match tint {
+            Some(tint) => row.bg(tint),
+            None => row,
+        }
     }
 
     fn rows_count(&self, _: &App) -> usize {

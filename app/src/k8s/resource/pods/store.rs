@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::k8s::resource::load_phase::LoadPhase;
+use crate::ui::row_flash::RowChange;
 
 /// The live Pods index for one watch, kept up to date by [`PodsTable::apply`]
 /// as `watcher::Event`s arrive off the drain.
@@ -20,6 +21,8 @@ pub struct PodsTable {
     /// yet - what a detail panel reading its pod from here needs to tell apart
     /// (`live-detail-panels` D2).
     phase: LoadPhase,
+    /// The live changes the Pods tables flash (#275).
+    journal: crate::ui::row_flash::ChangeJournal,
 }
 
 impl PodsTable {
@@ -42,6 +45,17 @@ impl PodsTable {
     /// Where the table is in its lists.
     pub fn phase(&self) -> LoadPhase {
         self.phase
+    }
+
+    /// The live changes a table flashes (#275).
+    pub(crate) fn journal(&self) -> &crate::ui::row_flash::ChangeJournal {
+        &self.journal
+    }
+
+    /// Whether a watch event now is a live change - after the first list and
+    /// outside a relist - rather than part of a list, which never flashes.
+    fn live(&self) -> bool {
+        self.relisting.is_none() && self.phase.has_loaded()
     }
 
     /// The pod named `name` in `namespace`, preferring the one with `uid` when
@@ -69,7 +83,16 @@ impl PodsTable {
     pub fn apply(&mut self, event: watcher::Event<Pod>) {
         match event {
             watcher::Event::Apply(pod) => {
-                self.index.apply_applied(uid(&pod), pod);
+                let id = uid(&pod);
+                if self.live() {
+                    let change = if self.index.contains(&id) {
+                        RowChange::Modified
+                    } else {
+                        RowChange::Added
+                    };
+                    self.journal.record(id.clone(), change);
+                }
+                self.index.apply_applied(id, pod);
             }
             watcher::Event::InitApply(pod) => {
                 let id = uid(&pod);
@@ -80,7 +103,11 @@ impl PodsTable {
                 self.index.apply_applied(id, pod);
             }
             watcher::Event::Delete(pod) => {
-                self.index.apply_deleted(&uid(&pod));
+                let id = uid(&pod);
+                if self.live() && self.index.contains(&id) {
+                    self.journal.record(id.clone(), RowChange::Deleted);
+                }
+                self.index.apply_deleted(&id);
             }
             watcher::Event::Init => {
                 self.relisting = Some(std::collections::HashSet::new());

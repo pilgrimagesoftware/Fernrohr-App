@@ -138,6 +138,7 @@ impl Render for PodsPanel {
                             let mut row = pod_row(pod, now);
                             row.forwards = forwards.len();
                             PodTableRow {
+                                uid: pod.metadata.uid.clone().unwrap_or_default(),
                                 row,
                                 selection,
                                 forwards,
