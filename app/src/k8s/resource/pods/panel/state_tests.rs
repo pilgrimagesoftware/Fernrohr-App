@@ -215,7 +215,7 @@ async fn live_pod_changes_flash_and_lists_do_not(cx: &mut TestAppContext) {
             watcher::Event::InitDone,
         ],
     );
-    for uid in ["u1", "u2", "u3"] {
-        assert_eq!(flash(&mut h, uid), None, "{uid}: a relist flashes nothing");
+    for (name, uid) in [("web", "u1"), ("api", "u2"), ("worker", "u3")] {
+        assert_eq!(flash(&mut h, uid), None, "{name}: a relist flashes nothing");
     }
 }
