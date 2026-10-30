@@ -60,9 +60,9 @@ panel to the container.
 
 ## Follow pods by label
 
-**Open Logs by Label…**, in the Window menu and the command palette, opens a Logs panel that streams
-every pod a label selector picks. Type a selector in `kubectl -l` form, such as `app=web` or
-`tier in (front, back)`, and press <kbd>Enter</kbd>. Each line is tagged with its pod, in a colour of
+Press <kbd>⌘⇧L</kbd>, or choose **Open Logs by Label…** in the Window menu or the command palette,
+to open a Logs panel that streams every pod a label selector picks. Type a selector in `kubectl -l`
+form, such as `app=web` or `tier in (front, back)`, and press <kbd>Enter</kbd>. Each line is tagged with its pod, in a colour of
 its own. Pods that start or stop matching join and leave the stream as the cluster changes.
 
 Each time you run Open Logs by Label…, it opens a new, empty panel, so you can follow several
