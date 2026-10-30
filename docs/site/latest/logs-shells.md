@@ -68,7 +68,7 @@ its own. Pods that start or stop matching join and leave the stream as the clust
 Each time you run Open Logs by Label…, it opens a new, empty panel, so you can follow several
 selectors side by side. For example, follow `app=web` in one panel and `app=worker` in another, in
 the same context or in different ones. Each panel keeps its own selector, namespaces, container
-filter and context, and its tab is named by its selector, such as **Logs: app=web**.
+filter and context, and its tab is named by its selector, such as **Logs: app: web**.
 
 The panel opens in the context and namespaces of the list that had focus. Its bar shows where it
 searches, and you can change that without leaving the panel:
@@ -87,6 +87,27 @@ searches that context, and it stays in its tab with focus. A saved layout restor
 panel, each in the context it last searched with its own selector. For example,
 with `my-cluster` and `my-other-cluster` in one window, press <kbd>X</kbd> in a panel following
 `app=web` on `my-cluster` and choose `my-other-cluster` to see the same selector's pods there.
+
+### Label selectors
+
+A selector is one or more requirements separated by commas, and a pod must meet all of them.
+Hover the selector field to see these forms:
+
+| Requirement | Picks pods whose labels | Shown as |
+| --- | --- | --- |
+| `app=web` | have `app` set to `web` | app: web |
+| `app!=web` | don't have `app` set to `web` | app: not web |
+| `tier in (front, back)` | have `tier` set to `front` or `back` | tier: back, front |
+| `tier notin (front, back)` | don't have `tier` set to `front` or `back` | tier: not back, front |
+| `canary` | have a `canary` label, whatever its value | has canary |
+| `!canary` | have no `canary` label | no canary |
+
+For example, `app=web, !canary` follows the `web` pods that aren't canaries.
+
+Where Fernrohr shows a selector rather than letting you type it, it uses the **Shown as** form,
+with requirements separated by a dot. That covers the tab of a panel you typed a selector into, and
+the bar of a panel following a workload's pods, such as a Deployment's. The workload's bar keeps
+the selector as typed, `kubectl -l` form, in a tooltip.
 
 ## Open a shell in a container
 
