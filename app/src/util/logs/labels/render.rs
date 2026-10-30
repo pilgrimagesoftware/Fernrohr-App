@@ -10,6 +10,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 
 /// A typed panel's selector field, for tests.
 pub(in crate::util) const SELECTOR_INPUT: &str = "logs-selector";
+/// A typed panel's reset button (#247), for tests.
+pub(in crate::util) const RESET_BUTTON: &str = "logs-label-reset";
+/// The reset button's tooltip.
+pub(in crate::util) const RESET_TOOLTIP: &str = "Clear selector and logs";
 /// The container filter's button, for tests.
 pub(in crate::util::logs) const CONTAINER_FILTER: &str = "logs-label-container";
 /// The container filter's label while it streams every container.
@@ -103,6 +107,9 @@ impl LogsPanel {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let input = self.selector_input(window, cx);
+        let reset = self
+            .is_typed_labels()
+            .then(|| self.reset_control(window, cx));
         let context_control = self.context_control(window, cx);
         let scope_picker = self.scope_picker(window, cx);
         let following = self.labels.as_ref()?;
@@ -190,6 +197,7 @@ impl LogsPanel {
                         .px(space.panel_inset)
                         .py(space.control_gap)
                         .child(div().flex_1().min_w_0().child(what))
+                        .children(reset)
                         .children(context_control)
                         .children(scope_picker)
                         .children(counts)
@@ -206,6 +214,42 @@ impl LogsPanel {
                 .children(error)
                 .into_any_element(),
         )
+    }
+
+    /// A typed panel's reset (#247): its key, then an icon button that clears
+    /// the selector and the lines and stops every stream.
+    fn reset_control(&self, window: &Window, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let key = Kbd::binding_for_action(
+            &super::super::commands::ResetLabelLogs,
+            Some(PANEL_KEY_CONTEXT),
+            window,
+        )
+        .unwrap_or_else(|| {
+            Kbd::new(
+                Keystroke::parse(super::super::commands::RESET_LABELS_KEY)
+                    .expect("valid keybinding"),
+            )
+        });
+        let this = cx.weak_entity();
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .flex_shrink_0()
+            .child(key)
+            .child(crate::ui::icon_tooltip::with_tooltip(
+                RESET_BUTTON,
+                RESET_TOOLTIP,
+                Button::new(RESET_BUTTON)
+                    .icon(gpui_kit::assets::IconName::Delete)
+                    .xsmall()
+                    .ghost()
+                    .tab_stop(false)
+                    .on_click(move |_event, window, cx| {
+                        let _ =
+                            this.update(cx, |this: &mut Self, cx| this.reset_labels(window, cx));
+                    }),
+            ))
     }
 
     /// The container filter: its key, then a button reading the filter that
