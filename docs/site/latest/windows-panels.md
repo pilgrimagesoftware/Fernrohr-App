@@ -17,9 +17,31 @@ The window title names the context the window shows. With two or more contexts i
 
 **Switch windows.** The Window menu lists every open window by its title, so two windows on different clusters are easy to tell apart. Choose one to bring it forward.
 
-**Close a window.** Choose Window > Close Window or press <kbd>⌘W</kbd>. Close Window closes the focused panel first, and closes the window only when no panel is on screen. If closing would stop a tunnel or discard an unsaved edit, Fernrohr asks first. Closing the last window quits Fernrohr after it saves its state.
+**Close a window.** Choose Window > Close Window or press <kbd>⌘W</kbd>. Close Window closes the focused panel first, and closes the window only when no panel is on screen. If closing would stop a tunnel or discard an unsaved edit, Fernrohr asks first. On Linux, closing the last window quits Fernrohr after it saves its state. On macOS it keeps running in the menu bar; see [Quiet mode](#quiet-mode).
 
 Fernrohr remembers each window's size and position, the contexts it used, and its panels and their arrangement. On the next launch it reopens the windows the same way and reconnects their contexts. If the saved state file can't be read, Fernrohr starts with one default window and leaves the unreadable file in place.
+
+### Quiet mode
+
+On macOS, closing the last window doesn't quit Fernrohr. It disconnects every cluster, as quitting
+would, and keeps running with its icon in the menu bar. Its tunnels, port-forwards, shells and log
+streams stop, and it saves your windows' state.
+
+The icon's menu brings Fernrohr back:
+
+| Menu item | What it does |
+| --- | --- |
+| Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it. |
+| Settings… | Opens Settings. |
+| MCP… | Opens Settings at Agent Access, with the MCP server's setting. |
+| Tunnel Manager… | Opens the Tunnel Manager. |
+| Quit Fernrohr | Quits. |
+
+Clicking Fernrohr's Dock icon with no window open reopens the window you closed last, connected to
+the same contexts. Quit Fernrohr, in the menu or with <kbd>⌘Q</kbd>, is the only way to quit.
+
+By default the MCP server keeps serving while Fernrohr is quiet, so an agent can still reach it.
+See [Work with coding agents]({{ '/latest/agents/' | relative_url }}#when-no-window-is-open).
 
 ## Panels and tabs
 

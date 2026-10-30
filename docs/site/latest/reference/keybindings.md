@@ -46,6 +46,9 @@ This list matches the commands registered in `app/src/command.rs`.
 | Reset Shortcut Timeout | — | Global | — | `settings.reset_shortcut_timeout` |
 | Open Each Pod's Logs in Its Own Panel | — | Global | — | `settings.logs_per_pod` |
 | Open Every Pod's Logs in One Reused Panel | — | Global | — | `settings.logs_reuse_panel` |
+| Open MCP Settings… | — | Global | — | `settings.open_agent_access` |
+| Keep the MCP Server Running in the Background (macOS) | — | Global | — | `settings.mcp_keep_in_background` |
+| Stop the MCP Server When the Last Window Closes (macOS) | — | Global | — | `settings.mcp_stop_with_last_window` |
 | Report Issue | <kbd>⌘⇧/</kbd> | Global | Help | `help.report_issue` |
 | Copy MCP Setup Command | — | Global | — | `mcp.copy_setup_command` |
 

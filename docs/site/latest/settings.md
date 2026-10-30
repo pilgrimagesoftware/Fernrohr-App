@@ -59,6 +59,9 @@ text_size = 110
 
 The theme is `"system"`, `"light"` or `"dark"`. The text size is a percentage. A hand-edited value between steps, or out of range, loads as the nearest step.
 
+On macOS, `background_mcp` is `"keep_running"` (the default) or `"stop_with_last_window"`. It is the
+**Keep the MCP server running in the background** setting in Agent Access.
+
 Window state and saved layouts are not meant for hand-editing. They live in Fernrohr's state directory, `~/Library/Application Support/com.pilgrimagesoftware.fernrohr/` on macOS and `~/.local/share/fernrohr/` on Linux.
 
 ## Desktop notifications
