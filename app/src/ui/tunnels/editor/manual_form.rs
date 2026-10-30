@@ -62,7 +62,7 @@ impl TunnelEditor {
                 .flex_col()
                 .gap_1()
                 .child(label("Instruction (optional)"))
-                .child(Input::new(&self.manual_message))
+                .child(crate::ui::text_field::text_field(&self.manual_message, cx))
                 .child(div().text_xs().text_color(theme.muted_foreground).child(
                     "Shown each time a connection waits on this tunnel. Fernrohr \
                              starts nothing: you bring the network path up, then choose \

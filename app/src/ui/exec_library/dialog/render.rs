@@ -15,7 +15,7 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
-use gpui_kit::component::input::{Enter, Input, InputState};
+use gpui_kit::component::input::{Enter, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
 
@@ -100,7 +100,7 @@ impl EntryDialog {
                     .on_action(cx.listener(|this, enter: &Enter, window, cx| {
                         this.save(enter.secondary, window, cx)
                     }))
-                    .child(Input::new(input).id(id)),
+                    .child(crate::ui::text_field::text_field(input, cx).id(id)),
             )
             .children(error.map(|(field, error)| {
                 div()

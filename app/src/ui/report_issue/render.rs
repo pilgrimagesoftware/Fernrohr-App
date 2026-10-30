@@ -4,7 +4,7 @@
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
-use gpui_kit::component::input::{Enter, Input, Textarea};
+use gpui_kit::component::input::{Enter, Textarea};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::radio::{Radio, RadioGroup};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _};
@@ -79,7 +79,7 @@ impl Render for ReportIssueWindow {
             .text_color(theme.foreground)
             .child(kind_selector(&entity, self.kind))
             .child(label("Subject").debug_selector(|| SUBJECT_LABEL.into()))
-            .child(Input::new(&self.subject).w_full())
+            .child(crate::ui::text_field::text_field(&self.subject, cx).w_full())
             .child(label("Description"))
             // The one part that grows: it takes the window's spare height,
             // so every other part keeps one control gap from the next.
