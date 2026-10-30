@@ -43,7 +43,10 @@ over the open panel and the panel notes that it replaced the deleted pod.
 
 In the palette these are prefixed "Pod Detail:" or "Object Detail:" for the panel
 that has focus. The YAML view scrolls, and you can fold and unfold each nested
-block with the keyboard or the mouse. Hovering a copyable value, such as a
+block with the keyboard or the mouse. `metadata.managedFields` starts folded,
+since it is long and rarely read; unfold it with its chevron or
+<kbd>⇧Z</kbd>, and it stays open while the object updates. Editing the YAML
+leaves `managedFields` out. Hovering a copyable value, such as a
 container image, a ConfigMap value or a status message, shows a copy control
 that Tab also reaches.
 

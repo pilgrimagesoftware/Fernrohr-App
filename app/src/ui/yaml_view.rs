@@ -3,8 +3,9 @@
 //! mapping or sequence foldable.
 //!
 //! [`YamlLines`] works out what folds, [`YamlFolds`] is which blocks are folded
-//! (the panel's state, reset when the YAML changes), and [`render`] draws
-//! them. Each foldable line has a gutter chevron that is a tab stop - Tab
+//! (the panel's state, reset when the YAML changes - but for
+//! `metadata.managedFields`, which starts folded and stays as the user left
+//! it), and [`render`] draws them. Each foldable line has a gutter chevron that is a tab stop - Tab
 //! reaches it, Enter or Space folds it, as a click does - and the panels
 //! register Fold All and Unfold All as commands.
 //!
@@ -103,20 +104,57 @@ impl YamlLines {
     }
 }
 
+impl YamlLines {
+    /// The line opening the object's own `metadata.managedFields` - the
+    /// server's field-ownership bookkeeping, long and rarely read - if the
+    /// manifest has one. Not a `managedFields` key nested deeper, such as in a
+    /// pod template's metadata.
+    pub fn managed_fields_line(&self) -> Option<usize> {
+        let mut in_metadata = false;
+        self.lines.iter().enumerate().find_map(|(index, line)| {
+            let trimmed = line.text.trim_start();
+            match indent_of(&line.text) {
+                0 if !trimmed.is_empty() => {
+                    in_metadata = trimmed == "metadata:";
+                    None
+                }
+                2 if in_metadata && trimmed == "managedFields:" && line.fold_end.is_some() => {
+                    Some(index)
+                }
+                _ => None,
+            }
+        })
+    }
+}
+
 /// Which blocks are folded, by the line that opens them, for the YAML it was
-/// built over - a different manifest (the object changed) starts unfolded.
+/// built over - a different manifest (the object changed) starts unfolded,
+/// but for `metadata.managedFields`.
+///
+/// `metadata.managedFields` starts folded (#182), and stays as the user last
+/// left it - by its meaning, not its line, since a watch update to the object
+/// moves lines and starts every other fold over.
 #[derive(Clone, Debug, Default)]
 pub struct YamlFolds {
     folded: HashSet<usize>,
     yaml: String,
+    /// Where `metadata.managedFields` opens in `yaml`, if it has one.
+    managed_fields: Option<usize>,
+    /// Whether the user has unfolded `metadata.managedFields`; it starts folded.
+    managed_fields_open: bool,
 }
 
 impl YamlFolds {
-    /// Forgets every fold when `yaml` is not the manifest they were made on.
+    /// Forgets every fold when `yaml` is not the manifest they were made on,
+    /// keeping `metadata.managedFields` folded unless the user opened it.
     pub fn sync(&mut self, yaml: &str) {
         if self.yaml != yaml {
             self.folded.clear();
             self.yaml = yaml.to_string();
+            self.managed_fields = YamlLines::parse(yaml).managed_fields_line();
+            if let (Some(line), false) = (self.managed_fields, self.managed_fields_open) {
+                self.folded.insert(line);
+            }
         }
     }
 
@@ -125,17 +163,23 @@ impl YamlFolds {
     }
 
     pub fn toggle(&mut self, line: usize) {
-        if !self.folded.remove(&line) {
+        let folded = !self.folded.remove(&line);
+        if folded {
             self.folded.insert(line);
+        }
+        if self.managed_fields == Some(line) {
+            self.managed_fields_open = !folded;
         }
     }
 
     pub fn fold_all(&mut self, lines: &YamlLines) {
         self.folded = lines.foldable().collect();
+        self.managed_fields_open = false;
     }
 
     pub fn unfold_all(&mut self) {
         self.folded.clear();
+        self.managed_fields_open = true;
     }
 }
 
