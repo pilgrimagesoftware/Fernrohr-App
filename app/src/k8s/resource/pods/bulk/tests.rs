@@ -337,3 +337,33 @@ async fn the_row_menus_check_all_rows_checks_every_row(cx: &mut TestAppContext) 
     assert_eq!(checked(&mut harness), ["web-0", "web-1", "web-2"]);
     assert!(bar_drawn(&mut harness), "the bar shows");
 }
+
+/// #275 review: a deleted pod's row, still drawn for its flash, is inert - it
+/// drops out of the checked rows, the pod the cursor rested on is no longer
+/// selected for any action, and select-all passes it by.
+#[gpui_kit::test]
+async fn a_deleted_pods_ghost_is_neither_checked_nor_selected(cx: &mut TestAppContext) {
+    let mut harness = open(cx, 3);
+    harness.press("x");
+    assert_eq!(checked(&mut harness), ["web-0"]);
+    assert_eq!(harness.selected().as_deref(), Some("web-0"));
+
+    harness.cluster.delete("/api/v1", "pods", "shop", "web-0");
+    harness.wait_for("dropped the deleted pod", |panel, cx| {
+        panel.test_watch_pod_count(cx) == 2
+    });
+    harness.vcx.update(|window, cx| window.render_frame(cx));
+    let rows = harness
+        .vcx
+        .update(|_, cx| harness.panel.read(cx).test_rows(cx));
+    assert_eq!(rows, 3, "its row is still drawn, flashing");
+    assert!(checked(&mut harness).is_empty(), "and no longer checked");
+    assert_eq!(harness.selected(), None, "nor selected for any action");
+
+    harness.press("secondary-a");
+    assert_eq!(
+        checked(&mut harness),
+        ["web-1", "web-2"],
+        "select-all passes it by"
+    );
+}

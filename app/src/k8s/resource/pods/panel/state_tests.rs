@@ -158,3 +158,64 @@ async fn a_filter_that_hides_every_pod_keeps_the_header(cx: &mut TestAppContext)
     h.vcx.run_until_parked();
     crate::ui::list_state::assert_no_match_under_header(&mut h.vcx);
 }
+
+/// The change the pod `uid`'s row is flashing for (#275).
+fn flash(h: &mut Harness, uid: &str) -> Option<crate::ui::row_flash::RowChange> {
+    let panel = h.panel.clone();
+    h.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        let table = panel.read(cx).pod_table.clone()?;
+        table.read(cx).delegate().flash_of(uid)
+    })
+}
+
+/// `pod_in`'s pod, in the `phase` the Status column shows.
+fn pod_phased(uid: &str, name: &str, phase: &str) -> Pod {
+    let mut pod = pod_in("team-a", uid, name, 0);
+    pod.status.get_or_insert_default().phase = Some(phase.into());
+    pod
+}
+
+/// #275: after the first list - which flashes nothing - a live watch event's
+/// added, changed and deleted pods flash their tone; a relist flashes none.
+#[gpui_kit::test]
+async fn live_pod_changes_flash_and_lists_do_not(cx: &mut TestAppContext) {
+    use crate::ui::row_flash::RowChange;
+    let mut h = pods(cx, &[]);
+    feed(
+        &mut h,
+        vec![
+            watcher::Event::Init,
+            watcher::Event::InitApply(pod_phased("u1", "web", "Running")),
+            watcher::Event::InitApply(pod_phased("u2", "api", "Running")),
+            watcher::Event::InitDone,
+        ],
+    );
+    assert_eq!(flash(&mut h, "u1"), None, "the first list flashes nothing");
+
+    feed(
+        &mut h,
+        vec![
+            watcher::Event::Apply(pod_phased("u3", "worker", "Pending")),
+            watcher::Event::Apply(pod_phased("u1", "web", "Failed")),
+            watcher::Event::Delete(pod_phased("u2", "api", "Running")),
+        ],
+    );
+    assert_eq!(flash(&mut h, "u3"), Some(RowChange::Added));
+    assert_eq!(flash(&mut h, "u1"), Some(RowChange::Modified));
+    assert_eq!(flash(&mut h, "u2"), Some(RowChange::Deleted));
+
+    h.vcx.executor().advance_clock(crate::consts::ROW_FLASH);
+    h.vcx.run_until_parked();
+    feed(
+        &mut h,
+        vec![
+            watcher::Event::Init,
+            watcher::Event::InitApply(pod_phased("u1", "web", "Running")),
+            watcher::Event::InitDone,
+        ],
+    );
+    for (name, uid) in [("web", "u1"), ("api", "u2"), ("worker", "u3")] {
+        assert_eq!(flash(&mut h, uid), None, "{name}: a relist flashes nothing");
+    }
+}

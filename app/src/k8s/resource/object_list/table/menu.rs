@@ -34,7 +34,7 @@ impl ObjectTableDelegate {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        let Some(row) = self.rows.get(row_ix).cloned() else {
+        let Some(row) = self.live_row(row_ix).cloned() else {
             return menu;
         };
         cx.defer_in(window, move |table, _window, cx| {

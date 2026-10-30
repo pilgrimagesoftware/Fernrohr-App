@@ -56,6 +56,29 @@ pub(crate) const LIST_INDICATOR_DELAY: Duration = Duration::from_millis(300);
 /// copied (#187), its check mark and "Copied" in place of the copy icon.
 pub(crate) const COPIED_FEEDBACK: Duration = Duration::from_millis(1500);
 
+/// How long a list row flashes after a watch event adds, changes or deletes it
+/// (#275) - about one k9s refresh, which keeps its change colour until the
+/// next one (2 s by default). A deleted row stays drawn this long, then goes.
+pub(crate) const ROW_FLASH: Duration = Duration::from_millis(1600);
+
+/// How long a row flash stays at full strength before it starts to fade - the
+/// first part of [`ROW_FLASH`], so the change is seen before it eases away.
+pub(crate) const ROW_FLASH_HOLD: Duration = Duration::from_millis(500);
+
+/// How often a list with flashing rows redraws while they fade: one timer per
+/// panel, whatever the number of rows flashing.
+pub(crate) const ROW_FLASH_TICK: Duration = Duration::from_millis(50);
+
+/// The most live changes a list's store keeps for its panels to read (#275).
+/// A panel that hasn't drawn since more than this many changes just misses the
+/// oldest flashes; nothing else depends on the journal.
+pub(crate) const ROW_FLASH_JOURNAL: usize = 512;
+
+/// A row flash's strength at its peak: the change tone's opacity behind the
+/// row's text, low enough that text and muted text keep 4.5:1 in either theme
+/// (`ui::style`'s `a_flashing_row_keeps_its_text_readable`).
+pub(crate) const ROW_FLASH_ALPHA: f32 = 0.22;
+
 /// How long before an OIDC id-token's expiry it is already renewed (#188), so
 /// it can't lapse between the check and the requests it authorizes.
 pub(crate) const OIDC_EXPIRY_MARGIN: Duration = Duration::from_secs(60);

@@ -266,6 +266,10 @@ impl ObjectListPanel {
         }
         let table = self.table.clone().expect("built above");
         let defaults = self.default_columns(cx);
+        // #275: the store's live changes since the last draw flash their rows.
+        let seen = table.read(cx).delegate().flashes().seen();
+        let changes = self.objects.read(cx).journal().since(seen);
+        let at = cx.background_executor().now();
         table.update(cx, |table, cx| {
             if table
                 .delegate_mut()
@@ -273,9 +277,18 @@ impl ObjectListPanel {
             {
                 table.refresh(cx);
             }
-            table.delegate_mut().set_rows(rows);
+            table.delegate_mut().set_rows_flashing(changes, rows, at);
             reselect(table, cx);
             cx.notify();
+        });
+        let delay = table
+            .read(cx)
+            .delegate()
+            .flashes()
+            .next_redraw(cx.reduce_motion());
+        let redraw = crate::ui::row_flash::redraw_after(delay, cx);
+        table.update(cx, |table, _| {
+            table.delegate_mut().flashes_mut().set_redraw(redraw)
         });
         table
     }
@@ -311,7 +324,7 @@ impl ObjectListPanel {
     /// The object on row `row_ix`, remembering it as the selection.
     pub(super) fn row_target(&self, row_ix: usize, cx: &mut Context<Self>) -> Option<ObjectTarget> {
         let table = self.table.as_ref()?;
-        let row = table.read(cx).delegate().rows().get(row_ix).cloned()?;
+        let row = table.read(cx).delegate().live_row(row_ix).cloned()?;
         table.update(cx, |table, _| {
             table.delegate_mut().remember_selection(row_ix)
         });
@@ -322,9 +335,13 @@ impl ObjectListPanel {
         })
     }
 
-    /// The table's selected row, if any.
+    /// The table's selected row, if any - none while the cursor is on a deleted
+    /// row still drawn for its flash (#275), so no action reaches it.
     pub(super) fn selected_row(&self, cx: &App) -> Option<usize> {
-        self.table.as_ref()?.read(cx).selected_row()
+        let table = self.table.as_ref()?.read(cx);
+        table
+            .selected_row()
+            .filter(|row_ix| table.delegate().live_row(*row_ix).is_some())
     }
 
     pub(super) fn on_action_open_selected(

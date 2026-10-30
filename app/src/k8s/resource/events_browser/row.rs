@@ -66,3 +66,15 @@ impl EventRow {
         format!("{}/{}", self.involved.kind, self.involved.name)
     }
 }
+
+/// An event's row flashes by its uid, and every field it holds is drawn - its
+/// Last Seen as a timestamp, not a running age - so any difference shows.
+impl crate::ui::row_flash::FlashRow for EventRow {
+    fn flash_uid(&self) -> &str {
+        &self.uid
+    }
+
+    fn shows_same(&self, other: &Self) -> bool {
+        self == other
+    }
+}

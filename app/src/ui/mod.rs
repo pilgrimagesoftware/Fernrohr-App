@@ -37,6 +37,7 @@ pub mod picker_tunnel;
 pub mod placeholder;
 pub mod raster;
 pub mod report_issue;
+pub(crate) mod row_flash;
 pub mod saved_layout_delete;
 pub mod settings;
 pub mod shortcut_timeout;

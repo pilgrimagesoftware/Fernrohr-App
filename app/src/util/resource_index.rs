@@ -33,6 +33,11 @@ impl<T> ResourceIndex<T> {
         &self.items
     }
 
+    /// Whether an item with `uid` is in the index.
+    pub fn contains(&self, uid: &str) -> bool {
+        self.positions.contains_key(uid)
+    }
+
     /// Inserts a new item, or replaces the existing one with the same uid.
     pub fn apply_applied(&mut self, uid: String, item: T) {
         match self.positions.get(&uid) {

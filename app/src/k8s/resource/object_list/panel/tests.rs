@@ -472,6 +472,7 @@ async fn double_clicking_a_header_divider_fits_its_column(cx: &mut TestAppContex
 
 mod background;
 mod conditions;
+mod flash;
 mod hints;
 mod poll;
 mod search;
