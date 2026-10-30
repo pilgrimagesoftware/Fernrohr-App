@@ -79,6 +79,11 @@ searches, and you can change that without leaving the panel:
 | Choose the namespaces | <kbd>N</kbd> | Click the namespace button |
 | Stream only one container from each pod | <kbd>C</kbd> cycles through the containers | Click the container button |
 | Choose the context | <kbd>X</kbd>, then <kbd>↓</kbd> or <kbd>↑</kbd> and <kbd>Enter</kbd> | Click the context button |
+| Start over | <kbd>⌃L</kbd>, also from the selector field | Click the clear button beside the selector |
+
+Starting over stops every stream the panel holds, even one still connecting, and empties both the
+log lines and the selector field. The panel is then as it opened, with the field focused, ready for a
+new selector. Its namespaces and context stay as they were.
 
 The context control appears only in a window holding more than one context. Choosing another
 context keeps your selector and container filter, searches all of that context's namespaces, and

@@ -203,6 +203,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Logs: Pick Namespaces | <kbd>N</kbd> | `TypedLabelLogs && !Input` | — | `logs.pick_namespaces` |
 | Logs: Edit Label Selector | <kbd>/</kbd> | `TypedLabelLogs && !Input` | — | `logs.focus_selector` |
 | Logs: Pick Context… | <kbd>X</kbd> | `TypedLabelLogs && !Input` | — | `logs.pick_context` |
+| Logs: Clear Selector and Logs | <kbd>⌃L</kbd> | `TypedLabelLogs` | — | `logs.reset_labels` |
 
 ### Object lists
 

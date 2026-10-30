@@ -15,7 +15,8 @@ actions!(
         ShowLabelLogs,
         FocusLabelSelector,
         NextLabelContainer,
-        PickLogsContext
+        PickLogsContext,
+        ResetLabelLogs
     ]
 );
 
@@ -63,6 +64,9 @@ pub(super) const FOCUS_SELECTOR_KEY: &str = "/";
 /// panels' own Logs keys are, with the modifiers a global command takes.
 /// `secondary` is ⌘ on macOS and Ctrl elsewhere.
 pub(super) const OPEN_LABEL_LOGS_KEY: &str = "secondary-shift-l";
+/// A typed panel's reset (#247): `ctrl-l`, a terminal's clear-screen key.
+/// Not a bare letter, so it works from the selector field too.
+pub(super) const RESET_LABELS_KEY: &str = "ctrl-l";
 /// A typed panel's context picker: `x`, since `c` is the container filter's
 /// and `n` the namespace picker's (`selector-logs-context-picker` D4).
 pub(super) const PICK_CONTEXT_KEY: &str = "x";
@@ -116,6 +120,16 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         default_binding: PICK_CONTEXT_KEY,
         context: Some("TypedLabelLogs && !Input"),
         action: Box::new(PickLogsContext),
+        menu: None,
+    });
+    // Starting over (#247): from the field as well as the lines, so not
+    // `!Input`.
+    registry.register(Command {
+        id: "logs.reset_labels",
+        title: "Logs: Clear Selector and Logs",
+        default_binding: RESET_LABELS_KEY,
+        context: Some(TYPED_LABELS_KEY_CONTEXT),
+        action: Box::new(ResetLabelLogs),
         menu: None,
     });
     registry.register(Command {
