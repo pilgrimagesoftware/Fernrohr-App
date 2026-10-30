@@ -1,4 +1,86 @@
 
+## 0.15.0 - 2026-10-30
+
+### <!-- 0 -->🚀 Features
+- Show label selectors readably and explain their forms
+- Bind Open Logs by Label… to secondary-shift-l by default
+- Let a typed label panel start over with ctrl-l or its clear button
+- Start metadata.managedFields folded
+- Parse ANSI escapes in log lines as they arrive
+- Draw log lines in their ANSI colours and weights
+- Give every single-line text field a clear button
+- Give the label selector field the shared clear button
+- List namespace sets in every namespace picker
+- Let the endpoint stop and start again while the app runs
+- Keep running in the menu bar when the last window closes (macOS)
+- Flash rows that a watch event adds, changes or deletes
+- Tabs across the top, section cards and data-font hints
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Add Select All to list panels
+- Run the list menu's Check All Rows through the panel
+- Keep the header when the filter matches nothing
+- Stack the header's title above its hints when the panel is too narrow
+- Show the Edit hint in object detail headers
+- Keep the Report Issue form together at the top of the window
+- Let Description take the Report Issue window's spare height
+- Title every kind's list by its plural alone
+- Qualify a title only when two groups share a kind name
+- Show a group's count only while it's collapsed
+- Keep a deleted row's flash ghost inert
+- Build the status menu model only where it's drawn, and for tests
+- Re-export OpenContextWindow only where the status menu is built
+
+
+### <!-- 10 -->💼 Other
+- Bump jiff from 0.2.37 to 0.2.38
+- Bump rustls from 0.23.45 to 0.23.46
+- Bump tokio from 1.53.2 to 1.53.3
+- Bump schemars from 1.2.2 to 1.2.3
+- Bump rmcp from 3.5.1 to 3.7.0
+- Bump tokio from 1.53.3 to 1.54.1
+- Bump parking_lot from 0.12.5 to 0.13.0
+
+
+### <!-- 2 -->🚜 Refactor
+- Move the row context menu to pods_table/menu.rs
+- Move the table's sort impl to table/sort.rs
+- Move the panel's sync_table to panel/sync.rs
+
+
+### <!-- 3 -->📚 Documentation
+- Document Select All in list panels
+- Say what the list filter matches and shows when nothing does
+- Say how a detail header fits a very narrow panel
+- Explain label selector forms and how Fernrohr shows them
+- Describe list tab titles and their API group tooltip
+- Give Open Logs by Label…'s default key
+- Say when a Resource panel group shows its count
+- Describe starting a label Logs panel over
+- Note that managedFields starts folded in the YAML view
+- Say coloured log output shows in colour
+- Mention the filter box's clear button
+- Describe namespace sets in the namespace picker
+- Describe quiet mode and record the macOS status item decision
+- Describe list rows flashing for changes
+- Describe the Settings window's tabs and cards
+- Cut the v0.15 snapshot
+- Accept ADR-0001
+
+
+### <!-- 6 -->🧪 Testing
+- Pin Open Logs by Label…'s key as unique where it applies
+- Record container log requests in the fake cluster
+- Wait for the object to load before pressing e in its panel
+- Name the pod, not its uid, in the relist flash assert
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.14.0
+
+
+
 ## 0.14.0 - 2026-10-16
 
 ### <!-- 0 -->🚀 Features
