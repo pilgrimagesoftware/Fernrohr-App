@@ -10,6 +10,7 @@ mod ansi;
 mod commands;
 mod labels;
 mod line;
+mod line_style;
 mod panel;
 mod render;
 mod stream;

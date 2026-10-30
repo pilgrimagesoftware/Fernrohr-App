@@ -13,6 +13,8 @@ pub(super) const PREVIOUS_TOGGLE_ID: &str = "logs-previous";
 pub(super) const LINES: &str = "logs-lines";
 /// A tagged line's coloured tag, for tests.
 pub(super) const LINE_TAG: &str = "logs-line-tag";
+/// A line drawn with its ANSI styling (#309), for tests.
+pub(super) const STYLED_LINE: &str = "logs-styled-line";
 /// The end marker's row, for tests.
 pub(super) const END_MARKER: &str = "logs-end-marker";
 
@@ -201,6 +203,8 @@ impl LogsPanel {
         let line_count = lines.len();
         let muted = cx.theme().muted_foreground;
         let tag_colours = pod_tag_colours(cx);
+        let palette =
+            super::line_style::AnsiPalette::new(cx.theme().background, cx.theme().mode.is_dark());
         div()
             .debug_selector(|| LINES.into())
             .on_scroll_wheel(cx.listener(Self::on_lines_scrolled))
@@ -223,7 +227,7 @@ impl LogsPanel {
                                         .children(end_marker)
                                         .into_any_element();
                                 }
-                                line_row(ix, &lines[ix], &tag_colours)
+                                line_row(ix, &lines[ix], &tag_colours, &palette)
                             })
                             .collect()
                     },
@@ -243,24 +247,68 @@ impl LogsPanel {
 /// copy of the tag drawn over the tag's own glyphs. The code font is
 /// monospaced, so the two line up; the overlay has no mouse handlers, so
 /// selection goes through it to the text beneath.
-fn line_row(ix: usize, line: &LogLine, tag_colours: &[Hsla]) -> AnyElement {
-    let tag = line.source().map(|source| {
-        div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .debug_selector(|| LINE_TAG.into())
-            .text_color(tag_colours[pod_colour(source.pod())])
-            .child(SharedString::from(source.tag().to_string()))
-    });
+///
+/// A line with ANSI styling (#309) is drawn the same way: its selectable text
+/// is transparent, still there to select and copy as plain text, and a copy of
+/// the whole line - tag included, in its colour - is drawn over it with the
+/// styling's highlights.
+fn line_row(
+    ix: usize,
+    line: &LogLine,
+    tag_colours: &[Hsla],
+    palette: &super::line_style::AnsiPalette,
+) -> AnyElement {
+    let shown = line.to_string();
+    let tag_colour = line
+        .source()
+        .map(|source| (source.tag().len(), tag_colours[pod_colour(source.pod())]));
+    let selectable = gpui_kit::base::SelectableText::new(("logs-line", ix), shown.clone())
+        .document_order(ix as u64);
+    if line.spans().is_empty() {
+        let tag = line.source().zip(tag_colour).map(|(source, (_, colour))| {
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .debug_selector(|| LINE_TAG.into())
+                .text_color(colour)
+                .child(SharedString::from(source.tag().to_string()))
+        });
+        return div()
+            .relative()
+            .whitespace_nowrap()
+            .child(selectable)
+            .children(tag)
+            .into_any_element();
+    }
+    let highlights = tag_colour
+        .map(|(len, colour)| {
+            (
+                0..len,
+                HighlightStyle {
+                    color: Some(colour),
+                    ..Default::default()
+                },
+            )
+        })
+        .into_iter()
+        .chain(palette.highlights(line.spans(), line.text_offset()))
+        .collect::<Vec<_>>();
     div()
         .relative()
         .whitespace_nowrap()
+        .child(selectable.text_style(TextStyleRefinement {
+            color: Some(gpui_kit::transparent_black()),
+            ..Default::default()
+        }))
         .child(
-            gpui_kit::base::SelectableText::new(("logs-line", ix), line.to_string())
-                .document_order(ix as u64),
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .debug_selector(|| STYLED_LINE.into())
+                .child(StyledText::new(shown).with_highlights(highlights)),
         )
-        .children(tag)
         .into_any_element()
 }
 
