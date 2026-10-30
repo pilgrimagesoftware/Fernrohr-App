@@ -83,3 +83,30 @@ async fn the_filter_hint_follows_a_keymap_override(cx: &mut TestAppContext) {
         .update(|window, _| Kbd::binding_for_action(&FocusFilter, Some(PANEL_KEY_CONTEXT), window));
     assert!(hinted.is_some(), "the hint row has a live key to show");
 }
+
+/// #250: the filter's clear button empties it with one click, and the list
+/// shows every row again - the same change typing sends reaches the filter.
+#[gpui_kit::test]
+async fn the_filters_clear_button_restores_every_row(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let mut h = harness(
+        cx,
+        deployments(),
+        vec![
+            object("web", Some("production")),
+            object("api", Some("staging")),
+        ],
+    );
+    focus_table(&mut h);
+    press(&mut h.vcx, "/");
+    h.vcx.simulate_input("staging");
+    h.vcx.run_until_parked();
+    assert_eq!(row_namespaces(&mut h).len(), 1, "filtered to one row");
+
+    h.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window.click("clean", cx);
+    });
+    h.vcx.run_until_parked();
+    assert_eq!(row_namespaces(&mut h).len(), 2, "cleared: both rows again");
+}

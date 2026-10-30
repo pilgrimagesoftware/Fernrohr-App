@@ -8,7 +8,7 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Enter, Input, InputEvent, InputState};
+use gpui_kit::component::input::{Enter, InputEvent, InputState};
 use gpui_kit::*;
 use std::rc::Rc;
 
@@ -157,7 +157,7 @@ impl<T: 'static> Render for PromptView<T> {
                                     this.submit(window, cx)
                                 }))
                                 .child(
-                                    Input::new(input)
+                                    crate::ui::text_field::text_field(input, cx)
                                         .id(SharedString::from(format!("{prefix}-field-{ix}"))),
                                 ),
                         )

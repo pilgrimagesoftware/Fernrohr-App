@@ -10,7 +10,6 @@ use crate::ui::list_state::{self, TableArea};
 const KIND_LABEL: &str = "Pods";
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
-use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 
 /// Up/Down with no pod selected, or with focus on the panel rather than its table
@@ -202,7 +201,7 @@ impl Render for PodsPanel {
                         .child(
                             div()
                                 .on_action(cx.listener(Self::on_action_clear_filter))
-                                .child(Input::new(&filter_input)),
+                                .child(crate::ui::text_field::text_field(&filter_input, cx)),
                         )
                         .child(
                             div()

@@ -73,6 +73,12 @@ impl ObjectDetailPanel {
         (self.edit.is_some(), self.edit_notice.clone())
     }
 
+    /// Test-only: whether the object has loaded - what Edit needs first.
+    #[cfg(test)]
+    pub(crate) fn test_loaded(&self) -> bool {
+        self.object().is_some()
+    }
+
     /// Test-only: the Node's own embedded pods region (#186), if this panel
     /// built one - `None` for every kind but Node.
     #[cfg(test)]

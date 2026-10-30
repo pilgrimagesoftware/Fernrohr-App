@@ -19,7 +19,6 @@ use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -253,7 +252,7 @@ impl EventsPanel {
                         div()
                             .flex_1()
                             .on_action(cx.listener(Self::on_action_clear_search))
-                            .child(Input::new(&search)),
+                            .child(crate::ui::text_field::text_field(&search, cx)),
                     )
                     .child(
                         div()
