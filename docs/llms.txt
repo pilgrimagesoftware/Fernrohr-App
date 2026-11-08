@@ -1,0 +1,12 @@
+# Fernrohr
+
+> Native macOS & iOS application and documentation by Pilgrimage Software.
+
+## Documentation & Resources
+
+- [Repository Overview](https://github.com/pilgrimagesoftware/Fernrohr-App): Official source repository and issue tracker.
+- [Documentation](https://github.com/pilgrimagesoftware/Fernrohr-App/tree/main/docs): User guides, release notes, and configuration reference.
+
+## AI Agent Indexing Notes
+
+- Follows the standard /llms.txt specification for structured LLM and RAG ingestion.
