@@ -79,5 +79,6 @@ pub(crate) fn on_kind_actions<T: KindHost>(div: Div, cx: &mut Context<T>) -> Div
         RemoveTaint,
         CreateToken,
         OpenHost,
+        ForceSync,
     )
 }

@@ -286,6 +286,7 @@ and a detail panel while its object is. A Services list keeps its own
 | Node: Remove Taint… | <kbd>⌥⇧T</kbd> | `KindRemoveTaint && !Input` | — | `kind.remove_taint` |
 | ServiceAccount: Create Token | <kbd>⇧K</kbd> | `KindCreateToken && !Input` | — | `kind.create_token` |
 | Ingress: Open Host in Browser | <kbd>⇧O</kbd> | `KindOpenHost && !Input` | — | `kind.open_host` |
+| Force Sync… | <kbd>⇧S</kbd> | `KindForceSync && !Input` | — | `kind.force_sync` |
 
 ### Exec library
 

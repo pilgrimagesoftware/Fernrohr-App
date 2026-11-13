@@ -63,6 +63,20 @@ pub(crate) async fn set_paused(
         .map_err(refused)
 }
 
+/// Force Sync: `annotation`'s request merged onto object `name`, only on the
+/// object with `uid`.
+pub(crate) async fn force_sync(
+    client: kube::Client,
+    kind: &DiscoveredKind,
+    namespace: Option<&str>,
+    name: &str,
+    annotation: super::SyncAnnotation,
+    uid: Option<&str>,
+) -> Result<(), ActionFailure> {
+    let patch = with_uid(annotation.patch(jiff::Timestamp::now()), uid);
+    merge(client, kind, namespace, name, &patch).await
+}
+
 /// Expand: a claim's requested storage set to `size`. Whether its StorageClass
 /// allows it is the cluster's to say; its refusal is reported as it gives it.
 pub(crate) async fn expand(

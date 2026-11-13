@@ -243,6 +243,7 @@ keys for whatever the selected object is offered.
 | Node | Remove Taint… | <kbd>⌥⇧T</kbd> | Asks which taint to remove when the node has several. |
 | ServiceAccount | Create Token | <kbd>⇧K</kbd> | Requests a new token and shows it once. |
 | Ingress | Open Host in Browser | <kbd>⇧O</kbd> | Opens the first rule's host, such as `https://app.example.com`. A wildcard host such as `*.example.com` names no one site, so it's passed over, and an Ingress with no other host isn't offered the action. |
+| ExternalSecret, ClusterExternalSecret, Flux objects, Argo CD Application | Force Sync… | <kbd>⇧S</kbd> | Asks the controller to act on the object now by setting the annotation it watches. External Secrets syncs it (`force-sync`; `external-secrets.io/force-sync` on a ClusterExternalSecret, which needs a recent External Secrets release). Flux reconciles it (`reconcile.fluxcd.io/requestedAt` on any `*.toolkit.fluxcd.io` kind except notification Alerts and Providers, which don't reconcile). Argo CD refreshes it (`argocd.argoproj.io/refresh: normal`): it re-reads the source and compares, and deploys only if the Application syncs automatically, so the action is called Refresh there. Nothing else on the object changes. |
 
 Every action that changes the cluster asks first, naming the object. Expand
 can't be undone, because a claim can't be made smaller again, so its question
