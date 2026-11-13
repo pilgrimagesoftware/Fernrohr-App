@@ -80,6 +80,29 @@ async fn a_failure_reports_its_status_and_stderr() {
     );
 }
 
+/// A fake `helm` still open for writing somewhere - the descriptor a process
+/// forked by a parallel test inherits while `script` writes it - delays the
+/// run rather than failing it with "Text file busy". Linux is where that
+/// race bites; elsewhere this passes either way.
+#[tokio::test]
+async fn a_fake_helm_briefly_held_open_still_runs() {
+    let dir = temp_dir("run-busy");
+    let helm = script(&dir, "helm", "echo done");
+    let held = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&helm)
+        .expect("a write descriptor");
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        drop(held);
+    });
+    let output = run(command(&helm, &dir, Duration::from_secs(30)))
+        .await
+        .expect("it runs once the descriptor closes");
+    release.join().expect("the holder thread");
+    assert_eq!(output.stdout.trim(), "done");
+}
+
 /// Past its timeout the run is stopped - and so is what `helm` started, a
 /// hook's process here, since the whole group goes.
 #[tokio::test]
