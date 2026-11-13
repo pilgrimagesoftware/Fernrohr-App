@@ -46,6 +46,10 @@ pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long resolving the login shell's `PATH` may take before falling back.
+/// How long a custom resource list waits for its CRD's printer columns (#352)
+/// before listing with the generic columns instead.
+pub(crate) const CRD_COLUMNS_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How long a list panel's loading or refreshing indicator waits before it
