@@ -8,6 +8,7 @@ pub(crate) mod actions;
 mod decode;
 pub(crate) mod detail;
 pub(crate) mod list;
+pub(crate) mod manifest;
 mod table;
 mod watch;
 

@@ -70,9 +70,30 @@ says it no longer exists.
 | --- | --- | --- |
 | Overview | <kbd>1</kbd> | Name, namespace, status, revision, chart and app version, first and last deployed, and the last operation's description. |
 | History | <kbd>2</kbd> | Every revision, newest first, with its status, when it was deployed, its chart and app version, and its description. The deployed revision is marked. Move between revisions with <kbd>↓</kbd> and <kbd>↑</kbd>, or click one. |
+| Values | <kbd>3</kbd> | The values the release was installed or upgraded with, as `helm get values` prints them. Hidden until you reveal them. |
+| Manifest | <kbd>4</kbd> | The objects the chart rendered, as `helm get manifest` prints them. Hidden until you reveal it. |
 | Notes | <kbd>5</kbd> | The chart's notes, as `helm get notes` prints them. |
 
 Click a tab to show it too. Each tab is also in the command palette while the panel has focus.
+
+### Values and manifests
+
+Values and manifests can hold passwords and keys, so both tabs open hidden. Press <kbd>R</kbd> or
+choose **Reveal** to show the selected revision's text, and <kbd>R</kbd> or **Hide** to hide it
+again. Fernrohr forgets what you revealed when you hide it, switch tabs, pick another revision or
+close the panel.
+
+Even when revealed, a Secret in a manifest shows only its keys and each value's size, such as
+`password: <redacted: 12 bytes>`. If a document in the manifest can't be read, it's left out rather
+than shown as it is.
+
+To see an earlier revision's values or manifest, select the revision in History and press
+<kbd>V</kbd> for its values or <kbd>M</kbd> for its manifest. The tab says which revision it
+shows.
+
+Drag across the notes, or across revealed values or a revealed manifest, to select part of them
+and copy it. **Helm Release: Copy Values** and **Helm Release: Copy Manifest** copy all the revealed
+text. They're in the command palette only while it shows, and the **Copy** button beside it does the same.
 
 ## Roll back or uninstall a release
 

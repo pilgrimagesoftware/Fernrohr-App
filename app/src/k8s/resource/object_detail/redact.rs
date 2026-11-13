@@ -20,22 +20,42 @@ pub(crate) fn redact(kind: &DiscoveredKind, object: &mut DynamicObject) {
     if !(kind.gvk.group.is_empty() && kind.gvk.kind == "Secret") {
         return;
     }
-    if let Some(Value::Object(data)) = object.data.get_mut("data") {
+    redact_values(&mut object.data);
+    if let Some(annotations) = object.metadata.annotations.as_mut()
+        && let Some(applied) = annotations.get_mut(LAST_APPLIED_ANNOTATION)
+    {
+        *applied = placeholder(applied.len());
+    }
+}
+
+/// [`redact`] for a Secret given as JSON - one document of a Helm release's
+/// manifest (helm-releases D6): its `data`, `stringData` and last-applied
+/// annotation, by the same rule.
+pub(crate) fn redact_secret_json(secret: &mut Value) {
+    redact_values(secret);
+    let applied = secret
+        .get_mut("metadata")
+        .and_then(|metadata| metadata.get_mut("annotations"))
+        .and_then(|annotations| annotations.get_mut(LAST_APPLIED_ANNOTATION));
+    if let Some(applied) = applied {
+        let size = applied.as_str().map(str::len).unwrap_or_default();
+        *applied = Value::String(placeholder(size));
+    }
+}
+
+/// Each `data` and `stringData` value of a Secret's fields, as its size.
+fn redact_values(fields: &mut Value) {
+    if let Some(Value::Object(data)) = fields.get_mut("data") {
         for value in data.values_mut() {
             let size = value.as_str().map(base64_decoded_len).unwrap_or_default();
             *value = Value::String(placeholder(size));
         }
     }
-    if let Some(Value::Object(data)) = object.data.get_mut("stringData") {
+    if let Some(Value::Object(data)) = fields.get_mut("stringData") {
         for value in data.values_mut() {
             let size = value.as_str().map(str::len).unwrap_or_default();
             *value = Value::String(placeholder(size));
         }
-    }
-    if let Some(annotations) = object.metadata.annotations.as_mut()
-        && let Some(applied) = annotations.get_mut(LAST_APPLIED_ANNOTATION)
-    {
-        *applied = placeholder(applied.len());
     }
 }
 

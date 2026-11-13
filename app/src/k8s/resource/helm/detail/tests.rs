@@ -29,9 +29,11 @@ fn revision(name: &str, version: u32, status: &str) -> Value {
             "first_deployed": "2026-11-01T10:00:00Z",
             "last_deployed": format!("2026-11-1{version}T09:00:00Z"),
             "description": format!("Upgrade {version} complete"),
-            "notes": "Visit the app at http://app.example.com",
+            "notes": "Visit the app at http://app.example.com\nThen run: kubectl get pods",
         },
         "chart": { "metadata": { "name": name, "version": format!("1.{version}.0"), "appVersion": "2.0" } },
+        "config": { "replicaCount": version, "image": { "tag": "2.0" } },
+        "manifest": "---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: web\nstringData:\n  password: hunter2\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web\n",
     });
     let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     gz.write_all(release.to_string().as_bytes()).unwrap();
@@ -186,7 +188,7 @@ async fn notes_show_by_their_key(cx: &mut TestAppContext) {
     assert_eq!(h.read(|panel, _| panel.tab), ReleaseTab::Notes);
     assert_eq!(
         h.read(|panel, cx| panel.notes(cx).map(str::to_string)),
-        Some("Visit the app at http://app.example.com".to_string())
+        Some("Visit the app at http://app.example.com\nThen run: kubectl get pods".to_string())
     );
 }
 
@@ -243,5 +245,187 @@ fn notes_show_as_written() {
             " ",
             "See [the docs](http://docs.example.com)",
         ]
+    );
+}
+
+fn shows(h: &mut Harness, selector: &'static str) -> bool {
+    use gpui_kit::test::TestWindowExt as _;
+    h.vcx.update(|window, cx| window.render_frame(cx));
+    h.vcx.debug_bounds(selector).is_some()
+}
+
+/// helm-releases 5.1: Values opens hidden; `r` reveals the selected (deployed)
+/// revision's values and `r` again hides them.
+#[gpui_kit::test]
+async fn values_open_hidden_and_reveal_by_key(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    h.wait_for("listed", |panel, cx| panel.history(cx).len() == 3);
+    h.vcx.simulate_keystrokes("3");
+    h.vcx.run_until_parked();
+    assert_eq!(h.read(|panel, _| panel.tab), ReleaseTab::Values);
+    assert!(
+        shows(&mut h, "helm-release-hidden"),
+        "hidden until revealed"
+    );
+    assert!(h.read(|panel, cx| panel.revealed_text(ReleaseTab::Values, cx).is_none()));
+
+    h.vcx.simulate_keystrokes("r");
+    h.wait_for("revealed the values", |panel, cx| {
+        panel.revealed_text(ReleaseTab::Values, cx).is_some()
+    });
+    let values = h.read(|panel, cx| {
+        panel
+            .revealed_text(ReleaseTab::Values, cx)
+            .map(str::to_string)
+    });
+    assert!(
+        values.unwrap().contains("replicaCount: 3"),
+        "the deployed revision's"
+    );
+
+    h.vcx.simulate_keystrokes("r");
+    h.vcx.run_until_parked();
+    assert!(
+        h.read(|panel, cx| panel.revealed_text(ReleaseTab::Values, cx).is_none()),
+        "hidden again"
+    );
+}
+
+/// helm-releases 5.2: a revealed manifest shows its Secret's keys and sizes,
+/// never the value, and every other document as written.
+#[gpui_kit::test]
+async fn a_revealed_manifest_redacts_its_secrets(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    h.wait_for("listed", |panel, cx| panel.history(cx).len() == 3);
+    h.vcx.simulate_keystrokes("4");
+    h.vcx.simulate_keystrokes("r");
+    h.wait_for("revealed the manifest", |panel, cx| {
+        panel.revealed_text(ReleaseTab::Manifest, cx).is_some()
+    });
+    let manifest = h
+        .read(|panel, cx| {
+            panel
+                .revealed_text(ReleaseTab::Manifest, cx)
+                .map(str::to_string)
+        })
+        .unwrap();
+    assert!(!manifest.contains("hunter2"), "{manifest}");
+    assert!(manifest.contains("redacted: 7 bytes"), "{manifest}");
+    assert!(manifest.contains("kind: ConfigMap"), "{manifest}");
+}
+
+/// From History, `v` shows the selected revision's values, saying which; the
+/// reveal belongs to one tab and revision, so changing either drops it.
+#[gpui_kit::test]
+async fn an_earlier_revisions_values_from_history(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    h.wait_for("listed", |panel, cx| panel.history(cx).len() == 3);
+    h.vcx.simulate_keystrokes("3");
+    h.vcx.simulate_keystrokes("r");
+    h.wait_for("revealed", |panel, cx| {
+        panel.revealed_text(ReleaseTab::Values, cx).is_some()
+    });
+
+    h.vcx.simulate_keystrokes("2");
+    h.vcx.run_until_parked();
+    assert!(
+        h.read(|panel, _| panel.revealed.is_none()),
+        "a tab change drops the reveal"
+    );
+    h.vcx.simulate_keystrokes("down");
+    h.vcx.simulate_keystrokes("v");
+    h.vcx.run_until_parked();
+    assert_eq!(h.read(|panel, _| panel.tab), ReleaseTab::Values);
+    assert_eq!(h.read(|panel, cx| panel.selected_revision(cx)), Some(2));
+    assert!(shows(&mut h, "helm-release-hidden"), "still hidden");
+
+    h.vcx.simulate_keystrokes("r");
+    h.wait_for("revealed revision 2", |panel, cx| {
+        panel
+            .revealed_text(ReleaseTab::Values, cx)
+            .is_some_and(|values| values.contains("replicaCount: 2"))
+    });
+}
+
+/// Copy is offered only while the text is revealed, and copies it.
+#[gpui_kit::test]
+async fn copy_is_only_offered_while_revealed(cx: &mut TestAppContext) {
+    use super::commands::CopyValues;
+    let mut h = open(cx);
+    h.wait_for("listed", |panel, cx| panel.history(cx).len() == 3);
+    h.vcx.simulate_keystrokes("3");
+    h.vcx.run_until_parked();
+    let available = |h: &mut Harness| {
+        use gpui_kit::test::TestWindowExt as _;
+        h.vcx.update(|window, cx| {
+            window.render_frame(cx);
+            window.is_action_available(&CopyValues, cx)
+        })
+    };
+    assert!(!available(&mut h), "hidden: nothing to copy");
+    h.vcx.simulate_keystrokes("r");
+    h.wait_for("revealed", |panel, cx| {
+        panel.revealed_text(ReleaseTab::Values, cx).is_some()
+    });
+    assert!(available(&mut h), "revealed: Copy Values is offered");
+    h.vcx.dispatch_action(CopyValues);
+    let copied = h
+        .vcx
+        .update(|_, cx| cx.read_from_clipboard())
+        .and_then(|item| item.text());
+    assert!(copied.is_some_and(|text| text.contains("replicaCount: 3")));
+}
+
+/// Drags across the element `selector` names and returns the selected text.
+fn drag_select(h: &mut Harness, selector: &'static str) -> String {
+    use gpui_kit::{Modifiers, MouseButton, point, px};
+    h.vcx.update(|window, cx| {
+        let _ = window.draw(cx);
+    });
+    let bounds = h.vcx.debug_bounds(selector).expect("the text is drawn");
+    let start = point(bounds.left() + px(1.), bounds.top() + px(2.));
+    let end = point(bounds.right() - px(1.), bounds.bottom() - px(1.));
+    h.vcx
+        .simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+    h.vcx
+        .simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::none());
+    h.vcx
+        .simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+    h.vcx.run_until_parked();
+    h.vcx.update(|window, cx| {
+        let _ = window.draw(cx);
+        gpui_kit::base::TextSelection::selected_text(window, cx)
+    })
+}
+
+/// Notes often hold commands to copy: their lines drag-select like log lines.
+#[gpui_kit::test]
+async fn notes_can_be_selected(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    h.vcx.simulate_keystrokes("5");
+    h.wait_for("read the notes", |panel, cx| panel.notes(cx).is_some());
+    let selected = drag_select(&mut h, "helm-release-notes");
+    let (first, second) = (selected.find("Visit the app"), selected.find("Then run"));
+    assert!(
+        matches!((first, second), (Some(a), Some(b)) if a < b),
+        "both lines, in order: {selected:?}"
+    );
+}
+
+/// Revealed values drag-select the same way.
+#[gpui_kit::test]
+async fn revealed_values_can_be_selected(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    h.wait_for("listed", |panel, cx| panel.history(cx).len() == 3);
+    h.vcx.simulate_keystrokes("3");
+    h.vcx.simulate_keystrokes("r");
+    h.wait_for("revealed", |panel, cx| {
+        panel.revealed_text(ReleaseTab::Values, cx).is_some()
+    });
+    let selected = drag_select(&mut h, "helm-release-text");
+    let (first, second) = (selected.find("replicaCount: 3"), selected.find("image:"));
+    assert!(
+        matches!((first, second), (Some(a), Some(b)) if a < b),
+        "both lines, in order: {selected:?}"
     );
 }

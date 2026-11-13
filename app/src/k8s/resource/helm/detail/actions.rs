@@ -3,10 +3,18 @@
 //! current revision when that is what's selected - and which revision's
 //! manifest Uninstall counts. Confirming and running are `helm::actions`'.
 
+use super::commands::PANEL_KEY_CONTEXT;
 use super::panel::HelmReleasePanel;
 use crate::helm_cli;
-use crate::k8s::resource::helm::actions::{self, ActionHost, ActionState, RevisionLine, Rollback};
+use crate::k8s::resource::helm::actions::{
+    self, ActionHost, ActionState, RevisionLine, Rollback, RollbackRelease, UninstallRelease,
+};
+use gpui_kit::assets::IconName;
 use gpui_kit::*;
+
+/// The header's action buttons.
+pub(crate) const ROLLBACK_BUTTON: &str = "helm-release-rollback";
+pub(crate) const UNINSTALL_BUTTON: &str = "helm-release-uninstall";
 
 impl ActionHost for HelmReleasePanel {
     fn action_state(&mut self) -> &mut ActionState {
@@ -84,5 +92,43 @@ impl HelmReleasePanel {
             .map(|revision| revision.secret.clone());
         let deployed = self.client(cx).zip(deployed);
         actions::confirm_uninstall(self, self.run_key(), deployed, window, cx);
+    }
+}
+
+impl HelmReleasePanel {
+    /// Rollback's and Uninstall's icon buttons, once the release is listed:
+    /// disabled, saying why, while `helm` or the connection isn't available.
+    pub(super) fn action_buttons(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        if self.history(cx).is_empty() {
+            return Vec::new();
+        }
+        let unavailable = self.actions_unavailable(cx);
+        let panel = cx.weak_entity();
+        let rollback = {
+            let panel = panel.clone();
+            actions::action_button(
+                ROLLBACK_BUTTON,
+                IconName::Undo2,
+                "Roll back",
+                &RollbackRelease,
+                PANEL_KEY_CONTEXT,
+                unavailable.clone(),
+                move |window, cx| {
+                    let _ = panel.update(cx, |this, cx| this.rollback(window, cx));
+                },
+            )
+        };
+        let uninstall = actions::action_button(
+            UNINSTALL_BUTTON,
+            IconName::Trash,
+            "Uninstall",
+            &UninstallRelease,
+            PANEL_KEY_CONTEXT,
+            unavailable,
+            move |window, cx| {
+                let _ = panel.update(cx, |this, cx| this.uninstall(window, cx));
+            },
+        );
+        vec![rollback, uninstall]
     }
 }

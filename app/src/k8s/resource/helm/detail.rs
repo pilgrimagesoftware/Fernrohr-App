@@ -11,6 +11,8 @@ mod fetch;
 mod panel;
 mod render;
 pub(crate) mod restore;
+mod reveal;
+mod text_tab;
 
 pub(crate) use commands::{PANEL_KEY_CONTEXT as DETAIL_KEY_CONTEXT, register_commands};
 pub use panel::HelmReleasePanel;
