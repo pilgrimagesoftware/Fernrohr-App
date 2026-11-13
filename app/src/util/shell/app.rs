@@ -168,6 +168,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::object_detail::register_commands(registry);
     crate::k8s::resource::object_list::register_commands(registry);
     crate::k8s::resource::events_browser::register_commands(registry);
+    crate::k8s::resource::helm::list::register_commands(registry);
     crate::ui::placeholder::register_commands(registry);
     crate::ui::namespace_sets::register_commands(registry);
     crate::ui::table_fit::register_commands(registry);
@@ -246,6 +247,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::exec::register_restore(cx);
     crate::k8s::resource::object_list::register_restore(cx);
     crate::k8s::resource::events_browser::register_restore(cx);
+    crate::k8s::resource::helm::list::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     crate::ui::unrestored::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();

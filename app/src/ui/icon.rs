@@ -195,6 +195,8 @@ pub fn for_target(target: &crate::ui::nav::NavTarget) -> KindIcon {
         NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) | NavTarget::Exec(_) => {
             KindIcon::Container
         }
+        // Not a kind: the generic one, until the set gains a Helm icon.
+        NavTarget::HelmReleases => KindIcon::Kind,
     }
 }
 

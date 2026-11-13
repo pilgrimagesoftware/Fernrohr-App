@@ -20,6 +20,9 @@ custom resources alike. To reach it from the keyboard, run **Focus Resources**
 | Move between kinds | <kbd>↓</kbd> and <kbd>↑</kbd> | Click a kind |
 | Open the selected kind | <kbd>Enter</kbd> | Double-click it, or choose Open from its context menu |
 
+The Workloads section ends with **Helm Releases**, which isn't a kind: it opens the list of the
+cluster's Helm releases. See [Helm releases]({{ '/latest/helm/' | relative_url }}).
+
 Opening a kind that already has a panel for the same cluster and namespace
 scope focuses that panel instead of opening a second one. A list updates live:
 rows appear, change and disappear as the cluster changes, with no refresh.

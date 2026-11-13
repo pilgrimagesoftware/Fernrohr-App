@@ -208,3 +208,26 @@ fn a_restored_pods_logs_panel_is_keyed_by_its_pod() {
         }))
     );
 }
+
+/// A saved Helm Releases list restores under its own target, with its context
+/// and namespaces.
+#[test]
+fn a_restored_helm_releases_list_is_keyed_by_its_target() {
+    use gpui_kit::component::dock::{PanelInfo, PanelState};
+    let state = PanelState {
+        panel_name: "HelmReleases".to_string(),
+        children: Vec::new(),
+        info: PanelInfo::Panel(serde_json::json!({
+            "context_name": "kind-dev",
+            "namespaces": ["shop"],
+            "sort": null,
+            "filter": null,
+            "show_uninstalled": false,
+        })),
+    };
+    let keys = super::restored_panel_keys(&state);
+    let key = keys[0].as_ref().expect("a Helm Releases list is keyed");
+    assert_eq!(key.target, NavTarget::HelmReleases);
+    assert_eq!(key.context_name, "kind-dev");
+    assert_eq!(key.namespaces, vec!["shop"]);
+}

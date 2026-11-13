@@ -77,6 +77,7 @@ fn every_kinds_malformed_state_restores_as_a_placeholder(cx: &mut TestAppContext
         crate::k8s::resource::object_list::register_restore(cx);
         crate::ui::placeholder::register_restore(cx);
         crate::k8s::resource::events_browser::register_restore(cx);
+        crate::k8s::resource::helm::list::register_restore(cx);
     });
     let (host, cx) = cx.add_window_view(|window, cx| {
         let (area, skin) = DockSkin::dock_area("restore-test", Some(1), window, cx);

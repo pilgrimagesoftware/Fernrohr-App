@@ -156,6 +156,10 @@ fn panel_key(state: &PanelState) -> Option<PanelKey> {
             crate::k8s::resource::events_browser::restore::from_state(data)?;
             NavTarget::Kind(crate::k8s::cluster::discovery::DiscoveredKind::events())
         }
+        "HelmReleases" => {
+            crate::k8s::resource::helm::list::restore::from_state(data)?;
+            NavTarget::HelmReleases
+        }
         _ => return None,
     };
     Some(PanelKey {
