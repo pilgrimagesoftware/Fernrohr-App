@@ -177,10 +177,28 @@ async fn disconnect_confirms_then_removes_the_capsule_and_the_last_returns_to_th
 async fn a_capsules_menu_offers_disconnect(cx: &mut TestAppContext) {
     let mut h = harness(cx, &["kind-dev", "staging"]);
     click(&mut h, "context-chip-menu-staging");
-    // The menu's one item is Disconnect: Enter picks it.
-    h.vcx.simulate_keystrokes("enter");
+    // Disconnect leads the menu, before Disconnect Others and Disconnect All
+    // (#359): Down highlights it, Enter picks it.
+    h.vcx.simulate_keystrokes("down enter");
     h.vcx.run_until_parked();
     assert!(dialog_open(&mut h), "the menu's Disconnect asks first");
     confirm_by_keyboard(&mut h);
     assert_eq!(capsules(&mut h), ["kind-dev"], "staging's capsule went");
+}
+
+/// #359: a capsule's Disconnect Others keeps that capsule's context, from the
+/// keyboard - not the window's active one.
+#[gpui_kit::test]
+async fn a_capsules_disconnect_others_keeps_its_context(cx: &mut TestAppContext) {
+    let mut h = harness(cx, &["kind-dev", "staging", "test"]);
+    click(&mut h, "context-chip-menu-staging");
+    h.vcx.simulate_keystrokes("down down enter");
+    h.vcx.run_until_parked();
+    assert!(dialog_open(&mut h), "Disconnect Others asks first");
+    confirm_by_keyboard(&mut h);
+    assert_eq!(
+        capsules(&mut h),
+        ["staging"],
+        "only staging's capsule stays"
+    );
 }

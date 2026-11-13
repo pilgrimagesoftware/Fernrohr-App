@@ -2,7 +2,8 @@
 //! (`toolbar-layout-with-gpui-kit` 1.1-1.3, formerly the context bar's chips): the
 //! capsule draws a [`StatusItem`] as `<context> [<tunnel>] <state icon>`, then the
 //! elapsed time unless connected (`status-capsule-icons`), and clicking it makes
-//! its context the window's active one; its menu offers Disconnect. Every action
+//! its context the window's active one; its menu offers Disconnect, and with
+//! several contexts Disconnect Others and Disconnect All. Every action
 //! asks `MainWindow`, which owns the window's contexts.
 //!
 //! The context name is what a row of capsules is scanned for, so it leads, in the
@@ -21,7 +22,7 @@
 //! piece of capsule text reaches the WCAG [`TEXT_CONTRAST`] of 4.5:1, which the
 //! palette's tests hold every bundled theme to.
 
-use super::{StatusBarView, StatusItem};
+use super::{DisconnectAllContexts, Disconnecting, StatusBarView, StatusItem};
 use crate::k8s::cluster::context_health::{ContextHealth, Severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::format_age;
@@ -125,12 +126,14 @@ pub(crate) fn attention_selector(context_name: &str) -> String {
 }
 
 /// `item`'s capsule: its health and identity as one clickable body, then a menu
-/// button offering Disconnect - and, while the context awaits a manual tunnel's
+/// button offering Disconnect - with Disconnect Others and Disconnect All when
+/// the window has `several` contexts - and, while the context awaits a manual tunnel's
 /// confirmation, Proceed and Cancel above it. Fully rounded and bordered, so the
 /// row reads as a set of contexts; the active one is filled, and an awaiting one
 /// is filled for attention.
 pub(super) fn render_capsule(
     item: StatusItem,
+    several: bool,
     this: WeakEntity<StatusBarView>,
     theme: &gpui_kit::component::Theme,
 ) -> AnyElement {
@@ -220,12 +223,45 @@ pub(super) fn render_capsule(
                 .separator(),
             None => menu,
         };
-        menu.item(
-            PopupMenuItem::new("Disconnect").on_click(move |_event, window, cx| {
+        let menu = menu.item(PopupMenuItem::new("Disconnect").on_click({
+            let (this, name) = (this.clone(), name.clone());
+            move |_event, window, cx| {
                 let name = name.clone();
                 let _ = this.update(cx, |bar, cx| bar.open_disconnect_dialog(name, window, cx));
-            }),
-        )
+            }
+        }));
+        // With several contexts, the rest at once (#359): the others than
+        // this capsule's, or all of them.
+        if !several {
+            return menu;
+        }
+        // A row shows its command's key only where the key does the same:
+        // Disconnect Other Contexts keeps the *active* context, not this
+        // capsule's, so that row shows none.
+        let many = |label: &'static str, which: Disconnecting, action: Option<Box<dyn Action>>| {
+            let this = this.clone();
+            let item = PopupMenuItem::new(label);
+            let item = match action {
+                Some(action) => item.action(action),
+                None => item,
+            };
+            item.on_click(move |_event, window, cx| {
+                let which = which.clone();
+                let _ = this.update(cx, |bar, cx| {
+                    bar.open_disconnect_many_dialog(which, window, cx)
+                });
+            })
+        };
+        menu.item(many(
+            "Disconnect Others",
+            Disconnecting::OthersThan(name.clone()),
+            None,
+        ))
+        .item(many(
+            "Disconnect All",
+            Disconnecting::All,
+            Some(Box::new(DisconnectAllContexts)),
+        ))
     });
 
     div()
