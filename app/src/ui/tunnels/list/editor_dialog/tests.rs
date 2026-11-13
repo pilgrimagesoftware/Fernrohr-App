@@ -329,3 +329,42 @@ async fn an_ssh_tunnel_switches_to_manual_from_the_keyboard(cx: &mut TestAppCont
     assert_eq!(tunnel.bastion_host, "bastion.example.com");
     assert_eq!(tunnel.bastion_user, "ops");
 }
+
+/// #364: Edit is an icon button named by its tooltip
+/// (`.claude/rules/icon-buttons.md`).
+#[gpui_kit::test]
+async fn the_edit_icon_has_its_tooltip(cx: &mut TestAppContext) {
+    let mut h = harness(cx, 600.);
+    let id: &'static str = format!("tunnels-edit-{TUNNEL_ID}").leak();
+    let at = h.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window.find(id).bounds().center()
+    });
+    h.vcx.simulate_mouse_move(at, None, Modifiers::none());
+    h.vcx
+        .executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    h.vcx.run_until_parked();
+    let selector: &'static str =
+        crate::ui::icon_tooltip::selector(crate::ui::tunnels::list::render::EDIT_TOOLTIP).leak();
+    assert!(h.vcx.debug_bounds(selector).is_some(), "the tooltip shows");
+}
+
+/// #364: the Edit icon is still a tab stop - Tab from its row reaches it, and
+/// Space opens the editor.
+#[gpui_kit::test]
+async fn tab_from_the_row_reaches_the_edit_icon(cx: &mut TestAppContext) {
+    let mut h = harness(cx, 600.);
+    h.edit();
+    h.keys("escape");
+    assert!(h.row_focused(), "focus is on the tunnel's row");
+
+    h.keys("tab");
+    h.press_space();
+    assert!(h.dialog_open(), "Tab then Space opened the editor");
+    assert_eq!(h.focused_field(), Some("Name"));
+    h.vcx.simulate_input(" 2");
+    h.vcx.run_until_parked();
+    h.keys("enter");
+    assert_eq!(h.saved_name(), "QA 2", "on this tunnel, not a new one");
+}
