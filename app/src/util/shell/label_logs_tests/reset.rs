@@ -157,10 +157,9 @@ async fn it_starts_over_while_still_connecting(cx: &mut TestAppContext) {
     assert_started_over(&mut vcx, &panel);
 }
 
-/// The reset's key is its alone: no other command has it in any context -
-/// stricter than `keymap::conflicts`, which counts two panel contexts as
-/// separate whenever their text differs, as `TypedLabelLogs` and
-/// `TypedLabelLogs && !Input` do though one panel has both.
+/// The reset's key is its alone: `keymap::conflicts` reports no clash, now
+/// that it reads `TypedLabelLogs` and `TypedLabelLogs && !Input` - one panel's
+/// two scopes - as overlapping (#331).
 #[test]
 fn its_key_collides_with_nothing() {
     use crate::keymap::{KeymapConfig, conflicts};
@@ -171,16 +170,6 @@ fn its_key_collides_with_nothing() {
         .expect("the reset is registered");
     assert_eq!(command.context, Some("TypedLabelLogs"));
     let key = command.default_binding;
-    let parsed = gpui_kit::Keystroke::parse(key).expect("the key parses");
-    let sharing: Vec<&str> = registry
-        .iter()
-        .filter(|other| other.id != command.id)
-        .filter(|other| {
-            gpui_kit::Keystroke::parse(other.default_binding).ok() == Some(parsed.clone())
-        })
-        .map(|other| other.id)
-        .collect();
-    assert!(sharing.is_empty(), "{key} is also {sharing:?}'s");
     let found = conflicts(
         &registry,
         &KeymapConfig::default(),
@@ -194,7 +183,18 @@ fn its_key_collides_with_nothing() {
         found.shadows.len(),
         found.prefixes.len()
     );
-    // The check sees this key: a global command given it is shadowed by it.
+    // The check sees this key: the panel's `!Input` scope given it clashes,
+    // and a global command given it is shadowed by it.
+    let narrower = conflicts(
+        &registry,
+        &KeymapConfig::default(),
+        "logs.pick_context",
+        key,
+    );
+    assert!(
+        narrower.same_scope.contains(&"logs.reset_labels"),
+        "TypedLabelLogs && !Input clashes with TypedLabelLogs on {key}"
+    );
     let other = conflicts(&registry, &KeymapConfig::default(), "nav.show_logs", key);
     assert_eq!(
         other.shadows.len(),

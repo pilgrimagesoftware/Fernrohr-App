@@ -1,9 +1,11 @@
 //! Which other commands a key would collide with, for the keybindings
 //! editor's warning.
 //!
-//! Every registered command is either global or gated to one key context by
-//! name, so scope comparison is exact: two commands conflict when both are
-//! global or share a context. A global and a panel command on one key don't
+//! Every registered command is either global or gated to one key context. Two
+//! commands conflict when both are global or their contexts can match at
+//! once: the same context, or one a narrower clause of the other (`scope`,
+//! #331).
+//! A global and a panel command on one key don't
 //! conflict - GPUI gives the deeper (panel) binding precedence inside that
 //! panel and the global one everywhere else - but the editor shows it.
 //!
@@ -11,6 +13,8 @@
 //! is a clash too, in either direction: one of the two stops working. That
 //! one is reported wherever the scopes overlap - both global, one global, or
 //! the same context - since precedence doesn't untangle a half-typed chord.
+
+mod scope;
 
 use super::{KeymapConfig, resolve};
 use crate::command::CommandRegistry;
@@ -80,7 +84,7 @@ pub fn conflicts(
         };
         if other_keys != target {
             if let Some(kind) = prefix_kind(&target, &other_keys)
-                && scopes_overlap(command.context, other.context)
+                && scope::overlap(command.context, other.context)
             {
                 found.prefixes.push(Prefix {
                     command: other.id,
@@ -91,10 +95,11 @@ pub fn conflicts(
         }
         match (command.context, other.context) {
             (None, None) => found.same_scope.push(other.id),
-            // The same panel collides; two different panels are never both the
-            // focus path's deepest context, so they don't.
+            // The same panel collides, as does a narrower clause on it
+            // (`Logs` against `Logs && !Input`, #331); two different panels
+            // are never both the focus path's deepest context, so they don't.
             (Some(mine), Some(theirs)) => {
-                if mine == theirs {
+                if scope::contexts_overlap(mine, theirs) {
                     found.same_scope.push(other.id);
                 }
             }
@@ -121,15 +126,6 @@ fn prefix_kind(mine: &[Keystroke], theirs: &[Keystroke]) -> Option<PrefixKind> {
         Some(PrefixKind::StartsMine)
     } else {
         None
-    }
-}
-
-/// Whether two commands' keys can be live at once: a global one is live
-/// everywhere, a panel one only in its own context.
-fn scopes_overlap(mine: Option<&str>, theirs: Option<&str>) -> bool {
-    match (mine, theirs) {
-        (Some(mine), Some(theirs)) => mine == theirs,
-        _ => true,
     }
 }
 
