@@ -25,12 +25,13 @@ A tunnel is one of three kinds, chosen in the tunnel editor.
 ## Manage tunnels
 
 Open the Tunnels window with **Manage Tunnels…** (<kbd>⌘⇧T</kbd>), in the Context menu and the
-command palette. For each tunnel it shows how many contexts use it and whether it is running or
-idle. It doesn't bind contexts. That happens on the context ([see below](#bind-a-context-to-a-tunnel)).
+command palette. Each tunnel's row shows what it runs and how many contexts use it, and whether it
+is running or idle. It doesn't bind contexts. That happens on the context ([see below](#bind-a-context-to-a-tunnel)).
 
 - **Create:** choose **New Tunnel**, pick the kind and fill in the form. The tunnel then appears in
   every context's tunnel selector.
-- **Edit or rename:** choose **Edit Tunnel**. Context bindings follow a renamed tunnel, and they
+- **Edit or rename:** click the pencil icon on the tunnel's row, or <kbd>Tab</kbd> to it and press
+  <kbd>Space</kbd>. Context bindings follow a renamed tunnel, and they
   survive a change of kind.
 - **Test:** choose **Test** to try a tunnel without connecting any context. Testing an SSH tunnel
   opens an SSH session to the bastion without forwarding a port. Testing a command tunnel runs the
@@ -143,7 +144,10 @@ You normally edit tunnels in the Tunnels window, not in the file.
 A context connects directly, or through exactly one tunnel. Many contexts can share a tunnel.
 
 - **Keyboard:** run **Set Tunnel for Context** (<kbd>⌘⇧B</kbd>, in the Context menu and the command
-  palette) and pick a tunnel, or Direct to unbind.
+  palette) and pick a tunnel, or Direct to unbind. In a connected window it applies to the active
+  context. In the cluster picker it applies to the selected context, so select one with
+  <kbd>↑</kbd>/<kbd>↓</kbd> first. Until you do, the menu item is disabled and the picker's
+  **Tunnel** hint is dimmed.
 - **Mouse:** use the tunnel selector on the context's row in the cluster picker.
 
 The picker shows each bound context's tunnel name, and says that an unbound context connects

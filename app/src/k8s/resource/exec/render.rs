@@ -17,6 +17,9 @@ use gpui_kit::*;
 
 /// The shell panel's key context.
 pub const KEY_CONTEXT: &str = "ExecTerminal";
+/// The terminal element's identifiers, for `keymap::conflicts` (#331): it is
+/// an input as well.
+pub(crate) const KEY_CONTEXT_GROUP: &[&str] = &[KEY_CONTEXT, "Input"];
 /// Debug selectors: the terminal, the reserved-key hints, the ended notice.
 pub(crate) const TERMINAL: &str = "exec-terminal";
 pub(crate) const HINTS: &str = "exec-hints";

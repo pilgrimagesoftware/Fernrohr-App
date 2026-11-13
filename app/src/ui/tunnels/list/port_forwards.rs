@@ -1,4 +1,4 @@
-//! The Tunnels window's Port forwards section (`k9s-remaining-keybindings`
+//! The Tunnels window's Port Forwards section (`k9s-remaining-keybindings`
 //! 4.3): every forward started from a Pods or Services row, what it forwards,
 //! where it listens and its state, with a Stop that releases it. Stop is an
 //! icon button per row with a tooltip - a tab stop, so Tab and Space reach it as
@@ -111,7 +111,8 @@ impl TunnelsWindow {
             .border_t_1()
             .border_color(theme.border)
             .pt(crate::ui::space::spacing(cx).section_gap)
-            .child(div().text_sm().font_medium().child("Port forwards"))
+            // The same heading as "Tunnels" above it (#364).
+            .child(div().text_lg().font_semibold().child("Port Forwards"))
             .children(none)
             .children(rows)
             .into_any_element()
