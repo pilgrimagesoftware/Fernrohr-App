@@ -22,8 +22,9 @@ pub(crate) use kubeconfig::sweep_stale as sweep_stale_kubeconfigs;
 pub(crate) use locate::{HelmBinary, requested, set_status};
 pub(crate) use locate::{HelmStatus, status};
 pub(crate) use preference::{current as current_path, init, set_path};
-// UNWIRED(#370): section 8's actions use these; nothing outside tests does yet.
-#[allow(unused_imports)]
-pub(crate) use run::{HelmFailure, HelmOutput, ReleaseKey};
-#[allow(unused_imports)]
-pub(crate) use start::{HelmUnavailable, availability, start};
+pub(crate) use run::{HelmAction, HelmFailure, ReleaseKey};
+#[cfg(test)]
+pub(crate) use start::TestRunEnv;
+pub(crate) use start::{availability, start};
+#[cfg(test)]
+pub(crate) use test_helm::{script, temp_dir};

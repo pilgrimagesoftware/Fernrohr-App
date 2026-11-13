@@ -5,7 +5,7 @@
 use super::{HelmUnavailable, RunSpec, availability, execute, start, start_on};
 use crate::helm_cli::kubeconfig::Endpoint;
 use crate::helm_cli::locate::{HelmBinary, HelmStatus, set_status};
-use crate::helm_cli::run::{HelmFailure, ReleaseKey, RunSlots};
+use crate::helm_cli::run::{HelmAction, HelmFailure, ReleaseKey, RunSlots};
 use crate::helm_cli::test_helm::{script, temp_dir};
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::ClusterRegistry;
@@ -47,7 +47,8 @@ async fn a_run_points_helm_through_the_tunnel_and_cleans_up() {
     execute(
         RunSpec {
             binary: helm,
-            args: vec!["uninstall".into(), "web".into(), "-n".into(), "shop".into()],
+            args: HelmAction::Uninstall.flags("shop"),
+            positionals: HelmAction::Uninstall.positionals("web"),
             context: "demo".into(),
             endpoint: Endpoint::Rewrite(local),
             dir: kubeconfigs.clone(),
@@ -111,7 +112,7 @@ fn actions_are_unavailable_with_a_reason(cx: &mut TestAppContext) {
 async fn starting_without_a_connection_is_refused(cx: &mut TestAppContext) {
     let refused = cx.update(|cx| {
         set_status(ready(), cx);
-        start(release(), vec!["uninstall".into()], cx)
+        start(release(), HelmAction::Uninstall, cx)
     });
     assert_eq!(
         refused.await,
@@ -129,7 +130,15 @@ async fn a_second_run_on_a_running_release_is_refused(cx: &mut TestAppContext) {
             HelmStatus::Ready(binary) => binary,
             _ => unreachable!(),
         };
-        start_on(&slots, release(), vec![], binary, Endpoint::Direct, cx)
+        start_on(
+            &slots,
+            release(),
+            HelmAction::Uninstall,
+            binary,
+            Endpoint::Direct,
+            None,
+            cx,
+        )
     });
     assert_eq!(refused.await, Err(HelmFailure::AlreadyRunning));
 }

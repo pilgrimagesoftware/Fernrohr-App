@@ -346,6 +346,7 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Helm Releases: Open Release | <kbd>↵</kbd> | `HelmReleasesPanel && !Input` | — | `helm.open_release` |
 | Helm Releases: Describe Release | <kbd>D</kbd> | `HelmReleasesPanel && !Input` | — | `helm.describe_release` |
 | Helm Releases: Show Uninstalled Releases | — | `HelmReleasesPanel && !Input` | — | `helm.show_uninstalled` |
+| Helm Releases: Uninstall Release… | <kbd>⌃D</kbd> | `HelmReleasesPanel && !Input` | — | `helm.uninstall_release` |
 
 ### Helm release panel
 
@@ -361,6 +362,8 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Helm Release: View Revision's Manifest | <kbd>M</kbd> | `HelmReleasePanel` | — | `helm_release.view_manifest` |
 | Helm Release: Copy Values | — | `HelmReleasePanel` | — | `helm_release.copy_values` |
 | Helm Release: Copy Manifest | — | `HelmReleasePanel` | — | `helm_release.copy_manifest` |
+| Helm Release: Roll Back… | <kbd>⌃R</kbd> | `HelmReleasePanel` | — | `helm_release.rollback` |
+| Helm Release: Uninstall… | <kbd>⌃D</kbd> | `HelmReleasePanel` | — | `helm_release.uninstall` |
 
 ### Saved layouts picker
 

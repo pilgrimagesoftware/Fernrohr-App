@@ -170,6 +170,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::events_browser::register_commands(registry);
     crate::k8s::resource::helm::list::register_commands(registry);
     crate::k8s::resource::helm::detail::register_commands(registry);
+    crate::k8s::resource::helm::actions::register_commands(registry);
     crate::ui::placeholder::register_commands(registry);
     crate::ui::namespace_sets::register_commands(registry);
     crate::ui::table_fit::register_commands(registry);

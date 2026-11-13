@@ -11,16 +11,48 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
+
+/// What a run does to its release (`helm-release-actions`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HelmAction {
+    /// `helm rollback <release> <revision>`.
+    Rollback { revision: u32 },
+    /// `helm uninstall <release>`.
+    Uninstall,
+}
+
+impl HelmAction {
+    /// The subcommand, then its flags for `namespace` - everything before
+    /// the `--` that ends them.
+    pub(crate) fn flags(self, namespace: &str) -> Vec<String> {
+        let subcommand = match self {
+            Self::Rollback { .. } => "rollback",
+            Self::Uninstall => "uninstall",
+        };
+        vec![subcommand.to_string(), format!("--namespace={namespace}")]
+    }
+
+    /// The positional arguments after `--`: the release, and a rollback's
+    /// revision. After `--`, a release named like a flag stays a name.
+    pub(crate) fn positionals(self, release: &str) -> Vec<String> {
+        match self {
+            Self::Rollback { revision } => vec![release.to_string(), revision.to_string()],
+            Self::Uninstall => vec![release.to_string()],
+        }
+    }
+}
 
 /// One `helm` invocation, ready to run.
 #[derive(Clone, Debug)]
 pub(crate) struct HelmCommand {
     pub binary: PathBuf,
-    /// The action's own arguments, e.g. `rollback web 3 -n shop`.
+    /// The subcommand and its flags, e.g. `rollback --namespace=shop`.
     pub args: Vec<String>,
+    /// What follows `--`, e.g. `web 3`.
+    pub positionals: Vec<String>,
     pub kubeconfig: PathBuf,
     pub context: String,
     /// The login shell's PATH, for `helm` and any exec plugin it runs.
@@ -76,12 +108,15 @@ impl fmt::Display for HelmFailure {
 /// Runs `command`, killing its process group if it outlasts its timeout.
 pub(crate) async fn run(command: HelmCommand) -> Result<HelmOutput, HelmFailure> {
     let mut process = Command::new(&command.binary);
+    let mut kubeconfig_flag = std::ffi::OsString::from("--kubeconfig=");
+    kubeconfig_flag.push(&command.kubeconfig);
     process
         .args(&command.args)
-        .arg("--kubeconfig")
-        .arg(&command.kubeconfig)
-        .arg("--kube-context")
-        .arg(&command.context)
+        .arg(kubeconfig_flag)
+        .arg(format!("--kube-context={}", command.context))
+        // Every flag before it; the release name and revision after.
+        .arg("--")
+        .args(&command.positionals)
         .env("PATH", &command.path_env)
         // The flags win over these anyway; set them so nothing helm runs
         // (a plugin, a hook's kubectl) finds the user's own.
@@ -166,8 +201,9 @@ pub(crate) struct ReleaseKey {
 #[derive(Clone, Default)]
 pub(crate) struct RunSlots(Arc<Mutex<HashSet<ReleaseKey>>>);
 
-/// The app's one set of running releases.
-pub(super) static RUNS: LazyLock<RunSlots> = LazyLock::new(RunSlots::default);
+/// The app's running releases are one `RunSlots`, kept as a global: every
+/// panel that starts a run claims from the same set.
+impl gpui_kit::Global for RunSlots {}
 
 impl RunSlots {
     /// Claims `key` for a run, or refuses while another run holds it. The
