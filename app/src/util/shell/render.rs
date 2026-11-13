@@ -1,6 +1,7 @@
 //! Drawing the main window, and opening the command palette over it.
 
 use super::*;
+use gpui_kit::prelude::FluentBuilder as _;
 
 /// Opens the command palette in a dialog on `window`'s `Root`. A fresh
 /// `CommandState` is created per open (not reused across opens) since the
@@ -129,6 +130,20 @@ impl Render for MainWindow {
             .flex()
             .flex_col()
             .track_focus(&self.focus_handle);
+        // Disconnect All needs a context to disconnect, and Disconnect Others
+        // a second one; otherwise the window doesn't handle them, so their
+        // menu items show disabled (#359).
+        let context_count = match &self.mode {
+            WindowMode::Workspace { contexts, .. } => contexts.len(),
+            WindowMode::Picker(_) => 0,
+        };
+        let root = root
+            .when(context_count > 0, |root| {
+                root.on_action(cx.listener(Self::on_action_disconnect_all_contexts))
+            })
+            .when(context_count > 1, |root| {
+                root.on_action(cx.listener(Self::on_action_disconnect_other_contexts))
+            });
         Self::with_tab_menu_actions(
             Self::with_arrange_actions(Self::with_tab_actions(root, cx), cx),
             cx,
