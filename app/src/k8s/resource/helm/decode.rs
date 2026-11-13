@@ -7,9 +7,11 @@
 //! Helm 4 write the same shape; Helm 4 adds fields this ignores.
 //!
 //! The result is trimmed: the chart's templates, files and default values are
-//! skipped, never held. The two parts that can carry credentials - the user's
-//! values and the rendered manifest - are kept only as [`SecretValue`], whose
-//! `Debug` prints a size.
+//! skipped, never held. The three parts that can carry credentials - the
+//! user's values, the rendered manifest and the rendered notes, which some
+//! charts print a password into - are kept only as [`SecretValue`], whose
+//! `Debug` prints a size. Errors keep only what kind of error and where, never
+//! the text that caused it.
 
 use crate::consts::HELM_RELEASE_MAX_DECODED_BYTES;
 use crate::k8s::resource::secret_value::SecretValue;
@@ -37,6 +39,9 @@ pub(crate) struct HelmRelease {
     pub(crate) values: SecretValue,
     /// The rendered manifest (`helm get manifest`), as Helm stored it.
     pub(crate) manifest: SecretValue,
+    /// The chart's rendered notes (`helm get notes`). Shown without a reveal,
+    /// as Helm shows them, but never printed by `Debug` or logged.
+    pub(crate) notes: SecretValue,
 }
 
 /// A revision's state, as `helm status` reports it.
@@ -50,7 +55,6 @@ pub(crate) struct ReleaseInfo {
     pub(crate) first_deployed: Option<String>,
     pub(crate) last_deployed: Option<String>,
     pub(crate) description: Option<String>,
-    pub(crate) notes: Option<String>,
 }
 
 /// The chart a revision was made from.
@@ -72,9 +76,41 @@ pub(crate) enum DecodeError {
     Gzip,
     /// It decompresses past [`HELM_RELEASE_MAX_DECODED_BYTES`].
     TooLarge,
-    /// Not a release's JSON; the parser's message, which names a position,
-    /// not content.
-    Json(String),
+    /// Not a release's JSON: what kind of error, and where. The parser's own
+    /// message isn't kept, because it quotes a mistyped value.
+    Json {
+        kind: JsonErrorKind,
+        line: usize,
+        column: usize,
+    },
+}
+
+/// What was wrong with a release's JSON.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum JsonErrorKind {
+    /// Not valid JSON.
+    Syntax,
+    /// Valid JSON, but not a release: a field missing or of the wrong type.
+    Data,
+    /// The JSON ends early.
+    Truncated,
+}
+
+impl From<&serde_json::Error> for DecodeError {
+    fn from(error: &serde_json::Error) -> Self {
+        let kind = match error.classify() {
+            serde_json::error::Category::Data => JsonErrorKind::Data,
+            serde_json::error::Category::Eof => JsonErrorKind::Truncated,
+            serde_json::error::Category::Syntax | serde_json::error::Category::Io => {
+                JsonErrorKind::Syntax
+            }
+        };
+        DecodeError::Json {
+            kind,
+            line: error.line(),
+            column: error.column(),
+        }
+    }
 }
 
 impl fmt::Display for DecodeError {
@@ -87,7 +123,14 @@ impl fmt::Display for DecodeError {
                 "the release is larger than {} MiB decompressed",
                 HELM_RELEASE_MAX_DECODED_BYTES / (1024 * 1024)
             ),
-            DecodeError::Json(message) => write!(f, "the release isn't a Helm release: {message}"),
+            DecodeError::Json { kind, line, column } => {
+                let what = match kind {
+                    JsonErrorKind::Syntax => "isn't valid JSON",
+                    JsonErrorKind::Data => "isn't a Helm release",
+                    JsonErrorKind::Truncated => "ends early",
+                };
+                write!(f, "the release {what} (line {line}, column {column})")
+            }
         }
     }
 }
@@ -102,13 +145,22 @@ struct Stored {
     namespace: String,
     version: u32,
     #[serde(default)]
-    info: ReleaseInfo,
+    info: StoredInfo,
     #[serde(default)]
     chart: StoredChart,
     #[serde(default)]
     config: Option<serde_json::Value>,
     #[serde(default)]
     manifest: String,
+}
+
+/// `info`, with its notes apart: they go into a [`SecretValue`].
+#[derive(Default, Deserialize)]
+struct StoredInfo {
+    #[serde(flatten)]
+    info: ReleaseInfo,
+    #[serde(default)]
+    notes: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -135,7 +187,7 @@ pub(crate) fn decode_release(payload: &[u8]) -> Result<HelmRelease, DecodeError>
         bytes
     };
     let stored: Stored =
-        serde_json::from_slice(&json).map_err(|error| DecodeError::Json(error.to_string()))?;
+        serde_json::from_slice(&json).map_err(|error| DecodeError::from(&error))?;
     drop(json);
     Ok(trimmed(stored))
 }
@@ -162,10 +214,11 @@ fn trimmed(stored: Stored) -> HelmRelease {
         name: stored.name,
         namespace: stored.namespace,
         version: stored.version,
-        info: stored.info,
+        info: stored.info.info,
         chart: stored.chart.metadata,
         values: SecretValue::new(values.into_bytes()),
         manifest: SecretValue::new(stored.manifest.into_bytes()),
+        notes: SecretValue::new(stored.info.notes.unwrap_or_default().into_bytes()),
     }
 }
 

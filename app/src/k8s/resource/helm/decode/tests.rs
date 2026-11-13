@@ -4,7 +4,7 @@
 //! `helm create` scaffolds, so it holds no credentials), encoded as Helm
 //! stores it.
 
-use super::{DecodeError, decode_release};
+use super::{DecodeError, JsonErrorKind, decode_release};
 use crate::consts::HELM_RELEASE_MAX_DECODED_BYTES;
 use base64::Engine as _;
 use serde_json::{Value, json};
@@ -93,6 +93,12 @@ fn values_and_manifest_never_print() {
     let printed = format!("{decoded:?}");
     assert!(!printed.contains("replicaCount"), "{printed}");
     assert!(!printed.contains("kind: Deployment"), "{printed}");
+    assert!(!printed.contains("web.example.com"), "notes too: {printed}");
+    assert_eq!(
+        decoded.notes.expose(),
+        Some("Visit https://web.example.com"),
+        "but they're kept"
+    );
 }
 
 #[test]
@@ -129,7 +135,15 @@ fn malformed_payloads_are_errors() {
     let not_a_release = stored(&json!({ "kind": "ConfigMap" }));
     assert!(matches!(
         decode_release(&not_a_release).unwrap_err(),
-        DecodeError::Json(_)
+        DecodeError::Json {
+            kind: JsonErrorKind::Data,
+            ..
+        }
+    ));
+    let not_json = base64::engine::general_purpose::STANDARD.encode(b"{ nope");
+    assert!(matches!(
+        decode_release(not_json.as_bytes()).unwrap_err(),
+        DecodeError::Json { .. }
     ));
 }
 
@@ -150,11 +164,23 @@ fn a_payload_past_the_cap_is_refused() {
     );
 }
 
+/// serde_json's own message quotes a mistyped string value; the error keeps
+/// only what kind of error and where.
 #[test]
 fn an_error_never_quotes_the_payload() {
-    let not_a_release = stored(&json!({ "name": "web", "password": "hunter2" }));
-    let message = decode_release(&not_a_release).unwrap_err().to_string();
-    assert!(!message.contains("hunter2"), "{message}");
+    let mut mistyped = release();
+    mistyped["version"] = json!("hunter2");
+    let error = decode_release(&stored(&mistyped)).unwrap_err();
+    let shown = format!("{error} {error:?}");
+    assert!(!shown.contains("hunter2"), "{shown}");
+    assert!(
+        shown.contains("isn't a Helm release (line 1, column"),
+        "{shown}"
+    );
+
+    let missing = stored(&json!({ "name": "web", "password": "hunter2" }));
+    let shown = decode_release(&missing).unwrap_err().to_string();
+    assert!(!shown.contains("hunter2"), "{shown}");
 }
 
 /// What Helm itself wrote: a Helm 4 client dry run of the scaffolded chart,
@@ -180,9 +206,8 @@ fn a_payload_helm_produced_decodes() {
     assert!(values.contains("tag: 1.27.0"), "{values}");
     assert!(
         decoded
-            .info
             .notes
-            .as_deref()
+            .expose()
             .unwrap_or_default()
             .contains("application URL")
     );
