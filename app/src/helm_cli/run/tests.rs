@@ -2,7 +2,7 @@
 //! reported with stderr, a timeout killing the whole group, and a second run
 //! on the same release refused.
 
-use super::{HelmCommand, HelmFailure, ReleaseKey, RunSlots, run};
+use super::{HelmAction, HelmCommand, HelmFailure, ReleaseKey, RunSlots, run};
 use crate::helm_cli::test_helm::{script, temp_dir};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -10,9 +10,8 @@ use std::time::{Duration, Instant};
 fn command(helm: &Path, dir: &Path, timeout: Duration) -> HelmCommand {
     HelmCommand {
         binary: helm.to_path_buf(),
-        args: ["rollback", "web", "3", "-n", "shop"]
-            .map(String::from)
-            .to_vec(),
+        args: HelmAction::Rollback { revision: 3 }.flags("shop"),
+        positionals: HelmAction::Rollback { revision: 3 }.positionals("web"),
         kubeconfig: dir.join("run.yaml"),
         context: "demo".into(),
         path_env: "/usr/bin:/bin".into(),
@@ -21,6 +20,8 @@ fn command(helm: &Path, dir: &Path, timeout: Duration) -> HelmCommand {
 }
 
 #[tokio::test]
+/// Every flag comes before `--`, and the release and revision after it,
+/// so a release named like a flag stays a name.
 async fn helm_gets_the_action_the_kubeconfig_and_the_context() {
     let dir = temp_dir("run-args");
     let seen = dir.join("seen");
@@ -43,14 +44,12 @@ async fn helm_gets_the_action_the_kubeconfig_and_the_context() {
         lines,
         [
             "rollback",
+            "--namespace=shop",
+            &format!("--kubeconfig={kubeconfig}"),
+            "--kube-context=demo",
+            "--",
             "web",
             "3",
-            "-n",
-            "shop",
-            "--kubeconfig",
-            kubeconfig.as_str(),
-            "--kube-context",
-            "demo",
             &format!("KUBECONFIG={kubeconfig}"),
         ]
     );
