@@ -20,9 +20,9 @@ gpui-kit = "=0.7.0"
 # feature is off, since the session is a remote kube exec, not a local process.
 gpui-terminal = { git = "https://github.com/pilgrimagesoftware/gpui-terminal", tag = "v0.2.2", default-features = false }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time", "signal"] }
-kube = { version = "=4.2.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws", "http-proxy"] }
-kube-runtime = "=4.2.0"
-k8s-openapi = { version = "=0.28.0", features = ["v1_36"] }
+kube = { version = "=5.0.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws", "http-proxy"] }
+kube-runtime = "=5.0.0"
+k8s-openapi = { version = "=0.29.0", features = ["v1_36"] }
 dirs = "=7.0.0"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
