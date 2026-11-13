@@ -7,4 +7,6 @@ mod decode;
 // UNWIRED(#370): the release watch (helm-releases section 2) is the first
 // caller.
 #[allow(unused_imports)]
-pub(crate) use decode::{ChartMeta, DecodeError, HelmRelease, ReleaseInfo, decode_release};
+pub(crate) use decode::{
+    ChartMeta, DecodeError, HelmRelease, JsonErrorKind, ReleaseInfo, decode_release,
+};
