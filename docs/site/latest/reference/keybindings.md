@@ -61,6 +61,8 @@ This list matches the commands registered in `app/src/command.rs`.
 | Manage Tunnels… | <kbd>⌘⇧T</kbd> | Global | Context | `tunnels.manage` |
 | Add Context to Window… | — | Global | Context | `context.add` |
 | Disconnect Active Context… | — | Global | Context | `context.disconnect` |
+| Disconnect All Contexts… | — | Global | Context | `context.disconnect_all` |
+| Disconnect Other Contexts… | — | Global | Context | `context.disconnect_others` |
 | Add Context: Close | <kbd>⎋</kbd> | `AddContextWindow` | — | `add_context.close` |
 | Switch Namespace Set… | <kbd>⌘⇧N</kbd> | Global | — | `namespace_sets.switch` |
 | Apply Namespace Set to Context… | <kbd>⌥⌘⇧N</kbd> | Global | — | `namespace_sets.switch_context` |
@@ -80,6 +82,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Show Logs | <kbd>⌘2</kbd> | Global | — | `nav.show_logs` |
 | Show Logs (Other Panel Mode) | — | Global | — | `nav.show_logs_flipped` |
 | Show Events | — | Global | — | `nav.show_events` |
+| Helm Releases | — | Global | — | `nav.show_helm_releases` |
 | Open Logs by Label… | <kbd>⌘⇧L</kbd> | Global | Window | `logs.follow_labels` |
 | Fit Columns to Contents | — | Global | View | `table.fit_columns` |
 | Focus Resources | <kbd>⌘0</kbd> | Global | Navigate | `resource.focus` |
@@ -284,6 +287,7 @@ and a detail panel while its object is. A Services list keeps its own
 | Node: Remove Taint… | <kbd>⌥⇧T</kbd> | `KindRemoveTaint && !Input` | — | `kind.remove_taint` |
 | ServiceAccount: Create Token | <kbd>⇧K</kbd> | `KindCreateToken && !Input` | — | `kind.create_token` |
 | Ingress: Open Host in Browser | <kbd>⇧O</kbd> | `KindOpenHost && !Input` | — | `kind.open_host` |
+| Force Sync… | <kbd>⇧S</kbd> | `KindForceSync && !Input` | — | `kind.force_sync` |
 
 ### Exec library
 
@@ -334,6 +338,30 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Events: Pick Namespaces | <kbd>N</kbd> | `EventsPanel` | — | `events.pick_namespaces` |
 | Placeholder: Pick Namespaces | <kbd>N</kbd> | `PlaceholderPanel` | — | `placeholder.pick_namespaces` |
 
+### Helm Releases list
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Helm Releases: Search | <kbd>/</kbd> | `HelmReleasesPanel && !Input` | — | `helm.focus_search` |
+| Helm Releases: Open Release | <kbd>↵</kbd> | `HelmReleasesPanel && !Input` | — | `helm.open_release` |
+| Helm Releases: Describe Release | <kbd>D</kbd> | `HelmReleasesPanel && !Input` | — | `helm.describe_release` |
+| Helm Releases: Show Uninstalled Releases | — | `HelmReleasesPanel && !Input` | — | `helm.show_uninstalled` |
+
+### Helm release panel
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Helm Release: Overview | <kbd>1</kbd> | `HelmReleasePanel` | — | `helm_release.overview` |
+| Helm Release: History | <kbd>2</kbd> | `HelmReleasePanel` | — | `helm_release.history` |
+| Helm Release: Values | <kbd>3</kbd> | `HelmReleasePanel` | — | `helm_release.values` |
+| Helm Release: Manifest | <kbd>4</kbd> | `HelmReleasePanel` | — | `helm_release.manifest` |
+| Helm Release: Notes | <kbd>5</kbd> | `HelmReleasePanel` | — | `helm_release.notes` |
+| Helm Release: Reveal or Hide | <kbd>R</kbd> | `HelmReleasePanel` | — | `helm_release.reveal` |
+| Helm Release: View Revision's Values | <kbd>V</kbd> | `HelmReleasePanel` | — | `helm_release.view_values` |
+| Helm Release: View Revision's Manifest | <kbd>M</kbd> | `HelmReleasePanel` | — | `helm_release.view_manifest` |
+| Helm Release: Copy Values | — | `HelmReleasePanel` | — | `helm_release.copy_values` |
+| Helm Release: Copy Manifest | — | `HelmReleasePanel` | — | `helm_release.copy_manifest` |
+
 ### Saved layouts picker
 
 | Command | Default binding | Context | Menu | ID |
@@ -352,6 +380,7 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Settings: Show Panels | — | `SettingsWindow` | — | `settings.show_panels` |
 | Settings: Show Layouts | — | `SettingsWindow` | — | `settings.show_layouts` |
 | Settings: Show Agent Access | — | `SettingsWindow` | — | `settings.show_agent_access` |
+| Settings: Show Tools | — | `SettingsWindow` | — | `settings.show_tools` |
 | Settings: Next Tab | <kbd>⌃Tab</kbd> | `SettingsWindow` | — | `settings.next_tab` |
 | Settings: Previous Tab | <kbd>⌃⇧Tab</kbd> | `SettingsWindow` | — | `settings.previous_tab` |
 | Record Shortcut | <kbd>↵</kbd> | `KeyboardShortcuts` | — | `settings.shortcuts.record` |

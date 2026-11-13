@@ -20,6 +20,9 @@ custom resources alike. To reach it from the keyboard, run **Focus Resources**
 | Move between kinds | <kbd>↓</kbd> and <kbd>↑</kbd> | Click a kind |
 | Open the selected kind | <kbd>Enter</kbd> | Double-click it, or choose Open from its context menu |
 
+The Workloads section ends with **Helm Releases**, which isn't a kind: it opens the list of the
+cluster's Helm releases. See [Helm releases]({{ '/latest/helm/' | relative_url }}).
+
 Opening a kind that already has a panel for the same cluster and namespace
 scope focuses that panel instead of opening a second one. A list updates live:
 rows appear, change and disappear as the cluster changes, with no refresh.
@@ -240,6 +243,7 @@ keys for whatever the selected object is offered.
 | Node | Remove Taint… | <kbd>⌥⇧T</kbd> | Asks which taint to remove when the node has several. |
 | ServiceAccount | Create Token | <kbd>⇧K</kbd> | Requests a new token and shows it once. |
 | Ingress | Open Host in Browser | <kbd>⇧O</kbd> | Opens the first rule's host, such as `https://app.example.com`. A wildcard host such as `*.example.com` names no one site, so it's passed over, and an Ingress with no other host isn't offered the action. |
+| ExternalSecret, ClusterExternalSecret, Flux objects, Argo CD Application | Force Sync… | <kbd>⇧S</kbd> | Asks the controller to act on the object now by setting the annotation it watches. External Secrets syncs it (`force-sync`; `external-secrets.io/force-sync` on a ClusterExternalSecret, which needs a recent External Secrets release). Flux reconciles it (`reconcile.fluxcd.io/requestedAt` on any `*.toolkit.fluxcd.io` kind except notification Alerts and Providers, which don't reconcile). Argo CD refreshes it (`argocd.argoproj.io/refresh: normal`): it re-reads the source and compares, and deploys only if the Application syncs automatically, so the action is called Refresh there. Nothing else on the object changes. |
 
 Every action that changes the cluster asks first, naming the object. Expand
 can't be undone, because a claim can't be made smaller again, so its question

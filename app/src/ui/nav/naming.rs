@@ -29,6 +29,8 @@ impl NavTarget {
         match self {
             NavTarget::Kind(kind) => kind.label(),
             NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) => "Logs".to_string(),
+            NavTarget::HelmReleases => "Helm Releases".to_string(),
+            NavTarget::HelmRelease(_) => "Helm Release".to_string(),
             NavTarget::Pod(_) => Self::pod_kind().label(),
             NavTarget::Object(object) => object.kind.label(),
             NavTarget::Exec(exec) => exec
@@ -52,7 +54,9 @@ impl NavTarget {
             | NavTarget::LabelLogs(_)
             | NavTarget::Pod(_)
             | NavTarget::Object(_)
-            | NavTarget::Exec(_) => self.label(),
+            | NavTarget::Exec(_)
+            | NavTarget::HelmReleases
+            | NavTarget::HelmRelease(_) => self.label(),
         }
     }
 
@@ -66,7 +70,9 @@ impl NavTarget {
             NavTarget::Logs
             | NavTarget::PodLogs(_)
             | NavTarget::LabelLogs(_)
-            | NavTarget::Exec(_) => None,
+            | NavTarget::Exec(_)
+            | NavTarget::HelmReleases
+            | NavTarget::HelmRelease(_) => None,
         }
     }
 
@@ -93,6 +99,7 @@ impl NavTarget {
             NavTarget::LabelLogs(source) => source.label(),
             NavTarget::Object(object) => format!("{}: {}", object.kind.gvk.kind, object.name),
             NavTarget::Exec(exec) => exec.title(),
+            NavTarget::HelmRelease(release) => format!("Helm Release: {}", release.name),
             _ => self.list_label(),
         }
     }

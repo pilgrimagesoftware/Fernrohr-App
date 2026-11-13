@@ -14,6 +14,9 @@ pub(crate) struct Recorded {
     /// The path and query, as sent.
     pub(crate) target: String,
     pub(crate) content_type: Option<String>,
+    /// The `accept` header: a metadata-only list or watch asks for
+    /// `as=PartialObjectMetadataList` there.
+    pub(crate) accept: Option<String>,
     pub(crate) body: String,
 }
 
@@ -143,6 +146,7 @@ pub(crate) async fn read_request(stream: &mut tokio::net::TcpStream) -> Recorded
         method: line.next().unwrap_or_default().to_string(),
         target: line.next().unwrap_or_default().to_string(),
         content_type: header("content-type"),
+        accept: header("accept"),
         body: String::from_utf8_lossy(&buffer[head_end.min(buffer.len())..]).to_string(),
     }
 }

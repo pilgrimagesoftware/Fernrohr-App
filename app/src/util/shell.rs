@@ -67,6 +67,8 @@ mod chord_precedence_tests;
 #[cfg(test)]
 mod edit_yaml_tests;
 #[cfg(test)]
+mod helm_list_tests;
+#[cfg(test)]
 mod label_logs_tests;
 #[cfg(test)]
 mod node_pods_window_tests;
@@ -83,6 +85,8 @@ pub(crate) use quiet::{
 // For the status menu, which is built only on macOS and for tests.
 #[cfg(any(target_os = "macos", test))]
 pub(crate) use quiet::OpenContextWindow;
+#[cfg(test)]
+mod palette_focus_tests;
 #[cfg(test)]
 mod pod_detail_logs_tests;
 #[cfg(test)]

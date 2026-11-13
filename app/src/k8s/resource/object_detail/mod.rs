@@ -37,6 +37,7 @@ mod tests;
 
 pub use panel::ObjectDetailPanel;
 pub(crate) use redact::redact as redact_secret_values;
+pub(crate) use redact::redact_secret_json;
 pub use restore::{register_restore, target_from_state};
 
 /// Every command this panel contributes: its own ([`commands`]) plus the

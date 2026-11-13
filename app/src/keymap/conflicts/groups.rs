@@ -34,6 +34,7 @@ fn collect() -> Vec<BTreeSet<&'static str>> {
         group(&[&list_panel]),
         group(&[pods::KEY_CONTEXT_GROUP, &bulk]),
         group(&[events_browser::KEY_CONTEXT_GROUP]),
+        group(&[crate::k8s::resource::helm::list::KEY_CONTEXT_GROUP]),
         group(&[exec::KEY_CONTEXT_GROUP]),
     ];
     // A kind action's gate joins its panel's element only with the gates its
@@ -75,6 +76,8 @@ pub(super) const STANDALONE: &[&str] = &[
     "Dock",
     "ExecLibraryEntry",
     "ExecLibraryWindow",
+    // The Helm release detail panel's element carries only its own (#370).
+    "HelmReleasePanel",
     "KeyboardShortcuts",
     "NamespacedList",
     "NodePodsTable",

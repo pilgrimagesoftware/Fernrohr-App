@@ -83,4 +83,14 @@ impl ClusterConnection {
     pub(in crate::k8s::cluster) fn forward_wait(&self) -> Option<ForwardWait> {
         self._forward.as_ref().map(ForwardWait::of)
     }
+
+    /// How the bound tunnel carries traffic and where it listens - what a
+    /// client outside the app (`helm`, `helm-releases` D8) must be pointed at
+    /// to reach the cluster the way this connection does. `None` for an
+    /// unbound context, which `helm` reaches as its kubeconfig says.
+    pub(crate) fn tunnel_route(&self) -> Option<(TunnelRoute, SocketAddr)> {
+        self._forward
+            .as_ref()
+            .map(|handle| (handle.forward().route(), handle.forward().local_addr()))
+    }
 }

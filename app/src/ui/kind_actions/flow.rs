@@ -2,7 +2,8 @@
 //! Remove Taint's choice, the confirmation every mutation asks first, the call
 //! sent off the UI thread, and its refusal shown on the panel. The prompt-led
 //! ones - Expand, Add and Remove Taint - are [`super::edits`]'. Port Forward
-//! runs the Services list's own flow; Open Host and Create Token change nothing
+//! runs the Services list's own flow; Force Sync asks, then writes one
+//! annotation. Open Host and Create Token change nothing
 //! in the cluster, so they act at once.
 
 use super::edits::{ask_size, ask_taint, confirm_remove};
@@ -79,6 +80,7 @@ pub(crate) fn run_on<T: KindHost>(
             window,
             cx,
         ),
+        KindAction::ForceSync => force_sync(target, panel, window, cx),
         KindAction::Expand => ask_size(target, panel, window, cx),
         KindAction::AddTaint => ask_taint(target, panel, window, cx),
         KindAction::RemoveTaint => taints::choose(
@@ -261,6 +263,73 @@ fn trigger_now<T: KindHost>(
             use gpui_kit::component::WindowExt as _;
             use gpui_kit::component::notification::Notification;
             window.push_notification(Notification::success(format!("Created Job {job}")), cx);
+        },
+        window,
+        cx,
+    );
+}
+
+/// Force Sync (#354): asks, then writes the kind's sync annotation, which its
+/// controller reads as a request to sync now.
+fn force_sync<T: KindHost>(
+    target: KindTarget,
+    panel: WeakEntity<T>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let Some(annotation) = kind_actions::sync_annotation(&target.kind) else {
+        return;
+    };
+    let (verb, title) = (annotation.verb.word(), annotation.verb.title());
+    let body = ConfirmText::new()
+        .text("Ask ")
+        .text(annotation.controller)
+        .text(&format!(" to {verb} "))
+        .append(named(&target))
+        .text(" now? Fernrohr sets its ")
+        .name(annotation.key)
+        .text(" annotation; nothing else changes.");
+    let (kind, namespace, name) = (
+        target.kind.clone(),
+        target.namespace.clone(),
+        target.name.clone(),
+    );
+    let uid = target.facts.uid.clone();
+    let noun = target.noun();
+    confirm_then(
+        Ask {
+            question: question(
+                format!("{title} {noun}?"),
+                body,
+                title,
+                Severity::Recoverable,
+            ),
+            target: target.clone(),
+            what: format!("{title} {noun}"),
+            panel,
+        },
+        move |client| {
+            let (kind, namespace, name, uid) =
+                (kind.clone(), namespace.clone(), name.clone(), uid.clone());
+            async move {
+                kind_actions::force_sync(
+                    client,
+                    &kind,
+                    namespace.as_deref(),
+                    &name,
+                    annotation,
+                    uid.as_deref(),
+                )
+                .await
+            }
+        },
+        move |(), window, cx| {
+            use gpui_kit::component::WindowExt as _;
+            use gpui_kit::component::notification::Notification;
+            window.push_notification(
+                Notification::success(format!("Asked {} to {verb} {noun}", annotation.controller)),
+                cx,
+            );
         },
         window,
         cx,
