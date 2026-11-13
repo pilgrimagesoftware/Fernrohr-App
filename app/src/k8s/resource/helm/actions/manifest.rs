@@ -8,19 +8,21 @@ use k8s_openapi::api::core::v1::Secret;
 use kube::{Api, Client};
 use serde::Deserialize as _;
 
-/// The objects `manifest` declares: its YAML documents that name a `kind`.
-/// Blank documents, comment-only ones and ones that don't parse aren't
-/// counted.
-pub(super) fn count_objects(manifest: &str) -> usize {
-    serde_yaml_ng::Deserializer::from_str(manifest)
-        .filter_map(|document| serde_yaml_ng::Value::deserialize(document).ok())
-        .filter(|value| {
-            value
-                .get("kind")
-                .and_then(serde_yaml_ng::Value::as_str)
-                .is_some_and(|kind| !kind.is_empty())
-        })
-        .count()
+/// The objects `manifest` declares: its YAML documents that name a `kind`,
+/// blank and comment-only ones not counted. `None` when a document doesn't
+/// parse - after an error the YAML reader yields only errors, endlessly, so
+/// the rest can't be counted and no number would be right.
+pub(super) fn count_objects(manifest: &str) -> Option<usize> {
+    let mut count = 0;
+    for document in serde_yaml_ng::Deserializer::from_str(manifest) {
+        let value = serde_yaml_ng::Value::deserialize(document).ok()?;
+        let named = value
+            .get("kind")
+            .and_then(serde_yaml_ng::Value::as_str)
+            .is_some_and(|kind| !kind.is_empty());
+        count += usize::from(named);
+    }
+    Some(count)
 }
 
 /// Fetches revision Secret `secret` in `namespace` and counts its manifest's
@@ -37,7 +39,7 @@ pub(super) fn fetch_count(
             Ok(secret) => tokio::task::spawn_blocking(move || {
                 let payload = secret.data.as_ref()?.get("release")?.0.clone();
                 let release = decode_release(&payload).ok()?;
-                Some(count_objects(release.manifest.expose()?))
+                count_objects(release.manifest.expose()?)
             })
             .await
             .ok()

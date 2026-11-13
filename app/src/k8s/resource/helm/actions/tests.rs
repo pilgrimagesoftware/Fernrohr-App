@@ -19,8 +19,18 @@ fn a_manifest_counts_its_objects() {
                     metadata:\n  name: web\n---\n# Source: web/templates/deployment.yaml\n\
                     apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n---\n\
                     # Source: web/templates/empty.yaml\n---\n";
-    assert_eq!(count_objects(manifest), 2);
-    assert_eq!(count_objects(""), 0);
+    assert_eq!(count_objects(manifest), Some(2));
+    assert_eq!(count_objects(""), Some(0));
+}
+
+/// A document that doesn't parse ends the count with no number - the YAML
+/// reader would otherwise yield errors forever - so the confirmation says
+/// "the objects" rather than a wrong count.
+#[test]
+fn a_broken_manifest_has_no_count() {
+    let manifest = "apiVersion: v1\nkind: Service\nmetadata:\n  name: web\n---\n: not yaml: [\n\
+                    ---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web\n";
+    assert_eq!(count_objects(manifest), None);
 }
 
 #[test]
