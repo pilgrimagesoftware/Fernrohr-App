@@ -78,12 +78,15 @@ external IP and ports, and a Deployments list adds replica counts. A kind with
 nothing extra to show has only the base columns.
 
 Any other kind, including custom resources such as Flux's HelmRelease and
-Kustomization, gains two columns once one of its objects reports
+Kustomization, gains these columns once one of its objects reports
 `status.conditions`:
 
 - **Ready** shows the `Ready` condition's status (True, False or Unknown) beside
   a dot in its tone. It appears only if some object has a `Ready` condition.
   Sorting ascending puts False first, so failures surface at the top.
+- **Last transition** shows how long ago the `Ready` condition last changed, or
+  without one, how long ago any condition last changed. It appears only if some
+  object's conditions give a time, and sorts by that time.
 - **Message** shows the `Ready` condition's message, coloured green for True,
   red for False and amber for anything else. Without a `Ready` condition, it
   shows the most recently changed condition's message, uncoloured.

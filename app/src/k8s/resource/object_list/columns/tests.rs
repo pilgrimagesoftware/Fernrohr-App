@@ -305,7 +305,7 @@ fn a_kind_outside_the_table_carries_condition_cells() {
     use crate::ui::style::Tone;
     let columns = super::for_rows("helm.toolkit.fluxcd.io", "HelmRelease");
     let ids: Vec<&str> = columns.columns.iter().map(|column| column.id).collect();
-    assert_eq!(ids, ["ready", "message"]);
+    assert_eq!(ids, ["ready", "last_transition", "message"]);
     let with = |conditions: serde_json::Value| {
         let object: DynamicObject = serde_json::from_value(json!({
             "apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease",
@@ -322,12 +322,20 @@ fn a_kind_outside_the_table_carries_condition_cells() {
     ] {
         assert_eq!(
             with(json!([{ "type": "Ready", "status": status, "message": "msg" }])),
-            [Cell::Condition(condition), Cell::Status("msg".into(), tone)]
+            [
+                Cell::Condition(condition),
+                Cell::Empty,
+                Cell::Status("msg".into(), tone)
+            ]
         );
     }
     assert_eq!(
         with(json!([{ "type": "Released", "status": "True", "message": "installed" }])),
-        [Cell::Empty, Cell::Status("installed".into(), Tone::Neutral)]
+        [
+            Cell::Empty,
+            Cell::Empty,
+            Cell::Status("installed".into(), Tone::Neutral)
+        ]
     );
     assert!(
         std::ptr::eq(

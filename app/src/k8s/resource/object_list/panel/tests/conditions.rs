@@ -87,12 +87,20 @@ async fn ready_and_message_columns_appear_once_an_object_reports_conditions(
     );
     assert_eq!(
         column_ids(&mut h),
-        ["name", "namespace", "ready", "message", "age"]
+        [
+            "name",
+            "namespace",
+            "ready",
+            "last_transition",
+            "message",
+            "age"
+        ]
     );
     assert_eq!(
         cells(&mut h, "apps"),
         [
             Cell::Condition(ConditionStatus::False),
+            Cell::Age("2026-10-01T00:00:00Z".parse().unwrap()),
             Cell::Status("kustomize build failed".into(), Tone::Bad),
         ]
     );
@@ -103,7 +111,7 @@ async fn ready_and_message_columns_appear_once_an_object_reports_conditions(
     );
     assert_eq!(
         cells(&mut h, "pending"),
-        [Cell::Empty, Cell::Empty],
+        [Cell::Empty, Cell::Empty, Cell::Empty],
         "an object without conditions shows empty cells"
     );
 }
@@ -121,7 +129,7 @@ async fn conditions_without_ready_bring_message_only(cx: &mut TestAppContext) {
     );
     assert_eq!(column_ids(&mut h), ["name", "namespace", "message", "age"]);
     assert_eq!(
-        cells(&mut h, "apps")[1],
+        cells(&mut h, "apps")[2],
         Cell::Status("all checks pass".into(), Tone::Neutral)
     );
 }

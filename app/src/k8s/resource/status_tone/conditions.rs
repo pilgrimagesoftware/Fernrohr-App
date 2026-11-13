@@ -92,6 +92,21 @@ pub fn condition_message(conditions: &[Value]) -> Option<(String, Tone)> {
         .map(|(message, _)| (message.to_string(), Tone::Neutral))
 }
 
+/// When `conditions` last changed, as their status reads it (#355): the
+/// `Ready` condition's `lastTransitionTime`, else the latest any condition
+/// reports. `None` when that time is missing or doesn't parse.
+pub fn last_transition(conditions: &[Value]) -> Option<Timestamp> {
+    let time = |condition: &Value| {
+        field(condition, "lastTransitionTime")?
+            .parse::<Timestamp>()
+            .ok()
+    };
+    match ready_condition(conditions) {
+        Some(ready) => time(ready),
+        None => conditions.iter().filter_map(time).max(),
+    }
+}
+
 fn ready_condition(conditions: &[Value]) -> Option<&Value> {
     conditions
         .iter()
