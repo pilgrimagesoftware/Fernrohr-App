@@ -12,6 +12,7 @@ use gpui_kit::*;
 
 mod naming;
 mod open_mode;
+mod opened;
 pub use open_mode::{OpenMode, OpenPodInBackground, OpenPodInNewPanel};
 
 // `ShowPodDetail` and `ShowPodDetailYaml` are deliberately not registered
@@ -29,6 +30,7 @@ actions!(
         ShowLogs,
         ShowLogsFlipped,
         ShowEvents,
+        ShowHelmReleases,
         ShowPodDetail,
         ShowPodDetailYaml,
         OpenInNewPanel
@@ -41,6 +43,9 @@ pub const OPEN_IN_NEW_PANEL_DEFAULT_BINDING: &str = "cmd-shift-d";
 
 /// Opens the events browser for the window's active context (`events-browser`).
 pub const SHOW_EVENTS_COMMAND_ID: &str = "nav.show_events";
+
+/// Opens the Helm Releases list for the window's active context (`helm-releases`).
+pub const SHOW_HELM_RELEASES_COMMAND_ID: &str = "nav.show_helm_releases";
 
 pub const SHOW_PODS_COMMAND_ID: &str = "nav.show_pods";
 pub const SHOW_PODS_DEFAULT_BINDING: &str = "cmd-1";
@@ -91,6 +96,12 @@ pub enum NavTarget {
     /// opening a workload's logs again focuses its panel, and the typed panel
     /// is one per context.
     LabelLogs(crate::util::logs::LabelLogs),
+    /// The context's Helm releases (`helm-releases`): not a discovered kind -
+    /// Helm keeps them in Secrets - so a target of its own.
+    HelmReleases,
+    /// One Helm release's detail panel (`helm-releases`), keyed by the
+    /// release, so opening it again focuses its panel.
+    HelmRelease(crate::k8s::resource::helm::ReleaseKey),
 }
 
 /// One object of a discovered kind: the kind as discovery reported it (so the
@@ -171,6 +182,16 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ShowEvents),
         menu: None,
     });
+    // Palette and keymap only, like Show Events; the Resource panel's Helm
+    // Releases row is its mouse route.
+    registry.register(Command {
+        id: SHOW_HELM_RELEASES_COMMAND_ID,
+        title: "Helm Releases",
+        default_binding: "",
+        context: None,
+        action: Box::new(ShowHelmReleases),
+        menu: None,
+    });
 }
 
 /// A panel `add_panel` just built, as the typed entity the window needs.
@@ -189,109 +210,13 @@ pub enum OpenedPanel {
     Pods(Entity<crate::k8s::resource::pods::PodsPanel>),
     ObjectList(Entity<crate::k8s::resource::object_list::ObjectListPanel>),
     Events(Entity<crate::k8s::resource::events_browser::EventsPanel>),
+    HelmReleases(Entity<crate::k8s::resource::helm::list::HelmReleasesPanel>),
+    HelmRelease(Entity<crate::k8s::resource::helm::detail::HelmReleasePanel>),
     Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
     Logs(Entity<crate::util::logs::LogsPanel>),
     PodDetail(Entity<crate::k8s::resource::pod_detail::PodDetailPanel>),
     ObjectDetail(Entity<crate::k8s::resource::object_detail::ObjectDetailPanel>),
     Exec(Entity<crate::k8s::resource::exec::ExecPanel>),
-}
-
-impl OpenedPanel {
-    /// Scopes the panel to `namespaces`, if it's a namespace-scoped list - a Pods,
-    /// object, events or placeholder list. A detail or logs panel names its own
-    /// object and keeps it. Whether it did.
-    pub fn set_namespaces(&self, namespaces: Vec<String>, cx: &mut App) -> bool {
-        match self {
-            OpenedPanel::Pods(panel) => panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx)),
-            OpenedPanel::ObjectList(panel) => {
-                panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
-            }
-            OpenedPanel::Events(panel) => {
-                panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
-            }
-            OpenedPanel::Placeholder(panel) => {
-                panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx))
-            }
-            // Only a typed label panel's namespaces are its own to change.
-            OpenedPanel::Logs(panel) => {
-                return panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx));
-            }
-            OpenedPanel::PodDetail(_) | OpenedPanel::ObjectDetail(_) | OpenedPanel::Exec(_) => {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Whether the panel's tab is pinned (`panel-tab-menu`).
-    pub fn pinned(&self, cx: &App) -> bool {
-        use crate::ui::panel_title::ScopedPanel as _;
-        match self {
-            OpenedPanel::Pods(panel) => panel.read(cx).scope().pinned,
-            OpenedPanel::ObjectList(panel) => panel.read(cx).scope().pinned,
-            OpenedPanel::Events(panel) => panel.read(cx).scope().pinned,
-            OpenedPanel::Placeholder(panel) => panel.read(cx).scope().pinned,
-            OpenedPanel::Logs(panel) => panel.read(cx).scope().pinned,
-            OpenedPanel::PodDetail(panel) => panel.read(cx).scope().pinned,
-            OpenedPanel::ObjectDetail(panel) => panel.read(cx).scope().pinned,
-            OpenedPanel::Exec(panel) => panel.read(cx).scope().pinned,
-        }
-    }
-
-    /// Pins or unpins the panel's tab; it redraws, so its title shows which.
-    pub fn set_pinned(&self, pinned: bool, cx: &mut App) {
-        fn set<P: crate::ui::panel_title::ScopedPanel + 'static>(
-            panel: &Entity<P>,
-            pinned: bool,
-            cx: &mut App,
-        ) {
-            panel.update(cx, |panel, cx| {
-                panel.scope_mut().pinned = pinned;
-                cx.notify();
-            });
-        }
-        match self {
-            OpenedPanel::Pods(panel) => set(panel, pinned, cx),
-            OpenedPanel::ObjectList(panel) => set(panel, pinned, cx),
-            OpenedPanel::Events(panel) => set(panel, pinned, cx),
-            OpenedPanel::Placeholder(panel) => set(panel, pinned, cx),
-            OpenedPanel::Logs(panel) => set(panel, pinned, cx),
-            OpenedPanel::PodDetail(panel) => set(panel, pinned, cx),
-            OpenedPanel::ObjectDetail(panel) => set(panel, pinned, cx),
-            OpenedPanel::Exec(panel) => set(panel, pinned, cx),
-        }
-    }
-
-    /// The dock id of the panel just built, without naming its type - what the
-    /// window files it under and what `rescope` needs to find it again.
-    pub fn panel_id(&self) -> PanelId {
-        match self {
-            OpenedPanel::Pods(panel) => PanelId::from(panel.entity_id()),
-            OpenedPanel::ObjectList(panel) => PanelId::from(panel.entity_id()),
-            OpenedPanel::Events(panel) => PanelId::from(panel.entity_id()),
-            OpenedPanel::Placeholder(panel) => PanelId::from(panel.entity_id()),
-            OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
-            OpenedPanel::PodDetail(panel) => PanelId::from(panel.entity_id()),
-            OpenedPanel::ObjectDetail(panel) => PanelId::from(panel.entity_id()),
-            OpenedPanel::Exec(panel) => PanelId::from(panel.entity_id()),
-        }
-    }
-
-    /// The panel's own focus handle - the one its root tracks. Test-only: the
-    /// window finds focus through the dock's panels, which restored panels have too.
-    #[cfg(test)]
-    pub fn focus_handle(&self, cx: &App) -> FocusHandle {
-        match self {
-            OpenedPanel::Pods(panel) => panel.read(cx).focus_handle(cx),
-            OpenedPanel::ObjectList(panel) => panel.read(cx).focus_handle(cx),
-            OpenedPanel::Events(panel) => panel.read(cx).focus_handle(cx),
-            OpenedPanel::Placeholder(panel) => panel.read(cx).focus_handle(cx),
-            OpenedPanel::Logs(panel) => panel.read(cx).focus_handle(cx),
-            OpenedPanel::PodDetail(panel) => panel.read(cx).focus_handle(cx),
-            OpenedPanel::ObjectDetail(panel) => panel.read(cx).focus_handle(cx),
-            OpenedPanel::Exec(panel) => panel.read(cx).focus_handle(cx),
-        }
-    }
 }
 
 /// Recovers the typed handle behind `id`, for a panel this window did not itself
@@ -313,6 +238,8 @@ pub fn opened_panel_for(
         "Pods" => OpenedPanel::Pods(Entity::from(view.as_ref())),
         "ObjectList" => OpenedPanel::ObjectList(Entity::from(view.as_ref())),
         "Events" => OpenedPanel::Events(Entity::from(view.as_ref())),
+        "HelmReleases" => OpenedPanel::HelmReleases(Entity::from(view.as_ref())),
+        "HelmRelease" => OpenedPanel::HelmRelease(Entity::from(view.as_ref())),
         "Logs" => OpenedPanel::Logs(Entity::from(view.as_ref())),
         "Resource" => OpenedPanel::Placeholder(Entity::from(view.as_ref())),
         "PodDetail" => OpenedPanel::PodDetail(Entity::from(view.as_ref())),
@@ -386,6 +313,38 @@ pub fn add_panel(
                 cx,
             );
             (id, OpenedPanel::Events(panel))
+        }
+        NavTarget::HelmReleases => {
+            let panel = cx.new(|cx| {
+                crate::k8s::resource::helm::list::HelmReleasesPanel::new(scope.clone(), cx)
+            });
+            let id = PanelId::from(panel.entity_id());
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
+            (id, OpenedPanel::HelmReleases(panel))
+        }
+        NavTarget::HelmRelease(key) => {
+            let panel = cx.new(|cx| {
+                crate::k8s::resource::helm::detail::HelmReleasePanel::new(
+                    key.clone(),
+                    scope.clone(),
+                    cx,
+                )
+            });
+            let id = PanelId::from(panel.entity_id());
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
+            (id, OpenedPanel::HelmRelease(panel))
         }
         // Every other kind, built-in or CRD: the generic live list.
         NavTarget::Kind(kind) => {

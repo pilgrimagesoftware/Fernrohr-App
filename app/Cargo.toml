@@ -51,6 +51,10 @@ http = "=1.5.0"
 # already in the tree through kube and reqwest.
 url = "=2.5.8"
 base64 = "=0.23.1"
+# Gunzipping a Helm release's stored payload (`k8s::resource::helm::decode`,
+# helm-releases D2). Already in the build through a transitive dependency;
+# pinned to that same version.
+flate2 = "=1.1.10"
 # The `fernrohr mcp` stdio adapter (`mcp::adapter`, Fernrohr#189): the official
 # MCP SDK, for protocol negotiation and JSON-RPC framing. Only its server role
 # and stdio transport; its schemars, uuid, chrono and tracing are already in the

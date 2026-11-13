@@ -6,6 +6,7 @@ mod command;
 mod config;
 mod consts;
 mod forward;
+mod helm_cli;
 mod k8s;
 mod keymap;
 mod mcp;
@@ -47,6 +48,9 @@ fn main() {
     // anything else in `main` so it always happens before any tunnel could possibly
     // be acquired. See `util::pidfile`'s module docs for the quit-time half of this.
     util::pidfile::sweep_stale();
+    // A crash mid-run can leave a helm run's kubeconfig, with its context's
+    // credentials, in the cache dir (`helm-releases` D8).
+    helm_cli::sweep_stale_kubeconfigs();
 
     // Not under `cfg(test)`: `main` is never the test entry point. Every other
     // invocation returned above, so only the real app writes the log.
@@ -77,6 +81,8 @@ fn main() {
             cx,
         );
         ui::shortcut_timeout::init(ui_config.shortcut_timeout_secs, ui_path.clone(), cx);
+        // Checks for `helm` off the UI thread; Helm actions read the answer.
+        helm_cli::init(ui_config.helm_path.clone(), ui_path.clone(), cx);
         ui::logs_panels::init(ui_config.logs_panels, ui_path.clone(), cx);
         ui::background_mcp::init(ui_config.background_mcp, ui_path.clone(), cx);
         ui::text_size::init(ui_config.text_size, ui_path, cx);

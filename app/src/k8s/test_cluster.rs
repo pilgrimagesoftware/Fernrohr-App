@@ -7,12 +7,23 @@
 //!
 //! Collections are addressed by path prefix and plural (`/api/v1` + `pods`,
 //! `/apis/apps/v1` + `deployments`); a collection with no objects lists empty.
+//!
+//! Lists and watches honor a `labelSelector` of equality terms (`a=b,c==d`)
+//! and a `fieldSelector` on `type`; other field selectors are ignored. A
+//! request that asks for `as=PartialObjectMetadataList` in its `accept` header
+//! is answered with metadata only, as a real server does. Unlike a real
+//! server's, a watch doesn't send an object that stops matching a selector as
+//! deleted.
 
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::AsyncWriteExt as _;
+
+mod request;
+
+use request::{Request, Selector, merge, metadata_of, not_found, same_object};
 
 /// One stored object and the collection it belongs to.
 struct Stored {
@@ -59,6 +70,12 @@ pub(crate) struct FakeCluster {
     creates: Arc<Mutex<Vec<(String, Value)>>>,
     /// Every container log request's path, `/api/v1/namespaces/<ns>/pods/<pod>/log`.
     log_requests: Arc<Mutex<Vec<String>>>,
+    /// When set, every list and watch is refused with this status and body.
+    list_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
+    /// How many lists and watches asked for metadata only.
+    metadata_requests: Arc<AtomicUsize>,
+    /// How many lists and watches asked for whole objects.
+    full_requests: Arc<AtomicUsize>,
 }
 
 /// The token the fake answers every TokenRequest with.
@@ -78,6 +95,9 @@ impl FakeCluster {
             get_refusal: Arc::default(),
             creates: Arc::default(),
             log_requests: Arc::default(),
+            list_refusal: Arc::default(),
+            metadata_requests: Arc::default(),
+            full_requests: Arc::default(),
         };
         let handle = cx.update(|cx| crate::runtime::handle(cx));
         let addr = handle.block_on(cluster.clone().serve());
@@ -214,6 +234,21 @@ impl FakeCluster {
         *self.get_refusal.lock() = Some((status, body));
     }
 
+    /// Refuses every later list and watch with `status` (`"403 Forbidden"`)
+    /// and `body`; gets of single objects still answer.
+    pub(crate) fn refuse_lists(&self, status: &'static str, body: Value) {
+        *self.list_refusal.lock() = Some((status, body));
+    }
+
+    /// How many lists and watches asked for metadata only, and how many for
+    /// whole objects.
+    pub(crate) fn list_requests(&self) -> (usize, usize) {
+        (
+            self.metadata_requests.load(Ordering::SeqCst),
+            self.full_requests.load(Ordering::SeqCst),
+        )
+    }
+
     /// Refuses every later patch with `status` (`"409 Conflict"`) and `body`.
     pub(crate) fn refuse_patches(&self, status: &'static str, body: Value) {
         *self.patch_refusal.lock() = Some((status, body));
@@ -294,7 +329,11 @@ impl FakeCluster {
                             request.content_type.as_deref(),
                         ),
                         "POST" => cluster.answer_create(&request.target, &request.body),
-                        _ => cluster.answer(&request.target).await,
+                        _ => {
+                            cluster
+                                .answer(&request.target, request.accept.as_deref())
+                                .await
+                        }
                     };
                     let response = format!(
                         "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
@@ -335,7 +374,7 @@ impl FakeCluster {
     }
 
     /// The status and body for a request to `target` (path and query).
-    async fn answer(&self, target: &str) -> (&'static str, String) {
+    async fn answer(&self, target: &str, accept: Option<&str>) -> (&'static str, String) {
         let (path, query) = target.split_once('?').unwrap_or((target, ""));
         if path.ends_with("/log") {
             self.log_requests.lock().push(path.to_string());
@@ -358,6 +397,18 @@ impl FakeCluster {
                 None => not_found(),
             };
         }
+        if let Some((status, body)) = self.list_refusal.lock().clone() {
+            return (status, body.to_string());
+        }
+        let selector = Selector::parse(query);
+        let metadata_only =
+            accept.is_some_and(|accept| accept.contains("as=PartialObjectMetadata"));
+        let counter = if metadata_only {
+            &self.metadata_requests
+        } else {
+            &self.full_requests
+        };
+        counter.fetch_add(1, Ordering::SeqCst);
         if query
             .split('&')
             .any(|pair| pair == "watch=true" || pair == "watch=1")
@@ -374,19 +425,37 @@ impl FakeCluster {
                 .log
                 .iter()
                 .filter(|write| write.version > from && request.covers(write))
-                .map(|write| format!("{}\n", write.event))
+                .filter(|write| selector.matches(&write.event["object"]))
+                .map(|write| {
+                    let mut event = write.event.clone();
+                    if metadata_only {
+                        event["object"] = metadata_of(&event["object"]);
+                    }
+                    format!("{event}\n")
+                })
                 .collect();
             return ("200 OK", body);
         }
         let state = self.state.lock();
-        let items: Vec<&Value> = state
+        let items: Vec<Value> = state
             .objects
             .iter()
-            .filter(|stored| request.holds(stored))
-            .map(|stored| &stored.object)
+            .filter(|stored| request.holds(stored) && selector.matches(&stored.object))
+            .map(|stored| {
+                if metadata_only {
+                    metadata_of(&stored.object)
+                } else {
+                    stored.object.clone()
+                }
+            })
             .collect();
+        let (api_version, kind) = if metadata_only {
+            ("meta.k8s.io/v1", "PartialObjectMetadataList")
+        } else {
+            (request.api_version(), "List")
+        };
         let list = json!({
-            "apiVersion": request.api_version(), "kind": "List",
+            "apiVersion": api_version, "kind": kind,
             "metadata": { "resourceVersion": state.version.to_string() },
             "items": items,
         });
@@ -394,93 +463,5 @@ impl FakeCluster {
     }
 }
 
-/// A request path, split into the collection it addresses.
-struct Request<'a> {
-    prefix: &'a str,
-    namespace: Option<&'a str>,
-    plural: &'a str,
-    name: Option<&'a str>,
-}
-
-impl<'a> Request<'a> {
-    /// `/api/v1/pods`, `/api/v1/namespaces/shop/pods`,
-    /// `/api/v1/namespaces/shop/pods/web-1`, or - a cluster-scoped kind's
-    /// single object, a Node's say - `/api/v1/nodes/node-a`, and the same
-    /// under `/apis/<group>/<version>`.
-    fn parse(path: &'a str) -> Option<Self> {
-        let prefix_len = if path.starts_with("/api/") {
-            "/api/v1".len()
-        } else {
-            let mut slashes = path.match_indices('/').map(|(index, _)| index);
-            slashes.nth(3).unwrap_or(path.len())
-        };
-        let (prefix, rest) = path.split_at(prefix_len.min(path.len()));
-        let parts: Vec<&str> = rest.trim_start_matches('/').split('/').collect();
-        let (namespace, plural, name) = match parts.as_slice() {
-            [plural] => (None, *plural, None),
-            [plural, name] => (None, *plural, Some(*name)),
-            ["namespaces", namespace, plural] => (Some(*namespace), *plural, None),
-            ["namespaces", namespace, plural, name] => (Some(*namespace), *plural, Some(*name)),
-            _ => return None,
-        };
-        Some(Self {
-            prefix,
-            namespace,
-            plural,
-            name,
-        })
-    }
-
-    fn api_version(&self) -> &str {
-        self.prefix
-            .trim_start_matches("/apis/")
-            .trim_start_matches("/api/")
-    }
-
-    fn holds(&self, stored: &Stored) -> bool {
-        stored.prefix == self.prefix
-            && stored.plural == self.plural
-            && self
-                .namespace
-                .is_none_or(|namespace| stored.object["metadata"]["namespace"] == namespace)
-    }
-
-    fn covers(&self, write: &Write) -> bool {
-        write.prefix == self.prefix
-            && write.plural == self.plural
-            && self
-                .namespace
-                .is_none_or(|namespace| write.event["object"]["metadata"]["namespace"] == namespace)
-    }
-}
-
-/// A JSON merge patch (RFC 7386): `patch`'s fields replace `target`'s, a
-/// `null` removes one, and objects merge field by field.
-fn merge(target: &mut Value, patch: &Value) {
-    let Value::Object(patch) = patch else {
-        *target = patch.clone();
-        return;
-    };
-    if !target.is_object() {
-        *target = json!({});
-    }
-    let target = target.as_object_mut().expect("made an object above");
-    for (key, value) in patch {
-        if value.is_null() {
-            target.remove(key);
-        } else {
-            merge(target.entry(key.clone()).or_insert(Value::Null), value);
-        }
-    }
-}
-
-fn same_object(a: &Value, b: &Value) -> bool {
-    a["metadata"]["namespace"] == b["metadata"]["namespace"]
-        && a["metadata"]["name"] == b["metadata"]["name"]
-}
-
-fn not_found() -> (&'static str, String) {
-    let status = json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure",
-        "reason": "NotFound", "code": 404, "message": "not found" });
-    ("404 Not Found", status.to_string())
-}
+#[cfg(test)]
+mod tests;

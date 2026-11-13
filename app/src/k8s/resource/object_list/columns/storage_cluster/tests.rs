@@ -175,7 +175,26 @@ fn a_namespace_shows_its_status() {
             "status": { "phase": "Active" },
         }),
     );
-    assert_eq!(cells, vec![Cell::status("Active", Tone::Good)]);
+    assert_eq!(cells, vec![Cell::status("Active", Tone::Good), Cell::Empty]);
+}
+
+/// #351: a namespace's labels, `key=value` in key order, without the
+/// `kubernetes.io/metadata.name` label that only repeats its name.
+#[test]
+fn a_namespace_shows_its_labels() {
+    let cells = cells(
+        &NAMESPACE,
+        json!({
+            "apiVersion": "v1", "kind": "Namespace",
+            "metadata": { "name": "staging", "labels": {
+                "team": "web",
+                "kubernetes.io/metadata.name": "staging",
+                "env": "test",
+            } },
+            "status": { "phase": "Active" },
+        }),
+    );
+    assert_eq!(cells[1], Cell::text("env=test,team=web"));
 }
 
 #[test]
