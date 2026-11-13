@@ -5,13 +5,14 @@
 //! the UI thread, [`render`] draws it, [`commands`] are its tab keys, and
 //! [`restore`] saves and rebuilds it with the window's layout.
 
+mod actions;
 mod commands;
 mod fetch;
 mod panel;
 mod render;
 pub(crate) mod restore;
 
-pub(crate) use commands::register_commands;
+pub(crate) use commands::{PANEL_KEY_CONTEXT as DETAIL_KEY_CONTEXT, register_commands};
 pub use panel::HelmReleasePanel;
 #[cfg(test)]
 pub(crate) use panel::ReleaseTab;

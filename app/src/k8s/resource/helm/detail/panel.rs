@@ -64,6 +64,8 @@ pub struct HelmReleasePanel {
     pub(crate) tab: ReleaseTab,
     /// The revision selected in History; `None` follows the deployed one.
     pub(super) selected: Option<u32>,
+    /// Rollback's and Uninstall's progress and last refusal (section 8).
+    pub(super) actions: crate::k8s::resource::helm::actions::ActionState,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -91,13 +93,14 @@ impl HelmReleasePanel {
             notes: None,
             tab: ReleaseTab::default(),
             selected: None,
+            actions: Default::default(),
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.subscribe(cx);
         this
     }
 
-    fn client(&self, cx: &App) -> Option<kube::Client> {
+    pub(super) fn client(&self, cx: &App) -> Option<kube::Client> {
         match &self.connection.read(cx).state {
             ConnectionState::Connected(client) => Some(client.clone()),
             _ => None,

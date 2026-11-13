@@ -7,6 +7,7 @@
 //! dock panel and [`render`] draws it, [`commands`] are its shortcuts, and
 //! [`restore`] saves and rebuilds it with the window's layout.
 
+mod actions;
 mod columns;
 mod commands;
 mod panel;

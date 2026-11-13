@@ -74,6 +74,39 @@ says it no longer exists.
 
 Click a tab to show it too. Each tab is also in the command palette while the panel has focus.
 
+## Roll back or uninstall a release
+
+Fernrohr runs your own `helm` for these, so they behave as they do from a terminal: hooks run and
+the release's history is recorded. They need Helm 3 or 4 (see [Requirements](#requirements)).
+`helm` reaches the cluster the way the context does, through its tunnel if it has one, and signs in
+with the context's own credentials.
+
+| Action | Key | Where |
+| --- | --- | --- |
+| Roll back | <kbd>⌃R</kbd> | A release's panel: its key, the **Roll back** button (an undo arrow) in the header, or the palette |
+| Uninstall | <kbd>⌃D</kbd> | The list's selected row (its key, its right-click menu, or the palette) and a release's panel (its key, the **Uninstall** button (a trash can) in the header, or the palette) |
+
+**Roll back** goes to the revision selected in History. If the selection is the current revision,
+which it is by default, it goes to the one before. To roll back to revision 3, for example, press
+<kbd>2</kbd> for History, move to revision 3 with the arrow keys, and press <kbd>⌃R</kbd>. A
+confirmation names the release, its namespace, the current revision and the one it goes back to,
+each with its chart and app version. Press <kbd>Enter</kbd> to roll back, or <kbd>Esc</kbd> to
+cancel. Rolling back adds a new revision; you can roll back again from it.
+
+**Uninstall** asks first, and says how many objects the deployed revision's manifest declares: those
+objects and the release's history are deleted, which can't be undone. The confirmation opens with
+focus on **Cancel**, so <kbd>Enter</kbd> cancels. To uninstall, click **Uninstall**, <kbd>Tab</kbd>
+to it and press <kbd>Enter</kbd>, or press <kbd>⌘⌫</kbd>.
+
+While an action runs, the panel says so, and a second one on the same release doesn't start. When it
+finishes, the list and the panel update from the cluster: a new revision after a rollback, the
+release gone after an uninstall. If `helm` fails, for example because a hook failed, the panel shows
+`helm`'s own error until you dismiss it.
+
+Without a usable `helm`, or while the context isn't connected, the buttons and the row's menu item
+are disabled and say why. Running either action from its key or the palette then shows the reason
+on the panel instead.
+
 ## Access
 
 Helm keeps releases in Secrets, so the list needs permission to list Secrets. If listing them in

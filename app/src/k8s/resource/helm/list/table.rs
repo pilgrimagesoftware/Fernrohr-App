@@ -4,6 +4,7 @@
 use super::columns::{HelmColumn, status_tone};
 use super::row::{Chart, HelmRow};
 use crate::ui::table_fit::{FitColumns, HeaderBounds};
+use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::*;
 use jiff::Timestamp;
@@ -23,6 +24,10 @@ pub(crate) struct HelmTableDelegate {
     now: Timestamp,
     header: HeaderBounds,
     no_match: bool,
+    /// What a row's context menu needs: the panel's focus, whose key context
+    /// its items' keys and actions resolve in, and why Uninstall can't run
+    /// now, if it can't.
+    menu: Option<(FocusHandle, Option<String>)>,
 }
 
 impl HelmTableDelegate {
@@ -38,6 +43,7 @@ impl HelmTableDelegate {
             now: Timestamp::now(),
             header: HeaderBounds::default(),
             no_match: false,
+            menu: None,
         }
     }
 
@@ -47,6 +53,12 @@ impl HelmTableDelegate {
 
     pub(crate) fn set_no_match(&mut self, no_match: bool) {
         self.no_match = no_match;
+    }
+
+    /// Gives rows their context menu: actions dispatched to `focus`, with
+    /// Uninstall disabled and the reason shown while `unavailable`.
+    pub(crate) fn set_menu(&mut self, focus: FocusHandle, unavailable: Option<String>) {
+        self.menu = Some((focus, unavailable));
     }
 
     /// Replaces the rows, keeping the active sort applied.
@@ -113,6 +125,40 @@ impl HelmTableDelegate {
 }
 
 impl TableDelegate for HelmTableDelegate {
+    /// A row's menu: Open, and Uninstall - disabled, with why beneath it,
+    /// while `helm` or the connection isn't available. Opening it selects the
+    /// row, which is what its items act on.
+    fn context_menu(
+        &mut self,
+        row_ix: usize,
+        menu: PopupMenu,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> PopupMenu {
+        let Some((focus, unavailable)) = self.menu.clone() else {
+            return menu;
+        };
+        if row_ix >= self.rows.len() {
+            return menu;
+        }
+        cx.defer_in(window, move |table, _window, cx| {
+            table.set_selected_row(row_ix, cx)
+        });
+        let menu = menu
+            .action_context(focus)
+            .menu("Open", Box::new(super::commands::OpenRelease))
+            .separator()
+            .menu_with_disabled(
+                "Uninstall\u{2026}",
+                Box::new(crate::k8s::resource::helm::actions::UninstallRelease),
+                unavailable.is_some(),
+            );
+        match unavailable {
+            Some(reason) => menu.label(reason),
+            None => menu,
+        }
+    }
+
     fn render_empty(
         &mut self,
         _: &mut Window,

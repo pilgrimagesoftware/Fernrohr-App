@@ -7,9 +7,13 @@ use super::commands::{
 use super::fetch::Fetched;
 use super::panel::{HelmReleasePanel, ReleaseTab};
 use crate::k8s::cluster::connection::ConnectionState;
+use crate::k8s::resource::helm::actions::{
+    self, BannerIds, ROLLBACK_KEY, RollbackRelease, UNINSTALL_KEY, UninstallRelease,
+};
 use crate::k8s::resource::helm::list::status_tone;
 use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use crate::ui::panel_title;
+use gpui_kit::assets::IconName;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
@@ -19,6 +23,16 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 const HINTS_ID: &str = "helm-release-hints";
+
+/// The action banner's ids (helm-releases section 8).
+pub(crate) const BANNER: BannerIds = BannerIds {
+    running: "helm-release-action-running",
+    refusal: "helm-release-action-refusal",
+    dismiss: "helm-release-action-dismiss",
+};
+/// The header's action buttons.
+pub(crate) const ROLLBACK_BUTTON: &str = "helm-release-rollback";
+pub(crate) const UNINSTALL_BUTTON: &str = "helm-release-uninstall";
 
 fn tab_action(tab: ReleaseTab) -> (Box<dyn Action>, &'static str) {
     match tab {
@@ -249,6 +263,21 @@ impl HelmReleasePanel {
                 window,
             ));
         }
+        hints = hints
+            .hint(KeyHint::for_action(
+                &RollbackRelease,
+                Some(PANEL_KEY_CONTEXT),
+                ROLLBACK_KEY,
+                "Roll back",
+                window,
+            ))
+            .hint(KeyHint::for_action(
+                &UninstallRelease,
+                Some(PANEL_KEY_CONTEXT),
+                UNINSTALL_KEY,
+                "Uninstall",
+                window,
+            ));
         div()
             .size_full()
             .flex()
@@ -292,7 +321,16 @@ impl Render for HelmReleasePanel {
             .child(panel_title::context_label(
                 &self.scope,
                 cx.theme().muted_foreground,
-            ));
+            ))
+            .child(div().flex_1())
+            .children(self.action_buttons(cx));
+        let banner =
+            actions::status_banner(&self.actions, cx.weak_entity(), &BANNER, cx).map(|banner| {
+                div()
+                    .px(space.panel_inset)
+                    .pt(space.control_gap)
+                    .child(banner)
+            });
         div()
             .size_full()
             .key_context(PANEL_KEY_CONTEXT)
@@ -304,6 +342,12 @@ impl Render for HelmReleasePanel {
                 cx.listener(|this, _: &ShowHistory, _, cx| this.show(ReleaseTab::History, cx)),
             )
             .on_action(cx.listener(|this, _: &ShowNotes, _, cx| this.show(ReleaseTab::Notes, cx)))
+            .on_action(
+                cx.listener(|this, _: &RollbackRelease, window, cx| this.rollback(window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &UninstallRelease, window, cx| this.uninstall(window, cx)),
+            )
             // History's cursor: pure row movement, the keyboard rule's one exception.
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 if this.tab != ReleaseTab::History || event.keystroke.modifiers.modified() {
@@ -321,8 +365,47 @@ impl Render for HelmReleasePanel {
                     .flex()
                     .flex_col()
                     .child(header)
+                    .children(banner)
                     .child(div().flex_1().min_h_0().child(content)),
             )
             .focus_trap("helm-release-panel-tab-trap", &self.focus_handle)
+    }
+}
+
+impl HelmReleasePanel {
+    /// Rollback's and Uninstall's icon buttons, once the release is listed:
+    /// disabled, saying why, while `helm` or the connection isn't available.
+    fn action_buttons(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        if self.history(cx).is_empty() {
+            return Vec::new();
+        }
+        let unavailable = self.actions_unavailable(cx);
+        let panel = cx.weak_entity();
+        let rollback = {
+            let panel = panel.clone();
+            actions::action_button(
+                ROLLBACK_BUTTON,
+                IconName::Undo2,
+                "Roll back",
+                &RollbackRelease,
+                PANEL_KEY_CONTEXT,
+                unavailable.clone(),
+                move |window, cx| {
+                    let _ = panel.update(cx, |this, cx| this.rollback(window, cx));
+                },
+            )
+        };
+        let uninstall = actions::action_button(
+            UNINSTALL_BUTTON,
+            IconName::Trash,
+            "Uninstall",
+            &UninstallRelease,
+            PANEL_KEY_CONTEXT,
+            unavailable,
+            move |window, cx| {
+                let _ = panel.update(cx, |this, cx| this.uninstall(window, cx));
+            },
+        );
+        vec![rollback, uninstall]
     }
 }

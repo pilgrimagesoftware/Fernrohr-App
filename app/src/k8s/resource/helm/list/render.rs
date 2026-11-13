@@ -10,6 +10,7 @@ use super::panel::HelmReleasesPanel;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::resource::helm::HelmScope;
+use crate::k8s::resource::helm::actions::{self, BannerIds, UNINSTALL_KEY, UninstallRelease};
 use crate::k8s::resource::load_phase::LoadPhase;
 use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use crate::ui::list_state::{self, TableArea};
@@ -18,6 +19,13 @@ use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+
+/// The action banner's ids (helm-releases section 8).
+pub(crate) const BANNER: BannerIds = BannerIds {
+    running: "helm-releases-action-running",
+    refusal: "helm-releases-action-refusal",
+    dismiss: "helm-releases-action-dismiss",
+};
 
 /// The hint row's id, which keeps whether it is collapsed.
 const HINTS_ID: &str = "helm-releases-hints";
@@ -121,6 +129,12 @@ impl HelmReleasesPanel {
                 &crate::ui::namespace_picker::PickNamespaces,
                 crate::ui::namespace_picker::PICK_NAMESPACES_KEY,
                 "Namespaces",
+                window,
+            ))
+            .hint(Self::hint(
+                &UninstallRelease,
+                UNINSTALL_KEY,
+                "Uninstall",
                 window,
             ))
             .hint(Self::hint(&ToggleUninstalled, "", uninstalled, window));
@@ -287,6 +301,14 @@ impl Render for HelmReleasesPanel {
                 header.child(list_state::refreshing(cx))
             })
             .children(namespace_bar);
+        let banner =
+            actions::status_banner(&self.actions, cx.weak_entity(), &BANNER, cx).map(|banner| {
+                let space = crate::ui::space::spacing(cx);
+                div()
+                    .px(space.panel_inset)
+                    .pt(space.control_gap)
+                    .child(banner)
+            });
         let mut key_context = KeyContext::default();
         key_context.add(PANEL_KEY_CONTEXT);
         key_context.add(crate::ui::list_sort::KEY_CONTEXT);
@@ -309,12 +331,16 @@ impl Render for HelmReleasesPanel {
             .on_action(
                 cx.listener(|this, _: &DescribeRelease, window, cx| this.open_selected(window, cx)),
             )
+            .on_action(cx.listener(|this, _: &UninstallRelease, window, cx| {
+                this.uninstall_selected(window, cx)
+            }))
             .child(
                 div()
                     .size_full()
                     .flex()
                     .flex_col()
                     .child(header)
+                    .children(banner)
                     .child(div().flex_1().min_h_0().child(content)),
             )
             .focus_trap("helm-releases-panel-tab-trap", &self.focus_handle)

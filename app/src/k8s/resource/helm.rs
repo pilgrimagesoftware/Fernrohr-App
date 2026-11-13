@@ -4,6 +4,7 @@
 //! that fills it ([`watch`]), and the Helm Releases list panel ([`list`]); the
 //! release detail panel and actions build on them.
 
+pub(crate) mod actions;
 mod decode;
 pub(crate) mod detail;
 pub(crate) mod list;
