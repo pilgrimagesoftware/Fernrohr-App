@@ -133,9 +133,11 @@ fn group_of(h: &mut Harness, panel: PanelId) -> NodeId {
 }
 
 /// Opens Services from the Resource panel by keyboard: Focus Resources, down to
-/// its row, Enter. Returns the new panel.
+/// its row - past Pods and Helm Releases in Workloads - Enter. Returns the new
+/// panel.
 fn open_services_from_the_resource_panel(h: &mut Harness) -> PanelId {
     press(&mut h.vcx, "cmd-0");
+    press(&mut h.vcx, "down");
     press(&mut h.vcx, "down");
     press(&mut h.vcx, "down");
     press(&mut h.vcx, "enter");

@@ -74,6 +74,7 @@ impl From<Navigable<'_>> for Cursor {
         match item {
             Navigable::Subgroup(group) => Cursor::Subgroup(group.to_string()),
             Navigable::Kind(kind) => Cursor::Row(NavTarget::Kind(kind.clone())),
+            Navigable::Target(target) => Cursor::Row(target.clone()),
         }
     }
 }
