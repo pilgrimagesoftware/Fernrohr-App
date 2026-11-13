@@ -121,22 +121,29 @@ fn run_env(dir: &Path) -> TestRunEnv {
     }
 }
 
-/// Waits, drawing, until `done` - or panics naming `what`.
+/// How long a test waits for something before giving up: generous, since a
+/// whole `cargo test` spawns many fake `helm`s at once. A passing wait returns
+/// as soon as it's done.
+const WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Waits, drawing, until `done` - or panics naming `what` after [`WAIT`].
 pub(super) fn wait_until(
     vcx: &mut VisualTestContext,
     what: &str,
     done: impl Fn(&mut VisualTestContext) -> bool,
 ) {
-    for _ in 0..400 {
+    let deadline = std::time::Instant::now() + WAIT;
+    loop {
         vcx.run_until_parked();
         if done(vcx) {
             return;
         }
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        if std::time::Instant::now() > deadline {
+            panic!("never {what}");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    panic!("never {what}");
 }
-
 /// What `helm` runs with for `subcommand` on `web`: every flag before `--`,
 /// the per-run kubeconfig as `<kubeconfig>` (see [`normalized`]).
 pub(super) fn expected(subcommand: &str, positionals: &[&str]) -> Vec<String> {

@@ -189,7 +189,7 @@ async fn uninstall_confirms_only_by_its_shortcut(cx: &mut TestAppContext) {
 /// release neither asks nor starts - the running line is the reason.
 #[gpui_kit::test]
 async fn a_running_action_refuses_a_second(cx: &mut TestAppContext) {
-    let mut h = open(cx, "s8-running", "sleep 2");
+    let mut h = open(cx, "s8-running", "sleep 5");
     h.press("ctrl-r");
     h.wait_for_dialog();
     h.press("enter");
