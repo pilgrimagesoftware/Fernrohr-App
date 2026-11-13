@@ -76,7 +76,8 @@ fn no_columns_is_none() {
 }
 
 /// Each declared type reads as its cell: integers sort as numbers, dates as
-/// ages, a condition status in its tone, and kubectl's filter syntax works.
+/// ages, a condition status in its tone, kubectl's filter syntax works, and
+/// a path matching several values shows the first, as the API server does.
 #[test]
 fn cells_follow_the_declared_type() {
     let printer = PrinterColumns::from_crd(
@@ -110,11 +111,26 @@ fn cells_follow_the_declared_type() {
             Cell::Number(3),
             Cell::Age("2026-11-02T00:00:00Z".parse().unwrap()),
             Cell::Text("fast".into()),
-            Cell::Text("a,b".into()),
+            Cell::Text("a".into()),
             Cell::Text("false".into()),
             Cell::Empty,
         ]
     );
+}
+
+/// A `jsonPath` that doesn't parse drops its column rather than leaving it
+/// empty on every row.
+#[test]
+fn an_unparseable_path_drops_its_column() {
+    let printer = PrinterColumns::from_crd(
+        &crd(json!([
+            { "name": "Broken", "type": "string", "jsonPath": ".spec[?(" },
+            { "name": "Size", "type": "integer", "jsonPath": ".spec.size" },
+        ])),
+        "v1",
+    )
+    .expect("columns");
+    assert_eq!(titles(&printer), ["Size"]);
 }
 
 /// An object missing everything gets one empty cell per column - nothing

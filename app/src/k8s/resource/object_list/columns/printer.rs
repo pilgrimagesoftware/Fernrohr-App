@@ -9,7 +9,9 @@
 
 use super::Cell;
 use crate::k8s::resource::status_tone::ConditionStatus;
-use jsonpath_rust::JsonPath as _;
+use jsonpath_rust::parser::model::JpQuery;
+use jsonpath_rust::parser::parse_json_path;
+use jsonpath_rust::query::js_path_process;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::{
     CustomResourceColumnDefinition, CustomResourceDefinition,
 };
@@ -39,8 +41,9 @@ pub struct PrinterColumn {
     pub title: String,
     /// Default width in logical pixels, by type.
     pub width: f32,
-    /// The column's `jsonPath` as a JSONPath query (`$` prefixed).
-    path: String,
+    /// The column's `jsonPath`, parsed once (`$` prefixed) - cells are built
+    /// on the UI thread, once per object per watch event.
+    path: JpQuery,
     kind: ValueType,
 }
 
@@ -76,8 +79,9 @@ impl ValueType {
 
 impl PrinterColumns {
     /// `crd`'s columns for `version`, as `kubectl get` shows them: priority 0
-    /// only (the rest are `-o wide`), less any that repeat a base column.
-    /// `None` when that leaves none, or the CRD doesn't serve `version`.
+    /// only (the rest are `-o wide`), less any that repeat a base column or
+    /// whose `jsonPath` doesn't parse (logged). `None` when that leaves none,
+    /// or the CRD doesn't serve `version`.
     pub fn from_crd(crd: &CustomResourceDefinition, version: &str) -> Option<Self> {
         let served = crd.spec.versions.iter().find(|v| v.name == version)?;
         let columns: Vec<PrinterColumn> = served
@@ -86,7 +90,7 @@ impl PrinterColumns {
             .flatten()
             .filter(|column| column.priority.unwrap_or(0) == 0)
             .filter(|column| !BASE_PATHS.contains(&column.json_path.trim()))
-            .map(PrinterColumn::new)
+            .filter_map(PrinterColumn::new)
             .collect();
         (!columns.is_empty()).then_some(Self { columns })
     }
@@ -108,40 +112,43 @@ impl PrinterColumns {
 }
 
 impl PrinterColumn {
-    fn new(definition: &CustomResourceColumnDefinition) -> Self {
+    /// `definition`'s column, or `None` - logged - when its `jsonPath`
+    /// doesn't parse: a column that could only ever be empty isn't shown.
+    fn new(definition: &CustomResourceColumnDefinition) -> Option<Self> {
         let kind = ValueType::parse(&definition.type_);
         let path = definition.json_path.trim();
-        Self {
+        let path = if path.starts_with('$') {
+            path.to_string()
+        } else if path.starts_with('.') || path.starts_with('[') {
+            format!("${path}")
+        } else {
+            format!("$.{path}")
+        };
+        let path = parse_json_path(&path)
+            .inspect_err(|error| {
+                log::warn!(
+                    "printer column {:?}: can't parse jsonPath {:?}: {error}",
+                    definition.name,
+                    definition.json_path
+                );
+            })
+            .ok()?;
+        Some(Self {
             id: format!("crd:{}", definition.name.to_lowercase()),
             title: definition.name.clone(),
             width: kind.width(),
-            path: if path.starts_with('$') {
-                path.to_string()
-            } else if path.starts_with('.') || path.starts_with('[') {
-                format!("${path}")
-            } else {
-                format!("$.{path}")
-            },
+            path,
             kind,
-        }
+        })
     }
 
-    /// The cell `object` (as JSON) shows here: empty when the path finds
-    /// nothing or doesn't parse; several matches joined with commas.
+    /// The cell `object` (as JSON) shows here: its first match, as the API
+    /// server's table converter prints it, or empty when nothing matches.
     fn cell(&self, object: &Value) -> Cell {
-        let Ok(found) = object.query(&self.path) else {
-            return Cell::Empty;
-        };
-        match found.as_slice() {
-            [] => Cell::Empty,
-            [one] => self.typed(one),
-            many => Cell::text(
-                many.iter()
-                    .map(|value| plain(value))
-                    .collect::<Vec<_>>()
-                    .join(","),
-            ),
-        }
+        js_path_process(&self.path, object)
+            .ok()
+            .and_then(|found| found.into_iter().next())
+            .map_or(Cell::Empty, |first| self.typed(first.val()))
     }
 
     /// One value as this column's type reads it. A string of exactly
