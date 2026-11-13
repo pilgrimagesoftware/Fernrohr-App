@@ -90,9 +90,59 @@ pub(crate) fn disconnect_confirmation_body(
     body
 }
 
+/// The body of Disconnect All's or Disconnect Others' confirmation (#359):
+/// which contexts disconnect, how many of the window's panels close with them,
+/// and which of them `staying` connected in another window.
+pub(crate) fn disconnect_many_confirmation_body(
+    context_names: &[String],
+    panel_count: usize,
+    staying: &[String],
+) -> crate::ui::confirm_text::ConfirmText {
+    let panels = match panel_count {
+        0 => "No open panels will close.".to_string(),
+        1 => "1 open panel will close.".to_string(),
+        n => format!("{n} open panels will close."),
+    };
+    let body = crate::ui::confirm_text::ConfirmText::new()
+        .names(context_names)
+        .text(" will disconnect. ")
+        .text(&panels);
+    match staying {
+        [] => body,
+        [_] => body
+            .text(" ")
+            .names(staying)
+            .text(" stays connected in another window."),
+        _ => body
+            .text(" ")
+            .names(staying)
+            .text(" stay connected in other windows."),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{contexts_after_disconnect, disconnect_confirmation_body, dock_layout_key};
+    use super::{
+        contexts_after_disconnect, disconnect_confirmation_body, disconnect_many_confirmation_body,
+        dock_layout_key,
+    };
+
+    #[test]
+    fn a_many_disconnect_names_each_context_and_the_panels() {
+        let body = disconnect_many_confirmation_body(&["a".into(), "b".into()], 3, &[]);
+        assert_eq!(
+            body.plain(),
+            "\u{201c}a\u{201d}, \u{201c}b\u{201d} will disconnect. 3 open panels will close."
+        );
+        let staying =
+            disconnect_many_confirmation_body(&["a".into(), "b".into()], 0, &["b".into()]);
+        assert_eq!(staying.name_list(), ["a", "b", "b"]);
+        assert!(
+            staying
+                .plain()
+                .ends_with(" stays connected in another window.")
+        );
+    }
 
     #[test]
     fn a_single_context_keys_by_its_bare_name() {

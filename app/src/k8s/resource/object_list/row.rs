@@ -2,7 +2,7 @@
 //! event, when the store stores it, never per frame - the one place a kind's
 //! per-kind cells (`standard-resource-panels` section 2) are computed too.
 
-use super::columns::{Cell, ConditionsSeen, KindColumns};
+use super::columns::{Cell, ConditionsSeen, RowColumns};
 use jiff::Timestamp;
 use kube::api::DynamicObject;
 
@@ -20,8 +20,8 @@ pub struct ObjectRow {
     pub namespace: Option<String>,
     /// When the object was created; Age is measured from it at render time.
     pub created: Option<Timestamp>,
-    /// The kind's own columns' cells, in [`KindColumns::columns`] order. Empty
-    /// for a kind with base columns only.
+    /// The kind's own columns' cells, in their columns' order. Empty for a
+    /// kind with base columns only.
     pub cells: Vec<Cell>,
     /// What the object reports in `status.conditions` - whether a list of a
     /// kind outside the per-kind table shows its Ready and Message columns.
@@ -32,7 +32,7 @@ pub struct ObjectRow {
 
 impl ObjectRow {
     /// `object`'s row, with `columns`' cells if its kind has its own.
-    pub fn new(object: &DynamicObject, columns: Option<&KindColumns>) -> Self {
+    pub fn new(object: &DynamicObject, columns: Option<&RowColumns>) -> Self {
         let meta = &object.metadata;
         Self {
             uid: meta.uid.clone().unwrap_or_default(),

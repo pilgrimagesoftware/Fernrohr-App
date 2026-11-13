@@ -358,6 +358,16 @@ impl Render for PodDetailPanel {
     }
 }
 
+/// Every identifier [`key_context`] can put on the panel's element, for
+/// `keymap::conflicts` (#331).
+pub(crate) const KEY_CONTEXT_GROUP: &[&str] = &[
+    PANEL_KEY_CONTEXT,
+    super::actions::SHELLABLE_KEY_CONTEXT,
+    super::actions::DELETABLE_KEY_CONTEXT,
+    crate::ui::link::LINKS_KEY_CONTEXT,
+    crate::ui::exec_library::commands::RESOURCE_CONTEXT,
+];
+
 /// The panel's own key context plus the shared one `links.go_to` is gated to,
 /// so `g` reaches this panel without the link module knowing it exists - and,
 /// while the pod has a running container, Shell's; while it can be deleted,
@@ -374,4 +384,25 @@ fn key_context(shellable: bool, deletable: bool) -> KeyContext {
     context.add(crate::ui::link::LINKS_KEY_CONTEXT);
     context.add(crate::ui::exec_library::commands::RESOURCE_CONTEXT);
     context
+}
+
+#[cfg(test)]
+mod key_context_group_tests {
+    use super::{KEY_CONTEXT_GROUP, key_context};
+
+    /// `keymap::conflicts` reads the group, so it must hold every identifier
+    /// the builder adds (#331).
+    #[test]
+    fn every_identifier_the_builder_adds_is_in_the_group() {
+        {
+            let context = key_context(true, true);
+            for entry in context.primary().into_iter().chain(context.secondary()) {
+                assert!(
+                    KEY_CONTEXT_GROUP.contains(&entry.key.as_ref()),
+                    "{} is missing from the group",
+                    entry.key
+                );
+            }
+        }
+    }
 }

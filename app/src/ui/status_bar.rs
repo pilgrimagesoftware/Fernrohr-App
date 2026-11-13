@@ -28,11 +28,16 @@ use std::time::{Duration, Instant};
 mod capsule;
 mod chord;
 mod commands;
+mod disconnect;
 mod theme_switch;
 
 #[cfg(test)]
 pub(crate) use capsule::{attention_selector, icon_selector};
-pub(crate) use commands::{AddContext, DisconnectActiveContext, register_commands};
+pub(crate) use commands::{
+    AddContext, DisconnectActiveContext, DisconnectAllContexts, DisconnectOtherContexts,
+    register_commands,
+};
+pub(crate) use disconnect::Disconnecting;
 /// The chord indicator's debug selectors, for tests outside this module.
 #[cfg(test)]
 pub(crate) mod chord_selectors {
@@ -383,6 +388,7 @@ impl Render for StatusBarView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let items = self.items(cx);
+        let several = self.context_count() > 1;
         let space = crate::ui::space::spacing(cx);
         let scale = crate::ui::space::TextScale::current(cx).factor();
         let this = cx.weak_entity();
@@ -407,9 +413,9 @@ impl Render for StatusBarView {
                     .items_center()
                     .gap(space.control_gap)
                     .children(
-                        items
-                            .into_iter()
-                            .map(|item| capsule::render_capsule(item, this.clone(), &theme)),
+                        items.into_iter().map(|item| {
+                            capsule::render_capsule(item, several, this.clone(), &theme)
+                        }),
                     )
                     .child(capsule::render_add_button(this)),
             )

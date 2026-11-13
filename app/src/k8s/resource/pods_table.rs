@@ -12,6 +12,7 @@ use super::pods::{PodRow, PodSelection};
 
 mod checked;
 mod columns;
+mod fit;
 mod flash;
 pub(in crate::k8s::resource) mod list_sort;
 mod menu;
@@ -477,15 +478,3 @@ pub(super) fn reselect(
 
 #[cfg(test)]
 mod tests;
-
-impl crate::ui::table_fit::FitColumns for PodTableDelegate {
-    fn header_bounds(&self) -> &crate::ui::table_fit::HeaderBounds {
-        &self.header
-    }
-
-    fn set_column_width(&mut self, col_ix: usize, width: Pixels) {
-        if let Some(column) = self.columns.get(col_ix).copied() {
-            self.set_width(column, width);
-        }
-    }
-}

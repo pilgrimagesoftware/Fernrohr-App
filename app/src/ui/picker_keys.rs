@@ -8,12 +8,14 @@ use crate::ui::tunnels::TunnelsManage;
 use crate::util::shell::SetContextTunnel;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::kbd::Kbd;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 /// The actions with no button of their own: "↑↓ Select  ⌘⇧B Tunnel". Connect and
 /// Manage tunnels show their keys beside their buttons ([`with_key`]), so nothing is
-/// listed twice.
-pub fn key_hints(window: &mut Window, cx: &App) -> impl IntoElement {
+/// listed twice. With no context selected the tunnel hint is dimmed: the command
+/// has nothing to apply to, as the disabled Connect button says (#363).
+pub fn key_hints(tunnel_enabled: bool, window: &mut Window, cx: &App) -> impl IntoElement {
     let arrows = div()
         .flex()
         .gap_0p5()
@@ -27,8 +29,11 @@ pub fn key_hints(window: &mut Window, cx: &App) -> impl IntoElement {
         .text_color(cx.theme().muted_foreground)
         .child(hint(arrows.into_any_element(), "Select"))
         .children(
-            Kbd::binding_for_action(&SetContextTunnel, None, window)
-                .map(|key| hint(key.into_any_element(), "Tunnel")),
+            Kbd::binding_for_action(&SetContextTunnel, None, window).map(|key| {
+                hint(key.into_any_element(), "Tunnel")
+                    .id("picker-tunnel-hint")
+                    .when(!tunnel_enabled, |hint| hint.opacity(DISABLED_HINT_OPACITY))
+            }),
         )
 }
 
@@ -52,6 +57,9 @@ pub fn manage_tunnels_key(window: &mut Window) -> Option<Kbd> {
     Kbd::binding_for_action(&TunnelsManage, None, window)
 }
 
-fn hint(key: AnyElement, label: &'static str) -> impl IntoElement {
+/// How faint a hint for an action that has nothing to act on is drawn.
+const DISABLED_HINT_OPACITY: f32 = 0.5;
+
+fn hint(key: AnyElement, label: &'static str) -> Div {
     div().flex().items_center().gap_1().child(key).child(label)
 }

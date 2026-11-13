@@ -16,6 +16,7 @@
 //! owns its widths ([`FitColumns`]).
 
 use crate::ui::typography::DATA_FAMILY;
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Size;
 use gpui_kit::component::table::{TableDelegate, TableState};
 use gpui_kit::*;
@@ -140,11 +141,34 @@ pub trait FitColumns: TableDelegate {
     /// Records `width` for column `col_ix`; [`fit_column`] then refreshes the
     /// table so it takes effect.
     fn set_column_width(&mut self, col_ix: usize, width: Pixels);
+
+    /// What row `row_ix`'s cell in column `col_ix` draws besides its text -
+    /// a bulk checkbox, a status dot - so a fitted column leaves room for it
+    /// (#344). `rem` is the window's rem size. None by default.
+    fn cell_adornment(&self, row_ix: usize, col_ix: usize, rem: Pixels, cx: &App) -> Pixels {
+        let _ = (row_ix, col_ix, rem, cx);
+        Pixels::ZERO
+    }
+}
+
+/// What the bulk checkbox `ui::bulk::with_checkbox` puts before a first
+/// column's content: its 1rem box and the 0.5rem gap after it.
+pub fn checkbox_adornment(rem: Pixels) -> Pixels {
+    rem * 1.5
+}
+
+/// What a status dot puts before its cell's text: the 7px dot and the
+/// 0.25rem gap after it (the Ready cells of the Pods and list tables).
+pub fn status_dot_adornment(rem: Pixels) -> Pixels {
+    px(7.) + rem * 0.25
 }
 
 /// Fits column `col_ix` of `table` to its widest cell: the header label (in
 /// the UI font, with room for the sort icon) or any measured row's text (in
-/// the data font the cells draw in), plus the cell's padding.
+/// the data font the cells draw in) and whatever it draws beside the text,
+/// plus the cell's padding. Both fonts at the theme's size, as the table
+/// inherits them - the window's text style outside a draw is only the
+/// default, which missed a scaled Text Size and the UI family (#344).
 pub fn fit_column<D: FitColumns>(
     table: &mut TableState<D>,
     col_ix: usize,
@@ -177,13 +201,12 @@ fn fit_columns<D: FitColumns>(
     cx: &mut Context<TableState<D>>,
 ) {
     let (headers, rows) = table.dump_range(0..FIT_ROWS, cx);
-    let style = window.text_style();
-    let font_size = style.font_size.to_pixels(window.rem_size());
-    let ui_font = style.font();
-    let data_font = Font {
-        family: DATA_FAMILY.into(),
-        ..ui_font.clone()
-    };
+    let theme = cx.theme();
+    let font_size = theme.font_size;
+    let color = theme.foreground;
+    let ui_font = font(theme.font_family.clone());
+    let data_font = font(DATA_FAMILY);
+    let rem = window.rem_size();
     let measure = |text: &str, font: &Font| -> Pixels {
         if text.is_empty() {
             return px(0.);
@@ -191,7 +214,7 @@ fn fit_columns<D: FitColumns>(
         let run = TextRun {
             len: text.len(),
             font: font.clone(),
-            color: style.color,
+            color,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -207,10 +230,14 @@ fn fit_columns<D: FitColumns>(
             continue;
         };
         let header_width = measure(header, &ui_font) + SORT_ICON_WIDTH;
+        let delegate = table.delegate();
         let widest = rows
             .iter()
-            .filter_map(|row| row.get(col_ix))
-            .map(|text| measure(text, &data_font))
+            .enumerate()
+            .filter_map(|(row_ix, row)| Some((row_ix, row.get(col_ix)?)))
+            .map(|(row_ix, text)| {
+                measure(text, &data_font) + delegate.cell_adornment(row_ix, col_ix, rem, cx)
+            })
             .fold(header_width, Pixels::max);
         let width = (widest + padding.left + padding.right + FIT_SLACK).clamp(FIT_MIN, FIT_MAX);
         table.delegate_mut().set_column_width(col_ix, width);

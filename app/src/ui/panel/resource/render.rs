@@ -144,6 +144,28 @@ impl ResourcePanel {
         rows
     }
 
+    /// A section's rows that aren't discovered kinds (Helm Releases), drawn
+    /// like a kind row and opened the same way.
+    fn render_extras(
+        &self,
+        extras: &[NavTarget],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        extras
+            .iter()
+            .map(|target| {
+                let label = super::section::extra_label(target);
+                let id = format!(
+                    "resource-row-extra-{}",
+                    label.to_lowercase().replace(' ', "-")
+                );
+                let active = self.selected.as_ref() == Some(target);
+                self.kind_row(id, label.to_string(), target.clone(), active, window, cx)
+            })
+            .collect()
+    }
+
     /// The grouped, filterable list: a scrollable stack of sections over a
     /// bottom-pinned filter box and keyboard hint row. Rows are rendered
     /// directly rather than through `Sidebar`'s own virtualized list, since

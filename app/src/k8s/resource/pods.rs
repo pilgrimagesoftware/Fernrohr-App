@@ -45,6 +45,7 @@ pub(super) mod quick_look;
 #[cfg(test)]
 mod real_window_tests;
 mod render;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 mod rows;
 mod selection;
 mod shell;
