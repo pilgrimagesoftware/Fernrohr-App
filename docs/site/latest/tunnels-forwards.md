@@ -25,12 +25,13 @@ A tunnel is one of three kinds, chosen in the tunnel editor.
 ## Manage tunnels
 
 Open the Tunnels window with **Manage Tunnels…** (<kbd>⌘⇧T</kbd>), in the Context menu and the
-command palette. For each tunnel it shows how many contexts use it and whether it is running or
-idle. It doesn't bind contexts. That happens on the context ([see below](#bind-a-context-to-a-tunnel)).
+command palette. Each tunnel's row shows what it runs and how many contexts use it, and whether it
+is running or idle. It doesn't bind contexts. That happens on the context ([see below](#bind-a-context-to-a-tunnel)).
 
 - **Create:** choose **New Tunnel**, pick the kind and fill in the form. The tunnel then appears in
   every context's tunnel selector.
-- **Edit or rename:** choose **Edit Tunnel**. Context bindings follow a renamed tunnel, and they
+- **Edit or rename:** click the pencil icon on the tunnel's row, or <kbd>Tab</kbd> to it and press
+  <kbd>Space</kbd>. Context bindings follow a renamed tunnel, and they
   survive a change of kind.
 - **Test:** choose **Test** to try a tunnel without connecting any context. Testing an SSH tunnel
   opens an SSH session to the bastion without forwarding a port. Testing a command tunnel runs the
