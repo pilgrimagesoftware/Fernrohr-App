@@ -1,6 +1,7 @@
 //! Actions that only mean something for one kind (`resource-specific-actions`):
 //! which a kind and an object are offered ([`KindAction::offered`]), what of an
 //! object they read ([`facts`]), and the cluster calls they make ([`calls`]).
+//! Force Sync's annotation per kind is [`sync`]'s.
 //!
 //! The calls reuse `resource_actions` where the agent tools already make the
 //! same one - Trigger Now, Suspend, Pause - and add Expand, taints and
@@ -12,12 +13,15 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 mod calls;
 mod facts;
 mod quantity;
+mod sync;
 
 pub(crate) use calls::{
-    add_taint, create_token, expand, remove_taint, set_paused, set_suspended, trigger_now,
+    add_taint, create_token, expand, force_sync, remove_taint, set_paused, set_suspended,
+    trigger_now,
 };
 pub(crate) use facts::{ObjectFacts, Taint, TaintEffect, openable};
 pub(crate) use quantity::bytes;
+pub(crate) use sync::{SyncAnnotation, sync_annotation};
 
 /// Every kind-specific action, in the order a menu lists them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -33,10 +37,12 @@ pub(crate) enum KindAction {
     RemoveTaint,
     CreateToken,
     OpenHost,
+    /// Ask the kind's controller to sync the object now ([`sync`], #354).
+    ForceSync,
 }
 
 impl KindAction {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 12] = [
         Self::ForwardService,
         Self::TriggerNow,
         Self::Suspend,
@@ -48,6 +54,7 @@ impl KindAction {
         Self::RemoveTaint,
         Self::CreateToken,
         Self::OpenHost,
+        Self::ForceSync,
     ];
 
     /// The menu item's label.
@@ -64,6 +71,7 @@ impl KindAction {
             Self::RemoveTaint => "Remove Taint…",
             Self::CreateToken => "Create Token",
             Self::OpenHost => "Open Host in Browser",
+            Self::ForceSync => "Force Sync",
         }
     }
 
@@ -101,6 +109,9 @@ impl KindAction {
                 offered.push(Self::OpenHost)
             }
             _ => {}
+        }
+        if patch && sync_annotation(kind).is_some() {
+            offered.push(Self::ForceSync);
         }
         offered
     }

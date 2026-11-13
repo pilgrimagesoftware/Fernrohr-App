@@ -608,3 +608,22 @@ fn an_answer_without_a_token_says_so_and_carries_none_of_it() {
     assert_eq!(failure.message, "The cluster's answer held no token.");
     assert!(failure.detail.is_empty());
 }
+
+/// #354: Force Sync is offered where a controller documents a sync
+/// annotation, and only with the patch verb.
+#[test]
+fn force_sync_is_offered_for_synced_kinds_that_can_be_patched() {
+    let mut external = kind(
+        "external-secrets.io",
+        "ExternalSecret",
+        "externalsecrets",
+        true,
+    );
+    external.verbs.patch = true;
+    assert_eq!(offered(&external, json!({})), [KindAction::ForceSync]);
+    external.verbs.patch = false;
+    assert!(offered(&external, json!({})).is_empty(), "no patch verb");
+    let mut config = kind("", "ConfigMap", "configmaps", true);
+    config.verbs.patch = true;
+    assert!(offered(&config, json!({})).is_empty());
+}

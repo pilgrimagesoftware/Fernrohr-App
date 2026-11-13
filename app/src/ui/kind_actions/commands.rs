@@ -23,7 +23,8 @@ actions!(
         AddTaint,
         RemoveTaint,
         CreateToken,
-        OpenHost
+        OpenHost,
+        ForceSync
     ]
 );
 
@@ -117,6 +118,13 @@ pub(crate) fn command(action: KindAction) -> KindCommand {
             "KindOpenHost",
             "KindOpenHost && !Input",
         ),
+        KindAction::ForceSync => (
+            "kind.force_sync",
+            "Force Sync…",
+            "shift-s",
+            "KindForceSync",
+            "KindForceSync && !Input",
+        ),
     };
     KindCommand {
         id,
@@ -141,6 +149,7 @@ pub(crate) fn action(action: KindAction) -> Box<dyn Action> {
         KindAction::RemoveTaint => Box::new(RemoveTaint),
         KindAction::CreateToken => Box::new(CreateToken),
         KindAction::OpenHost => Box::new(OpenHost),
+        KindAction::ForceSync => Box::new(ForceSync),
     }
 }
 
