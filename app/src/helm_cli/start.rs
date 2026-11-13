@@ -6,7 +6,7 @@
 
 use super::kubeconfig::{self, Endpoint, RunKubeconfig};
 use super::locate::{HelmBinary, HelmStatus, status};
-use super::run::{HelmCommand, HelmFailure, HelmOutput, RUNS, ReleaseKey, RunSlots, run};
+use super::run::{HelmAction, HelmCommand, HelmFailure, HelmOutput, ReleaseKey, RunSlots, run};
 use crate::consts::HELM_ACTION_TIMEOUT;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::ClusterRegistry;
@@ -39,9 +39,6 @@ impl fmt::Display for HelmUnavailable {
 }
 
 /// The `helm` an action on `context` would run, or why it can't run.
-// UNWIRED(#370): section 8's Rollback and Uninstall read this for their
-// disabled states. Only tests call it until then.
-#[allow(dead_code)]
 pub(crate) fn availability(context: &str, cx: &App) -> Result<HelmBinary, HelmUnavailable> {
     let binary = match status(cx) {
         HelmStatus::Ready(binary) => binary,
@@ -58,15 +55,28 @@ pub(crate) fn availability(context: &str, cx: &App) -> Result<HelmBinary, HelmUn
     }
 }
 
-/// Runs `helm <args>` against `release`'s context and namespace, resolving
-/// with what it printed or why it failed. Refused at once when `helm` or the
-/// connection isn't available, or another run on the release is going.
-// UNWIRED(#370): section 8's Rollback and Uninstall run through this. Only
-// tests call it until then.
-#[allow(dead_code)]
+/// What a run reads in place of the user's kubeconfig and login shell, in
+/// tests - which must touch neither.
+#[cfg(test)]
+pub(crate) struct TestRunEnv {
+    pub kubeconfig: Kubeconfig,
+    pub path_env: String,
+    /// Where the run's kubeconfig is written, in place of the cache dir.
+    pub dir: PathBuf,
+}
+
+#[cfg(test)]
+impl gpui_kit::Global for TestRunEnv {}
+
+/// The kubeconfig, PATH and kubeconfig dir a run uses, when not the user's.
+type RunEnv = Option<(Kubeconfig, String, PathBuf)>;
+
+/// Runs `action` on `release`, resolving with what `helm` printed or why it
+/// failed. Refused at once when `helm` or the connection isn't available, or
+/// another run on the release is going.
 pub(crate) fn start(
     release: ReleaseKey,
-    args: Vec<String>,
+    action: HelmAction,
     cx: &mut App,
 ) -> Task<Result<HelmOutput, HelmFailure>> {
     let binary = match availability(&release.context, cx) {
@@ -79,7 +89,18 @@ pub(crate) fn start(
         )));
     };
     let endpoint = Endpoint::of(connection.read(cx).tunnel_route());
-    let finished = start_on(&RUNS, release, args, binary, endpoint, cx);
+    #[cfg(test)]
+    let env: RunEnv = cx.try_global::<TestRunEnv>().map(|env| {
+        (
+            env.kubeconfig.clone(),
+            env.path_env.clone(),
+            env.dir.clone(),
+        )
+    });
+    #[cfg(not(test))]
+    let env: RunEnv = None;
+    let slots = cx.default_global::<RunSlots>().clone();
+    let finished = start_on(&slots, release, action, binary, endpoint, env, cx);
     cx.spawn(async move |_: &mut AsyncApp| {
         // Holding the connection holds its tunnel: dropping its last handle
         // would stop the forward with `helm` still using it.
@@ -93,9 +114,10 @@ pub(crate) fn start(
 pub(super) fn start_on(
     slots: &RunSlots,
     release: ReleaseKey,
-    args: Vec<String>,
+    action: HelmAction,
     binary: HelmBinary,
     endpoint: Endpoint,
+    env: RunEnv,
     cx: &App,
 ) -> Task<Result<HelmOutput, HelmFailure>> {
     let slot = match slots.claim(release.clone()) {
@@ -104,27 +126,34 @@ pub(super) fn start_on(
     };
     let finished = crate::runtime::spawn_stream(cx, 1, move |tx| async move {
         let _slot = slot;
-        // Both block: the login shell the first time, and the file read.
-        let path_env = tokio::task::spawn_blocking(crate::util::login_env::login_path)
-            .await
-            .unwrap_or_default();
-        let source = tokio::task::spawn_blocking(Kubeconfig::read).await;
-        let result = match source {
-            Ok(Ok(source)) => {
+        let resolved = match env {
+            Some(env) => Ok(env),
+            // Both block: the login shell the first time, and the file read.
+            None => {
+                let path_env = tokio::task::spawn_blocking(crate::util::login_env::login_path)
+                    .await
+                    .unwrap_or_default();
+                match tokio::task::spawn_blocking(Kubeconfig::read).await {
+                    Ok(Ok(source)) => Ok((source, path_env.to_string(), kubeconfig::dir())),
+                    Ok(Err(error)) => Err(error.to_string()),
+                    Err(error) => Err(error.to_string()),
+                }
+            }
+        };
+        let result = match resolved {
+            Ok((source, path_env, dir)) => {
                 let run = RunSpec {
                     binary: binary.path,
-                    args,
+                    args: action.flags(&release.namespace),
+                    positionals: action.positionals(&release.release),
                     context: release.context,
                     endpoint,
-                    dir: kubeconfig::dir(),
-                    path_env: path_env.to_string(),
+                    dir,
+                    path_env,
                     timeout: HELM_ACTION_TIMEOUT,
                 };
                 execute(run, &source).await
             }
-            Ok(Err(error)) => Err(HelmFailure::Start(format!(
-                "Couldn't read the kubeconfig: {error}"
-            ))),
             Err(error) => Err(HelmFailure::Start(format!(
                 "Couldn't read the kubeconfig: {error}"
             ))),
@@ -143,7 +172,10 @@ pub(super) fn start_on(
 /// Everything one run needs once the binary and endpoint are known.
 pub(super) struct RunSpec {
     pub binary: PathBuf,
+    /// The subcommand and its flags.
     pub args: Vec<String>,
+    /// The release and revision, after `--`.
+    pub positionals: Vec<String>,
     pub context: String,
     pub endpoint: Endpoint,
     /// Where its kubeconfig is written.
@@ -162,6 +194,7 @@ pub(super) async fn execute(spec: RunSpec, source: &Kubeconfig) -> Result<HelmOu
     run(HelmCommand {
         binary: spec.binary,
         args: spec.args,
+        positionals: spec.positionals,
         kubeconfig: file.path().to_path_buf(),
         context: spec.context,
         path_env: spec.path_env,
