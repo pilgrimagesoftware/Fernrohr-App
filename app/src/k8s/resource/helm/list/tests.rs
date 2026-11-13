@@ -261,3 +261,45 @@ async fn the_panel_saves_its_scope_sort_and_search(cx: &mut TestAppContext) {
     );
     assert!(!restored.show_uninstalled);
 }
+
+/// Re-scoping drops this panel's observation of a table another panel keeps
+/// alive, so observers don't pile up with each change.
+#[gpui_kit::test]
+async fn a_rescope_keeps_no_observer_behind(cx: &mut TestAppContext) {
+    let mut h = open(cx, &[], |cluster| {
+        install(cluster, "shop", "web", 1, "deployed")
+    });
+    h.wait_for("listed web", |rows| rows.len() == 1);
+    // A second subscriber keeps the All table alive past the panel's re-scope.
+    let shared = h.vcx.update(|_, cx| {
+        let client = match &ClusterRegistry::connection(cx, CONTEXT).read(cx).state {
+            ConnectionState::Connected(client) => client.clone(),
+            _ => unreachable!(),
+        };
+        ClusterRegistry::subscribe_helm_releases(cx, CONTEXT, client, HelmScope::All)
+    });
+    let panel = h.panel.clone();
+    let renders = std::rc::Rc::new(std::cell::Cell::new(0));
+    let count = renders.clone();
+    h.vcx.update(|_, cx| {
+        cx.observe(&panel, move |_, _| count.set(count.get() + 1))
+            .detach();
+    });
+    for namespaces in [
+        vec!["shop".to_string()],
+        Vec::new(),
+        vec!["shop".to_string()],
+    ] {
+        h.vcx
+            .update(|_, cx| panel.update(cx, |panel, cx| panel.set_namespaces(namespaces, cx)));
+        h.vcx.run_until_parked();
+    }
+    renders.set(0);
+    h.vcx.update(|_, cx| shared.update(cx, |_, cx| cx.notify()));
+    h.vcx.run_until_parked();
+    assert_eq!(
+        renders.get(),
+        0,
+        "scoped to shop, the panel no longer observes the All table"
+    );
+}
