@@ -9,15 +9,16 @@
 //! listed, which matches `helm get manifest`. Drawing the tab is `render`'s.
 
 use super::panel::HelmReleasePanel;
+use crate::consts::HELM_RESOURCE_CHECKS;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::helm::decode_release;
 use crate::ui::link::FollowReference;
 use crate::ui::nav::OpenMode;
+use futures_util::StreamExt as _;
 use gpui_kit::*;
 use k8s_openapi::api::core::v1::Secret;
 use kube::{Api, Client};
-use serde::Deserialize as _;
 
 /// Whether a listed object exists in the cluster.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +49,9 @@ pub(crate) enum Resources {
     Ready {
         source: (String, String),
         rows: Vec<ResourceRow>,
+        /// How many of the manifest's documents couldn't be read: the list
+        /// says it may be incomplete rather than pass for whole.
+        unreadable: usize,
     },
     Unreadable {
         source: (String, String),
@@ -69,18 +73,25 @@ impl Resources {
 
 /// The objects `manifest` declares, in its order: each document with a
 /// `kind` and a `metadata.name` - and each item of a `List` - with its
-/// namespace, else `namespace`, the release's. Reading stops at a document
-/// that doesn't parse: after an error the YAML reader yields only errors,
-/// endlessly, so nothing after it can be read.
-pub(crate) fn parse_manifest(manifest: &str, namespace: &str) -> Vec<ObjectRef> {
-    let mut targets = Vec::new();
-    for document in serde_yaml_ng::Deserializer::from_str(manifest) {
-        let Ok(value) = serde_yaml_ng::Value::deserialize(document) else {
-            break;
-        };
-        collect(&value, namespace, &mut targets);
+/// namespace, else `namespace`, the release's. Each document is parsed on its
+/// own, so one that doesn't parse is counted as unreadable and the rest are
+/// still listed.
+pub(crate) fn parse_manifest(manifest: &str, namespace: &str) -> Parsed {
+    let mut parsed = Parsed::default();
+    for document in crate::k8s::resource::helm::manifest::documents(manifest) {
+        match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&document) {
+            Ok(value) => collect(&value, namespace, &mut parsed.targets),
+            Err(_) => parsed.unreadable += 1,
+        }
     }
-    targets
+    parsed
+}
+
+/// What a manifest declares, and how many of its documents couldn't be read.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Parsed {
+    pub(crate) targets: Vec<ObjectRef>,
+    pub(crate) unreadable: usize,
 }
 
 fn collect(value: &serde_yaml_ng::Value, namespace: &str, into: &mut Vec<ObjectRef>) {
@@ -147,7 +158,7 @@ fn fetch(
     panel: WeakEntity<HelmReleasePanel>,
     done: impl FnOnce(
         &mut HelmReleasePanel,
-        Result<Vec<ResourceRow>, String>,
+        Result<(Vec<ResourceRow>, usize), String>,
         &mut Context<HelmReleasePanel>,
     ) + 'static,
     cx: &mut App,
@@ -173,7 +184,7 @@ async fn read(
     namespace: &str,
     secret: &str,
     kinds: &[DiscoveredKind],
-) -> Result<Vec<ResourceRow>, String> {
+) -> Result<(Vec<ResourceRow>, usize), String> {
     let api: Api<Secret> = Api::namespaced(client.clone(), namespace);
     let secret = match api.get(secret).await {
         Ok(secret) => secret,
@@ -181,7 +192,7 @@ async fn read(
         Err(_) => return Err("the deployed revision couldn't be fetched".into()),
     };
     let release_namespace = namespace.to_string();
-    let targets = tokio::task::spawn_blocking(move || {
+    let parsed = tokio::task::spawn_blocking(move || {
         let payload = secret.data.as_ref()?.get("release")?.0.clone();
         let release = decode_release(&payload).ok()?;
         Some(parse_manifest(
@@ -193,7 +204,7 @@ async fn read(
     .ok()
     .flatten()
     .ok_or_else(|| "the deployed revision's manifest couldn't be read".to_string())?;
-    let checks = targets.into_iter().map(|target| {
+    let checks = parsed.targets.into_iter().map(|target| {
         let client = client.clone();
         let target = scoped(target, kinds);
         let kind = kind_of(&target, kinds).cloned();
@@ -205,7 +216,12 @@ async fn read(
             ResourceRow { target, presence }
         }
     });
-    Ok(futures_util::future::join_all(checks).await)
+    // A few at a time, in order: never the whole chart at once.
+    let rows = futures_util::stream::iter(checks)
+        .buffered(HELM_RESOURCE_CHECKS)
+        .collect()
+        .await;
+    Ok((rows, parsed.unreadable))
 }
 
 /// Whether `target`, of `kind`, exists: a GET, its 404 meaning missing.
@@ -264,7 +280,11 @@ impl HelmReleasePanel {
                     return;
                 }
                 this.resources = match rows {
-                    Ok(rows) => Resources::Ready { source, rows },
+                    Ok((rows, unreadable)) => Resources::Ready {
+                        source,
+                        rows,
+                        unreadable,
+                    },
                     Err(reason) => Resources::Unreadable { source, reason },
                 };
                 let last = this.resource_rows().len().saturating_sub(1);

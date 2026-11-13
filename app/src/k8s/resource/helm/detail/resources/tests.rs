@@ -34,7 +34,7 @@ const MANIFEST: &str = "---\n# Source: web/templates/service.yaml\napiVersion: v
 metadata:\n  name: web\n---\n# Source: web/templates/deployment.yaml\napiVersion: apps/v1\n\
 kind: Deployment\nmetadata:\n  name: web\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  \
 name: web-config\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\n\
-metadata:\n  name: web-reader\n";
+metadata:\n  name: web-reader\n---\n: not yaml: [\n";
 
 fn kind(group: &str, kind: &str, plural: &str, namespaced: bool) -> DiscoveredKind {
     DiscoveredKind {
@@ -61,22 +61,27 @@ fn kinds() -> Vec<DiscoveredKind> {
 
 /// Each object with its group from `apiVersion` and the release's namespace
 /// unless it names its own; `List` items too; documents without a kind or a
-/// name skipped.
+/// name skipped. A document that doesn't parse costs only itself - the
+/// objects after it are still listed - and is counted, so the tab can say the
+/// list may be incomplete.
 #[test]
 fn a_manifest_lists_its_objects() {
     let manifest = "apiVersion: v1\nkind: Service\nmetadata:\n  name: web\n---\n\
+                    : not yaml: [\n---\n\
                     apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: edge\n\
                     ---\n# Source: empty.yaml\n---\napiVersion: v1\nkind: ConfigMap\nmetadata: {}\n\
                     ---\napiVersion: v1\nkind: List\nitems:\n- apiVersion: v1\n  kind: Secret\n  \
-                    metadata:\n    name: web-tls\n---\n: not yaml: [\n";
+                    metadata:\n    name: web-tls\n";
+    let parsed = parse_manifest(manifest, "shop");
     assert_eq!(
-        parse_manifest(manifest, "shop"),
+        parsed.targets,
         [
             ObjectRef::namespaced("", "Service", "shop", "web"),
             ObjectRef::namespaced("apps", "Deployment", "edge", "web"),
             ObjectRef::namespaced("", "Secret", "shop", "web-tls"),
         ]
     );
+    assert_eq!(parsed.unreadable, 1, "the broken document");
 }
 
 /// A kind discovery reports as cluster-scoped loses the release's namespace.
@@ -203,6 +208,13 @@ async fn the_resources_tab_lists_marks_and_follows(cx: &mut TestAppContext) {
     assert_eq!(listed[2], ("ConfigMap", Some("shop"), Presence::Missing));
     assert_eq!(listed[3].0, "ClusterRole");
     assert_eq!(listed[3].1, None, "cluster-scoped: no namespace");
+    vcx.update(|window, cx| {
+        let _ = window.draw(cx);
+    });
+    assert!(
+        vcx.debug_bounds(super::view::UNREADABLE_NOTE).is_some(),
+        "the broken document is noted, so the list doesn't pass for complete"
+    );
 
     vcx.simulate_keystrokes("down enter");
     vcx.run_until_parked();

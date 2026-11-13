@@ -102,7 +102,8 @@ The Resources tab lists the objects the deployed revision created, as `helm get 
 them. An object without its own namespace is in the release's. A cluster-scoped object, such as a
 ClusterRole, has none. Fernrohr checks that each object exists when the tab opens and again after
 an upgrade or rollback, and marks one the cluster doesn't have as **missing**. Hooks aren't part of
-a release's manifest, so they aren't listed.
+a release's manifest, so they aren't listed. If a document in the manifest can't be read, the
+objects in the others are still listed, and a note says the list may be incomplete.
 
 Move between objects with <kbd>↓</kbd> and <kbd>↑</kbd> and press <kbd>Enter</kbd> (**Helm Release:
 Open Selected Resource**) to open the selected one's panel, or click its name. Opening a missing

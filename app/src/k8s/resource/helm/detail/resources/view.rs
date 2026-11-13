@@ -7,6 +7,10 @@ use super::{Presence, Resources};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+/// The note under a list missing objects from documents that couldn't be
+/// read.
+pub(crate) const UNREADABLE_NOTE: &str = "helm-release-resources-unreadable";
+
 impl HelmReleasePanel {
     /// The deployed revision's objects, one row each: kind, its name as a
     /// `resource-links` reference, its namespace, and whether it's missing.
@@ -27,13 +31,18 @@ impl HelmReleasePanel {
                     .child(format!("The deployed revision couldn't be read: {reason}"))
                     .into_any_element();
             }
-            Resources::Ready { rows, .. } if rows.is_empty() => {
+            Resources::Ready {
+                rows, unreadable, ..
+            } if rows.is_empty() && *unreadable == 0 => {
                 return div()
                     .child("The deployed revision's manifest declares no objects.")
                     .into_any_element();
             }
-            Resources::Ready { rows, .. } => rows.clone(),
+            Resources::Ready {
+                rows, unreadable, ..
+            } => (rows.clone(), *unreadable),
         };
+        let (rows, unreadable) = rows;
         let kinds = self.discovery.read(cx).kinds().map(<[_]>::to_vec);
         let mut list = div().flex().flex_col().gap_0p5();
         for (ix, row) in rows.into_iter().enumerate() {
@@ -85,6 +94,28 @@ impl HelmReleasePanel {
                                 .child("missing"),
                         )
                     }),
+            );
+        }
+        // The list may be short: say so rather than let it pass for whole.
+        if unreadable > 0 {
+            let documents = if unreadable == 1 {
+                "1 document".to_string()
+            } else {
+                format!("{unreadable} documents")
+            };
+            list = list.child(
+                div()
+                    .debug_selector(|| UNREADABLE_NOTE.into())
+                    .px_2()
+                    .pt_1()
+                    .text_color(crate::ui::style::status(
+                        crate::ui::style::Tone::Warning,
+                        cx,
+                    ))
+                    .child(format!(
+                        "{documents} in the manifest couldn't be read, so this list may be \
+                         incomplete."
+                    )),
             );
         }
         list.into_any_element()
