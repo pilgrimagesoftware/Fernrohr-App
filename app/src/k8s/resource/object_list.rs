@@ -14,6 +14,7 @@ mod panel;
 mod poll;
 mod port_forward;
 mod render;
+pub(crate) use render::{PANEL_KEY_CONTEXT_GROUP, TABLE_KEY_CONTEXT_GROUP};
 pub(crate) mod restore;
 mod row;
 mod store;

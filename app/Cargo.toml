@@ -71,6 +71,10 @@ schemars = "=1.2.3"
 # every other sequence stripped. Already in the build through
 # `alacritty_terminal`; pinned to that same version.
 vte = "=0.15.0"
+# A CRD list's columns from its `additionalPrinterColumns` (`object_list::columns::printer`,
+# #352): evaluating their JSONPaths, filters included. Already in the build through
+# kube-client; pinned to that same version.
+jsonpath-rust = "=1.0.11"
 
 # Desktop notifications (`notify`, manual-confirmation-tunnels D6): the macOS
 # notification center and the freedesktop D-Bus service. Already in the Linux

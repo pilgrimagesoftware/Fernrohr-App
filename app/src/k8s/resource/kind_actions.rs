@@ -50,6 +50,23 @@ impl KindAction {
         Self::OpenHost,
     ];
 
+    /// Every set of actions [`Self::offered`] can give one object at once - a
+    /// CronJob's Trigger Now with Suspend or Resume, a Node's two taint
+    /// actions - for `keymap::conflicts` (#331): two actions' keys can only
+    /// clash within one set. A Deployment's Pause Rollout and a CronJob's
+    /// Suspend share `p` for that reason.
+    pub(crate) const OFFERED_TOGETHER: [&'static [Self]; 9] = [
+        &[Self::ForwardService],
+        &[Self::TriggerNow, Self::Suspend],
+        &[Self::TriggerNow, Self::Resume],
+        &[Self::PauseRollout],
+        &[Self::ResumeRollout],
+        &[Self::Expand],
+        &[Self::AddTaint, Self::RemoveTaint],
+        &[Self::CreateToken],
+        &[Self::OpenHost],
+    ];
+
     /// The menu item's label.
     pub(crate) fn label(self) -> &'static str {
         match self {

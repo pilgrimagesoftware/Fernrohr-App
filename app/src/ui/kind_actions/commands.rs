@@ -158,6 +158,21 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     }
 }
 
+/// The gates [`add_contexts`] can put on one element together - one set per
+/// [`KindAction::OFFERED_TOGETHER`] - for `keymap::conflicts` (#331).
+pub(crate) fn gate_sets(in_list: bool) -> Vec<Vec<&'static str>> {
+    KindAction::OFFERED_TOGETHER
+        .iter()
+        .map(|set| {
+            set.iter()
+                .filter(|kind_action| !(in_list && **kind_action == KindAction::ForwardService))
+                .map(|kind_action| command(*kind_action).gate)
+                .collect::<Vec<_>>()
+        })
+        .filter(|gates| !gates.is_empty())
+        .collect()
+}
+
 /// Adds the gate of each of `offered`. In a list, Port Forward is the
 /// Services list's own command, so its gate isn't added there.
 pub(crate) fn add_contexts(key_context: &mut KeyContext, offered: &[KindAction], in_list: bool) {

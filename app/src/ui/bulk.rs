@@ -17,6 +17,6 @@ pub(crate) mod outcome;
 pub(crate) mod prompt;
 
 pub(crate) use checked::{CheckedRows, RowKey, with_checkbox};
-pub(crate) use commands::register_commands;
+pub(crate) use commands::{key_contexts, register_commands};
 pub(crate) use host::{BulkHost, BulkSelection, add_key_contexts, on_bulk_actions, render_bulk};
 pub(crate) use outcome::BatchOutcome;

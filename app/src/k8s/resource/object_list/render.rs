@@ -217,6 +217,20 @@ impl ObjectListPanel {
     }
 }
 
+/// Every identifier [`ObjectListPanel::table_key_context`] can put on the
+/// table's element, for `keymap::conflicts` (#331).
+pub(crate) const TABLE_KEY_CONTEXT_GROUP: &[&str] = &[
+    super::commands::EDITABLE_KEY_CONTEXT,
+    super::delete::DELETABLE_KEY_CONTEXT,
+    super::port_forward::SERVICES_KEY_CONTEXT,
+    crate::ui::exec_library::commands::RESOURCE_CONTEXT,
+];
+
+/// The panel element's own identifiers, for `keymap::conflicts` (#331); the
+/// bulk and kind-action contexts it adds join them there.
+pub(crate) const PANEL_KEY_CONTEXT_GROUP: &[&str] =
+    &[PANEL_KEY_CONTEXT, crate::ui::list_sort::KEY_CONTEXT];
+
 impl ObjectListPanel {
     /// The contexts around the table that offer a command only when it
     /// applies: Edit for a kind that can be patched, Delete for one that can
