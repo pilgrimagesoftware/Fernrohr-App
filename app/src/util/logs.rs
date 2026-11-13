@@ -41,6 +41,7 @@ pub use commands::{
     ResetLabelLogs, ShowLabelLogs, SwitchLabelLogsContext, ToggleFollow, TogglePreviousLogs,
     register_commands,
 };
+pub(crate) use labels::KEY_CONTEXT_GROUP;
 #[cfg(test)]
 pub(crate) use labels::TypedId;
 pub(crate) use labels::labels_from_state;
