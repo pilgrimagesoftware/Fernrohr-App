@@ -109,6 +109,10 @@ mod window_title;
 // here, these shadow both globs, so `use super::*` in a submodule sees ours.
 #[cfg(test)]
 pub(crate) use app::register_commands;
+// Only the status menu (`ui::status_menu`, macOS or tests) names `NewWindow`
+// through here; elsewhere this re-export would be unused.
+#[cfg(any(target_os = "macos", test))]
+pub use app::NewWindow;
 pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
 pub(crate) use layout::{close_window, is_main_window, window_context_count, window_contexts};

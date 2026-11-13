@@ -31,10 +31,14 @@ The icon's menu brings Fernrohr back:
 
 | Menu item | What it does |
 | --- | --- |
+| New Window | Opens a window with the cluster picker. |
 | Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it, at the size and position of the window you closed last. |
 | Settings… | Opens Settings. |
 | MCP… | Opens Settings at Agent Access, with the MCP server's setting. |
 | Tunnel Manager… | Opens the Tunnel Manager. |
+| About Fernrohr | Opens the About window. |
+| Fernrohr Documentation | Opens this documentation in your browser. |
+| Report Issue | Opens Report Issue. |
 | Quit Fernrohr | Quits. |
 
 Clicking Fernrohr's Dock icon with no window open reopens the window you closed last, connected to
@@ -153,7 +157,7 @@ The menu bar has seven menus, in this order: App, Context, Edit, View, Navigate,
 | View | Command Palette, then theme and text size, then the Resource panel items, then Maximize/Restore Panel, then table columns |
 | Navigate | Focus Next Panel, Focus Previous Panel, Focus Resources, the tab commands, and a Select Tab submenu |
 | Window | One entry per open window, plus New Window, Save Panel Layout…, Saved Layouts…, Open Logs by Label…, Minimize, Zoom and Close Window |
-| Help | Report Issue |
+| Help | Fernrohr Documentation, Report Issue |
 
 Navigate holds only commands that work whichever panel has focus. A command for one panel type, such as describing the selected pod, stays out of the menu. It remains in the palette, in `keymap.toml` and in that panel's hint row.
 

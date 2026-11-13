@@ -14,6 +14,10 @@ pub(crate) const APP_NAME: &str = "Fernrohr";
 /// that entry's name and icon and group them under it.
 pub(crate) const APP_ID: &str = "fernrohr";
 
+/// The user documentation site's current version, which Help > Fernrohr
+/// Documentation opens (#361). The site is published from `docs/site`.
+pub(crate) const DOCS_URL: &str = "https://pilgrimagesoftware.github.io/Fernrohr-App/latest/";
+
 /// The macOS bundle identifier (`[package.metadata.packager]`'s `identifier`):
 /// the app desktop notifications are posted as. Without it they would be
 /// posted as Finder.

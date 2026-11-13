@@ -96,6 +96,12 @@ Choose **About Fernrohr** from the App menu, or run it from the palette. It has 
 
 Click the version and build text to copy one line to the clipboard with the name, version and build. Paste it into a bug report. Press <kbd>Esc</kbd> to close the window. On platforms other than macOS it also has a **Close** button. Opening About again brings the open window to the front instead of opening a second one.
 
+## Open the documentation
+
+Choose **Fernrohr Documentation** from the Help menu, or run it from the palette. It has no default
+key. It opens the current version of this site in your browser. On macOS the menu bar icon's menu
+has it too, with About Fernrohr and Report Issue.
+
 ## Report an issue
 
 Choose **Report Issue** from the Help menu, run it from the palette, or press <kbd>⇧⌘/</kbd>. The
