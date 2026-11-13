@@ -5,34 +5,46 @@
 # Safety: KUBECONFIG points at a temp file for the whole run, so minikube
 # writes its context there - never into ~/.kube/config, and the user's current
 # context is untouched. Every helm call also names the context explicitly. The
-# profile is deleted on any exit, including failure or Ctrl-C.
+# profile is deleted on any exit, including failure or Ctrl-C - but only once
+# this run has created it, so an existing profile is never touched.
 #
 # Usage: scripts/helm-integration.sh   (needs minikube, docker, helm, cargo)
 set -euo pipefail
 
-PROFILE="${FERNROHR_HELM_IT_PROFILE:-fernrohr-helm-it}"
+# Fixed on purpose: the cleanup deletes this profile, and the test refuses any
+# context without this prefix.
+PROFILE="fernrohr-helm-it"
 NAMESPACE="fernrohr-it"
 RELEASE="it-web"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/fernrohr-helm-it.XXXXXX")"
 export KUBECONFIG="$WORK/kubeconfig"
 
+CREATED=0
 cleanup() {
-  echo "==> deleting minikube profile $PROFILE"
-  minikube delete -p "$PROFILE" >/dev/null 2>&1 || true
+  if [ "$CREATED" = 1 ]; then
+    echo "==> deleting minikube profile $PROFILE"
+    minikube delete -p "$PROFILE" >/dev/null 2>&1 || true
+  fi
   rm -rf "$WORK"
 }
+trap cleanup EXIT INT TERM
 
 for tool in minikube docker helm cargo; do
   command -v "$tool" >/dev/null || { echo "missing: $tool" >&2; exit 1; }
 done
-if minikube profile list -o json 2>/dev/null | grep -q "\"Name\":\"$PROFILE\""; then
-  echo "minikube profile $PROFILE already exists; refusing to reuse or delete it" >&2
+# `minikube status` exits 85 only when the profile doesn't exist. Any other
+# result (running, stopped, or an error) means it may exist: refuse, so the
+# cleanup can never delete a profile this run didn't create.
+status=0
+minikube status -p "$PROFILE" >/dev/null 2>&1 || status=$?
+if [ "$status" != 85 ]; then
+  echo "minikube profile $PROFILE may already exist (status exit $status); refusing to reuse or delete it" >&2
   exit 1
 fi
-trap cleanup EXIT INT TERM
 
 echo "==> starting minikube profile $PROFILE (kubeconfig: $KUBECONFIG)"
+CREATED=1
 minikube start -p "$PROFILE" --driver=docker --cpus=2 --memory=2g --wait=all
 CONTEXT="$PROFILE"
 

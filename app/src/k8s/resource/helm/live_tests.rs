@@ -1,8 +1,9 @@
 //! helm-releases 9: the Helm code paths against a real cluster and a real
 //! `helm`, run by `scripts/helm-integration.sh` on a throwaway minikube
-//! profile it creates and deletes. `#[ignore]`d: `cargo test` never runs it,
-//! and it refuses to run without the script's kubeconfig, so it can't reach
-//! the user's own clusters.
+//! profile it creates and deletes. `#[ignore]`d: `cargo test` never runs it.
+//! Without the script's variables it skips (CI runs `--include-ignored`), and
+//! it refuses any context outside the script's profile, so it can't reach the
+//! user's own clusters.
 //!
 //! The script installs release `it-web` in `fernrohr-it` from the chart
 //! `helm create` scaffolds, then upgrades it twice with `replicaCount` 1, 2
@@ -30,13 +31,36 @@ use std::time::Duration;
 const NAMESPACE: &str = "fernrohr-it";
 const RELEASE: &str = "it-web";
 
-/// The script's kubeconfig and context; the test refuses to run without them.
-fn cluster() -> (Kubeconfig, String) {
-    let path = std::env::var("FERNROHR_HELM_IT_KUBECONFIG")
-        .expect("run through scripts/helm-integration.sh, which sets FERNROHR_HELM_IT_KUBECONFIG");
-    let context = std::env::var("FERNROHR_HELM_IT_CONTEXT").expect("FERNROHR_HELM_IT_CONTEXT");
+/// The script's profile, and so its context: the test only drives a context
+/// with this prefix, so pointing the variables at a real kubeconfig can't roll
+/// back or uninstall anything outside the throwaway profile.
+const PROFILE_PREFIX: &str = "fernrohr-helm-it";
+
+/// The script's kubeconfig and context, or `None` when the variables aren't
+/// set. CI's macOS jobs run with `--include-ignored` (for the keychain tests),
+/// so without the script's cluster this test must skip, not fail.
+fn cluster() -> Option<(Kubeconfig, String)> {
+    let (Ok(path), Ok(context)) = (
+        std::env::var("FERNROHR_HELM_IT_KUBECONFIG"),
+        std::env::var("FERNROHR_HELM_IT_CONTEXT"),
+    ) else {
+        return None;
+    };
+    assert!(
+        context.starts_with(PROFILE_PREFIX),
+        "refusing context {context:?}: only the script's {PROFILE_PREFIX} profile"
+    );
     let kubeconfig = Kubeconfig::read_from(&path).expect("the script's kubeconfig reads");
-    (kubeconfig, context)
+    Some((kubeconfig, context))
+}
+
+/// Removes the runner's scratch directory however the test ends.
+struct RunDir(std::path::PathBuf);
+
+impl Drop for RunDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Runs `cx` until `done`, polling for up to `timeout`.
@@ -61,7 +85,10 @@ fn wait(
 #[ignore = "needs scripts/helm-integration.sh's minikube profile"]
 async fn helm_live_releases_round_trip(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
-    let (kubeconfig, context) = cluster();
+    let Some((kubeconfig, context)) = cluster() else {
+        eprintln!("skipping: run through scripts/helm-integration.sh");
+        return;
+    };
     let handle = cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
@@ -78,8 +105,9 @@ async fn helm_live_releases_round_trip(cx: &mut TestAppContext) {
         kube::Client::try_from(config).expect("a client")
     });
     let helm = which_helm();
-    let run_dir = std::env::temp_dir().join(format!("fernrohr-helm-it-{}", std::process::id()));
-    std::fs::create_dir_all(&run_dir).unwrap();
+    let run_dir =
+        RunDir(std::env::temp_dir().join(format!("fernrohr-helm-it-{}", std::process::id())));
+    std::fs::create_dir_all(&run_dir.0).expect("the run directory creates");
     cx.update(|cx| {
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::helm::list::register_commands(&mut registry);
@@ -96,7 +124,7 @@ async fn helm_live_releases_round_trip(cx: &mut TestAppContext) {
         cx.set_global(helm_cli::TestRunEnv {
             kubeconfig,
             path_env: std::env::var("PATH").unwrap_or_default(),
-            dir: run_dir.clone(),
+            dir: run_dir.0.clone(),
         });
     });
 
@@ -217,7 +245,6 @@ async fn helm_live_releases_round_trip(cx: &mut TestAppContext) {
             vcx.update(|_, cx| list.read(cx).displayed(cx).is_empty())
         },
     );
-    let _ = std::fs::remove_dir_all(&run_dir);
 }
 
 /// Opens `build`'s panel in a window of its own, focused.
