@@ -112,22 +112,44 @@ impl MainWindow {
     }
 
     /// Closes the window - `Cmd-W` with no tab on screen - confirming first if
-    /// that would drop a tunnel or discard an unsaved edit, irreversibly for an
-    /// edit (Fernrohr#168). `close_window` removes the window without its
-    /// should-close hook, so an edit is checked here too, not only by
-    /// [`close_requested`]: with no panel on screen none should be open, but
-    /// losing one silently is not a risk worth taking on that.
+    /// that would disconnect a context, drop a tunnel or discard an unsaved
+    /// edit, irreversibly for an edit (Fernrohr#168, #341). `close_window`
+    /// removes the window without its should-close hook, so this asks the
+    /// same question [`close_requested`] does for the close button.
     pub(super) fn close_whole_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let tunneled = self.contexts_losing_a_tunnel(cx);
-        let unsaved = self.unsaved_edits(cx);
-        if tunneled.is_empty() && unsaved.is_empty() {
+        let loss = self.closing_loss(cx);
+        if loss.is_empty() {
             // Deferred: closing records the window's layout, which reads this
             // `MainWindow` - still mid-update here, so reading it now panics
             // (#135). Once this handler returns, the read is free.
             window.defer(cx, close_window);
         } else {
-            open_close_window_dialog(&tunneled, unsaved, window, cx);
+            open_close_window_dialog(loss, window, cx);
         }
+    }
+
+    /// What closing the window would end: the contexts it alone holds, the
+    /// tunnels among them, and each panel's unsaved edit. Both close routes
+    /// ask from this, so the close button and `Cmd-W` never disagree (#341).
+    fn closing_loss(&self, cx: &mut App) -> ClosingLoss {
+        ClosingLoss {
+            disconnecting: self.contexts_disconnecting(cx),
+            tunneled: self.contexts_losing_a_tunnel(cx),
+            unsaved: self.unsaved_edits(cx),
+        }
+    }
+
+    /// This window's contexts that closing it disconnects: held by no other
+    /// window, as the status bar's Disconnect counts them.
+    fn contexts_disconnecting(&self, cx: &App) -> Vec<String> {
+        let WindowMode::Workspace { contexts, .. } = &self.mode else {
+            return Vec::new();
+        };
+        let holders: Vec<usize> = contexts
+            .iter()
+            .map(|context_name| ClusterRegistry::holder_count(cx, context_name))
+            .collect();
+        held_here_alone(contexts, &holders)
     }
 
     /// What closing the window would discard for good: each panel's unsaved
@@ -169,6 +191,18 @@ impl MainWindow {
 }
 
 /// Of `contexts` (with `holders[i]` windows holding `contexts[i]`), the ones
+/// this window alone holds: closing it releases their last hold, which
+/// disconnects them.
+pub(super) fn held_here_alone(contexts: &[String], holders: &[usize]) -> Vec<String> {
+    contexts
+        .iter()
+        .zip(holders)
+        .filter(|(_, holders)| **holders == 1)
+        .map(|(context_name, _)| context_name.clone())
+        .collect()
+}
+
+/// Of `contexts` (with `holders[i]` windows holding `contexts[i]`), the ones
 /// this window alone holds whose forward `is_live` - closing the window
 /// releases the last hold, and with it the tunnel. A context another window
 /// still holds keeps its tunnel, so it needs no warning.
@@ -177,19 +211,32 @@ pub(super) fn losing_a_tunnel(
     holders: &[usize],
     mut is_live: impl FnMut(&str) -> bool,
 ) -> Vec<String> {
-    contexts
-        .iter()
-        .zip(holders)
-        .filter(|(_, holders)| **holders == 1)
-        .filter(|(context_name, _)| is_live(context_name))
-        .map(|(context_name, _)| context_name.clone())
+    held_here_alone(contexts, holders)
+        .into_iter()
+        .filter(|context_name| is_live(context_name))
         .collect()
 }
 
-/// The window's close button: whether `window` may close now. With an unsaved
-/// edit in any panel it may not - the irreversible "Close Window?" asks first
-/// (Fernrohr#168), closing it only once confirmed. `Cmd-W` reaches the window
-/// only with no panel on screen, so this is where an edit can be lost.
+/// What closing a window would end; nothing means it closes without asking.
+struct ClosingLoss {
+    /// Contexts only this window holds.
+    disconnecting: Vec<String>,
+    /// Those of them whose tunnel is live - a subset of `disconnecting`.
+    tunneled: Vec<String>,
+    /// Each unsaved edit, as `Close Group` words it.
+    unsaved: Vec<ConfirmText>,
+}
+
+impl ClosingLoss {
+    fn is_empty(&self) -> bool {
+        self.disconnecting.is_empty() && self.tunneled.is_empty() && self.unsaved.is_empty()
+    }
+}
+
+/// The window's close button: whether `window` may close now. Not while it
+/// would disconnect a context or discard an unsaved edit - "Close Window?"
+/// asks first, as `Cmd-W` does (Fernrohr#168, #341), irreversibly for an
+/// edit, and closes it only once confirmed.
 pub(super) fn close_requested(window: &mut Window, cx: &mut App) -> bool {
     let Some(Some(root)) = window.root::<Root>() else {
         return true;
@@ -197,29 +244,31 @@ pub(super) fn close_requested(window: &mut Window, cx: &mut App) -> bool {
     let Ok(main_window) = root.read(cx).view().clone().downcast::<MainWindow>() else {
         return true;
     };
-    let unsaved = main_window.read(cx).unsaved_edits(cx);
-    if unsaved.is_empty() {
+    let loss = main_window.update(cx, |main_window, cx| main_window.closing_loss(cx));
+    if loss.is_empty() {
         return true;
     }
-    open_close_window_dialog(&[], unsaved, window, cx);
+    open_close_window_dialog(loss, window, cx);
     false
 }
 
-/// "Close Window?" naming the contexts whose tunnel will disconnect - the
-/// context bar's Disconnect dialog, with Close Window as the confirm - and each
-/// unsaved edit it discards, which makes it irreversible.
-fn open_close_window_dialog(
-    tunneled: &[String],
-    unsaved: Vec<ConfirmText>,
-    window: &mut Window,
-    cx: &mut App,
-) {
+/// "Close Window?" naming the contexts that will disconnect and the tunnels
+/// that stop with them - the status bar's Disconnect dialog, with Close
+/// Window as the confirm - and each unsaved edit it discards, which makes it
+/// irreversible.
+fn open_close_window_dialog(loss: ClosingLoss, window: &mut Window, cx: &mut App) {
+    let ClosingLoss {
+        disconnecting,
+        tunneled,
+        unsaved,
+    } = loss;
     let severity = if unsaved.is_empty() {
         Severity::Recoverable
     } else {
         Severity::Irreversible
     };
-    let lead = (!tunneled.is_empty()).then(|| close_window_confirmation_body(tunneled));
+    let lead = (!disconnecting.is_empty())
+        .then(|| close_window_confirmation_body(&disconnecting, &tunneled));
     let body = unsaved
         .into_iter()
         .fold(lead, |body, warning| match body {
@@ -237,15 +286,21 @@ fn open_close_window_dialog(
     confirm_dialog::open(confirmation, close_window, window, cx);
 }
 
-/// The confirmation's body: which contexts' tunnels will disconnect.
-pub(super) fn close_window_confirmation_body(tunneled: &[String]) -> ConfirmText {
+/// The confirmation's body: which contexts will disconnect, and which of
+/// their tunnels stop with them.
+pub(super) fn close_window_confirmation_body(
+    disconnecting: &[String],
+    tunneled: &[String],
+) -> ConfirmText {
+    let body = ConfirmText::new()
+        .names(disconnecting)
+        .text(" will disconnect.");
     let lead = match tunneled {
-        [_] => "The tunnel for ",
-        _ => "The tunnels for ",
+        [] => return body,
+        [_] => " The tunnel for ",
+        _ => " The tunnels for ",
     };
-    ConfirmText::from(lead)
-        .names(tunneled)
-        .text(" will disconnect.")
+    body.text(lead).names(tunneled).text(" will stop.")
 }
 
 /// Closes `panel` in the window `window` belongs to: the title bar close

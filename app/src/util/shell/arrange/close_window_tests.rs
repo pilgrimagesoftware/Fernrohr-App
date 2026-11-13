@@ -1,8 +1,9 @@
-//! Closing a window that holds an unsaved edit (Fernrohr#168), through both of
-//! its routes: the close button's should-close hook, and `Cmd-W`'s window
-//! close (`close_whole_window`), with and without a tunnel the window would
-//! also drop. Each asks irreversibly: Enter cancels, keeping the window and
-//! the edit.
+//! Closing a window that holds a connected context (#341) or an unsaved edit
+//! (Fernrohr#168), through both of its routes: the close button's
+//! should-close hook, and `Cmd-W`'s window close (`close_whole_window`), with
+//! and without a tunnel the window would also drop. A context alone asks
+//! recoverably; an edit asks irreversibly: Enter cancels, keeping the window
+//! and the edit.
 
 use super::tests::{Harness, edit_a_deployment, harness};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
@@ -168,4 +169,59 @@ async fn cmd_w_with_an_unsaved_edit_and_a_tunnel_asks_irreversibly(cx: &mut Test
     h.first_frame();
     h.press("secondary-backspace");
     assert!(h.vcx.windows().is_empty(), "the shortcut closed the window");
+}
+
+impl Harness {
+    /// Holds the window's context, `demo`, for this window alone, as opening
+    /// it does - closing the window would disconnect it.
+    fn hold_the_context(&mut self) {
+        self.vcx.update(|window, cx| {
+            let window_id = window.window_handle().window_id();
+            if ClusterRegistry::holder_count(cx, "demo") == 0 {
+                ClusterRegistry::hold(cx, "demo", window_id);
+            }
+        });
+    }
+}
+
+/// The close button over a context only this window holds asks, as the status
+/// bar's Disconnect does (#341) - recoverably: Escape keeps the window, Enter
+/// closes it.
+#[gpui_kit::test]
+async fn the_close_button_with_a_connected_context_asks(cx: &mut TestAppContext) {
+    let mut h = harness(cx, None);
+    h.vcx.update(|window, cx| {
+        window.on_window_should_close(cx, crate::util::shell::tabs::close_requested)
+    });
+    h.hold_the_context();
+
+    assert!(
+        !h.vcx.simulate_close(),
+        "a connected context keeps the window"
+    );
+    h.vcx.run_until_parked();
+    assert!(h.dialog_open(), "and asks");
+    h.first_frame();
+    h.press("escape");
+    assert!(!h.dialog_open(), "Escape closes the question");
+    assert_eq!(h.vcx.windows().len(), 1, "and keeps the window");
+
+    assert!(!h.vcx.simulate_close());
+    h.vcx.run_until_parked();
+    h.first_frame();
+    h.press("enter");
+    assert!(h.vcx.windows().is_empty(), "Enter closed the window");
+}
+
+/// `Cmd-W`'s window close asks the same question over a connected context.
+#[gpui_kit::test]
+async fn cmd_w_with_a_connected_context_asks(cx: &mut TestAppContext) {
+    let mut h = harness(cx, None);
+    h.hold_the_context();
+
+    h.close_the_window();
+    assert!(h.dialog_open(), "a connected context: it asks");
+    h.first_frame();
+    h.press("enter");
+    assert!(h.vcx.windows().is_empty(), "Enter closed the window");
 }

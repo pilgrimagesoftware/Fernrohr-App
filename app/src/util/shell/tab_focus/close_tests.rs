@@ -267,7 +267,7 @@ fn windows(cx: &mut TestAppContext) -> usize {
 }
 
 /// #135: `Cmd-W` on the last tab closes it, and `Cmd-W` again - nothing on
-/// screen - closes the window. That second close records the window's layout,
+/// screen - closes the window once confirmed. That second close records the window's layout,
 /// which reads `MainWindow`; read inside its own `Cmd-W` handler, it panicked.
 #[gpui_kit::test]
 async fn cmd_w_closes_the_last_tab_then_the_window(cx: &mut TestAppContext) {
@@ -277,6 +277,12 @@ async fn cmd_w_closes_the_last_tab_then_the_window(cx: &mut TestAppContext) {
     assert_eq!(panels(&mut h).len(), 0, "the tab closed");
     assert_eq!(windows(cx), 1, "the window stays");
     press(&mut h.vcx, CLOSE_KEY);
+    assert_eq!(
+        windows(cx),
+        1,
+        "closing would disconnect demo, so it asks (#341)"
+    );
+    press(&mut h.vcx, "enter");
     assert_eq!(windows(cx), 0, "the empty window closed");
 }
 
@@ -300,5 +306,11 @@ async fn cmd_w_from_the_resource_panel_closes_the_tab_then_the_window(cx: &mut T
     assert_eq!(panels(&mut h).len(), 0, "the displayed tab closed");
     assert_eq!(windows(cx), 1);
     press(&mut h.vcx, CLOSE_KEY);
+    assert_eq!(
+        windows(cx),
+        1,
+        "closing would disconnect demo, so it asks (#341)"
+    );
+    press(&mut h.vcx, "enter");
     assert_eq!(windows(cx), 0, "then the window");
 }
