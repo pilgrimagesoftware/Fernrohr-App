@@ -25,6 +25,7 @@ mod actions;
 mod category;
 mod discovery;
 mod edge;
+mod group_memory;
 mod keyboard;
 mod notes;
 mod render;
@@ -104,11 +105,11 @@ pub struct ResourcePanel {
     /// without being open yet, and Enter opens whatever is highlighted. Also
     /// stops on Custom Resources subgroup headers, which are not rows.
     highlighted: Option<keyboard::Cursor>,
-    /// Categories the user collapsed, this window only. Section 2.3: default
-    /// expanded, never written to the preference file.
+    /// Categories the user collapsed. Default expanded; remembered per
+    /// context in the workspace (#357, `group_memory`).
     collapsed: HashSet<Category>,
     /// API groups the user expanded inside Custom Resources
-    /// (`custom-resource-grouping`), this window only and never saved. Unlike
+    /// (`custom-resource-grouping`), remembered with `collapsed`. Unlike
     /// `collapsed` it tracks the *open* state: subgroups start collapsed, so an
     /// empty set is the default and a group discovery adds later is collapsed
     /// with no extra work.
@@ -216,6 +217,7 @@ impl ResourcePanel {
             _connection_observation: observation,
             _filter_observation: filter_observation,
         };
+        this.restore_groups(cx);
         this.sync(&connection, cx);
         this
     }
@@ -252,6 +254,7 @@ impl ResourcePanel {
         self.loading = false;
         self.selected = None;
         self.highlighted = None;
+        self.restore_groups(cx);
         let connection = ClusterRegistry::connection(cx, &self.context_name);
         self._connection_observation = Self::observe(&connection, cx);
         self.sync(&connection, cx);
@@ -379,7 +382,7 @@ impl ResourcePanel {
         if !self.collapsed.remove(&category) {
             self.collapsed.insert(category);
         }
-        cx.notify();
+        self.groups_changed(cx);
     }
 
     /// Flips the API-group subgroup `group`'s collapsed state inside Custom
@@ -388,7 +391,7 @@ impl ResourcePanel {
         if !self.expanded_subgroups.remove(group) {
             self.expanded_subgroups.insert(group.to_string());
         }
-        cx.notify();
+        self.groups_changed(cx);
     }
 
     /// Collapses (`expanded: false`) or expands every Custom Resources
@@ -407,7 +410,7 @@ impl ResourcePanel {
         } else {
             HashSet::new()
         };
-        cx.notify();
+        self.groups_changed(cx);
     }
 
     /// The row for each discovered kind: its label, the target selecting it
