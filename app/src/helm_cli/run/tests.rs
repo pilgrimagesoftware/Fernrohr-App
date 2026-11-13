@@ -91,14 +91,17 @@ async fn a_timeout_kills_the_process_group() {
         "helm",
         &format!("sleep 30 &\necho $! > '{}'\nwait", child_pid.display()),
     );
+    // Long enough that even a loaded machine starts the script and writes
+    // its child's pid before the timeout; the run still ends at it.
+    let timeout = Duration::from_secs(8);
     let started = Instant::now();
-    let failure = run(command(&helm, &dir, Duration::from_secs(3)))
+    let failure = run(command(&helm, &dir, timeout))
         .await
         .expect_err("it times out");
-    assert_eq!(failure, HelmFailure::TimedOut(Duration::from_secs(3)));
+    assert_eq!(failure, HelmFailure::TimedOut(timeout));
     assert!(
-        started.elapsed() < Duration::from_secs(10),
-        "it didn't wait it out"
+        started.elapsed() < Duration::from_secs(20),
+        "it didn't wait out the script's 30 s"
     );
 
     let pid = std::fs::read_to_string(&child_pid)
