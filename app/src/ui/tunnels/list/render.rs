@@ -1,6 +1,7 @@
 //! Owns the Tunnels window's rendered layout: the header and New Tunnel control,
-//! each tunnel's row (name, usage, running state, Edit), the stale-bindings section
-//! with its per-row Remove. The editor is a dialog over it (`editor_dialog`).
+//! each tunnel's row (name and kind, what it runs and how many contexts use it,
+//! running state, the Edit icon), the stale-bindings section with its per-row
+//! Remove. The editor is a dialog over it (`editor_dialog`).
 
 use super::*;
 
@@ -13,7 +14,7 @@ pub(super) fn kind_label(kind: TunnelKind) -> &'static str {
     }
 }
 
-/// The row's second line: where an SSH tunnel goes, a command tunnel's command - its
+/// What the row says a tunnel does: where an SSH tunnel goes, a command tunnel's command - its
 /// first line, shortened - and mode, or a manual tunnel's message.
 pub(super) fn tunnel_summary(tunnel: &TunnelConfig) -> String {
     match tunnel.kind {
@@ -58,6 +59,16 @@ pub(super) fn tunnel_summary(tunnel: &TunnelConfig) -> String {
             summary
         }
     }
+}
+
+/// The Edit icon's tooltip (`.claude/rules/icon-buttons.md`).
+pub(super) const EDIT_TOOLTIP: &str = "Edit tunnel";
+
+/// The row's second line: [`tunnel_summary`], then how many contexts use the
+/// tunnel - beside what it describes rather than among the row's controls
+/// (#364).
+pub(super) fn row_detail(tunnel: &TunnelConfig, usage: usize) -> String {
+    format!("{} \u{00b7} {}", tunnel_summary(tunnel), usage_label(usage))
 }
 
 fn usage_label(count: usize) -> String {
@@ -133,7 +144,7 @@ impl Render for TunnelsWindow {
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child(tunnel_summary(tunnel)),
+                                .child(row_detail(tunnel, usage)),
                         ),
                 )
                 .child(
@@ -144,12 +155,6 @@ impl Render for TunnelsWindow {
                         .child(
                             div()
                                 .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(usage_label(usage)),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
                                 .text_color(if running {
                                     theme.success
                                 } else {
@@ -157,17 +162,19 @@ impl Render for TunnelsWindow {
                                 })
                                 .child(if running { "Running" } else { "Idle" }),
                         )
-                        .child(
+                        .child(crate::ui::icon_tooltip::with_tooltip(
+                            SharedString::from(format!("tunnels-edit-{id}-tooltip")),
+                            EDIT_TOOLTIP,
                             Button::new(format!("tunnels-edit-{id}"))
-                                .label("Edit")
-                                .outline()
+                                .icon(IconName::Pencil)
+                                .ghost()
                                 .xsmall()
                                 .on_click(move |_event, window, cx| {
                                     let _ = weak_edit.update(cx, |this, cx| {
                                         this.open_edit(id_for_edit.clone(), window, cx)
                                     });
                                 }),
-                        ),
+                        )),
                 )
         });
 
