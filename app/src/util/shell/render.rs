@@ -142,6 +142,7 @@ impl Render for MainWindow {
         .on_action(cx.listener(Self::on_action_show_pods))
         .on_action(cx.listener(Self::on_action_show_events))
         .on_action(cx.listener(Self::on_action_show_helm_releases))
+        .on_action(cx.listener(Self::on_action_open_helm_release))
         .on_action(cx.listener(Self::on_action_focus_resources))
         .on_action(cx.listener(Self::on_action_warp_context))
         .on_action(cx.listener(Self::on_action_open_exec))

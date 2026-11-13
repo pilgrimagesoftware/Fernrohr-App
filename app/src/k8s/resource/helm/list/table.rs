@@ -71,9 +71,6 @@ impl HelmTableDelegate {
     }
 
     /// The selected release, if it is still listed.
-    // UNWIRED(#370): the release detail panel (helm-releases section 4) opens
-    // the selected release.
-    #[allow(dead_code)]
     pub(crate) fn selected(&self) -> Option<&HelmRow> {
         let uid = self.selected.as_deref()?;
         self.rows.iter().find(|row| row.uid == uid)

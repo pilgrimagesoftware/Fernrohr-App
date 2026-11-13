@@ -23,11 +23,15 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
     let window = connected_window(cx, "kind-dev").await;
     cx.run_until_parked();
 
-    let expected = 7;
-    let cases: [NavTarget; 7] = [
+    let expected = 8;
+    let cases: [NavTarget; 8] = [
         NavTarget::pods(),
         NavTarget::Logs,
         NavTarget::HelmReleases,
+        NavTarget::HelmRelease(crate::k8s::resource::helm::ReleaseKey {
+            namespace: "staging".into(),
+            name: "web".into(),
+        }),
         NavTarget::Kind(crd_kind()),
         NavTarget::Kind(cluster_scoped_kind()),
         NavTarget::Object(crate::ui::nav::ObjectTarget {
@@ -59,6 +63,7 @@ async fn every_resource_panel_carries_its_title_bar(cx: &mut TestAppContext) {
                     nav::OpenedPanel::ObjectList(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Events(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::HelmReleases(panel) => title_bar_of(&panel, window, cx),
+                    nav::OpenedPanel::HelmRelease(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Placeholder(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::Logs(panel) => title_bar_of(&panel, window, cx),
                     nav::OpenedPanel::PodDetail(panel) => title_bar_of(&panel, window, cx),

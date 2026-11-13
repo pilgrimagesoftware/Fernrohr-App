@@ -359,6 +359,7 @@ pub(super) fn close_warning(
         | OpenedPanel::ObjectList(_)
         | OpenedPanel::Events(_)
         | OpenedPanel::HelmReleases(_)
+        | OpenedPanel::HelmRelease(_)
         | OpenedPanel::Placeholder(_)
         | OpenedPanel::Logs(_)
         | OpenedPanel::PodDetail(_) => None,
@@ -382,6 +383,7 @@ pub(super) fn close_panels(
             OpenedPanel::ObjectList(panel) => area.remove_panel(panel, window, cx),
             OpenedPanel::Events(panel) => area.remove_panel(panel, window, cx),
             OpenedPanel::HelmReleases(panel) => area.remove_panel(panel, window, cx),
+            OpenedPanel::HelmRelease(panel) => area.remove_panel(panel, window, cx),
             OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
             OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
             OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),

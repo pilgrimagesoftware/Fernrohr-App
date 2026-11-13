@@ -99,6 +99,9 @@ pub enum NavTarget {
     /// The context's Helm releases (`helm-releases`): not a discovered kind -
     /// Helm keeps them in Secrets - so a target of its own.
     HelmReleases,
+    /// One Helm release's detail panel (`helm-releases`), keyed by the
+    /// release, so opening it again focuses its panel.
+    HelmRelease(crate::k8s::resource::helm::ReleaseKey),
 }
 
 /// One object of a discovered kind: the kind as discovery reported it (so the
@@ -208,6 +211,7 @@ pub enum OpenedPanel {
     ObjectList(Entity<crate::k8s::resource::object_list::ObjectListPanel>),
     Events(Entity<crate::k8s::resource::events_browser::EventsPanel>),
     HelmReleases(Entity<crate::k8s::resource::helm::list::HelmReleasesPanel>),
+    HelmRelease(Entity<crate::k8s::resource::helm::detail::HelmReleasePanel>),
     Placeholder(Entity<crate::ui::placeholder::PlaceholderPanel>),
     Logs(Entity<crate::util::logs::LogsPanel>),
     PodDetail(Entity<crate::k8s::resource::pod_detail::PodDetailPanel>),
@@ -235,6 +239,7 @@ pub fn opened_panel_for(
         "ObjectList" => OpenedPanel::ObjectList(Entity::from(view.as_ref())),
         "Events" => OpenedPanel::Events(Entity::from(view.as_ref())),
         "HelmReleases" => OpenedPanel::HelmReleases(Entity::from(view.as_ref())),
+        "HelmRelease" => OpenedPanel::HelmRelease(Entity::from(view.as_ref())),
         "Logs" => OpenedPanel::Logs(Entity::from(view.as_ref())),
         "Resource" => OpenedPanel::Placeholder(Entity::from(view.as_ref())),
         "PodDetail" => OpenedPanel::PodDetail(Entity::from(view.as_ref())),
@@ -322,6 +327,24 @@ pub fn add_panel(
                 cx,
             );
             (id, OpenedPanel::HelmReleases(panel))
+        }
+        NavTarget::HelmRelease(key) => {
+            let panel = cx.new(|cx| {
+                crate::k8s::resource::helm::detail::HelmReleasePanel::new(
+                    key.clone(),
+                    scope.clone(),
+                    cx,
+                )
+            });
+            let id = PanelId::from(panel.entity_id());
+            area.add_panel_view(
+                panel_handle(panel.clone()),
+                DockPlacement::Center,
+                None,
+                window,
+                cx,
+            );
+            (id, OpenedPanel::HelmRelease(panel))
         }
         // Every other kind, built-in or CRD: the generic live list.
         NavTarget::Kind(kind) => {

@@ -243,11 +243,17 @@ impl HelmReleasesPanel {
                     .col_movable(true)
                     .col_resizable(true)
             });
-            cx.subscribe_in(&table, window, |_this, table, event, _window, cx| {
+            cx.subscribe_in(&table, window, |_this, table, event, window, cx| {
                 match event {
                     TableEvent::SelectRow(row_ix) => table.update(cx, |table, _| {
                         table.delegate_mut().remember_selection(*row_ix)
                     }),
+                    TableEvent::DoubleClickedRow(row_ix) => {
+                        table.update(cx, |table, _| {
+                            table.delegate_mut().remember_selection(*row_ix)
+                        });
+                        _this.open_selected(window, cx);
+                    }
                     TableEvent::ColumnWidthsChanged(widths) => {
                         table.update(cx, |table, _| table.delegate_mut().set_widths(widths))
                     }
@@ -265,6 +271,27 @@ impl HelmReleasesPanel {
             cx.notify();
         });
         table
+    }
+
+    /// Asks the window to open the selected release's detail panel.
+    pub(super) fn open_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self
+            .table
+            .as_ref()
+            .and_then(|table| table.read(cx).delegate().selected().cloned())
+        else {
+            return;
+        };
+        window.dispatch_action(
+            Box::new(super::commands::OpenHelmRelease {
+                context_name: self.scope.context_name.clone(),
+                key: crate::k8s::resource::helm::ReleaseKey {
+                    namespace: row.namespace,
+                    name: row.name,
+                },
+            }),
+            cx,
+        );
     }
 
     /// The sort to save: the table's, or the one it would open with.

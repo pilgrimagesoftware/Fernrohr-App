@@ -108,9 +108,14 @@ impl HelmReleasesTable {
     }
 
     /// The latest revisions not yet fetched, marked as loading. Each is
-    /// returned once per new latest revision.
+    /// returned once per new latest revision - and none until the first list
+    /// has completed: while it arrives, each revision is briefly the latest of
+    /// its release, and fetching each would read every revision once.
     pub(crate) fn take_fetches(&mut self) -> Vec<Fetch> {
         let mut fetches = Vec::new();
+        if !self.phase.has_loaded() {
+            return fetches;
+        }
         for (key, revisions) in &self.releases {
             let Some(latest) = revisions.values().next_back() else {
                 continue;

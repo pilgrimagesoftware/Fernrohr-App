@@ -231,3 +231,29 @@ fn a_restored_helm_releases_list_is_keyed_by_its_target() {
     assert_eq!(key.context_name, "kind-dev");
     assert_eq!(key.namespaces, vec!["shop"]);
 }
+
+/// A saved release detail panel restores under its release.
+#[test]
+fn a_restored_helm_release_panel_is_keyed_by_its_release() {
+    use gpui_kit::component::dock::{PanelInfo, PanelState};
+    let state = PanelState {
+        panel_name: "HelmRelease".to_string(),
+        children: Vec::new(),
+        info: PanelInfo::Panel(serde_json::json!({
+            "context_name": "kind-dev",
+            "release_namespace": "shop",
+            "release_name": "web",
+            "tab": "history",
+        })),
+    };
+    let keys = super::restored_panel_keys(&state);
+    let key = keys[0].as_ref().expect("a release panel is keyed");
+    assert_eq!(
+        key.target,
+        NavTarget::HelmRelease(crate::k8s::resource::helm::ReleaseKey {
+            namespace: "shop".into(),
+            name: "web".into(),
+        })
+    );
+    assert_eq!(key.context_name, "kind-dev");
+}

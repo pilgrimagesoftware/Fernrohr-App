@@ -15,7 +15,8 @@ pub(crate) mod restore;
 mod row;
 mod table;
 
-pub(crate) use commands::register_commands;
+pub(crate) use columns::status_tone;
+pub(crate) use commands::{KEY_CONTEXT as LIST_KEY_CONTEXT, OpenHelmRelease, register_commands};
 pub use panel::HelmReleasesPanel;
 pub use restore::register_restore;
 

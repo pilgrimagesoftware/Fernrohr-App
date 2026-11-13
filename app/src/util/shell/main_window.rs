@@ -209,6 +209,14 @@ impl MainWindow {
                 )
                 .detach();
             }
+            nav::OpenedPanel::HelmRelease(panel) => {
+                cx.subscribe_in(
+                    &panel,
+                    window,
+                    move |this: &mut MainWindow, _panel, event, _window, cx| rekey(this, event, cx),
+                )
+                .detach();
+            }
             nav::OpenedPanel::HelmReleases(panel) => {
                 cx.subscribe_in(
                     &panel,

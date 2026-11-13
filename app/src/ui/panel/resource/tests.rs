@@ -158,7 +158,9 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
                     NavTarget::Pod(_) | NavTarget::Object(_) | NavTarget::Exec(_) => {
                         panic!("a discovered kind, not one object's detail")
                     }
-                    NavTarget::HelmReleases => panic!("a discovered kind, not Helm Releases"),
+                    NavTarget::HelmReleases | NavTarget::HelmRelease(_) => {
+                        panic!("a discovered kind, not Helm")
+                    }
                 };
                 // Every row resolves to a kind `add_panel` opens a list for.
                 let _ = opened;
@@ -174,7 +176,8 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
                     | NavTarget::Pod(_)
                     | NavTarget::Object(_)
                     | NavTarget::Exec(_)
-                    | NavTarget::HelmReleases => unreachable!(),
+                    | NavTarget::HelmReleases
+                    | NavTarget::HelmRelease(_) => unreachable!(),
                 }
                 .is_core_pod()
             );
@@ -188,7 +191,8 @@ async fn every_row_opens_a_panel_and_the_crd_gets_a_placeholder(cx: &mut TestApp
                     | NavTarget::Pod(_)
                     | NavTarget::Object(_)
                     | NavTarget::Exec(_)
-                    | NavTarget::HelmReleases => unreachable!(),
+                    | NavTarget::HelmReleases
+                    | NavTarget::HelmRelease(_) => unreachable!(),
                 }
                 .is_core_pod()
             );

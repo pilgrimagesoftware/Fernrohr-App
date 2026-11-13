@@ -5,6 +5,7 @@
 //! release detail panel and actions build on them.
 
 mod decode;
+pub(crate) mod detail;
 pub(crate) mod list;
 mod table;
 mod watch;

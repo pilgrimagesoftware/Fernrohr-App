@@ -339,7 +339,17 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Command | Default binding | Context | Menu | ID |
 | --- | --- | --- | --- | --- |
 | Helm Releases: Search | <kbd>/</kbd> | `HelmReleasesPanel && !Input` | — | `helm.focus_search` |
+| Helm Releases: Open Release | <kbd>↵</kbd> | `HelmReleasesPanel && !Input` | — | `helm.open_release` |
+| Helm Releases: Describe Release | <kbd>D</kbd> | `HelmReleasesPanel && !Input` | — | `helm.describe_release` |
 | Helm Releases: Show Uninstalled Releases | — | `HelmReleasesPanel && !Input` | — | `helm.show_uninstalled` |
+
+### Helm release panel
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Helm Release: Overview | <kbd>1</kbd> | `HelmReleasePanel` | — | `helm_release.overview` |
+| Helm Release: History | <kbd>2</kbd> | `HelmReleasePanel` | — | `helm_release.history` |
+| Helm Release: Notes | <kbd>5</kbd> | `HelmReleasePanel` | — | `helm_release.notes` |
 
 ### Saved layouts picker
 

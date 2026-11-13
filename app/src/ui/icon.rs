@@ -196,7 +196,7 @@ pub fn for_target(target: &crate::ui::nav::NavTarget) -> KindIcon {
             KindIcon::Container
         }
         // Not a kind: the generic one, until the set gains a Helm icon.
-        NavTarget::HelmReleases => KindIcon::Kind,
+        NavTarget::HelmReleases | NavTarget::HelmRelease(_) => KindIcon::Kind,
     }
 }
 

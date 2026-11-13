@@ -28,7 +28,10 @@ impl OpenedPanel {
             OpenedPanel::Logs(panel) => {
                 return panel.update(cx, |p, cx| p.set_namespaces(namespaces, cx));
             }
-            OpenedPanel::PodDetail(_) | OpenedPanel::ObjectDetail(_) | OpenedPanel::Exec(_) => {
+            OpenedPanel::PodDetail(_)
+            | OpenedPanel::ObjectDetail(_)
+            | OpenedPanel::Exec(_)
+            | OpenedPanel::HelmRelease(_) => {
                 return false;
             }
         }
@@ -43,6 +46,7 @@ impl OpenedPanel {
             OpenedPanel::ObjectList(panel) => panel.read(cx).scope().pinned,
             OpenedPanel::Events(panel) => panel.read(cx).scope().pinned,
             OpenedPanel::HelmReleases(panel) => panel.read(cx).scope().pinned,
+            OpenedPanel::HelmRelease(panel) => panel.read(cx).scope().pinned,
             OpenedPanel::Placeholder(panel) => panel.read(cx).scope().pinned,
             OpenedPanel::Logs(panel) => panel.read(cx).scope().pinned,
             OpenedPanel::PodDetail(panel) => panel.read(cx).scope().pinned,
@@ -68,6 +72,7 @@ impl OpenedPanel {
             OpenedPanel::ObjectList(panel) => set(panel, pinned, cx),
             OpenedPanel::Events(panel) => set(panel, pinned, cx),
             OpenedPanel::HelmReleases(panel) => set(panel, pinned, cx),
+            OpenedPanel::HelmRelease(panel) => set(panel, pinned, cx),
             OpenedPanel::Placeholder(panel) => set(panel, pinned, cx),
             OpenedPanel::Logs(panel) => set(panel, pinned, cx),
             OpenedPanel::PodDetail(panel) => set(panel, pinned, cx),
@@ -84,6 +89,7 @@ impl OpenedPanel {
             OpenedPanel::ObjectList(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Events(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::HelmReleases(panel) => PanelId::from(panel.entity_id()),
+            OpenedPanel::HelmRelease(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Placeholder(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::Logs(panel) => PanelId::from(panel.entity_id()),
             OpenedPanel::PodDetail(panel) => PanelId::from(panel.entity_id()),
@@ -101,6 +107,7 @@ impl OpenedPanel {
             OpenedPanel::ObjectList(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::Events(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::HelmReleases(panel) => panel.read(cx).focus_handle(cx),
+            OpenedPanel::HelmRelease(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::Placeholder(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::Logs(panel) => panel.read(cx).focus_handle(cx),
             OpenedPanel::PodDetail(panel) => panel.read(cx).focus_handle(cx),

@@ -60,6 +60,25 @@ impl MainWindow {
         self.open_target(NavTarget::HelmReleases, window, cx);
     }
 
+    /// A Helm Releases row's Enter, `d` or double-click: the release's detail
+    /// panel, in the list's context.
+    pub(super) fn on_action_open_helm_release(
+        &mut self,
+        action: &crate::k8s::resource::helm::list::OpenHelmRelease,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_target_in(
+            NavTarget::HelmRelease(action.key.clone()),
+            None,
+            Some(action.context_name.clone()),
+            Vec::new(),
+            crate::ui::nav::OpenMode::Foreground,
+            window,
+            cx,
+        );
+    }
+
     pub(super) fn on_action_show_pods(
         &mut self,
         _: &ShowPods,

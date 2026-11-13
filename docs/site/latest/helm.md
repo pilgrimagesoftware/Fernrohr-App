@@ -59,6 +59,21 @@ A release uninstalled with `helm uninstall --keep-history` keeps its history, an
 is `uninstalled`. Like `helm list`, the list hides these. Run **Helm Releases: Show Uninstalled
 Releases** from the palette to show them, and again to hide them. The panel remembers the choice.
 
+## A release's details
+
+Open a release from its row: press <kbd>Enter</kbd> or <kbd>D</kbd>, or double-click it. With no row
+selected, <kbd>↓</kbd> selects the first. The release's panel opens in the same context and follows
+the release live: a new revision updates every tab, and if the release is uninstalled the panel
+says it no longer exists.
+
+| Tab | Key | What it shows |
+| --- | --- | --- |
+| Overview | <kbd>1</kbd> | Name, namespace, status, revision, chart and app version, first and last deployed, and the last operation's description. |
+| History | <kbd>2</kbd> | Every revision, newest first, with its status, when it was deployed, its chart and app version, and its description. The deployed revision is marked. Move between revisions with <kbd>↓</kbd> and <kbd>↑</kbd>, or click one. |
+| Notes | <kbd>5</kbd> | The chart's notes, as `helm get notes` prints them. |
+
+Click a tab to show it too. Each tab is also in the command palette while the panel has focus.
+
 ## Access
 
 Helm keeps releases in Secrets, so the list needs permission to list Secrets. If listing them in

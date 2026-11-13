@@ -170,3 +170,25 @@ fn each_new_latest_revision_is_fetched_once() {
         "a stale result doesn't land on the newer revision"
     );
 }
+
+/// Nothing is fetched while the first list arrives, when each revision is
+/// briefly its release's latest; once it completes, only the latest is.
+#[test]
+fn nothing_is_fetched_before_the_first_list_completes() {
+    let mut table = HelmReleasesTable::default();
+    table.apply(Event::Init);
+    table.apply(Event::InitApply(secret(
+        "shop",
+        "web",
+        1,
+        "superseded",
+        "1",
+    )));
+    assert!(table.take_fetches().is_empty());
+    table.apply(Event::InitApply(secret("shop", "web", 2, "deployed", "2")));
+    assert!(table.take_fetches().is_empty());
+    table.apply(Event::InitDone);
+    let fetches = table.take_fetches();
+    assert_eq!(fetches.len(), 1);
+    assert_eq!(fetches[0].version, 2);
+}

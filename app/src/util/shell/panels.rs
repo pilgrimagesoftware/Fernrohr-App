@@ -160,6 +160,9 @@ fn panel_key(state: &PanelState) -> Option<PanelKey> {
             crate::k8s::resource::helm::list::restore::from_state(data)?;
             NavTarget::HelmReleases
         }
+        "HelmRelease" => {
+            NavTarget::HelmRelease(crate::k8s::resource::helm::detail::restore::from_state(data)?.1)
+        }
         _ => return None,
     };
     Some(PanelKey {

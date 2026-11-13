@@ -2,7 +2,10 @@
 //! search, the table, the hint row, and the states that stand in for rows -
 //! connecting, loading, empty, and Helm's storage refused.
 
-use super::commands::{FocusSearch, PANEL_KEY_CONTEXT, SEARCH_KEY, ToggleUninstalled};
+use super::commands::{
+    DescribeRelease, FocusSearch, OPEN_KEY, OpenRelease, PANEL_KEY_CONTEXT, SEARCH_KEY,
+    ToggleUninstalled,
+};
 use super::panel::HelmReleasesPanel;
 use super::table::data_table;
 use crate::k8s::cluster::connection::ConnectionState;
@@ -112,6 +115,7 @@ impl HelmReleasesPanel {
             .hint_gap(space.control_gap)
             .text_sm()
             .text_color(cx.theme().muted_foreground)
+            .hint(Self::hint(&OpenRelease, OPEN_KEY, "Open", window).essential())
             .hint(Self::hint(&FocusSearch, SEARCH_KEY, "Search", window).essential())
             .hint(Self::hint(
                 &crate::ui::namespace_picker::PickNamespaces,
@@ -193,6 +197,45 @@ impl HelmReleasesPanel {
         cx.notify();
     }
 
+    /// Down with no row selected selects the first, Up the last, so the
+    /// keyboard reaches the rows without tabbing into the table (`list_keys`).
+    fn capture_select_down(
+        &mut self,
+        _: &gpui_kit::base::actions::SelectDown,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.step(crate::ui::list_keys::Step::Down, window, cx);
+    }
+
+    fn capture_select_up(
+        &mut self,
+        _: &gpui_kit::base::actions::SelectUp,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.step(crate::ui::list_keys::Step::Up, window, cx);
+    }
+
+    fn step(
+        &mut self,
+        step: crate::ui::list_keys::Step,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(table) = self.table.clone()
+            && crate::ui::list_keys::step(&table, &self.focus_handle, step, window, cx)
+        {
+            let row_ix = table.read(cx).selected_row();
+            if let Some(row_ix) = row_ix {
+                table.update(cx, |table, _| {
+                    table.delegate_mut().remember_selection(row_ix)
+                });
+            }
+            cx.stop_propagation();
+        }
+    }
+
     fn on_action_toggle_uninstalled(
         &mut self,
         _: &ToggleUninstalled,
@@ -251,6 +294,8 @@ impl Render for HelmReleasesPanel {
             .size_full()
             .key_context(key_context)
             .track_focus(&self.focus_handle)
+            .capture_action(cx.listener(Self::capture_select_down))
+            .capture_action(cx.listener(Self::capture_select_up))
             .on_action(cx.listener(
                 |this, _: &crate::ui::namespace_picker::PickNamespaces, window, cx| {
                     this.namespace_picker.open(window, cx)
@@ -258,6 +303,12 @@ impl Render for HelmReleasesPanel {
             ))
             .on_action(cx.listener(Self::on_action_focus_search))
             .on_action(cx.listener(Self::on_action_toggle_uninstalled))
+            .on_action(
+                cx.listener(|this, _: &OpenRelease, window, cx| this.open_selected(window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &DescribeRelease, window, cx| this.open_selected(window, cx)),
+            )
             .child(
                 div()
                     .size_full()
