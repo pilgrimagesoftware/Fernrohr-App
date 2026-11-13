@@ -225,3 +225,23 @@ async fn the_panel_saves_its_release_and_tab(cx: &mut TestAppContext) {
     assert_eq!((context.as_str(), release), (CONTEXT, key()));
     assert_eq!(saved["tab"], "history");
 }
+
+/// Notes are the chart author's text: a fence and a link in them show as
+/// written, line by line, never as Markdown.
+#[test]
+fn notes_show_as_written() {
+    let notes =
+        "Get started:\n```\nkubectl get pods\n```\n\nSee [the docs](http://docs.example.com)";
+    let lines = super::render::plain_lines(notes);
+    assert_eq!(
+        lines,
+        [
+            "Get started:",
+            "```",
+            "kubectl get pods",
+            "```",
+            " ",
+            "See [the docs](http://docs.example.com)",
+        ]
+    );
+}
