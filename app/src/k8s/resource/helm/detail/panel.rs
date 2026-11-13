@@ -14,24 +14,38 @@ use gpui_kit::component::dock::{
 use gpui_kit::*;
 use std::collections::HashMap;
 
-/// The panel's tabs, in order (helm-releases D5). Values, Manifest and
-/// Resources join with their sections.
+/// The panel's tabs, in order (helm-releases D5). Resources joins with its
+/// section.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ReleaseTab {
     #[default]
     Overview,
     History,
+    Values,
+    Manifest,
     Notes,
 }
 
 impl ReleaseTab {
-    pub(crate) const ALL: [ReleaseTab; 3] =
-        [ReleaseTab::Overview, ReleaseTab::History, ReleaseTab::Notes];
+    pub(crate) const ALL: [ReleaseTab; 5] = [
+        ReleaseTab::Overview,
+        ReleaseTab::History,
+        ReleaseTab::Values,
+        ReleaseTab::Manifest,
+        ReleaseTab::Notes,
+    ];
+
+    /// Whether the tab shows text that stays hidden until revealed.
+    pub(crate) fn hidden_until_revealed(self) -> bool {
+        matches!(self, ReleaseTab::Values | ReleaseTab::Manifest)
+    }
 
     pub(crate) fn id(self) -> &'static str {
         match self {
             ReleaseTab::Overview => "overview",
             ReleaseTab::History => "history",
+            ReleaseTab::Values => "values",
+            ReleaseTab::Manifest => "manifest",
             ReleaseTab::Notes => "notes",
         }
     }
@@ -40,6 +54,8 @@ impl ReleaseTab {
         match self {
             ReleaseTab::Overview => "Overview",
             ReleaseTab::History => "History",
+            ReleaseTab::Values => "Values",
+            ReleaseTab::Manifest => "Manifest",
             ReleaseTab::Notes => "Notes",
         }
     }
@@ -64,6 +80,10 @@ pub struct HelmReleasePanel {
     pub(crate) tab: ReleaseTab,
     /// The revision selected in History; `None` follows the deployed one.
     pub(super) selected: Option<u32>,
+    /// The Values or Manifest text revealed now, if any: one tab's, for one
+    /// revision. Dropped on hide, on a tab or revision change, and with the
+    /// panel (helm-releases D6).
+    pub(super) revealed: Option<super::reveal::Revealed>,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -91,6 +111,7 @@ impl HelmReleasePanel {
             notes: None,
             tab: ReleaseTab::default(),
             selected: None,
+            revealed: None,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.subscribe(cx);
@@ -188,11 +209,23 @@ impl HelmReleasePanel {
             .position(|revision| revision.version == current)
             .unwrap_or(0) as isize;
         let next = (index + by).clamp(0, history.len() as isize - 1) as usize;
-        self.selected = Some(history[next].version);
+        self.select(history[next].version, cx);
+    }
+
+    /// Selects revision `version` in History. Revealed text was another
+    /// revision's, so it goes.
+    pub(super) fn select(&mut self, version: u32, cx: &mut Context<Self>) {
+        if self.selected != Some(version) {
+            self.revealed = None;
+        }
+        self.selected = Some(version);
         cx.notify();
     }
 
     pub(super) fn show(&mut self, tab: ReleaseTab, cx: &mut Context<Self>) {
+        if self.tab != tab {
+            self.revealed = None;
+        }
         self.tab = tab;
         self.fetch_needed(cx);
         cx.notify();
@@ -217,7 +250,10 @@ impl HelmReleasePanel {
         let history = self.history(cx);
         let wanted: Vec<&Revision> = match self.tab {
             ReleaseTab::History => history.iter().collect(),
-            ReleaseTab::Overview | ReleaseTab::Notes => history.iter().take(1).collect(),
+            ReleaseTab::Overview
+            | ReleaseTab::Values
+            | ReleaseTab::Manifest
+            | ReleaseTab::Notes => history.iter().take(1).collect(),
         };
         let latest = history.first().map(|revision| revision.version);
         for revision in wanted {

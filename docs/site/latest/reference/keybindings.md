@@ -349,7 +349,14 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | --- | --- | --- | --- | --- |
 | Helm Release: Overview | <kbd>1</kbd> | `HelmReleasePanel` | — | `helm_release.overview` |
 | Helm Release: History | <kbd>2</kbd> | `HelmReleasePanel` | — | `helm_release.history` |
+| Helm Release: Values | <kbd>3</kbd> | `HelmReleasePanel` | — | `helm_release.values` |
+| Helm Release: Manifest | <kbd>4</kbd> | `HelmReleasePanel` | — | `helm_release.manifest` |
 | Helm Release: Notes | <kbd>5</kbd> | `HelmReleasePanel` | — | `helm_release.notes` |
+| Helm Release: Reveal or Hide | <kbd>R</kbd> | `HelmReleasePanel` | — | `helm_release.reveal` |
+| Helm Release: View Revision's Values | <kbd>V</kbd> | `HelmReleasePanel` | — | `helm_release.view_values` |
+| Helm Release: View Revision's Manifest | <kbd>M</kbd> | `HelmReleasePanel` | — | `helm_release.view_manifest` |
+| Helm Release: Copy Values | — | `HelmReleasePanel` | — | `helm_release.copy_values` |
+| Helm Release: Copy Manifest | — | `HelmReleasePanel` | — | `helm_release.copy_manifest` |
 
 ### Saved layouts picker
 
