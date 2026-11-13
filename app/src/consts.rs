@@ -414,6 +414,11 @@ pub(crate) const EXEC_LIBRARY_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
 pub(crate) const EXEC_LIBRARY_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(480.), gpui_kit::px(320.));
 
+/// The most a Helm release's payload may decompress to (helm-releases D2). A
+/// real release is a few hundred KiB at most; past this the payload is refused
+/// as unreadable, so a hostile Secret can't exhaust memory.
+pub(crate) const HELM_RELEASE_MAX_DECODED_BYTES: u64 = 32 * 1024 * 1024;
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.
