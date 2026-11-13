@@ -22,9 +22,7 @@
 //! piece of capsule text reaches the WCAG [`TEXT_CONTRAST`] of 4.5:1, which the
 //! palette's tests hold every bundled theme to.
 
-use super::{
-    DisconnectAllContexts, DisconnectOtherContexts, Disconnecting, StatusBarView, StatusItem,
-};
+use super::{DisconnectAllContexts, Disconnecting, StatusBarView, StatusItem};
 use crate::k8s::cluster::context_health::{ContextHealth, Severity};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::resource::pods::format_age;
@@ -237,26 +235,32 @@ pub(super) fn render_capsule(
         if !several {
             return menu;
         }
-        let many = |label: &'static str, which: Disconnecting, action: Box<dyn Action>| {
+        // A row shows its command's key only where the key does the same:
+        // Disconnect Other Contexts keeps the *active* context, not this
+        // capsule's, so that row shows none.
+        let many = |label: &'static str, which: Disconnecting, action: Option<Box<dyn Action>>| {
             let this = this.clone();
-            PopupMenuItem::new(label)
-                .action(action)
-                .on_click(move |_event, window, cx| {
-                    let which = which.clone();
-                    let _ = this.update(cx, |bar, cx| {
-                        bar.open_disconnect_many_dialog(which, window, cx)
-                    });
-                })
+            let item = PopupMenuItem::new(label);
+            let item = match action {
+                Some(action) => item.action(action),
+                None => item,
+            };
+            item.on_click(move |_event, window, cx| {
+                let which = which.clone();
+                let _ = this.update(cx, |bar, cx| {
+                    bar.open_disconnect_many_dialog(which, window, cx)
+                });
+            })
         };
         menu.item(many(
             "Disconnect Others",
             Disconnecting::OthersThan(name.clone()),
-            Box::new(DisconnectOtherContexts),
+            None,
         ))
         .item(many(
             "Disconnect All",
             Disconnecting::All,
-            Box::new(DisconnectAllContexts),
+            Some(Box::new(DisconnectAllContexts)),
         ))
     });
 

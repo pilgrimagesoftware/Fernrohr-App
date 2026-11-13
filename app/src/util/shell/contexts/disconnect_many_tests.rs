@@ -110,3 +110,24 @@ async fn disconnect_all_returns_the_window_to_the_picker(cx: &mut TestAppContext
         "back to the cluster picker"
     );
 }
+
+/// A context another window also holds stays connected there: Disconnect All
+/// releases only this window's holds.
+#[gpui_kit::test]
+async fn disconnect_all_leaves_another_windows_context_connected(cx: &mut TestAppContext) {
+    let (_main, mut vcx) = workspace(cx, &["dev", "staging"]);
+    let other = cx.add_window(|_, _| gpui_kit::Empty);
+    cx.update(|cx| ClusterRegistry::hold(cx, "staging", other.window_id()));
+    assert_eq!(
+        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        2
+    );
+
+    run(&mut vcx, DisconnectAllContexts);
+    press(&mut vcx, "enter");
+    assert_eq!(
+        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        1,
+        "the other window still holds staging"
+    );
+}
