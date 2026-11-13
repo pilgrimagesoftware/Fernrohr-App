@@ -42,31 +42,50 @@ pub(crate) struct GlanceContainer {
     pub image: String,
     pub state: String,
     pub state_tone: BadgeTone,
+    /// A sidecar (#353) rather than an app container.
+    pub sidecar: bool,
 }
 
 /// `pod` at a glance, ages measured at `now`.
 pub(crate) fn glance(pod: &Pod, now: Timestamp) -> Glance {
     let row = pod_row(pod, now);
+    let status = pod.status.as_ref();
+    let glance_of = |summary: super::model::ContainerSummary, sidecar: bool| GlanceContainer {
+        name: summary.name,
+        image: summary.image,
+        state: summary.state,
+        state_tone: summary.state_tone,
+        sidecar,
+    };
+    // The app containers, then the sidecars (#353) running beside them.
     let containers = pod
         .spec
         .as_ref()
         .map(|spec| {
-            let statuses = pod
-                .status
-                .as_ref()
+            let statuses = status
                 .and_then(|status| status.container_statuses.as_deref())
                 .unwrap_or_default();
+            let sidecars: Vec<_> = spec
+                .init_containers
+                .iter()
+                .flatten()
+                .filter(|container| crate::k8s::resource::pods::is_sidecar(container))
+                .cloned()
+                .collect();
+            let init_statuses = status
+                .and_then(|status| status.init_container_statuses.as_deref())
+                .unwrap_or_default();
             summarize_containers(&spec.containers, statuses, &row.namespace)
+                .into_iter()
+                .map(|summary| glance_of(summary, false))
+                .chain(
+                    summarize_containers(&sidecars, init_statuses, &row.namespace)
+                        .into_iter()
+                        .map(|summary| glance_of(summary, true)),
+                )
+                .collect()
         })
-        .unwrap_or_default()
-        .into_iter()
-        .map(|summary| GlanceContainer {
-            name: summary.name,
-            image: summary.image,
-            state: summary.state,
-            state_tone: summary.state_tone,
-        })
-        .collect();
+        .unwrap_or_default();
     Glance {
         owners: owners(pod),
         containers,

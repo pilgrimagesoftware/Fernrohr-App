@@ -188,8 +188,13 @@ impl QuickLookPopover {
             ));
         }
         for container in &glance.containers {
+            let label = if container.sidecar {
+                format!("{} (sidecar)", container.name)
+            } else {
+                container.name.clone()
+            };
             rows.push(row(
-                container.name.clone(),
+                label,
                 div()
                     .flex()
                     .flex_col()

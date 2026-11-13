@@ -166,10 +166,17 @@ pub(crate) fn format_age(age_secs: i64) -> String {
 /// fixed instant).
 pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
     let status = pod.status.as_ref();
-    let container_statuses = status.and_then(|s| s.container_statuses.as_ref());
-    let total = container_statuses.map_or(0, |c| c.len());
-    let ready_count = container_statuses.map_or(0, |c| c.iter().filter(|c| c.ready).count());
-    let restarts = container_statuses.map_or(0, |c| c.iter().map(|c| c.restart_count).sum());
+    // App containers and sidecars (#353), as `kubectl get pods` counts them.
+    let sidecars = super::sidecars::sidecar_statuses(pod);
+    let counted: Vec<_> = status
+        .and_then(|s| s.container_statuses.as_deref())
+        .unwrap_or_default()
+        .iter()
+        .chain(sidecars.iter().copied())
+        .collect();
+    let total = counted.len();
+    let ready_count = counted.iter().filter(|c| c.ready).count();
+    let restarts = counted.iter().map(|c| c.restart_count).sum();
     let age_secs = pod
         .metadata
         .creation_timestamp
@@ -180,7 +187,7 @@ pub fn pod_row(pod: &Pod, now: Timestamp) -> PodRow {
     PodRow {
         name: pod.metadata.name.clone().unwrap_or_default(),
         namespace: pod.metadata.namespace.clone().unwrap_or_default(),
-        ready: format!("{ready_count}/{total}"),
+        ready: super::sidecars::ready_text(ready_count, total, sidecars.len()),
         status: status.and_then(|s| s.phase.clone()).unwrap_or_default(),
         phase: status.and_then(|s| s.phase.clone()).unwrap_or_default(),
         restarts,
