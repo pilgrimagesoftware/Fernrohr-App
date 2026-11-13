@@ -41,7 +41,7 @@ impl Render for LogsPanel {
                 .child("Click a pod to view its logs.")
                 .into_any_element()
         } else {
-            self.lines_list(view.lines(), view.end_marker(), cx)
+            self.lines_list(view.lines(), view.widest_line(), view.end_marker(), cx)
         };
 
         // A container picker, not a namespace one: this panel streams one
@@ -196,10 +196,11 @@ impl LogsPanel {
     pub(super) fn lines_list(
         &self,
         lines: &[LogLine],
+        widest_line: Option<(usize, usize)>,
         end_marker: Option<&'static str>,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let widest = widest_row(lines, end_marker);
+        let widest = widest_row(widest_line, lines.len(), end_marker);
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
         let muted = cx.theme().muted_foreground;
@@ -246,20 +247,17 @@ impl LogsPanel {
     }
 }
 
-/// The index of the list's widest row: a log line, or the end marker (row
-/// `lines.len()`) when it is wider than every line. The first of equals.
-pub(super) fn widest_row(lines: &[LogLine], end_marker: Option<&str>) -> usize {
-    let (widest, width) =
-        lines
-            .iter()
-            .map(LogLine::width)
-            .enumerate()
-            .fold(
-                (0, 0),
-                |best, (ix, width)| if width > best.1 { (ix, width) } else { best },
-            );
+/// The index of the list's widest row: the widest line
+/// ([`LogsView::widest_line`]), or the end marker (row `line_count`) when it
+/// is wider. O(1): the view keeps the widest line as lines arrive.
+pub(super) fn widest_row(
+    widest_line: Option<(usize, usize)>,
+    line_count: usize,
+    end_marker: Option<&str>,
+) -> usize {
+    let (widest, width) = widest_line.unwrap_or((0, 0));
     match end_marker {
-        Some(marker) if marker.chars().count() > width => lines.len(),
+        Some(marker) if marker.chars().count() > width => line_count,
         _ => widest,
     }
 }

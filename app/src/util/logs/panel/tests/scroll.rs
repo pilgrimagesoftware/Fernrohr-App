@@ -6,29 +6,25 @@ use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
-use crate::util::logs::LogLine;
 use crate::util::logs::render::widest_row;
 use gpui_kit::component::Root;
 use gpui_kit::{AppContext as _, Modifiers, TestAppContext, VisualTestContext, point, px};
 
 const LINES: &str = super::super::super::render::LINES;
 
-/// The list measures its widest row - a line, or the end marker when that is
-/// wider - so the scrollable width fits the longest thing in it.
+/// The list measures the view's widest line, or the end marker's row when
+/// the marker is wider.
 #[test]
 fn the_widest_row_sizes_the_list() {
-    let lines: Vec<LogLine> = ["short", "the longest line", "mid-length"]
-        .into_iter()
-        .map(|text| LogLine::plain(text.into()))
-        .collect();
-    assert_eq!(widest_row(&lines, None), 1);
-    assert_eq!(widest_row(&lines, Some("ended")), 1);
+    assert_eq!(widest_row(Some((1, 16)), 3, None), 1);
+    assert_eq!(widest_row(Some((1, 16)), 3, Some("ended")), 1);
     assert_eq!(
-        widest_row(&lines, Some("the stream ended here")),
+        widest_row(Some((1, 16)), 3, Some("the stream ended here")),
         3,
         "the marker row"
     );
-    assert_eq!(widest_row(&[], None), 0);
+    assert_eq!(widest_row(None, 0, None), 0);
+    assert_eq!(widest_row(None, 0, Some("ended")), 0, "only the marker");
 }
 
 #[gpui_kit::test]
