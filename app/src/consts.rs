@@ -45,6 +45,16 @@ pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
 pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
+/// How long a Helm release action's `helm` run may take before its process
+/// group is killed and the run reported failed (`helm-releases` D8).
+pub(crate) const HELM_ACTION_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// How long `helm version --short` may take when checking the binary.
+pub(crate) const HELM_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How many of stderr's last lines a failed `helm` run reports.
+pub(crate) const HELM_ERROR_LINES: usize = 5;
+
 /// How long a custom resource list waits for its CRD's printer columns (#352)
 /// before listing with the generic columns instead.
 pub(crate) const CRD_COLUMNS_TIMEOUT: Duration = Duration::from_secs(5);

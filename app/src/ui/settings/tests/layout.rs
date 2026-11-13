@@ -275,11 +275,7 @@ async fn ctrl_tab_steps_through_the_tabs_and_wraps(cx: &mut TestAppContext) {
     assert_eq!(shown(cx, handle), Section::Appearance);
     press(&mut vcx, "ctrl-shift-tab");
     press(&mut vcx, "ctrl-shift-tab");
-    assert_eq!(
-        shown(cx, handle),
-        Section::AgentAccess,
-        "wraps back to the last"
-    );
+    assert_eq!(shown(cx, handle), Section::Tools, "wraps back to the last");
     press(&mut vcx, "ctrl-tab");
     assert_eq!(
         shown(cx, handle),

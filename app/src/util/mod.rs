@@ -14,3 +14,4 @@ pub(crate) mod shell;
 pub(crate) mod test_paths;
 #[cfg(test)]
 pub(crate) mod test_ui;
+pub(crate) mod which;
