@@ -76,6 +76,8 @@ pub(super) const STANDALONE: &[&str] = &[
     "Dock",
     "ExecLibraryEntry",
     "ExecLibraryWindow",
+    // The Helm release detail panel's element carries only its own (#370).
+    "HelmReleasePanel",
     "KeyboardShortcuts",
     "NamespacedList",
     "NodePodsTable",
