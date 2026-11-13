@@ -51,8 +51,10 @@ with <kbd>S</kbd> (**Logs: Toggle Follow**, also in the palette).
 Lines don't wrap. To read a line wider than the panel, scroll sideways with the trackpad or drag the
 scrollbar along the bottom of the panel.
 
-If the pod is deleted or its container exits while you watch, the panel says the stream has ended
-and keeps the lines already shown. If the log request is rejected, for example because the container
+If the pod is deleted or its container exits while you watch, the panel keeps the lines already
+shown and adds a "log stream ended" note after them. Notes like this, and a pod's stream ending or
+failing in a panel that follows several pods, are in smaller italic text in the interface font, so
+they don't look like log output. If the log request is rejected, for example because the container
 hasn't started, the panel shows the reason instead of an empty view.
 
 <kbd>P</kbd> (**Logs: Toggle Previous Container Logs**) switches between the container's current

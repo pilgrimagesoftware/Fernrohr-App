@@ -47,6 +47,9 @@ pub struct LogLine {
     /// `None` for a line plain throughout - most of them. An `Arc`, as the
     /// panel clones its lines for each frame it draws.
     spans: Option<Arc<[Span]>>,
+    /// The panel's own words, not a stream's output - a tagged stream's end
+    /// or failure - drawn apart from the log (#360).
+    notice: bool,
 }
 
 impl LogLine {
@@ -69,7 +72,22 @@ impl LogLine {
             source,
             text,
             spans: (!spans.is_empty()).then(|| spans.into()),
+            notice: false,
         }
+    }
+
+    /// The panel's own line about `source`'s stream - that it ended, or
+    /// failed - tagged like its lines but drawn as a notice (#360).
+    pub fn notice(source: LineSource, text: String) -> Self {
+        Self {
+            notice: true,
+            ..Self::tagged(source, text)
+        }
+    }
+
+    /// Whether this is the panel's own line rather than a stream's.
+    pub fn is_notice(&self) -> bool {
+        self.notice
     }
 
     pub fn source(&self) -> Option<&LineSource> {

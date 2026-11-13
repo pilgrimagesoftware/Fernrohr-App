@@ -203,7 +203,7 @@ impl LogsPanel {
         let widest = widest_row(widest_line, lines.len(), end_marker);
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
-        let muted = cx.theme().muted_foreground;
+        let notice = NoticeStyle::new(cx);
         let tag_colours = pod_tag_colours(cx);
         let palette =
             super::line_style::AnsiPalette::new(cx.theme().background, cx.theme().mode.is_dark());
@@ -224,14 +224,12 @@ impl LogsPanel {
                         range
                             .map(|ix| {
                                 if ix == line_count {
-                                    return div()
+                                    return notice
+                                        .apply(div().children(end_marker))
                                         .debug_selector(|| END_MARKER.into())
-                                        .whitespace_nowrap()
-                                        .text_color(muted)
-                                        .children(end_marker)
                                         .into_any_element();
                                 }
-                                line_row(ix, &lines[ix], &tag_colours, &palette)
+                                line_row(ix, &lines[ix], &tag_colours, &palette, &notice)
                             })
                             .collect()
                     },
@@ -262,6 +260,46 @@ pub(super) fn widest_row(
     }
 }
 
+/// How the panel's own words among the lines are drawn (#360): the end
+/// marker, and a tagged stream's end or failure. The UI font, italic, a
+/// little smaller and muted, so they don't read as log output.
+#[derive(Clone)]
+pub(super) struct NoticeStyle {
+    family: SharedString,
+    size: Pixels,
+    color: Hsla,
+}
+
+impl NoticeStyle {
+    pub(super) fn new(cx: &App) -> Self {
+        let theme = cx.theme();
+        Self {
+            family: theme.font_family.clone(),
+            size: theme.font_size * 0.875,
+            color: theme.muted_foreground,
+        }
+    }
+
+    /// `content` drawn as a notice, in a row that keeps a log line's height:
+    /// a zero-width strut in the inherited code font sets it, since the list
+    /// measures one row for all of them and that row may be this one.
+    pub(super) fn apply(&self, content: impl IntoElement) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .whitespace_nowrap()
+            .child(div().w_0().overflow_hidden().child("\u{200b}"))
+            .child(
+                div()
+                    .font_family(self.family.clone())
+                    .italic()
+                    .text_size(self.size)
+                    .text_color(self.color)
+                    .child(content),
+            )
+    }
+}
+
 /// One line: selectable text in the window's selection, ordered by its line
 /// number, so a drag across lines selects and copies them in reading order
 /// (#151). One participant per line: runs sharing a handle keep only the last
@@ -280,6 +318,7 @@ fn line_row(
     line: &LogLine,
     tag_colours: &[Hsla],
     palette: &super::line_style::AnsiPalette,
+    notice: &NoticeStyle,
 ) -> AnyElement {
     let shown = line.to_string();
     let tag_colour = line
@@ -297,12 +336,18 @@ fn line_row(
                 .text_color(colour)
                 .child(SharedString::from(source.tag().to_string()))
         });
-        return div()
+        let row = div()
             .relative()
             .whitespace_nowrap()
             .child(selectable)
-            .children(tag)
-            .into_any_element();
+            .children(tag);
+        // A notice keeps its tag (drawn over the same text, so it lines up in
+        // the notice's font too) but reads as the panel's, not the pod's.
+        return if line.is_notice() {
+            notice.apply(row).into_any_element()
+        } else {
+            row.into_any_element()
+        };
     }
     let highlights = tag_colour
         .map(|(len, colour)| {
