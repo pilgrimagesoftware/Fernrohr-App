@@ -15,6 +15,21 @@ pub struct WorkspaceConfig {
     /// column by id: a new list of that kind starts with it. Absent from older
     /// files, and for any kind never sorted.
     pub sort_defaults: std::collections::BTreeMap<String, SortState>,
+    /// Each context's Resource panel groups as the user last left them (#357):
+    /// a panel opened on, or switched to, that context starts with them. Absent
+    /// from older files, and for any context whose groups were never touched.
+    pub resource_groups: std::collections::BTreeMap<String, ResourceGroups>,
+}
+
+/// Which of a context's Resource panel groups are folded (#357). Sections
+/// start expanded and Custom Resources subgroups collapsed, so each list holds
+/// the departures from that default: the sections collapsed (by
+/// `Category::key`) and the API groups expanded.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ResourceGroups {
+    pub collapsed_sections: Vec<String>,
+    pub expanded_subgroups: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,6 +111,27 @@ mod tests {
     }
 
     #[test]
+    fn resource_groups_round_trip_and_default_when_absent() {
+        let parsed: WorkspaceConfig = toml::from_str("windows = []\n").unwrap();
+        assert!(parsed.resource_groups.is_empty());
+
+        let config = WorkspaceConfig {
+            resource_groups: [(
+                "demo".to_string(),
+                ResourceGroups {
+                    collapsed_sections: vec!["network".into()],
+                    expanded_subgroups: vec!["example.io".into()],
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+        let text = toml::to_string(&config).unwrap();
+        assert_eq!(toml::from_str::<WorkspaceConfig>(&text).unwrap(), config);
+    }
+
+    #[test]
     fn sort_defaults_round_trip_by_group_and_kind() {
         let config = WorkspaceConfig {
             sort_defaults: [
@@ -140,6 +176,7 @@ mod tests {
         let config = WorkspaceConfig {
             namespace_defaults: [("cluster-a".to_string(), vec!["team-a".to_string()])].into(),
             sort_defaults: Default::default(),
+            resource_groups: Default::default(),
             ..WorkspaceConfig::default()
         };
         let text = toml::to_string(&config).unwrap();
@@ -152,6 +189,7 @@ mod tests {
         let config = WorkspaceConfig {
             namespace_defaults: Default::default(),
             sort_defaults: Default::default(),
+            resource_groups: Default::default(),
             windows: vec![WindowLayout {
                 width: 1200.0,
                 height: 900.0,
@@ -181,6 +219,7 @@ mod tests {
         let config = WorkspaceConfig {
             namespace_defaults: Default::default(),
             sort_defaults: Default::default(),
+            resource_groups: Default::default(),
             windows: vec![WindowLayout {
                 contexts: vec!["kind-dev".into(), "staging".into()],
                 panels: vec![
@@ -224,6 +263,7 @@ mod tests {
         let config = WorkspaceConfig {
             namespace_defaults: Default::default(),
             sort_defaults: Default::default(),
+            resource_groups: Default::default(),
             windows: vec![WindowLayout {
                 contexts: vec!["kind-dev".into(), "staging".into()],
                 panels: vec![PanelDescriptor::Pods {
