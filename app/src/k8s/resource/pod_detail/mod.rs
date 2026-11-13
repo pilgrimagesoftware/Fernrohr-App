@@ -38,6 +38,7 @@ mod model;
 mod panel;
 mod references;
 mod render;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 #[cfg(test)]
 mod tests;
 mod window_commands;

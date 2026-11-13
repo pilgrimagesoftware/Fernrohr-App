@@ -17,7 +17,7 @@ The window title names the context the window shows. With two or more contexts i
 
 **Switch windows.** The Window menu lists every open window by its title, so two windows on different clusters are easy to tell apart. Choose one to bring it forward.
 
-**Close a window.** Choose Window > Close Window or press <kbd>⌘W</kbd>. Close Window closes the focused panel first, and closes the window only when no panel is on screen. If closing would stop a tunnel or discard an unsaved edit, Fernrohr asks first. On Linux, closing the last window quits Fernrohr after it saves its state. On macOS it keeps running in the menu bar; see [Quiet mode](#quiet-mode).
+**Close a window.** Choose Window > Close Window or press <kbd>⌘W</kbd>. Close Window closes the focused panel first, and closes the window only when no panel is on screen. If closing would disconnect a context that no other window uses, stop a tunnel, or discard an unsaved edit, Fernrohr asks first. The window's close button asks the same question. Press <kbd>Enter</kbd> to close, or <kbd>Esc</kbd> to keep the window. When an unsaved edit would be lost, <kbd>Enter</kbd> keeps the window instead, and only the dialog's **Close Window** button or <kbd>⌘⌫</kbd> closes it. On Linux, closing the last window quits Fernrohr after it saves its state. On macOS it keeps running in the menu bar; see [Quiet mode](#quiet-mode).
 
 Fernrohr remembers each window's size and position, the contexts it used, and its panels and their arrangement. On the next launch it reopens the windows the same way and reconnects their contexts. If the saved state file can't be read, Fernrohr starts with one default window and leaves the unreadable file in place.
 

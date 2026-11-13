@@ -14,6 +14,7 @@ mod ended;
 mod follow;
 mod previous;
 mod restore;
+mod scroll;
 mod selection;
 mod tags;
 
