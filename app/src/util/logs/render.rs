@@ -41,7 +41,7 @@ impl Render for LogsPanel {
                 .child("Click a pod to view its logs.")
                 .into_any_element()
         } else {
-            self.lines_list(view.lines(), view.end_marker(), cx)
+            self.lines_list(view.lines(), view.widest_line(), view.end_marker(), cx)
         };
 
         // A container picker, not a namespace one: this panel streams one
@@ -196,12 +196,14 @@ impl LogsPanel {
     pub(super) fn lines_list(
         &self,
         lines: &[LogLine],
+        widest_line: Option<(usize, usize)>,
         end_marker: Option<&'static str>,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let widest = widest_row(widest_line, lines.len(), end_marker);
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
-        let muted = cx.theme().muted_foreground;
+        let notice = NoticeStyle::new(cx);
         let tag_colours = pod_tag_colours(cx);
         let palette =
             super::line_style::AnsiPalette::new(cx.theme().background, cx.theme().mode.is_dark());
@@ -211,7 +213,9 @@ impl LogsPanel {
             .size_full()
             .p(crate::ui::space::spacing(cx).panel_inset)
             .code_font(cx)
-            .overflow_x_scrollbar()
+            // The list scrolls itself both ways (#365); this only draws the
+            // horizontal bar for it.
+            .horizontal_scrollbar(&self.scroll_handle)
             .child(
                 uniform_list(
                     "logs-panel-lines",
@@ -220,22 +224,79 @@ impl LogsPanel {
                         range
                             .map(|ix| {
                                 if ix == line_count {
-                                    return div()
+                                    return notice
+                                        .apply(div().children(end_marker))
                                         .debug_selector(|| END_MARKER.into())
-                                        .whitespace_nowrap()
-                                        .text_color(muted)
-                                        .children(end_marker)
                                         .into_any_element();
                                 }
-                                line_row(ix, &lines[ix], &tag_colours, &palette)
+                                line_row(ix, &lines[ix], &tag_colours, &palette, &notice)
                             })
                             .collect()
                     },
                 )
                 .track_scroll(&self.scroll_handle)
+                // A uniform list measures one row for its width: the widest,
+                // so a long line scrolls into view instead of being cut off.
+                .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+                .with_width_from_item(Some(widest))
                 .size_full(),
             )
             .into_any_element()
+    }
+}
+
+/// The index of the list's widest row: the widest line
+/// ([`LogsView::widest_line`]), or the end marker (row `line_count`) when it
+/// is wider. O(1): the view keeps the widest line as lines arrive.
+pub(super) fn widest_row(
+    widest_line: Option<(usize, usize)>,
+    line_count: usize,
+    end_marker: Option<&str>,
+) -> usize {
+    let (widest, width) = widest_line.unwrap_or((0, 0));
+    match end_marker {
+        Some(marker) if marker.chars().count() > width => line_count,
+        _ => widest,
+    }
+}
+
+/// How the panel's own words among the lines are drawn (#360): the end
+/// marker, and a tagged stream's end or failure. The UI font, italic, a
+/// little smaller and muted, so they don't read as log output.
+#[derive(Clone)]
+pub(super) struct NoticeStyle {
+    family: SharedString,
+    size: Pixels,
+    color: Hsla,
+}
+
+impl NoticeStyle {
+    pub(super) fn new(cx: &App) -> Self {
+        let theme = cx.theme();
+        Self {
+            family: theme.font_family.clone(),
+            size: theme.font_size * 0.875,
+            color: theme.muted_foreground,
+        }
+    }
+
+    /// `content` drawn as a notice, in a row that keeps a log line's height:
+    /// a zero-width strut in the inherited code font sets it, since the list
+    /// measures one row for all of them and that row may be this one.
+    pub(super) fn apply(&self, content: impl IntoElement) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .whitespace_nowrap()
+            .child(div().w_0().overflow_hidden().child("\u{200b}"))
+            .child(
+                div()
+                    .font_family(self.family.clone())
+                    .italic()
+                    .text_size(self.size)
+                    .text_color(self.color)
+                    .child(content),
+            )
     }
 }
 
@@ -257,6 +318,7 @@ fn line_row(
     line: &LogLine,
     tag_colours: &[Hsla],
     palette: &super::line_style::AnsiPalette,
+    notice: &NoticeStyle,
 ) -> AnyElement {
     let shown = line.to_string();
     let tag_colour = line
@@ -274,12 +336,18 @@ fn line_row(
                 .text_color(colour)
                 .child(SharedString::from(source.tag().to_string()))
         });
-        return div()
+        let row = div()
             .relative()
             .whitespace_nowrap()
             .child(selectable)
-            .children(tag)
-            .into_any_element();
+            .children(tag);
+        // A notice keeps its tag (drawn over the same text, so it lines up in
+        // the notice's font too) but reads as the panel's, not the pod's.
+        return if line.is_notice() {
+            notice.apply(row).into_any_element()
+        } else {
+            row.into_any_element()
+        };
     }
     let highlights = tag_colour
         .map(|(len, colour)| {
