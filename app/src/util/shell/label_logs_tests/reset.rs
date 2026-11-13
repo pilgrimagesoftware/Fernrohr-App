@@ -157,10 +157,11 @@ async fn it_starts_over_while_still_connecting(cx: &mut TestAppContext) {
     assert_started_over(&mut vcx, &panel);
 }
 
-/// The reset's key is its alone: no other command has it in any context -
-/// stricter than `keymap::conflicts`, which counts two panel contexts as
-/// separate whenever their text differs, as `TypedLabelLogs` and
-/// `TypedLabelLogs && !Input` do though one panel has both.
+/// The reset's key is its alone: no other command has it in any context, and
+/// `keymap::conflicts` reports no clash. Since #331 `conflicts` reads every
+/// scope on the Logs panel's element (`LogsPanel`, `LabelLogs`,
+/// `TypedLabelLogs`, with or without `!Input`) as live at once; the sweep
+/// stays as the stricter check.
 #[test]
 fn its_key_collides_with_nothing() {
     use crate::keymap::{KeymapConfig, conflicts};
@@ -194,7 +195,19 @@ fn its_key_collides_with_nothing() {
         found.shadows.len(),
         found.prefixes.len()
     );
-    // The check sees this key: a global command given it is shadowed by it.
+    // The check sees this key: any of the panel's other scopes given it
+    // clashes, and a global command given it is shadowed by it.
+    for (id, scope) in [
+        ("logs.pick_context", "TypedLabelLogs && !Input"),
+        ("logs.next_container", "LabelLogs && !Input"),
+        ("logs.toggle_previous", "LogsPanel && !Input"),
+    ] {
+        let found = conflicts(&registry, &KeymapConfig::default(), id, key);
+        assert!(
+            found.same_scope.contains(&"logs.reset_labels"),
+            "{scope} clashes with TypedLabelLogs on {key}"
+        );
+    }
     let other = conflicts(&registry, &KeymapConfig::default(), "nav.show_logs", key);
     assert_eq!(
         other.shadows.len(),
