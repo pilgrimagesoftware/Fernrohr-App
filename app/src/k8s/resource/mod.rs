@@ -3,6 +3,7 @@ pub(crate) mod delete_flow;
 pub(crate) mod events;
 pub(crate) mod events_browser;
 pub(crate) mod exec;
+pub(crate) mod helm;
 pub(crate) mod hpa;
 pub(crate) mod kind_actions;
 pub(crate) mod load_phase;
