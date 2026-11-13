@@ -14,6 +14,7 @@ mod commands;
 mod filters;
 mod panel;
 mod render;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 pub(crate) mod restore;
 mod row;
 mod store;

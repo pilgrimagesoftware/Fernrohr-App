@@ -12,6 +12,15 @@ use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::base::actions::{SelectDown, SelectUp};
 use gpui_kit::prelude::FluentBuilder as _;
 
+/// The Pods panel element's own identifiers, for `keymap::conflicts` (#331);
+/// the bulk contexts it adds join them there.
+pub(crate) const KEY_CONTEXT_GROUP: &[&str] = &[
+    PANEL_KEY_CONTEXT,
+    crate::ui::list_sort::KEY_CONTEXT,
+    QUICK_LOOK_KEY_CONTEXT,
+    crate::ui::exec_library::commands::RESOURCE_CONTEXT,
+];
+
 /// Up/Down with no pod selected, or with focus on the panel rather than its table
 /// (`standard-resource-panels` 5.2, [`list_keys`]).
 impl PodsPanel {

@@ -18,6 +18,7 @@ mod table;
 pub(crate) use columns::status_tone;
 pub(crate) use commands::{KEY_CONTEXT as LIST_KEY_CONTEXT, OpenHelmRelease, register_commands};
 pub use panel::HelmReleasesPanel;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 pub use restore::register_restore;
 
 #[cfg(test)]
