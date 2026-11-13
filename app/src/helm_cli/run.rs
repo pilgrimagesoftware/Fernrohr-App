@@ -99,8 +99,15 @@ pub(crate) async fn run(command: HelmCommand) -> Result<HelmOutput, HelmFailure>
             command.binary.display()
         ))
     })?;
-    let pid = child.id();
-    match tokio::time::timeout(command.timeout, child.wait_with_output()).await {
+    // Armed until `helm` has been waited for: a timeout, or the run being
+    // dropped (the app quitting mid-run), kills the whole group - hooks and
+    // plugins `helm` started too, which `kill_on_drop` alone would leave.
+    let mut group = GroupKill(child.id());
+    let waited = tokio::time::timeout(command.timeout, child.wait_with_output()).await;
+    if waited.is_ok() {
+        group.disarm();
+    }
+    match waited {
         Ok(Ok(output)) => {
             let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -114,13 +121,25 @@ pub(crate) async fn run(command: HelmCommand) -> Result<HelmOutput, HelmFailure>
             }
         }
         Ok(Err(error)) => Err(HelmFailure::Start(format!("helm failed: {error}"))),
-        Err(_) => {
-            // The child went with `wait_with_output` (`kill_on_drop`); this
-            // takes whatever it started in its group with it.
-            if let Some(pid) = pid {
-                crate::util::pidfile::kill_process_group(pid);
-            }
-            Err(HelmFailure::TimedOut(command.timeout))
+        // `group` drops on the way out, killing the group.
+        Err(_) => Err(HelmFailure::TimedOut(command.timeout)),
+    }
+}
+
+/// Kills `helm`'s process group when dropped, unless disarmed once `helm`
+/// has been waited for - after which its pid may belong to someone else.
+struct GroupKill(Option<u32>);
+
+impl GroupKill {
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for GroupKill {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0 {
+            crate::util::pidfile::kill_process_group(pid);
         }
     }
 }

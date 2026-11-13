@@ -112,6 +112,38 @@ async fn a_timeout_kills_the_process_group() {
     assert!(!alive(&pid), "the hook's process went with the group");
 }
 
+/// A run dropped mid-way - the app quitting - takes `helm`'s whole group
+/// with it, not just `helm`.
+#[tokio::test]
+async fn a_dropped_run_kills_the_process_group() {
+    let dir = temp_dir("run-dropped");
+    let child_pid = dir.join("child.pid");
+    let helm = script(
+        &dir,
+        "helm",
+        &format!("sleep 30 &\necho $! > '{}'\nwait", child_pid.display()),
+    );
+    let running = tokio::spawn(run(command(&helm, &dir, Duration::from_secs(60))));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !child_pid.exists() && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    // Let the shell finish writing the pid.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    running.abort();
+    let _ = running.await;
+
+    let pid = std::fs::read_to_string(&child_pid)
+        .unwrap()
+        .trim()
+        .to_string();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while alive(&pid) && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(!alive(&pid), "the hook's process went with the group");
+}
+
 fn alive(pid: &str) -> bool {
     std::process::Command::new("kill")
         .args(["-0", pid])

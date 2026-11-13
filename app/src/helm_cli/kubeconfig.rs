@@ -164,12 +164,15 @@ impl Drop for RunKubeconfig {
 
 #[cfg(unix)]
 fn create_private_dir(dir: &Path) -> Result<(), String> {
-    use std::os::unix::fs::DirBuilderExt as _;
+    use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(dir)
-        .map_err(|error| format!("Couldn't create {}: {error}", dir.display()))
+        .map_err(|error| format!("Couldn't create {}: {error}", dir.display()))?;
+    // `mode` applies only to a directory it creates: tighten one already there.
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+        .map_err(|error| format!("Couldn't make {} private: {error}", dir.display()))
 }
 
 #[cfg(not(unix))]

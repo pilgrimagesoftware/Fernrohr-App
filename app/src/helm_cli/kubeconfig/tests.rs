@@ -199,3 +199,49 @@ fn the_sweep_keeps_only_files_a_run_could_still_be_using() {
     assert_eq!(sweep(&dir, later, alive), 1, "older than any run can last");
     assert!(!live.exists());
 }
+
+/// The written file carries the user's real credentials - a token and a
+/// client key, not redacted placeholders - so `helm` can sign in. Guards a
+/// kube upgrade changing how it serializes secrets.
+#[test]
+fn the_written_file_keeps_the_users_secrets() {
+    let source = Kubeconfig::from_yaml(
+        r#"
+clusters:
+- name: c
+  cluster: { server: "https://api.example.test" }
+users:
+- name: u
+  user: { token: placeholder-token-value, client-key-data: cGxhY2Vob2xkZXIta2V5 }
+contexts:
+- name: demo
+  context: { cluster: c, user: u }
+"#,
+    )
+    .unwrap();
+    let dir = temp_dir("kubeconfig-secrets");
+    let config = for_run(&source, "demo", Endpoint::Direct).unwrap();
+    let file = RunKubeconfig::write(&dir, &config).unwrap();
+    let written = std::fs::read_to_string(file.path()).unwrap();
+    assert!(
+        written.contains("token: placeholder-token-value"),
+        "{written}"
+    );
+    assert!(
+        written.contains("client-key-data: cGxhY2Vob2xkZXIta2V5"),
+        "{written}"
+    );
+}
+
+/// A directory already there, made with a looser mode, is tightened to the
+/// user alone before a credential goes in it.
+#[test]
+fn an_existing_directory_is_made_private() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = temp_dir("kubeconfig-loose-dir");
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config = for_run(&source(), "demo", Endpoint::Direct).unwrap();
+    let _file = RunKubeconfig::write(&dir, &config).unwrap();
+    let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700);
+}
