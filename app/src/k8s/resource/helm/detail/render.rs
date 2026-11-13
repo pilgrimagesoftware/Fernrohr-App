@@ -2,7 +2,9 @@
 //! Notes tabs, the hint row, and the states that stand in for them.
 
 use super::commands::{
-    HISTORY_KEY, NOTES_KEY, OVERVIEW_KEY, PANEL_KEY_CONTEXT, ShowHistory, ShowNotes, ShowOverview,
+    CopyManifest, CopyValues, HISTORY_KEY, MANIFEST_KEY, NOTES_KEY, OVERVIEW_KEY,
+    PANEL_KEY_CONTEXT, REVEAL_KEY, ShowHistory, ShowManifest, ShowNotes, ShowOverview, ShowValues,
+    ToggleReveal, VALUES_KEY, VIEW_MANIFEST_KEY, VIEW_VALUES_KEY, ViewManifest, ViewValues,
 };
 use super::fetch::Fetched;
 use super::panel::{HelmReleasePanel, ReleaseTab};
@@ -24,6 +26,8 @@ fn tab_action(tab: ReleaseTab) -> (Box<dyn Action>, &'static str) {
     match tab {
         ReleaseTab::Overview => (Box::new(ShowOverview), OVERVIEW_KEY),
         ReleaseTab::History => (Box::new(ShowHistory), HISTORY_KEY),
+        ReleaseTab::Values => (Box::new(ShowValues), VALUES_KEY),
+        ReleaseTab::Manifest => (Box::new(ShowManifest), MANIFEST_KEY),
         ReleaseTab::Notes => (Box::new(ShowNotes), NOTES_KEY),
     }
 }
@@ -163,10 +167,7 @@ impl HelmReleasePanel {
                         row.bg(crate::ui::style::accent_subtle(cx))
                     })
                     .on_click(move |_, _window, cx| {
-                        let _ = this.update(cx, |this, cx| {
-                            this.selected = Some(version);
-                            cx.notify();
-                        });
+                        let _ = this.update(cx, |this, cx| this.select(version, cx));
                     })
                     .child(div().w(px(40.)).child(version.to_string()))
                     .child(
@@ -188,29 +189,17 @@ impl HelmReleasePanel {
         rows.into_any_element()
     }
 
-    /// The notes as plain monospace lines, as `helm get notes` prints them.
+    /// The notes as plain, selectable monospace lines, as `helm get notes`
+    /// prints them.
     /// Never Markdown: they are the chart author's text, and a fence or a
     /// link in them must show as written, not render.
     fn notes_tab(&self, cx: &App) -> AnyElement {
-        use crate::ui::typography::TypeRole as _;
         match self.notes(cx) {
-            Some(notes) if !notes.trim().is_empty() => div()
-                .debug_selector(|| "helm-release-notes".into())
-                .flex()
-                .flex_col()
-                .data_font()
-                .children(
-                    plain_lines(notes)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(ix, line)| {
-                            div()
-                                .debug_selector(move || format!("helm-release-notes-line-{ix}"))
-                                .whitespace_nowrap()
-                                .child(line)
-                        }),
-                )
-                .into_any_element(),
+            Some(notes) if !notes.trim().is_empty() => {
+                selectable_lines("helm-release-notes", notes)
+                    .debug_selector(|| "helm-release-notes".into())
+                    .into_any_element()
+            }
             Some(_) => div().child("The chart has no notes.").into_any_element(),
             None => div().child("\u{2026}").into_any_element(),
         }
@@ -247,6 +236,7 @@ impl HelmReleasePanel {
         let body = match self.tab {
             ReleaseTab::Overview => self.overview(cx),
             ReleaseTab::History => self.history_tab(cx),
+            ReleaseTab::Values | ReleaseTab::Manifest => self.text_tab(self.tab, window, cx),
             ReleaseTab::Notes => self.notes_tab(cx),
         };
         let mut hints = KeyHintRow::new(HINTS_ID)
@@ -260,6 +250,25 @@ impl HelmReleasePanel {
                 Some(PANEL_KEY_CONTEXT),
                 fallback,
                 tab.title(),
+                window,
+            ));
+        }
+        let extra: &[(&dyn Action, &str, &'static str)] = match self.tab {
+            ReleaseTab::History => &[
+                (&ViewValues, VIEW_VALUES_KEY, "View values"),
+                (&ViewManifest, VIEW_MANIFEST_KEY, "View manifest"),
+            ],
+            ReleaseTab::Values | ReleaseTab::Manifest => {
+                &[(&ToggleReveal, REVEAL_KEY, "Reveal/Hide")]
+            }
+            ReleaseTab::Overview | ReleaseTab::Notes => &[],
+        };
+        for (action, fallback, label) in extra {
+            hints = hints.hint(KeyHint::for_action(
+                *action,
+                Some(PANEL_KEY_CONTEXT),
+                fallback,
+                *label,
                 window,
             ));
         }
@@ -318,6 +327,30 @@ impl Render for HelmReleasePanel {
                 cx.listener(|this, _: &ShowHistory, _, cx| this.show(ReleaseTab::History, cx)),
             )
             .on_action(cx.listener(|this, _: &ShowNotes, _, cx| this.show(ReleaseTab::Notes, cx)))
+            .on_action(cx.listener(|this, _: &ShowValues, _, cx| this.show(ReleaseTab::Values, cx)))
+            .on_action(
+                cx.listener(|this, _: &ShowManifest, _, cx| this.show(ReleaseTab::Manifest, cx)),
+            )
+            .on_action(cx.listener(|this, _: &ToggleReveal, _, cx| this.toggle_reveal(cx)))
+            .on_action(cx.listener(|this, _: &ViewValues, _, cx| this.view(ReleaseTab::Values, cx)))
+            .on_action(
+                cx.listener(|this, _: &ViewManifest, _, cx| this.view(ReleaseTab::Manifest, cx)),
+            )
+            // Copy is handled only while its text is revealed, so its palette
+            // entry is disabled otherwise.
+            .when(self.revealed_text(ReleaseTab::Values, cx).is_some(), |el| {
+                el.on_action(cx.listener(|this, _: &CopyValues, _, cx| {
+                    this.copy_revealed(ReleaseTab::Values, cx)
+                }))
+            })
+            .when(
+                self.revealed_text(ReleaseTab::Manifest, cx).is_some(),
+                |el| {
+                    el.on_action(cx.listener(|this, _: &CopyManifest, _, cx| {
+                        this.copy_revealed(ReleaseTab::Manifest, cx)
+                    }))
+                },
+            )
             // History's cursor: pure row movement, the keyboard rule's one exception.
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 if this.tab != ReleaseTab::History || event.keystroke.modifiers.modified() {
@@ -354,4 +387,20 @@ pub(super) fn plain_lines(notes: &str) -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// `text` as plain monospace lines that can be drag-selected across, in order,
+/// and copied - the Logs panel's selectable lines (#151) - each line exactly
+/// as written, never Markdown.
+pub(super) fn selectable_lines(id: &'static str, text: &str) -> Div {
+    use crate::ui::typography::TypeRole as _;
+    div()
+        .flex()
+        .flex_col()
+        .data_font()
+        .children(plain_lines(text).into_iter().enumerate().map(|(ix, line)| {
+            div().whitespace_nowrap().child(
+                gpui_kit::base::SelectableText::new((id, ix), line).document_order(ix as u64),
+            )
+        }))
 }

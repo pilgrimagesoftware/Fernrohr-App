@@ -10,6 +10,8 @@ mod fetch;
 mod panel;
 mod render;
 pub(crate) mod restore;
+mod reveal;
+mod text_tab;
 
 pub(crate) use commands::register_commands;
 pub use panel::HelmReleasePanel;
