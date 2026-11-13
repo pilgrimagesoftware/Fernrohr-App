@@ -14,6 +14,7 @@ use gpui_kit::{
 mod agent_access;
 mod layout;
 mod saved_layouts;
+mod tools;
 
 fn temp_path(name: &str) -> std::path::PathBuf {
     crate::util::test_paths::temp_path(&format!("settings-{name}"))

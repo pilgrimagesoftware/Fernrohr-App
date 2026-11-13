@@ -11,11 +11,11 @@ This page covers the settings you can change, the notifications Fernrohr sends, 
 
 Choose **Settings…** from the App menu, run it from the command palette, or press <kbd>⌘,</kbd>. There is only one Settings window. Opening it again brings the open one to the front.
 
-Tabs across the top of the window show the sections: Keyboard Shortcuts, Appearance, Panels, Layouts and Agent Access, each with its icon. Click a tab, or <kbd>Tab</kbd> to it and press <kbd>Enter</kbd> or <kbd>Space</kbd>. <kbd>⌃Tab</kbd> and <kbd>⌃⇧Tab</kbd> (**Settings: Next Tab** and **Settings: Previous Tab**) step through the tabs from anywhere in the window. Showing a section moves focus into it, so the next <kbd>Tab</kbd> reaches its first control. In a narrow window the tabs scroll sideways.
+Tabs across the top of the window show the sections: Keyboard Shortcuts, Appearance, Panels, Layouts, Agent Access and Tools, each with its icon. Click a tab, or <kbd>Tab</kbd> to it and press <kbd>Enter</kbd> or <kbd>Space</kbd>. <kbd>⌃Tab</kbd> and <kbd>⌃⇧Tab</kbd> (**Settings: Next Tab** and **Settings: Previous Tab**) step through the tabs from anywhere in the window. Showing a section moves focus into it, so the next <kbd>Tab</kbd> reaches its first control. In a narrow window the tabs scroll sideways.
 
-Each section groups its controls in titled cards, with a short hint under a setting where it helps. While the Settings window has focus, the palette also offers **Settings: Show Keyboard Shortcuts**, **Settings: Show Appearance**, **Settings: Show Panels**, **Settings: Show Layouts** and **Settings: Show Agent Access**. They have no default keys.
+Each section groups its controls in titled cards, with a short hint under a setting where it helps. While the Settings window has focus, the palette also offers **Settings: Show Keyboard Shortcuts**, **Settings: Show Appearance**, **Settings: Show Panels**, **Settings: Show Layouts**, **Settings: Show Agent Access** and **Settings: Show Tools**. They have no default keys.
 
-This page covers Appearance. For Layouts, see {{ '/latest/windows-panels/' | relative_url }}. For Agent Access, see {{ '/latest/agents/' | relative_url }}. For Keyboard Shortcuts, see {{ '/latest/reference/keybindings/' | relative_url }}.
+This page covers Appearance and Tools. For Layouts, see {{ '/latest/windows-panels/' | relative_url }}. For Agent Access, see {{ '/latest/agents/' | relative_url }}. For Keyboard Shortcuts, see {{ '/latest/reference/keybindings/' | relative_url }}.
 
 ## Text size
 
@@ -47,6 +47,20 @@ In the Pods table, pod status is coloured by health. Running is the good tone, p
 
 Fernrohr ships its own fonts, so nothing needs to be installed. Interface text is set in Adamina and data in tables and detail views in Manrope. YAML and log output use Monaco when it is installed. Otherwise they use a monospace font that is present on your system.
 
+## Tools
+
+The Tools section sets the `helm` that rolling back or uninstalling a Helm release runs. These
+actions need Helm 3.
+
+Leave **helm path** empty to use the `helm` on your login shell's PATH. To use another one, type
+its full path, for example `/opt/homebrew/bin/helm` or `~/bin/helm`, and press <kbd>Enter</kbd>.
+Leaving the field saves it too. Showing the Tools section puts focus in the field.
+
+Under the field, Fernrohr says what it found, such as `Found helm v3.14.2 at /opt/homebrew/bin/helm`,
+or why it can't use it: no `helm` on the PATH, nothing at the path you typed, or a `helm` that
+isn't version 3. Until it finds a usable one, the Helm release actions are shown disabled with that
+reason.
+
 ## Settings files
 
 Settings are saved as you change them, and some are plain TOML files you can edit.
@@ -60,6 +74,8 @@ text_size = 110
 ```
 
 The theme is `"system"`, `"light"` or `"dark"`. The text size is a percentage. A hand-edited value between steps, or out of range, loads as the nearest step.
+
+`helm_path` is the Tools section's **helm path**, absent when it's empty.
 
 On macOS, `background_mcp` is `"keep_running"` (the default) or `"stop_with_last_window"`. It is the
 **Keep the MCP server running in the background** setting in Agent Access.
