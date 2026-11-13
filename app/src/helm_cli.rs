@@ -1,4 +1,4 @@
-//! Driving the user's `helm` 3 CLI for Helm release actions (`helm-releases`
+//! Driving the user's `helm` 3 or 4 CLI for Helm release actions (`helm-releases`
 //! D8, ADR-0002): rollback and uninstall run `helm` itself rather than a
 //! reimplementation of its release engine.
 //!

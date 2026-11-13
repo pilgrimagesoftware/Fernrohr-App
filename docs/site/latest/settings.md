@@ -50,7 +50,7 @@ Fernrohr ships its own fonts, so nothing needs to be installed. Interface text i
 ## Tools
 
 The Tools section sets the `helm` that rolling back or uninstalling a Helm release runs. These
-actions need Helm 3.
+actions need Helm 3 or 4.
 
 Leave **helm path** empty to use the `helm` on your login shell's PATH. To use another one, type
 its full path, for example `/opt/homebrew/bin/helm` or `~/bin/helm`, and press <kbd>Enter</kbd>.
@@ -58,7 +58,7 @@ Leaving the field saves it too. Showing the Tools section puts focus in the fiel
 
 Under the field, Fernrohr says what it found, such as `Found helm v3.14.2 at /opt/homebrew/bin/helm`,
 or why it can't use it: no `helm` on the PATH, nothing at the path you typed, or a `helm` that
-isn't version 3. Until it finds a usable one, the Helm release actions are shown disabled with that
+isn't version 3 or 4. Until it finds a usable one, the Helm release actions are shown disabled with that
 reason.
 
 ## Settings files

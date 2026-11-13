@@ -20,7 +20,7 @@ a Go toolchain and FFI to the build.
 
 ## Decision
 
-Rollback and Uninstall run the user's own `helm` 3 binary: `helm rollback <name> <revision> -n
+Rollback and Uninstall run the user's own `helm` 3 or 4 binary: `helm rollback <name> <revision> -n
 <namespace>` and `helm uninstall <name> -n <namespace>`. Reading releases (the list, detail,
 history, values and manifest) stays native, decoded from the release Secrets.
 
@@ -28,7 +28,8 @@ The runner is `app/src/helm_cli/`:
 
 - **Finding helm** (`locate`): the path in Settings → Tools if set, otherwise `helm` on the login
   shell's PATH, the same resolution the command tunnels use. The binary is accepted only when
-  `helm version --short` reports `v3.`. The answer is checked off the UI thread, cached, and
+  `helm version --short` reports `v3.` or `v4.`. Their `rollback` and `uninstall` are the
+  same; Helm 2, and any later major until it has been checked, is refused. The answer is checked off the UI thread, cached, and
   checked again when the Settings path changes, so an action's availability never runs a process
   on a render path.
 - **Reaching the cluster** (`kubeconfig`): each run writes a kubeconfig holding one context, the
@@ -49,7 +50,7 @@ The runner is `app/src/helm_cli/`:
 
 - Rollback and Uninstall behave exactly as they do from a terminal, hooks and history included,
   and stay correct as Helm changes, with no Helm logic of our own to keep in step.
-- The actions need Helm 3 installed. Without it they are shown disabled with the reason, and
+- The actions need Helm 3 or 4 installed. Without it they are shown disabled with the reason, and
   everything read-only still works.
 - `helm` sees a copy of the context's credentials in a temporary file for the length of a run.
   The file is private to the user and short-lived, but a crash leaves it until the next start.

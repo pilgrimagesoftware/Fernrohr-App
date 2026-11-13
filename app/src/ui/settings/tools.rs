@@ -89,7 +89,7 @@ impl Render for ToolsSection {
                 )
                 .child(hint(
                     "Rolling back or uninstalling a Helm release runs this helm, which must be \
-                     Helm 3. Leave it empty to use the helm on your login shell's PATH. Enter \
+                     Helm 3 or 4. Leave it empty to use the helm on your login shell's PATH. Enter \
                      saves it.",
                     cx,
                 )),

@@ -1,6 +1,6 @@
 //! Finding `helm` (`helm-releases` D8): the path set in Settings, else `helm`
 //! on the login shell's PATH, accepted only when `helm version --short`
-//! reports Helm 3.
+//! reports Helm 3 or 4.
 //!
 //! The answer is checked off the UI thread and cached in [`HelmLocation`],
 //! refreshed when the Settings path changes, so anything deciding whether a
@@ -113,7 +113,7 @@ pub(crate) fn set_status(status: HelmStatus, cx: &mut App) {
     });
 }
 
-/// The `helm` at `configured`, or else on `path_env`, if it is Helm 3 - else
+/// The `helm` at `configured`, or else on `path_env`, if it is Helm 3 or 4 - else
 /// why not, in words for the person who must fix it.
 pub(super) async fn locate(
     configured: Option<&Path>,
@@ -123,7 +123,7 @@ pub(super) async fn locate(
         Some(path) if is_executable(path) => path.to_path_buf(),
         Some(path) => return Err(format!("There's no helm program at {}.", path.display())),
         None => find_program("helm", path_env).ok_or(
-            "helm isn't on your login shell's PATH. Install Helm 3, or set its path in \
+            "helm isn't on your login shell's PATH. Install Helm 3 or 4, or set its path in \
              Settings.",
         )?,
     };
@@ -152,14 +152,14 @@ pub(super) async fn locate(
             stderr.trim()
         ));
     }
-    version_is_helm_3(&version)
+    version_is_supported(&version)
         .then(|| HelmBinary {
             path: path.clone(),
             version: version.clone(),
         })
         .ok_or_else(|| {
             format!(
-                "{} is Helm {}; Helm 3 is required.",
+                "{} is Helm {}; Helm 3 or 4 is required.",
                 path.display(),
                 if version.is_empty() {
                     "of unknown version"
@@ -170,10 +170,14 @@ pub(super) async fn locate(
         })
 }
 
-/// Whether `helm version --short`'s first line reports Helm 3. Helm 2 prints
-/// `Client: v2.17.0+g…`, so only a line starting `v3.` passes.
-fn version_is_helm_3(version: &str) -> bool {
-    version.starts_with("v3.")
+/// Whether `helm version --short`'s first line reports Helm 3 or 4 (meta
+/// #264): their `rollback` and `uninstall` are the same. Helm 2 prints
+/// `Client: v2.17.0+g…`, and a later major isn't trusted until checked, so
+/// only a line starting `v3.` or `v4.` passes.
+fn version_is_supported(version: &str) -> bool {
+    ["v3.", "v4."]
+        .iter()
+        .any(|major| version.starts_with(major))
 }
 
 #[cfg(test)]
