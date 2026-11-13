@@ -186,3 +186,22 @@ fn each_tagged_stream_carries_its_own_style() {
         "and the stream starts plain after it"
     );
 }
+
+/// #360: a tagged stream's end and failure are the panel's notices, drawn
+/// apart from the log; its lines are not.
+#[test]
+fn a_tagged_streams_end_and_failure_are_notices() {
+    let mut view = LogsView::new(vec!["app".into()]);
+    let source = LineSource::new("web-1/app", "web-1");
+    view.apply_from(&source, LogEvent::Line("ready".into()));
+    view.apply_from(&source, LogEvent::Ended);
+    view.apply_from(
+        &source,
+        LogEvent::RequestFailed {
+            message: "gone".into(),
+            detail: String::new(),
+        },
+    );
+    let notices: Vec<bool> = view.lines().iter().map(|line| line.is_notice()).collect();
+    assert_eq!(notices, [false, true, true]);
+}

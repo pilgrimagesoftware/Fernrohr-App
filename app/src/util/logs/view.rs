@@ -204,11 +204,11 @@ impl LogsView {
             }
             LogEvent::Ended => {
                 self.carried_by_tag.remove(source.tag());
-                LogLine::tagged(source.clone(), ENDED_MARKER.to_string())
+                LogLine::notice(source.clone(), ENDED_MARKER.to_string())
             }
             LogEvent::RequestFailed { message, .. } => {
                 self.carried_by_tag.remove(source.tag());
-                LogLine::tagged(
+                LogLine::notice(
                     source.clone(),
                     format!("\u{2014} couldn't stream logs: {message}"),
                 )

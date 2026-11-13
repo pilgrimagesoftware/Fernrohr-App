@@ -160,3 +160,26 @@ async fn turning_follow_on_after_the_end_lands_on_the_marker(cx: &mut TestAppCon
         .update(|_, cx| panel.read(cx).scroll_handle.is_scrolled_to_end());
     assert_eq!(at_end, Some(true));
 }
+
+/// #360: the end marker is the panel's word, not the log's - drawn in the UI
+/// font, while the lines above it stay in the code font.
+#[test]
+fn the_marker_is_drawn_in_the_ui_font() {
+    use crate::ui::typography::FRAME_FAMILY;
+    use crate::ui::typography::recorder::with_recorded_text;
+    use crate::util::logs::view::ENDED_MARKER;
+
+    with_recorded_text(|cx, recorded| {
+        let mut h = open(cx, &["a line of output"]);
+        h.vcx
+            .update(|_, cx| crate::ui::theme::init(crate::config::ui::Theme::Light, cx));
+        h.apply(LogEvent::Ended);
+        assert!(h.drawn(END_MARKER).is_some(), "the marker is drawn");
+        assert_eq!(recorded.family_of(ENDED_MARKER), FRAME_FAMILY);
+        assert_ne!(
+            recorded.family_of("a line of output"),
+            FRAME_FAMILY,
+            "the log line keeps the code font"
+        );
+    });
+}
