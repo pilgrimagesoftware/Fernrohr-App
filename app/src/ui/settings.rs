@@ -1,8 +1,8 @@
 //! The Settings window: `settings.open` (Settings…, `cmd-,`, the App menu), a
 //! single-instance window with a tab per section across the top ([`tabs`]):
 //! Keyboard Shortcuts ([`shortcuts`], with the Shortcut Timeout above the
-//! list), Appearance ([`appearance`]: Text Size and the theme), Panels, Layouts
-//! and Agent Access. Later settings join the tabs rather than each opening a
+//! list), Appearance ([`appearance`]: Text Size and the theme), Panels, Layouts,
+//! Agent Access and Tools ([`tools`]: the `helm` path). Later settings join the tabs rather than each opening a
 //! window of its own. Each section groups its controls in titled cards, with
 //! hints in the data font ([`card`]).
 //!
@@ -30,6 +30,7 @@ mod tabs;
 #[cfg(test)]
 mod tests;
 mod text_size;
+pub(crate) mod tools;
 
 pub use shortcuts::ShortcutsSection;
 
@@ -42,6 +43,7 @@ actions!(
         ShowPanels,
         ShowLayouts,
         ShowAgentAccess,
+        ShowTools,
         OpenAgentAccess
     ]
 );
@@ -63,6 +65,8 @@ pub enum Section {
     /// How to register Fernrohr with an agent harness over MCP
     /// (`agent-mcp`), each command copyable.
     AgentAccess,
+    /// External programs Fernrohr runs: the `helm` Helm actions use.
+    Tools,
 }
 
 impl Section {
@@ -73,6 +77,7 @@ impl Section {
             Section::Panels => "Panels",
             Section::Layouts => "Layouts",
             Section::AgentAccess => "Agent Access",
+            Section::Tools => "Tools",
         }
     }
 
@@ -84,6 +89,7 @@ impl Section {
             Section::Panels => "settings-section-panels",
             Section::Layouts => "settings-section-layouts",
             Section::AgentAccess => "settings-section-agent-access",
+            Section::Tools => "settings-section-tools",
         }
     }
 
@@ -95,6 +101,7 @@ impl Section {
             Section::Panels => "settings-section-panels-label",
             Section::Layouts => "settings-section-layouts-label",
             Section::AgentAccess => "settings-section-agent-access-label",
+            Section::Tools => "settings-section-tools-label",
         }
     }
 }
@@ -139,6 +146,12 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             "Settings: Show Agent Access",
             "",
             Box::new(ShowAgentAccess),
+        ),
+        (
+            "settings.show_tools",
+            "Settings: Show Tools",
+            "",
+            Box::new(ShowTools),
         ),
     ] {
         registry.register(Command {
@@ -274,6 +287,7 @@ fn test_window(cx: &App) -> Option<WindowHandle<Root>> {
 
 pub struct SettingsWindow {
     shortcuts: Entity<ShortcutsSection>,
+    tools: Entity<tools::ToolsSection>,
     section: Section,
     /// The Appearance section's own focus, where showing it puts focus.
     appearance_focus: FocusHandle,
@@ -300,6 +314,7 @@ impl SettingsWindow {
         .detach();
         Self {
             shortcuts: cx.new(|cx| ShortcutsSection::new(window, cx)),
+            tools: cx.new(|cx| tools::ToolsSection::new(window, cx)),
             section: Section::default(),
             appearance_focus: cx.focus_handle(),
             panels_focus: cx.focus_handle(),
@@ -325,6 +340,11 @@ impl SettingsWindow {
                 self.reload_layouts(cx);
             }
             Section::AgentAccess => window.focus(&self.agent_access_focus, cx),
+            // Straight into the one field, ready to type a path.
+            Section::Tools => {
+                let focus = self.tools.read(cx).field_focus(cx);
+                window.focus(&focus, cx);
+            }
         }
         cx.notify();
     }
@@ -393,6 +413,11 @@ impl Render for SettingsWindow {
                 .track_focus(&self.agent_access_focus)
                 .child(agent_access::section(window, cx))
                 .into_any_element(),
+            Section::Tools => div()
+                .flex_1()
+                .min_w_0()
+                .child(self.tools.clone())
+                .into_any_element(),
         };
         div()
             .key_context(KEY_CONTEXT)
@@ -411,6 +436,11 @@ impl Render for SettingsWindow {
             .on_action(cx.listener(|this, _: &ShowAgentAccess, window, cx| {
                 this.show(Section::AgentAccess, window, cx)
             }))
+            .on_action(
+                cx.listener(|this, _: &ShowTools, window, cx| {
+                    this.show(Section::Tools, window, cx)
+                }),
+            )
             .on_action(cx.listener(|this, _: &tabs::NextTab, window, cx| {
                 this.show(this.section.stepped(1), window, cx)
             }))
