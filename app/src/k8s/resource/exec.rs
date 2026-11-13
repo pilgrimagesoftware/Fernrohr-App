@@ -8,6 +8,7 @@
 
 mod panel;
 mod render;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 mod target;
 mod theme;
 mod transport;

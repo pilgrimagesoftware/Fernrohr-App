@@ -420,6 +420,19 @@ impl Render for ObjectDetailPanel {
     }
 }
 
+/// Every identifier the panel's element can carry - [`key_context`]'s, and
+/// the Exec Library's - for `keymap::conflicts` (#331). The kind actions'
+/// gates join them there (`kind_actions::gates`).
+pub(crate) const KEY_CONTEXT_GROUP: &[&str] = &[
+    PANEL_KEY_CONTEXT,
+    super::commands::POD_SELECTING_KEY_CONTEXT,
+    super::delete::DELETABLE_KEY_CONTEXT,
+    super::commands::EDITABLE_KEY_CONTEXT,
+    super::commands::EDIT_KEY_CONTEXT,
+    link::LINKS_KEY_CONTEXT,
+    crate::ui::exec_library::commands::RESOURCE_CONTEXT,
+];
+
 /// The panel's own key context plus the shared one `links.go_to` is gated to -
 /// and, while `editing`, the edit's own; while `deletable`, Delete's; while
 /// the kind is `patchable` and no edit is open, Edit's; while the object
@@ -444,4 +457,25 @@ fn key_context(editing: bool, deletable: bool, patchable: bool, selects_pods: bo
         context.add(link::LINKS_KEY_CONTEXT);
     }
     context
+}
+
+#[cfg(test)]
+mod key_context_group_tests {
+    use super::{KEY_CONTEXT_GROUP, key_context};
+
+    /// `keymap::conflicts` reads the group, so it must hold every identifier
+    /// the builder adds (#331).
+    #[test]
+    fn every_identifier_the_builder_adds_is_in_the_group() {
+        for editing in [false, true] {
+            let context = key_context(editing, true, true, true);
+            for entry in context.primary().into_iter().chain(context.secondary()) {
+                assert!(
+                    KEY_CONTEXT_GROUP.contains(&entry.key.as_ref()),
+                    "{} is missing from the group",
+                    entry.key
+                );
+            }
+        }
+    }
 }
