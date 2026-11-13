@@ -187,6 +187,32 @@ fn each_tagged_stream_carries_its_own_style() {
     );
 }
 
+/// #365: the view keeps its widest line as lines arrive - a wider one takes
+/// over, a narrower or equal one doesn't - and forgets it with the lines.
+#[test]
+fn the_widest_line_follows_appends() {
+    let mut view = LogsView::new(vec!["app".into(), "sidecar".into()]);
+    assert_eq!(view.widest_line(), None);
+    view.apply(LogEvent::Line("medium".into()));
+    assert_eq!(view.widest_line(), Some((0, 6)));
+    view.apply(LogEvent::Line("much wider line".into()));
+    assert_eq!(view.widest_line(), Some((1, 15)));
+    view.apply(LogEvent::Line("narrow".into()));
+    view.apply(LogEvent::Line("same width line".into()));
+    assert_eq!(view.widest_line(), Some((1, 15)), "the first of equals");
+
+    let source = LineSource::new("web-1/app", "web-1");
+    view.apply_from(&source, LogEvent::Line("ready".into()));
+    assert_eq!(
+        view.widest_line(),
+        Some((4, 17)),
+        "a tagged line counts its tag"
+    );
+
+    assert!(view.select_container("sidecar"));
+    assert_eq!(view.widest_line(), None, "cleared with the lines");
+}
+
 /// #360: a tagged stream's end and failure are the panel's notices, drawn
 /// apart from the log; its lines are not.
 #[test]

@@ -48,6 +48,9 @@ While follow is on, the view stays pinned to the newest line. Scroll up to read 
 following pauses. It resumes when you scroll back to the bottom, or when you turn follow back on
 with <kbd>S</kbd> (**Logs: Toggle Follow**, also in the palette).
 
+Lines don't wrap. To read a line wider than the panel, scroll sideways with the trackpad or drag the
+scrollbar along the bottom of the panel.
+
 If the pod is deleted or its container exits while you watch, the panel keeps the lines already
 shown and adds a "log stream ended" note after them. Notes like this, and a pod's stream ending or
 failing in a panel that follows several pods, are in smaller italic text in the interface font, so
