@@ -148,6 +148,10 @@ impl MainWindow {
                 super::namespace_defaults::NamespaceDefaults::get(cx, &context_name)
                     .unwrap_or_default()
             }
+            (NavTarget::HelmReleases, true) => {
+                super::namespace_defaults::NamespaceDefaults::get(cx, &context_name)
+                    .unwrap_or_default()
+            }
             _ => namespaces,
         };
         let scope = PanelScope {

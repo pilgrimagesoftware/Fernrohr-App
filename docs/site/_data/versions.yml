@@ -13,6 +13,7 @@ versions:
       - clusters
       - windows-panels
       - resources
+      - helm
       - details
       - logs-shells
       - exec-library
@@ -32,6 +33,8 @@ versions:
         path: windows-panels/
       - title: Resources
         path: resources/
+      - title: Helm releases
+        path: helm/
       - title: Details
         path: details/
       - title: Logs and shells

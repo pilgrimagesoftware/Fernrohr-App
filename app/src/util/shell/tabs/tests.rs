@@ -2,7 +2,7 @@
 //! keystrokes through the app's own bindings: Pods and a pod's detail as two
 //! tabs of one group, the way `d` leaves them.
 
-use super::{close_window_confirmation_body, losing_a_tunnel};
+use super::{close_window_confirmation_body, held_here_alone, losing_a_tunnel};
 
 mod close;
 mod drop;
@@ -272,16 +272,31 @@ fn only_sole_holders_with_a_live_forward_lose_a_tunnel() {
 
 #[test]
 fn the_confirmation_names_the_contexts() {
-    let one = close_window_confirmation_body(&["prod".into()]);
-    assert_eq!(
-        one.plain(),
-        "The tunnel for \u{201c}prod\u{201d} will disconnect."
-    );
+    let one = close_window_confirmation_body(&["prod".into()], &[]);
+    assert_eq!(one.plain(), "\u{201c}prod\u{201d} will disconnect.");
     assert_eq!(one.name_list(), ["prod"]);
-    let two = close_window_confirmation_body(&["prod".into(), "staging".into()]);
+    let tunneled = close_window_confirmation_body(&["prod".into()], &["prod".into()]);
     assert_eq!(
-        two.plain(),
-        "The tunnels for \u{201c}prod\u{201d}, \u{201c}staging\u{201d} will disconnect."
+        tunneled.plain(),
+        "\u{201c}prod\u{201d} will disconnect. The tunnel for \u{201c}prod\u{201d} will stop."
     );
-    assert_eq!(two.name_list(), ["prod", "staging"]);
+    let two = close_window_confirmation_body(
+        &["prod".into(), "staging".into()],
+        &["prod".into(), "staging".into()],
+    );
+    assert_eq!(
+        two.name_list(),
+        ["prod", "staging", "prod", "staging"],
+        "both lists name both contexts"
+    );
+    assert!(two.plain().contains("The tunnels for "));
+}
+
+#[test]
+fn only_contexts_held_here_alone_disconnect() {
+    let contexts = ["a".to_string(), "b".to_string(), "c".to_string()];
+    assert_eq!(
+        held_here_alone(&contexts, &[1, 2, 1]),
+        vec!["a".to_string(), "c".to_string()]
+    );
 }

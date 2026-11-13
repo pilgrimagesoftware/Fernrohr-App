@@ -21,12 +21,13 @@ pub(super) const PREVIOUS_TAB_KEY: &str = "ctrl-shift-tab";
 
 impl Section {
     /// Every section, in tab order.
-    pub(crate) const ALL: [Section; 5] = [
+    pub(crate) const ALL: [Section; 6] = [
         Section::KeyboardShortcuts,
         Section::Appearance,
         Section::Panels,
         Section::Layouts,
         Section::AgentAccess,
+        Section::Tools,
     ];
 
     /// The icon on the section's tab.
@@ -37,6 +38,7 @@ impl Section {
             Section::Panels => IconName::PanelsTopLeft,
             Section::Layouts => IconName::LayoutDashboard,
             Section::AgentAccess => IconName::Bot,
+            Section::Tools => IconName::Wrench,
         }
     }
 

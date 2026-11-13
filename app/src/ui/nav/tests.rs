@@ -97,10 +97,11 @@ fn panel_opening_actions_are_registered_commands() {
     assert_eq!(titles, vec!["Show Pods", "Show Logs"]);
     assert!(registry.get(SHOW_EVENTS_COMMAND_ID).is_some());
     assert!(registry.get(super::OPEN_IN_NEW_PANEL_COMMAND_ID).is_some());
+    assert!(registry.get(super::SHOW_HELM_RELEASES_COMMAND_ID).is_some());
     assert_eq!(
         build_items(&registry, &[]).len(),
-        5,
-        "Pods, Logs (both ways), Events and Open in New Panel reach the palette"
+        6,
+        "Pods, Logs (both ways), Events, Helm Releases and Open in New Panel reach the palette"
     );
 }
 

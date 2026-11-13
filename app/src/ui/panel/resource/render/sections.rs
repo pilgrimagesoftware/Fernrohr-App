@@ -158,6 +158,9 @@ impl ResourcePanel {
                 rows = rows.child(self.render_subgroup(subgroup, window, cx));
             }
         }
+        if expanded {
+            rows = rows.children(self.render_extras(&section.extras, window, cx));
+        }
 
         div()
             .w_full()

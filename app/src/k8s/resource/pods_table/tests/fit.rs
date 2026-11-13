@@ -150,3 +150,59 @@ fn a_single_click_on_the_divider_fits_nothing(cx: &mut TestAppContext) {
 
     assert_eq!(name_width(&table, &mut vcx), before);
 }
+
+/// Fits every column of `table`, the way the Fit Columns command does.
+fn fit_all(table: &Entity<TableState<PodTableDelegate>>, vcx: &mut VisualTestContext) {
+    vcx.update(|window, cx| {
+        let size = crate::ui::table_fit::table_size(cx);
+        crate::ui::table_fit::fit_all_columns(table, size, window, cx);
+    });
+    vcx.run_until_parked();
+}
+
+/// #344: fitting measures text at the theme's font size, which Text Size
+/// scales, not the window's default text style - so a larger Text Size fits
+/// wider columns instead of squeezing the larger text together.
+#[gpui_kit::test]
+fn fitting_follows_the_text_size(cx: &mut TestAppContext) {
+    let (mut vcx, table) = table_window(cx, pod_table_rows_fixture());
+    fit_all(&table, &mut vcx);
+    let normal = name_width(&table, &mut vcx);
+
+    vcx.update(|_, cx| {
+        let theme = cx.global_mut::<gpui_kit::component::Theme>();
+        theme.font_size *= 2.;
+    });
+    fit_all(&table, &mut vcx);
+    let doubled = name_width(&table, &mut vcx);
+    assert!(
+        doubled > normal * 1.5,
+        "twice the text size fits Name wider: {normal:?} -> {doubled:?}"
+    );
+}
+
+/// #344: a fitted column leaves room for what its cells draw besides text -
+/// Name's bulk checkbox and Ready's dot.
+#[gpui_kit::test]
+fn fitting_leaves_room_for_the_checkbox_and_dot(cx: &mut TestAppContext) {
+    use crate::ui::table_fit::FitColumns as _;
+    let (mut vcx, table) = table_window(cx, pod_table_rows_fixture());
+    vcx.update(|window, cx| {
+        let delegate = table.read(cx).delegate();
+        let rem = window.rem_size();
+        let ready = (0..delegate.columns_count(cx))
+            .find(|ix| delegate.column(*ix, cx).name.as_ref() == "Ready")
+            .expect("a Ready column");
+        assert_eq!(
+            delegate.cell_adornment(0, 0, rem, cx),
+            rem * 1.5,
+            "checkbox"
+        );
+        assert_eq!(
+            delegate.cell_adornment(0, ready, rem, cx),
+            px(7.) + rem * 0.25,
+            "Ready's dot"
+        );
+        assert_eq!(delegate.cell_adornment(0, ready + 1, rem, cx), px(0.));
+    });
+}

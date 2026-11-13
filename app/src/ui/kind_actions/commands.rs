@@ -23,7 +23,8 @@ actions!(
         AddTaint,
         RemoveTaint,
         CreateToken,
-        OpenHost
+        OpenHost,
+        ForceSync
     ]
 );
 
@@ -117,6 +118,13 @@ pub(crate) fn command(action: KindAction) -> KindCommand {
             "KindOpenHost",
             "KindOpenHost && !Input",
         ),
+        KindAction::ForceSync => (
+            "kind.force_sync",
+            "Force Sync…",
+            "shift-s",
+            "KindForceSync",
+            "KindForceSync && !Input",
+        ),
     };
     KindCommand {
         id,
@@ -141,6 +149,7 @@ pub(crate) fn action(action: KindAction) -> Box<dyn Action> {
         KindAction::RemoveTaint => Box::new(RemoveTaint),
         KindAction::CreateToken => Box::new(CreateToken),
         KindAction::OpenHost => Box::new(OpenHost),
+        KindAction::ForceSync => Box::new(ForceSync),
     }
 }
 
@@ -156,6 +165,21 @@ pub fn register_commands(registry: &mut CommandRegistry) {
             menu: None,
         });
     }
+}
+
+/// The gates [`add_contexts`] can put on one element together - one set per
+/// [`KindAction::OFFERED_TOGETHER`] - for `keymap::conflicts` (#331).
+pub(crate) fn gate_sets(in_list: bool) -> Vec<Vec<&'static str>> {
+    KindAction::OFFERED_TOGETHER
+        .iter()
+        .map(|set| {
+            set.iter()
+                .filter(|kind_action| !(in_list && **kind_action == KindAction::ForwardService))
+                .map(|kind_action| command(*kind_action).gate)
+                .collect::<Vec<_>>()
+        })
+        .filter(|gates| !gates.is_empty())
+        .collect()
 }
 
 /// Adds the gate of each of `offered`. In a list, Port Forward is the

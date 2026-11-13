@@ -1,6 +1,7 @@
 //! Drawing the main window, and opening the command palette over it.
 
 use super::*;
+use gpui_kit::prelude::FluentBuilder as _;
 
 /// Opens the command palette in a dialog on `window`'s `Root`. A fresh
 /// `CommandState` is created per open (not reused across opens) since the
@@ -129,6 +130,26 @@ impl Render for MainWindow {
             .flex()
             .flex_col()
             .track_focus(&self.focus_handle);
+        // Disconnect All needs a context to disconnect, and Disconnect Others
+        // a second one; otherwise the window doesn't handle them, so their
+        // menu items show disabled (#359).
+        let context_count = match &self.mode {
+            WindowMode::Workspace { contexts, .. } => contexts.len(),
+            WindowMode::Picker(_) => 0,
+        };
+        let root = root
+            .when(context_count > 0, |root| {
+                root.on_action(cx.listener(Self::on_action_disconnect_all_contexts))
+            })
+            .when(context_count > 1, |root| {
+                root.on_action(cx.listener(Self::on_action_disconnect_other_contexts))
+            });
+        // Set Tunnel for Context is handled only while it has a context to
+        // apply to, so from a picker with nothing selected its menu item shows
+        // disabled (`is_action_available`), as Connect's button does (#363).
+        let root = root.when(self.tunnel_target(cx).is_some(), |root| {
+            root.on_action(cx.listener(Self::on_action_set_tunnel))
+        });
         Self::with_tab_menu_actions(
             Self::with_arrange_actions(Self::with_tab_actions(root, cx), cx),
             cx,
@@ -141,6 +162,8 @@ impl Render for MainWindow {
         })
         .on_action(cx.listener(Self::on_action_show_pods))
         .on_action(cx.listener(Self::on_action_show_events))
+        .on_action(cx.listener(Self::on_action_show_helm_releases))
+        .on_action(cx.listener(Self::on_action_open_helm_release))
         .on_action(cx.listener(Self::on_action_focus_resources))
         .on_action(cx.listener(Self::on_action_warp_context))
         .on_action(cx.listener(Self::on_action_open_exec))
@@ -162,7 +185,6 @@ impl Render for MainWindow {
         .on_action(cx.listener(Self::on_action_switch_label_logs_context))
         .on_action(cx.listener(Self::on_action_show_pod_detail))
         .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
-        .on_action(cx.listener(Self::on_action_set_tunnel))
         .on_action(cx.listener(Self::on_action_follow_reference))
         .on_action(cx.listener(Self::on_action_open_listed_object))
         .on_action(cx.listener(Self::on_action_open_pod_in_background))
