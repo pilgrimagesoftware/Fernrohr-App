@@ -227,7 +227,7 @@ fn every_kind_in_the_spec_has_its_columns() {
             &["Provisioner", "Reclaim policy", "Volume binding mode"],
         ),
         ("", "Node", &["Status", "Roles", "Version", "Internal IP"]),
-        ("", "Namespace", &["Status"]),
+        ("", "Namespace", &["Status", "Labels"]),
         ("", "ServiceAccount", &["Secrets"]),
         (
             "rbac.authorization.k8s.io",

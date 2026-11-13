@@ -74,8 +74,10 @@ panel chooses which cluster's kinds it shows.
 
 A list always has Name and Age, plus Namespace for a namespaced kind. Many kinds
 add their own columns. A Services list, for example, adds type, cluster IP,
-external IP and ports, and a Deployments list adds replica counts. A kind with
-nothing extra to show has only the base columns.
+external IP and ports, a Deployments list adds replica counts, and a Namespaces
+list adds status and labels (without the `kubernetes.io/metadata.name` label,
+which only repeats the name). A kind with nothing extra to show has only the
+base columns.
 
 Any other kind, including custom resources such as Flux's HelmRelease and
 Kustomization, gains two columns once one of its objects reports
