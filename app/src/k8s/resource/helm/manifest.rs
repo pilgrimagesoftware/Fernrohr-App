@@ -49,9 +49,12 @@ fn redacted_document(document: String) -> Option<String> {
     if !redact_secrets(&mut value) {
         return Some(document);
     }
+    // Only Helm's own `# Source:` line: a template's other comments are
+    // rendered too, and can carry a value (`# password: {{ .Values.x }}`).
     let comments: String = document
         .lines()
         .take_while(|line| line.starts_with('#'))
+        .filter(|line| line.starts_with("# Source: "))
         .map(|line| format!("{line}\n"))
         .collect();
     match serde_yaml_ng::to_string(&value) {
@@ -133,6 +136,19 @@ data:
         );
         assert!(shown.contains("mode: production"));
         assert_eq!(shown.matches("---\n").count(), 2, "two documents");
+    }
+
+    /// A Secret's own comments are template output and can carry a value:
+    /// only Helm's `# Source:` line is kept.
+    #[test]
+    fn a_secrets_comments_other_than_source_are_dropped() {
+        let manifest = "---\n# Source: web/templates/secret.yaml\n# password: hunter2\napiVersion: v1\nkind: Secret\nmetadata:\n  name: a\nstringData:\n  password: hunter2\n";
+        let shown = redacted_manifest(manifest);
+        assert!(!shown.contains("hunter2"), "{shown}");
+        assert!(
+            shown.contains("# Source: web/templates/secret.yaml"),
+            "{shown}"
+        );
     }
 
     #[test]

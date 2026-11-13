@@ -29,10 +29,10 @@ fn revision(name: &str, version: u32, status: &str) -> Value {
             "first_deployed": "2026-11-01T10:00:00Z",
             "last_deployed": format!("2026-11-1{version}T09:00:00Z"),
             "description": format!("Upgrade {version} complete"),
-            "notes": "Visit the app at http://app.example.com",
+            "notes": "Visit the app at http://app.example.com\nThen run: kubectl get pods",
         },
         "chart": { "metadata": { "name": name, "version": format!("1.{version}.0"), "appVersion": "2.0" } },
-        "config": { "replicaCount": version },
+        "config": { "replicaCount": version, "image": { "tag": "2.0" } },
         "manifest": "---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: web\nstringData:\n  password: hunter2\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web\n",
     });
     let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
@@ -188,7 +188,7 @@ async fn notes_show_by_their_key(cx: &mut TestAppContext) {
     assert_eq!(h.read(|panel, _| panel.tab), ReleaseTab::Notes);
     assert_eq!(
         h.read(|panel, cx| panel.notes(cx).map(str::to_string)),
-        Some("Visit the app at http://app.example.com".to_string())
+        Some("Visit the app at http://app.example.com\nThen run: kubectl get pods".to_string())
     );
 }
 
@@ -405,7 +405,11 @@ async fn notes_can_be_selected(cx: &mut TestAppContext) {
     h.vcx.simulate_keystrokes("5");
     h.wait_for("read the notes", |panel, cx| panel.notes(cx).is_some());
     let selected = drag_select(&mut h, "helm-release-notes");
-    assert!(selected.contains("Visit the app"), "selected: {selected:?}");
+    let (first, second) = (selected.find("Visit the app"), selected.find("Then run"));
+    assert!(
+        matches!((first, second), (Some(a), Some(b)) if a < b),
+        "both lines, in order: {selected:?}"
+    );
 }
 
 /// Revealed values drag-select the same way.
@@ -419,8 +423,9 @@ async fn revealed_values_can_be_selected(cx: &mut TestAppContext) {
         panel.revealed_text(ReleaseTab::Values, cx).is_some()
     });
     let selected = drag_select(&mut h, "helm-release-text");
+    let (first, second) = (selected.find("replicaCount: 3"), selected.find("image:"));
     assert!(
-        selected.contains("replicaCount: 3"),
-        "selected: {selected:?}"
+        matches!((first, second), (Some(a), Some(b)) if a < b),
+        "both lines, in order: {selected:?}"
     );
 }
