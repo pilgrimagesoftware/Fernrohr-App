@@ -89,29 +89,32 @@ impl MainWindow {
     }
 
     /// Section 3.2: opens a small dialog offering Direct plus every configured
-    /// tunnel for this window's connected context, writing through the same
-    /// `TunnelStore::bind`/`unbind` the picker's own row selector uses. A no-op in
-    /// `Picker` mode - there is no connected context to set a tunnel for yet, and
-    /// the picker's own per-row selector already covers that case.
+    /// tunnel for [`Self::tunnel_target`], writing through the same
+    /// `TunnelStore::bind`/`unbind` the picker's own row selector uses.
     pub(super) fn on_action_set_tunnel(
         &mut self,
         _: &SetContextTunnel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // The window's active context in a workspace; in the picker, the context the
-        // user selected there - so the binding can be set from the keyboard before
-        // connecting, not only from a row's dropdown.
-        let context_name = match &self.mode {
+        if let Some(context_name) = self.tunnel_target(cx) {
+            open_tunnel_dialog(context_name, window, cx);
+        }
+    }
+
+    /// The context Set Tunnel for Context applies to: the window's active
+    /// context in a workspace; in the picker, the context selected there, so
+    /// the binding can be set from the keyboard before connecting. `None` in a
+    /// picker with nothing selected, where the command is unavailable - the
+    /// window doesn't handle it, so its menu item shows disabled and the key
+    /// does nothing visibly wrong (#363).
+    pub(super) fn tunnel_target(&self, cx: &App) -> Option<String> {
+        match &self.mode {
             WindowMode::Workspace {
                 contexts, active, ..
-            } => contexts[*active].clone(),
-            WindowMode::Picker(picker) => match picker.read(cx).selected_context() {
-                Some(context_name) => context_name,
-                None => return,
-            },
-        };
-        open_tunnel_dialog(context_name, window, cx);
+            } => contexts.get(*active).cloned(),
+            WindowMode::Picker(picker) => picker.read(cx).selected_context(),
+        }
     }
 
     /// Opens the selected pod's detail panel on the field list. Emitted by a

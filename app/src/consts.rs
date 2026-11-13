@@ -60,6 +60,10 @@ pub(crate) const HELM_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 /// How many of stderr's last lines a failed `helm` run reports.
 pub(crate) const HELM_ERROR_LINES: usize = 5;
 
+/// How long a custom resource list waits for its CRD's printer columns (#352)
+/// before listing with the generic columns instead.
+pub(crate) const CRD_COLUMNS_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// How long resolving the login shell's `PATH` may take before falling back.
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 

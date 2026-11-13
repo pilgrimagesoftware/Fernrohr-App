@@ -77,12 +77,22 @@ panel chooses which cluster's kinds it shows.
 
 A list always has Name and Age, plus Namespace for a namespaced kind. Many kinds
 add their own columns. A Services list, for example, adds type, cluster IP,
-external IP and ports, and a Deployments list adds replica counts. A kind with
-nothing extra to show has only the base columns.
+external IP and ports, a Deployments list adds replica counts, and a Namespaces
+list adds status and labels (without the `kubernetes.io/metadata.name` label,
+which only repeats the name). A kind with nothing extra to show has only the
+base columns.
 
-Any other kind, including custom resources such as Flux's HelmRelease and
-Kustomization, gains two columns once one of its objects reports
-`status.conditions`:
+A custom resource list shows the columns its CRD declares for `kubectl get`
+(`additionalPrinterColumns`), in the CRD's order. A CRD with a `Status` column
+reading `.status.phase`, for example, adds a Status column. Columns `kubectl`
+only shows with `-o wide` are left out, and so are ones that repeat Name,
+Namespace or Age. A value of True, False or Unknown is shown beside a dot in its
+tone, as Ready is below. To read a CRD you need permission to get
+`customresourcedefinitions`; without it, or if the CRD declares no columns, the
+list falls back to the columns below.
+
+Any other kind, and a custom resource whose CRD declares no columns, gains two
+columns once one of its objects reports `status.conditions`:
 
 - **Ready** shows the `Ready` condition's status (True, False or Unknown) beside
   a dot in its tone. It appears only if some object has a `Ready` condition.
@@ -233,6 +243,7 @@ keys for whatever the selected object is offered.
 | Node | Remove Taint… | <kbd>⌥⇧T</kbd> | Asks which taint to remove when the node has several. |
 | ServiceAccount | Create Token | <kbd>⇧K</kbd> | Requests a new token and shows it once. |
 | Ingress | Open Host in Browser | <kbd>⇧O</kbd> | Opens the first rule's host, such as `https://app.example.com`. A wildcard host such as `*.example.com` names no one site, so it's passed over, and an Ingress with no other host isn't offered the action. |
+| ExternalSecret, ClusterExternalSecret, Flux objects, Argo CD Application | Force Sync… | <kbd>⇧S</kbd> | Asks the controller to act on the object now by setting the annotation it watches. External Secrets syncs it (`force-sync`; `external-secrets.io/force-sync` on a ClusterExternalSecret, which needs a recent External Secrets release). Flux reconciles it (`reconcile.fluxcd.io/requestedAt` on any `*.toolkit.fluxcd.io` kind except notification Alerts and Providers, which don't reconcile). Argo CD refreshes it (`argocd.argoproj.io/refresh: normal`): it re-reads the source and compares, and deploys only if the Application syncs automatically, so the action is called Refresh there. Nothing else on the object changes. |
 
 Every action that changes the cluster asks first, naming the object. Expand
 can't be undone, because a claim can't be made smaller again, so its question

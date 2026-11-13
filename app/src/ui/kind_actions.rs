@@ -13,5 +13,5 @@ mod taints;
 pub(crate) mod token;
 
 pub(crate) use buttons::{MenuEntry, buttons, hints, menu_entries};
-pub(crate) use commands::register_commands;
+pub(crate) use commands::{gate_sets, register_commands};
 pub(crate) use host::{KindHost, KindTarget, add_key_contexts, on_kind_actions};

@@ -124,6 +124,17 @@ Fernrohr asks you to confirm. The dialog says how many panels for that context w
 that the context stays connected if other windows still use it. Confirm with <kbd>Enter</kbd> or
 by clicking Disconnect, or cancel with <kbd>Esc</kbd>.
 
+To disconnect several contexts at once, when the window has more than one:
+
+- **Mouse:** on a capsule's menu, choose **Disconnect Others** to keep only that capsule's context,
+  or **Disconnect All**.
+- **Keyboard:** run **Disconnect Other Contexts…**, which keeps the active context, or
+  **Disconnect All Contexts…** from the command palette or the Context menu. Neither has a
+  default key.
+
+One confirmation names every context that will disconnect and how many panels close with them.
+Disconnecting every context returns the window to the cluster picker.
+
 Connections are shared between windows. Two windows using the same context share one connection,
 so disconnecting in one leaves the other receiving live updates. The connection, and any tunnel it
 holds, shuts down when the last window using the context disconnects or closes.

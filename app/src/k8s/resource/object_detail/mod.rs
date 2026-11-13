@@ -28,6 +28,7 @@ mod node_pods;
 mod panel;
 mod redact;
 mod render;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 mod restore;
 mod reveal;
 mod sections;
