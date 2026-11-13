@@ -202,13 +202,27 @@ impl HelmReleasePanel {
         rows.into_any_element()
     }
 
+    /// The notes as plain monospace lines, as `helm get notes` prints them.
+    /// Never Markdown: they are the chart author's text, and a fence or a
+    /// link in them must show as written, not render.
     fn notes_tab(&self, cx: &App) -> AnyElement {
+        use crate::ui::typography::TypeRole as _;
         match self.notes(cx) {
             Some(notes) if !notes.trim().is_empty() => div()
                 .debug_selector(|| "helm-release-notes".into())
-                .child(
-                    gpui_kit::component::text::markdown(format!("```\n{notes}\n```"))
-                        .selectable(true),
+                .flex()
+                .flex_col()
+                .data_font()
+                .children(
+                    plain_lines(notes)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(ix, line)| {
+                            div()
+                                .debug_selector(move || format!("helm-release-notes-line-{ix}"))
+                                .whitespace_nowrap()
+                                .child(line)
+                        }),
                 )
                 .into_any_element(),
             Some(_) => div().child("The chart has no notes.").into_any_element(),
@@ -408,4 +422,19 @@ impl HelmReleasePanel {
         );
         vec![rollback, uninstall]
     }
+}
+
+/// `notes` split into the lines it shows, each exactly as written - an empty
+/// line kept as a space so it still takes a line's height.
+pub(super) fn plain_lines(notes: &str) -> Vec<String> {
+    notes
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                " ".to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect()
 }

@@ -22,13 +22,23 @@ use gpui_kit::*;
 /// The search box's placeholder - what it matches on.
 pub(super) const SEARCH_PLACEHOLDER: &str = "Search name, namespace, chart...";
 
+/// One watch scope this panel subscribes to: its shared table, and this
+/// panel's observation of it - dropped with the subscription, since another
+/// panel can keep the table alive, and a kept observer would pile up with each
+/// re-scope.
+pub(super) struct Watched {
+    pub(super) scope: HelmScope,
+    pub(super) table: Entity<HelmReleasesTable>,
+    _observer: Subscription,
+}
+
 /// A dock panel listing one context's Helm releases, live, in its namespace
 /// scope.
 pub struct HelmReleasesPanel {
     pub(super) scope: PanelScope,
     pub(super) connection: Entity<ClusterConnection>,
     /// The release tables this panel subscribes to, one per watch scope.
-    pub(super) tables: Vec<(HelmScope, Entity<HelmReleasesTable>)>,
+    pub(super) tables: Vec<Watched>,
     pub(super) namespaces: Entity<NamespaceList>,
     pub(super) focus_handle: FocusHandle,
     pub(super) namespace_picker: crate::ui::namespace_picker::NamespacePickerSlot,
@@ -108,14 +118,22 @@ impl HelmReleasesPanel {
                 client.clone(),
                 scope.clone(),
             );
-            cx.observe(&table, |_, _, cx| cx.notify()).detach();
-            self.tables.push((scope, table));
+            let observer = cx.observe(&table, |_, _, cx| cx.notify());
+            self.tables.push(Watched {
+                scope,
+                table,
+                _observer: observer,
+            });
         }
     }
 
     fn unsubscribe(&mut self, cx: &mut App) {
-        for (scope, _) in self.tables.drain(..) {
-            ClusterRegistry::unsubscribe_helm_releases(cx, &self.scope.context_name, &scope);
+        for watched in self.tables.drain(..) {
+            ClusterRegistry::unsubscribe_helm_releases(
+                cx,
+                &self.scope.context_name,
+                &watched.scope,
+            );
         }
     }
 
@@ -134,7 +152,7 @@ impl HelmReleasesPanel {
     pub(super) fn scoped_rows(&self, cx: &App) -> Vec<HelmRow> {
         self.tables
             .iter()
-            .flat_map(|(_, table)| table.read(cx).rows())
+            .flat_map(|watched| watched.table.read(cx).rows())
             .map(|release| HelmRow::new(&release))
             .filter(|row| self.show_uninstalled || !row.uninstalled())
             .collect()
@@ -161,7 +179,7 @@ impl HelmReleasesPanel {
         let phases: Vec<LoadPhase> = self
             .tables
             .iter()
-            .map(|(_, table)| table.read(cx).phase())
+            .map(|watched| watched.table.read(cx).phase())
             .collect();
         let received = |phase: &LoadPhase| match phase {
             LoadPhase::FirstLoad { received } | LoadPhase::Refreshing { received } => *received,
@@ -185,11 +203,12 @@ impl HelmReleasesPanel {
 
     /// The first refusal any of the panel's watches got, with its scope.
     pub(super) fn refusal(&self, cx: &App) -> Option<(HelmScope, String)> {
-        self.tables.iter().find_map(|(scope, table)| {
-            table
+        self.tables.iter().find_map(|watched| {
+            watched
+                .table
                 .read(cx)
                 .refused()
-                .map(|message| (scope.clone(), message.to_string()))
+                .map(|message| (watched.scope.clone(), message.to_string()))
         })
     }
 

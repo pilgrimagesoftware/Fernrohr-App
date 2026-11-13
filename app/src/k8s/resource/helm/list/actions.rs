@@ -37,8 +37,8 @@ impl HelmReleasesPanel {
             namespace: row.namespace.clone(),
             name: row.name.clone(),
         };
-        let deployed = self.tables.iter().find_map(|(_, table)| {
-            let history = table.read(cx).history(&key);
+        let deployed = self.tables.iter().find_map(|watched| {
+            let history = watched.table.read(cx).history(&key);
             history
                 .iter()
                 .find(|revision| revision.status == "deployed")
