@@ -50,11 +50,12 @@ impl ListColumn {
 
     /// `kind`'s columns in their default order, as `kubectl get` lays them
     /// out: Name, Namespace for a namespaced kind only, the kind's own columns
-    /// (for a kind outside the per-kind table, the condition columns `seen`
-    /// calls for), then Age.
+    /// (for a kind outside the per-kind table, its CRD's printer columns, or
+    /// failing those the condition columns `seen` calls for), then Age.
     pub(in crate::k8s::resource::object_list) fn for_kind(
         kind: &DiscoveredKind,
         seen: columns::ConditionsSeen,
+        printer: Option<&columns::PrinterColumns>,
     ) -> Vec<ListColumn> {
         let mut columns = vec![ListColumn::new(NAME, "Name", 260.)];
         if kind.namespaced {
@@ -68,6 +69,19 @@ impl ListColumn {
                     .map(|(cell, def)| ListColumn {
                         cell: Some(cell),
                         ..ListColumn::new(def.id, def.title, def.width)
+                    }),
+            );
+        } else if let Some(printer) = printer {
+            columns.extend(
+                printer
+                    .columns()
+                    .iter()
+                    .enumerate()
+                    .map(|(cell, def)| ListColumn {
+                        id: def.id.clone().into(),
+                        title: def.title.clone().into(),
+                        width: px(def.width),
+                        cell: Some(cell),
                     }),
             );
         } else {

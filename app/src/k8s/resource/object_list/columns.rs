@@ -14,10 +14,12 @@
 mod autoscaling;
 mod conditions;
 mod config_network;
+mod printer;
 mod storage_cluster;
 mod workloads;
 
 pub use conditions::ConditionsSeen;
+pub use printer::PrinterColumns;
 
 use crate::k8s::resource::status_tone::ConditionStatus;
 use crate::ui::style::Tone;
@@ -25,6 +27,7 @@ use jiff::Timestamp;
 use kube::api::DynamicObject;
 use serde::de::DeserializeOwned;
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 /// One cell's value, typed so its column sorts the way the value reads:
 /// numbers numerically, ratios by their first number, ages by time.
@@ -160,6 +163,7 @@ pub struct ColumnDef {
 
 /// A kind's extra columns and the extractor that fills them: `cells` returns
 /// one cell per column, in order.
+#[derive(Debug)]
 pub struct KindColumns {
     pub columns: &'static [ColumnDef],
     pub cells: fn(&DynamicObject) -> Vec<Cell>,
@@ -172,6 +176,25 @@ impl KindColumns {
         let mut cells = (self.cells)(object);
         cells.resize(self.columns.len(), Cell::Empty);
         cells
+    }
+}
+
+/// The columns a list's rows are built with: a kind's own static table (or
+/// the generic condition columns), or a custom resource's printer columns
+/// read from its CRD (#352).
+#[derive(Clone, Debug)]
+pub enum RowColumns {
+    Kind(&'static KindColumns),
+    Printer(Arc<PrinterColumns>),
+}
+
+impl RowColumns {
+    /// `object`'s cells, one per column, in order.
+    pub fn cells_for(&self, object: &DynamicObject) -> Vec<Cell> {
+        match self {
+            Self::Kind(columns) => columns.cells_for(object),
+            Self::Printer(columns) => columns.cells_for(object),
+        }
     }
 }
 

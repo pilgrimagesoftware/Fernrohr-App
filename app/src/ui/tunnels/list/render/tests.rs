@@ -69,3 +69,18 @@ fn a_manual_tunnels_row_shows_its_badge_and_instruction() {
     assert_eq!(summary.chars().count(), 61);
     assert!(summary.ends_with('\u{2026}'));
 }
+
+/// #364: how many contexts use a tunnel reads on its second line, after what
+/// the tunnel does.
+#[test]
+fn the_second_line_ends_with_the_usage() {
+    let tunnel = ssh_tunnel();
+    assert_eq!(
+        super::row_detail(&tunnel, 0),
+        "ops@bastion.example.com:22 \u{00b7} Unused"
+    );
+    assert_eq!(
+        super::row_detail(&tunnel, 2),
+        "ops@bastion.example.com:22 \u{00b7} In use by 2 contexts"
+    );
+}
