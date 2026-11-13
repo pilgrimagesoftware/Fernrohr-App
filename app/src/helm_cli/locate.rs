@@ -127,17 +127,20 @@ pub(super) async fn locate(
              Settings.",
         )?,
     };
-    let output = tokio::time::timeout(
-        HELM_VERSION_TIMEOUT,
-        Command::new(&path)
-            .args(["version", "--short"])
-            .env("PATH", path_env)
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .map_err(|_| format!("{} didn't report its version in time.", path.display()))?
-    .map_err(|error| format!("Couldn't run {}: {error}.", path.display()))?;
+    let mut version_command = Command::new(&path);
+    version_command
+        .args(["version", "--short"])
+        .env("PATH", path_env)
+        .kill_on_drop(true);
+    #[cfg(not(test))]
+    let ran = version_command.output();
+    // Parallel tests can briefly hold a fake `helm` open (`test_helm::past_busy`).
+    #[cfg(test)]
+    let ran = super::test_helm::past_busy(|| version_command.output());
+    let output = tokio::time::timeout(HELM_VERSION_TIMEOUT, ran)
+        .await
+        .map_err(|_| format!("{} didn't report its version in time.", path.display()))?
+        .map_err(|error| format!("Couldn't run {}: {error}.", path.display()))?;
     let version = String::from_utf8_lossy(&output.stdout)
         .lines()
         .next()

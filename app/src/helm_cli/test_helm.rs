@@ -26,3 +26,28 @@ pub(super) fn helm_reporting(dir: &Path, version: &str) -> (PathBuf, String) {
     let helm = script(dir, "helm", &format!("echo '{version}'"));
     (helm, format!("{}:/usr/bin:/bin", dir.display()))
 }
+
+/// `attempt` again while it fails with "Text file busy" (ETXTBSY), for up
+/// to about a second. Tests run in parallel threads, and a process another
+/// thread forks while `script` still has a fake `helm` open for writing
+/// inherits that descriptor until it execs; Linux refuses to exec a file
+/// anything holds open for writing. A real `helm` isn't freshly written, so
+/// only tests retry.
+pub(super) async fn past_busy<T, F>(mut attempt: impl FnMut() -> F) -> std::io::Result<T>
+where
+    F: Future<Output = std::io::Result<T>>,
+{
+    const ATTEMPTS: u32 = 100;
+    let mut tries = 1;
+    loop {
+        match attempt().await {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < ATTEMPTS =>
+            {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            result => return result,
+        }
+    }
+}
