@@ -6,7 +6,6 @@
 
 use super::ResourcePanel;
 use super::category::Category;
-use crate::config::workspace::ResourceGroups;
 use crate::util::shell::ResourceGroupMemory;
 use gpui_kit::{App, Context};
 
@@ -24,25 +23,43 @@ impl ResourcePanel {
         self.expanded_subgroups = groups.expanded_subgroups.into_iter().collect();
     }
 
-    /// Records this panel's folds for its context, then re-renders - every
-    /// fold's last step.
-    pub(super) fn groups_changed(&mut self, cx: &mut Context<Self>) {
-        let mut collapsed_sections: Vec<String> = self
-            .collapsed
-            .iter()
-            .map(|category| category.key().to_string())
-            .collect();
-        collapsed_sections.sort();
-        let mut expanded_subgroups: Vec<String> = self.expanded_subgroups.iter().cloned().collect();
-        expanded_subgroups.sort();
-        ResourceGroupMemory::record(
-            cx,
-            &self.context_name,
-            ResourceGroups {
-                collapsed_sections,
-                expanded_subgroups,
-            },
-        );
+    /// Records `fold` - only that - in its context's remembered groups, then
+    /// re-renders: every fold's last step. Only the changed key is written,
+    /// so two windows on one context each keep what the other folded.
+    pub(super) fn groups_changed(&mut self, fold: Fold, cx: &mut Context<Self>) {
+        ResourceGroupMemory::update(cx, &self.context_name, |groups| match fold {
+            Fold::Section(category) => set_member(
+                &mut groups.collapsed_sections,
+                category.key(),
+                self.collapsed.contains(&category),
+            ),
+            Fold::Subgroup(group) => set_member(
+                &mut groups.expanded_subgroups,
+                &group,
+                self.expanded_subgroups.contains(&group),
+            ),
+            Fold::AllSubgroups => {
+                groups.expanded_subgroups = self.expanded_subgroups.iter().cloned().collect();
+            }
+        });
         cx.notify();
+    }
+}
+
+/// What one fold changed.
+pub(super) enum Fold {
+    /// One top-level section, collapsed or expanded.
+    Section(Category),
+    /// One Custom Resources subgroup, by API group.
+    Subgroup(String),
+    /// Collapse or expand all: every subgroup at once.
+    AllSubgroups,
+}
+
+/// Puts `key` in `list` or takes it out.
+fn set_member(list: &mut Vec<String>, key: &str, member: bool) {
+    list.retain(|entry| entry != key);
+    if member {
+        list.push(key.to_string());
     }
 }
