@@ -73,6 +73,7 @@ says it no longer exists.
 | Values | <kbd>3</kbd> | The values the release was installed or upgraded with, as `helm get values` prints them. Hidden until you reveal them. |
 | Manifest | <kbd>4</kbd> | The objects the chart rendered, as `helm get manifest` prints them. Hidden until you reveal it. |
 | Notes | <kbd>5</kbd> | The chart's notes, as `helm get notes` prints them. |
+| Resources | <kbd>6</kbd> | Every object the deployed revision's manifest declares: its kind, name and namespace, and whether it's missing from the cluster. |
 
 Click a tab to show it too. Each tab is also in the command palette while the panel has focus.
 
@@ -94,6 +95,19 @@ shows.
 Drag across the notes, or across revealed values or a revealed manifest, to select part of them
 and copy it. **Helm Release: Copy Values** and **Helm Release: Copy Manifest** copy all the revealed
 text. They're in the command palette only while it shows, and the **Copy** button beside it does the same.
+
+### Resources
+
+The Resources tab lists the objects the deployed revision created, as `helm get manifest` shows
+them. An object without its own namespace is in the release's. A cluster-scoped object, such as a
+ClusterRole, has none. Fernrohr checks that each object exists when the tab opens and again after
+an upgrade or rollback, and marks one the cluster doesn't have as **missing**. Hooks aren't part of
+a release's manifest, so they aren't listed.
+
+Move between objects with <kbd>↓</kbd> and <kbd>↑</kbd> and press <kbd>Enter</kbd> (**Helm Release:
+Open Selected Resource**) to open the selected one's panel, or click its name. Opening a missing
+object shows a panel saying it doesn't exist. An object of a kind the cluster doesn't serve is
+listed as plain text and can't be opened.
 
 ## Roll back or uninstall a release
 

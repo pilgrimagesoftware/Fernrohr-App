@@ -10,6 +10,7 @@ mod commands;
 mod fetch;
 mod panel;
 mod render;
+mod resources;
 pub(crate) mod restore;
 mod reveal;
 mod text_tab;

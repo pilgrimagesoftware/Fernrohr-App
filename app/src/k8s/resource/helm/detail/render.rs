@@ -1,10 +1,12 @@
-//! Drawing the release detail panel: its tab bar, the Overview, History and
-//! Notes tabs, the hint row, and the states that stand in for them.
+//! Drawing the release detail panel: its tab bar, the Overview, History,
+//! Notes and Resources tabs, the hint row, and the states that stand in for
+//! them.
 
 use super::commands::{
-    CopyManifest, CopyValues, HISTORY_KEY, MANIFEST_KEY, NOTES_KEY, OVERVIEW_KEY,
-    PANEL_KEY_CONTEXT, REVEAL_KEY, ShowHistory, ShowManifest, ShowNotes, ShowOverview, ShowValues,
-    ToggleReveal, VALUES_KEY, VIEW_MANIFEST_KEY, VIEW_VALUES_KEY, ViewManifest, ViewValues,
+    CopyManifest, CopyValues, HISTORY_KEY, MANIFEST_KEY, NOTES_KEY, OPEN_RESOURCE_KEY,
+    OVERVIEW_KEY, OpenResource, PANEL_KEY_CONTEXT, RESOURCES_KEY, REVEAL_KEY, ShowHistory,
+    ShowManifest, ShowNotes, ShowOverview, ShowResources, ShowValues, ToggleReveal, VALUES_KEY,
+    VIEW_MANIFEST_KEY, VIEW_VALUES_KEY, ViewManifest, ViewValues,
 };
 use super::fetch::Fetched;
 use super::panel::{HelmReleasePanel, ReleaseTab};
@@ -39,6 +41,7 @@ fn tab_action(tab: ReleaseTab) -> (Box<dyn Action>, &'static str) {
         ReleaseTab::Values => (Box::new(ShowValues), VALUES_KEY),
         ReleaseTab::Manifest => (Box::new(ShowManifest), MANIFEST_KEY),
         ReleaseTab::Notes => (Box::new(ShowNotes), NOTES_KEY),
+        ReleaseTab::Resources => (Box::new(ShowResources), RESOURCES_KEY),
     }
 }
 
@@ -248,6 +251,7 @@ impl HelmReleasePanel {
             ReleaseTab::History => self.history_tab(cx),
             ReleaseTab::Values | ReleaseTab::Manifest => self.text_tab(self.tab, window, cx),
             ReleaseTab::Notes => self.notes_tab(cx),
+            ReleaseTab::Resources => self.resources_tab(cx),
         };
         let mut hints = KeyHintRow::new(HINTS_ID)
             .hint_gap(space.control_gap)
@@ -271,7 +275,7 @@ impl HelmReleasePanel {
             ReleaseTab::Values | ReleaseTab::Manifest => {
                 &[(&ToggleReveal, REVEAL_KEY, "Reveal/Hide")]
             }
-            ReleaseTab::Overview | ReleaseTab::Notes => &[],
+            ReleaseTab::Overview | ReleaseTab::Notes | ReleaseTab::Resources => &[],
         };
         for (action, fallback, label) in extra {
             hints = hints.hint(KeyHint::for_action(
@@ -281,6 +285,18 @@ impl HelmReleasePanel {
                 *label,
                 window,
             ));
+        }
+        if self.tab == ReleaseTab::Resources {
+            hints = hints.hint(
+                KeyHint::for_action(
+                    &OpenResource,
+                    Some(PANEL_KEY_CONTEXT),
+                    OPEN_RESOURCE_KEY,
+                    "Open",
+                    window,
+                )
+                .essential(),
+            );
         }
         hints = hints
             .hint(KeyHint::for_action(
@@ -391,15 +407,31 @@ impl Render for HelmReleasePanel {
                     }))
                 },
             )
+            .on_action(
+                cx.listener(|this, _: &ShowResources, _, cx| this.show(ReleaseTab::Resources, cx)),
+            )
+            .on_action(cx.listener(|this, _: &OpenResource, window, cx| {
+                if this.tab == ReleaseTab::Resources {
+                    this.open_resource(window, cx);
+                }
+            }))
             // History's cursor: pure row movement, the keyboard rule's one exception.
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if this.tab != ReleaseTab::History || event.keystroke.modifiers.modified() {
+                if event.keystroke.modifiers.modified() {
                     return;
                 }
-                match event.keystroke.key.as_str() {
-                    "up" => this.move_selection(-1, cx),
-                    "down" => this.move_selection(1, cx),
-                    _ => {}
+                let by = match event.keystroke.key.as_str() {
+                    "up" => -1,
+                    "down" => 1,
+                    _ => return,
+                };
+                match this.tab {
+                    ReleaseTab::History => this.move_selection(by, cx),
+                    ReleaseTab::Resources => this.move_resource_selection(by, cx),
+                    ReleaseTab::Overview
+                    | ReleaseTab::Values
+                    | ReleaseTab::Manifest
+                    | ReleaseTab::Notes => {}
                 }
             }))
             .child(

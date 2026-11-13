@@ -358,6 +358,8 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Helm Release: View Revision's Manifest | <kbd>M</kbd> | `HelmReleasePanel` | — | `helm_release.view_manifest` |
 | Helm Release: Copy Values | — | `HelmReleasePanel` | — | `helm_release.copy_values` |
 | Helm Release: Copy Manifest | — | `HelmReleasePanel` | — | `helm_release.copy_manifest` |
+| Helm Release: Resources | <kbd>6</kbd> | `HelmReleasePanel` | — | `helm_release.resources` |
+| Helm Release: Open Selected Resource | <kbd>↵</kbd> | `HelmReleasePanel` | — | `helm_release.open_resource` |
 | Helm Release: Roll Back… | <kbd>⌃R</kbd> | `HelmReleasePanel` | — | `helm_release.rollback` |
 | Helm Release: Uninstall… | <kbd>⌃D</kbd> | `HelmReleasePanel` | — | `helm_release.uninstall` |
 
