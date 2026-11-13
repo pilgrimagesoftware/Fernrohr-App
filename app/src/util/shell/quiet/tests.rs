@@ -1,13 +1,15 @@
 //! #236, headless: the last window closing disconnects everything and leaves
 //! the app running quiet, with the MCP server kept or stopped by the setting;
 //! reopening restores the window that closed last and starts the server again;
-//! a context from the status menu opens a window connected to it.
+//! a context from the status menu opens a window connected to it, where the
+//! last window was and at its size (#350).
 
 use crate::config::ui::BackgroundMcp;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::util::shell::quiet::{
-    Hooks, OpenContextWindow, QUIET_MODE, install, is_quiet, quit_mode, register_handlers, reopen,
+    Hooks, OpenContextWindow, QUIET_MODE, context_window_layout, install, is_quiet, quit_mode,
+    register_handlers, reopen,
 };
 use crate::util::shell::test_support::temp_workspace_path;
 use crate::util::shell::{
@@ -227,4 +229,72 @@ async fn an_approval_with_no_window_reopens_one_to_ask_in(cx: &mut TestAppContex
             .unwrap_or(false)
     });
     assert!(asking, "with its dialog open");
+}
+
+/// #350: a context from the status menu opens at the size and position of the
+/// window that closed last, not the default - and only on that context.
+#[gpui_kit::test]
+async fn a_status_menu_window_takes_the_last_closed_geometry(cx: &mut TestAppContext) {
+    let window = quiet_app(BackgroundMcp::KeepRunning, cx);
+    close(window, cx);
+    cx.update(|cx| {
+        for layout in cx.global_mut::<ClosedWindowLayouts>().0.values_mut() {
+            layout.width = 1400.0;
+            layout.height = 900.0;
+            layout.x = Some(40.0);
+            layout.y = Some(60.0);
+        }
+        ClusterRegistry::insert_test_session(cx, "staging", ConnectionState::Connecting);
+        cx.dispatch_action(&OpenContextWindow {
+            context: "staging".into(),
+        });
+    });
+    cx.run_until_parked();
+    let windows = main_windows(cx);
+    assert_eq!(windows.len(), 1);
+    assert_eq!(
+        contexts_of(windows[0], cx),
+        ["staging"],
+        "only the chosen context"
+    );
+    let size = cx.update(|cx| {
+        windows[0]
+            .update(cx, |_, window, _| window.viewport_size())
+            .expect("the window is open")
+    });
+    assert_eq!(
+        (f32::from(size.width), f32::from(size.height)),
+        (1400.0, 900.0),
+        "the last window's size"
+    );
+}
+
+#[test]
+fn a_context_window_layout_keeps_geometry_not_contexts() {
+    let last = WindowLayout {
+        width: 1400.0,
+        height: 900.0,
+        x: Some(40.0),
+        y: Some(60.0),
+        contexts: vec!["demo".into()],
+        resource_panel_width: Some(300.0),
+        ..WindowLayout::default()
+    };
+    let layout = context_window_layout("staging", Some(last));
+    assert_eq!(layout.contexts, ["staging"]);
+    assert!(layout.panels.is_empty());
+    assert_eq!((layout.width, layout.height), (1400.0, 900.0));
+    assert_eq!((layout.x, layout.y), (Some(40.0), Some(60.0)));
+    assert_eq!(layout.resource_panel_width, Some(300.0));
+
+    let fresh = context_window_layout("staging", None);
+    assert_eq!(
+        (fresh.width, fresh.height, fresh.x),
+        (
+            WindowLayout::default().width,
+            WindowLayout::default().height,
+            None
+        ),
+        "nothing closed yet: the default size, centred"
+    );
 }

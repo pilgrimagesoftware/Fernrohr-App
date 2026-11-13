@@ -167,32 +167,49 @@ pub(super) fn leave(cx: &mut App) {
 /// default window when none has, and brings the app forward with it focused.
 /// For the Dock icon, the status menu and an agent that needs a window.
 pub fn reopen(cx: &mut App) -> AnyWindowHandle {
-    // Only the last main window to close is recorded (`record_closing_layout`),
-    // and a main window opening forgets it (`leave`), so there is at most one.
-    let layout = if cx.has_global::<ClosedWindowLayouts>() {
-        let closed = &mut cx.global_mut::<ClosedWindowLayouts>().0;
-        let last = closed.keys().next().copied();
-        last.and_then(|id| closed.remove(&id))
-    } else {
-        None
-    }
-    .unwrap_or_default();
+    let layout = take_last_closed(cx).unwrap_or_default();
     let handle = open_window(cx, layout);
     bring_forward(handle, cx);
     handle
 }
 
-/// Opens a main window connected to `context`, and brings it forward.
+/// Opens a main window connected to `context`, and brings it forward. It
+/// takes the size and position of the main window that closed last, if one
+/// did, so a window opened from the status menu comes back where the user
+/// left the previous one rather than at the default size (#350).
 pub fn open_context_window(context: &str, cx: &mut App) -> AnyWindowHandle {
-    let handle = open_window(
-        cx,
-        WindowLayout {
-            contexts: vec![context.to_string()],
-            ..WindowLayout::default()
-        },
-    );
+    let layout = context_window_layout(context, take_last_closed(cx));
+    let handle = open_window(cx, layout);
     bring_forward(handle, cx);
     handle
+}
+
+/// The layout for a window on `context` alone: `last_closed`'s geometry and
+/// Resource panel width when there is one, otherwise the default. Its contexts
+/// and panels are not carried over - the window is for `context`.
+pub(super) fn context_window_layout(
+    context: &str,
+    last_closed: Option<WindowLayout>,
+) -> WindowLayout {
+    let geometry = last_closed.unwrap_or_default();
+    WindowLayout {
+        contexts: vec![context.to_string()],
+        panels: Vec::new(),
+        ..geometry
+    }
+}
+
+/// Removes and returns the layout of the main window that closed last, if one
+/// did. Only the last main window to close is recorded
+/// (`record_closing_layout`), and a main window opening forgets it (`leave`),
+/// so there is at most one.
+fn take_last_closed(cx: &mut App) -> Option<WindowLayout> {
+    if !cx.has_global::<ClosedWindowLayouts>() {
+        return None;
+    }
+    let closed = &mut cx.global_mut::<ClosedWindowLayouts>().0;
+    let last = closed.keys().next().copied();
+    last.and_then(|id| closed.remove(&id))
 }
 
 /// A main window if one is open, otherwise one [`reopen`]ed - for an agent's
