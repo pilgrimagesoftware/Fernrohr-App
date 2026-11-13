@@ -8,6 +8,15 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 
+/// Every identifier [`LogsPanel::key_context`] can put on the panel's one
+/// element, for `keymap::conflicts` (#331): commands in any of them can be
+/// live at once.
+pub(crate) const KEY_CONTEXT_GROUP: &[&str] = &[
+    PANEL_KEY_CONTEXT,
+    super::super::commands::LABEL_LOGS_KEY_CONTEXT,
+    super::super::commands::TYPED_LABELS_KEY_CONTEXT,
+];
+
 /// A typed panel's selector field, for tests.
 pub(in crate::util) const SELECTOR_INPUT: &str = "logs-selector";
 /// A typed panel's reset button (#247), for tests.
@@ -74,7 +83,8 @@ impl LogsPanel {
     }
 
     /// The panel's key context: a typed label panel's adds its own, where the
-    /// key focusing its field is bound.
+    /// key focusing its field is bound. Every identifier it adds is in
+    /// [`KEY_CONTEXT_GROUP`].
     pub(in crate::util::logs) fn key_context(&self) -> KeyContext {
         let mut context = KeyContext::default();
         context.add(PANEL_KEY_CONTEXT);
