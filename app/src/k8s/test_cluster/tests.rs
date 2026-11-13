@@ -79,3 +79,36 @@ async fn a_metadata_list_carries_no_data(cx: &mut TestAppContext) {
     assert_eq!(names(&listed.items, |s| s.metadata.name.clone()), ["a"]);
     assert_eq!(cluster.list_requests(), (1, 0), "asked for metadata only");
 }
+
+/// `!=` keeps every object whose label differs, including one without it, as
+/// a real server does.
+#[gpui_kit::test]
+async fn a_not_equal_label_term_excludes_only_the_matching_value(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let (cluster, client) = FakeCluster::start(cx);
+    cluster.apply("/api/v1", "secrets", secret("a", "Opaque", Some("helm")));
+    cluster.apply("/api/v1", "secrets", secret("b", "Opaque", Some("other")));
+    cluster.apply("/api/v1", "secrets", secret("c", "Opaque", None));
+    let handle = cx.update(|cx| crate::runtime::handle(cx));
+    let api: Api<Secret> = Api::namespaced(client, "shop");
+    let listed = handle
+        .block_on(api.list(&ListParams::default().labels("owner!=helm")))
+        .unwrap();
+    assert_eq!(
+        names(&listed.items, |s| s.metadata.name.clone()),
+        ["b", "c"]
+    );
+}
+
+#[test]
+#[should_panic(expected = "unsupported label selector term")]
+fn a_set_based_label_term_is_refused() {
+    super::request::Selector::parse("labelSelector=tier%20in%20%28cache%29");
+}
+
+#[test]
+#[should_panic(expected = "unsupported label selector term")]
+fn an_existence_label_term_is_refused() {
+    super::request::Selector::parse("labelSelector=owner");
+}

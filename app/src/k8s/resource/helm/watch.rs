@@ -82,7 +82,10 @@ fn fetch_latest(client: Client, fetch: Fetch, table: WeakEntity<HelmReleasesTabl
     let rx = crate::runtime::spawn_stream(cx, 1, move |tx| async move {
         let api: Api<Secret> = Api::namespaced(client, &namespace);
         let summary = match api.get(&secret).await {
-            Ok(secret) => summarize(&secret),
+            // Gunzipping can mean tens of MiB of work: off the async workers.
+            Ok(secret) => tokio::task::spawn_blocking(move || summarize(&secret))
+                .await
+                .unwrap_or_else(|_| Summary::Unreadable("the revision couldn't be read".into())),
             Err(error) => Summary::Unreadable(fetch_failure(&error)),
         };
         let _ = tx.send(summary).await;

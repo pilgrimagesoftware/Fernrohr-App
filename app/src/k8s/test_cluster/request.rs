@@ -84,12 +84,50 @@ pub(super) fn merge(target: &mut Value, patch: &Value) {
     }
 }
 
-/// What a list or watch's query selects: equality label terms, and a `type`
-/// field term.
+/// What a list or watch's query selects: label terms of equality (`a=b`,
+/// `a==b`) and inequality (`a!=b`, which an object without the label also
+/// matches, as on a real server), and a `type` field term. Any other label
+/// syntax - set-based (`a in (b)`, `a notin (b)`) or existence (`a`, `!a`) -
+/// panics, so a test can't silently get the wrong objects back. Field terms
+/// other than `type` are ignored: the events tests pin objects with them.
 #[derive(Default)]
 pub(super) struct Selector {
-    labels: Vec<(String, String)>,
+    labels: Vec<LabelTerm>,
     object_type: Option<String>,
+}
+
+/// One label term: the label, its value, and whether it must equal it.
+struct LabelTerm {
+    name: String,
+    value: String,
+    equal: bool,
+}
+
+impl LabelTerm {
+    fn parse(term: &str) -> Self {
+        let (name, value, equal) = if let Some((name, value)) = term.split_once("!=") {
+            (name, value, false)
+        } else if let Some((name, value)) = term.split_once("==").or_else(|| term.split_once('=')) {
+            (name, value, true)
+        } else {
+            panic!("FakeCluster: unsupported label selector term {term:?}");
+        };
+        let (name, value) = (name.trim(), value.trim());
+        let plain = |text: &str| !text.is_empty() && !text.contains([' ', '(', ')', '!', '=']);
+        assert!(
+            plain(name) && !value.contains([' ', '(', ')', '!', '=']),
+            "FakeCluster: unsupported label selector term {term:?}"
+        );
+        Self {
+            name: name.to_string(),
+            value: value.to_string(),
+            equal,
+        }
+    }
+
+    fn matches(&self, labels: &Value) -> bool {
+        (labels[self.name.as_str()] == self.value.as_str()) == self.equal
+    }
 }
 
 impl Selector {
@@ -102,16 +140,13 @@ impl Selector {
             let value = percent_encoding::percent_decode_str(value)
                 .decode_utf8_lossy()
                 .to_string();
-            let terms = value.split(',').filter_map(|term| {
-                let (name, wanted) = term.split_once("==").or_else(|| term.split_once('='))?;
-                Some((name.trim().to_string(), wanted.trim().to_string()))
-            });
+            let terms = value.split(',').filter(|term| !term.trim().is_empty());
             match key {
-                "labelSelector" => selector.labels.extend(terms),
+                "labelSelector" => selector.labels.extend(terms.map(LabelTerm::parse)),
                 "fieldSelector" => {
-                    for (name, wanted) in terms {
-                        if name == "type" {
-                            selector.object_type = Some(wanted);
+                    for term in terms {
+                        if let Some(("type", wanted)) = term.split_once('=') {
+                            selector.object_type = Some(wanted.trim().to_string());
                         }
                     }
                 }
@@ -123,9 +158,7 @@ impl Selector {
 
     pub(super) fn matches(&self, object: &Value) -> bool {
         let labels = &object["metadata"]["labels"];
-        self.labels
-            .iter()
-            .all(|(name, wanted)| labels[name.as_str()] == wanted.as_str())
+        self.labels.iter().all(|term| term.matches(labels))
             && self
                 .object_type
                 .as_ref()
