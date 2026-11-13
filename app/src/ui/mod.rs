@@ -14,6 +14,7 @@ pub mod detail;
 pub(crate) mod exec_library;
 pub mod forward_indicator;
 pub mod forward_stop;
+pub mod help;
 pub mod icon;
 pub mod icon_tooltip;
 pub mod key_hint_row;

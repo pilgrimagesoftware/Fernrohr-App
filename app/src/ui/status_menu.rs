@@ -3,9 +3,11 @@
 //! an entry does - dispatch the existing command it stands for ([`choose`]),
 //! so the menu is one more route to them, not a parallel implementation.
 //!
-//! - **Contexts ▸** every kubeconfig context; one opens a main window
-//!   connected to it.
+//! - **New Window**, then **Contexts ▸**: every kubeconfig context; one
+//!   opens a main window connected to it.
 //! - **Settings…**, **MCP…** (Settings at Agent Access), **Tunnel Manager…**
+//! - a separator, **About Fernrohr**, **Fernrohr Documentation**, **Report
+//!   Issue** (#362)
 //! - a separator, then **Quit Fernrohr**.
 //!
 //! Drawing it is platform code: AppKit's `NSStatusItem` on macOS
@@ -46,6 +48,10 @@ pub enum Choice {
     /// Settings, at Agent Access: the MCP server's setting and agent setup.
     Mcp,
     TunnelManager,
+    NewWindow,
+    About,
+    Documentation,
+    ReportIssue,
     Quit,
 }
 
@@ -59,7 +65,27 @@ impl Choice {
             Choice::Settings => Box::new(crate::ui::settings::OpenSettings),
             Choice::Mcp => Box::new(crate::ui::settings::OpenAgentAccess),
             Choice::TunnelManager => Box::new(crate::ui::tunnels::TunnelsManage),
+            Choice::NewWindow => Box::new(crate::util::shell::NewWindow),
+            Choice::About => Box::new(crate::ui::menu::About),
+            Choice::Documentation => Box::new(crate::ui::help::OpenDocumentation),
+            Choice::ReportIssue => Box::new(crate::ui::report_issue::ReportIssue),
             Choice::Quit => Box::new(crate::ui::menu::Quit),
+        }
+    }
+
+    /// Whether choosing it shows a Fernrohr window, so the app comes forward
+    /// with it: chosen from the menu bar, the app may be in the background.
+    #[cfg(any(target_os = "macos", test))]
+    pub fn shows_a_window(&self) -> bool {
+        match self {
+            Choice::Context(_)
+            | Choice::Settings
+            | Choice::Mcp
+            | Choice::TunnelManager
+            | Choice::NewWindow
+            | Choice::About
+            | Choice::ReportIssue => true,
+            Choice::Documentation | Choice::Quit => false,
         }
     }
 }
@@ -67,6 +93,10 @@ impl Choice {
 /// The menu for `contexts`, top to bottom.
 pub fn items(contexts: &[String]) -> Vec<Item> {
     vec![
+        Item::Command {
+            title: "New Window",
+            choice: Choice::NewWindow,
+        },
         Item::Contexts(contexts.to_vec()),
         Item::Command {
             title: "Settings\u{2026}",
@@ -82,6 +112,19 @@ pub fn items(contexts: &[String]) -> Vec<Item> {
         },
         Item::Separator,
         Item::Command {
+            title: "About Fernrohr",
+            choice: Choice::About,
+        },
+        Item::Command {
+            title: "Fernrohr Documentation",
+            choice: Choice::Documentation,
+        },
+        Item::Command {
+            title: "Report Issue",
+            choice: Choice::ReportIssue,
+        },
+        Item::Separator,
+        Item::Command {
             title: "Quit Fernrohr",
             choice: Choice::Quit,
         },
@@ -93,6 +136,9 @@ pub fn items(contexts: &[String]) -> Vec<Item> {
 #[cfg(target_os = "macos")]
 pub fn choose(choice: &Choice, cx: &mut gpui_kit::App) {
     cx.dispatch_action(choice.action().as_ref());
+    if choice.shows_a_window() {
+        cx.activate(true);
+    }
 }
 
 #[cfg(test)]

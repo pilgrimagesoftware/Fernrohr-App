@@ -49,6 +49,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Open MCP Settings… | — | Global | — | `settings.open_agent_access` |
 | Keep the MCP Server Running in the Background (macOS) | — | Global | — | `settings.mcp_keep_in_background` |
 | Stop the MCP Server When the Last Window Closes (macOS) | — | Global | — | `settings.mcp_stop_with_last_window` |
+| Fernrohr Documentation | — | Global | Help | `help.documentation` |
 | Report Issue | <kbd>⌘⇧/</kbd> | Global | Help | `help.report_issue` |
 | Copy MCP Setup Command | — | Global | — | `mcp.copy_setup_command` |
 
