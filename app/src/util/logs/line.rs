@@ -97,6 +97,15 @@ impl LogLine {
         })
     }
 
+    /// How many characters the line shows ([`fmt::Display`]): its width in
+    /// the monospaced code font, counted without building the string.
+    pub fn width(&self) -> usize {
+        let tag = self.source.as_ref().map_or(0, |source| {
+            source.tag().chars().count() + 1 + SOURCE_SEPARATOR.chars().count() + 1
+        });
+        tag + self.text.chars().count()
+    }
+
     /// Whether this line reads as `shown`: its text, after `tag │ ` when it
     /// has a source - compared in place, without building that string.
     fn reads_as(&self, shown: &str) -> bool {

@@ -199,6 +199,7 @@ impl LogsPanel {
         end_marker: Option<&'static str>,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let widest = widest_row(lines, end_marker);
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
         let muted = cx.theme().muted_foreground;
@@ -211,7 +212,9 @@ impl LogsPanel {
             .size_full()
             .p(crate::ui::space::spacing(cx).panel_inset)
             .code_font(cx)
-            .overflow_x_scrollbar()
+            // The list scrolls itself both ways (#365); this only draws the
+            // horizontal bar for it.
+            .horizontal_scrollbar(&self.scroll_handle)
             .child(
                 uniform_list(
                     "logs-panel-lines",
@@ -233,9 +236,31 @@ impl LogsPanel {
                     },
                 )
                 .track_scroll(&self.scroll_handle)
+                // A uniform list measures one row for its width: the widest,
+                // so a long line scrolls into view instead of being cut off.
+                .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+                .with_width_from_item(Some(widest))
                 .size_full(),
             )
             .into_any_element()
+    }
+}
+
+/// The index of the list's widest row: a log line, or the end marker (row
+/// `lines.len()`) when it is wider than every line. The first of equals.
+pub(super) fn widest_row(lines: &[LogLine], end_marker: Option<&str>) -> usize {
+    let (widest, width) =
+        lines
+            .iter()
+            .map(LogLine::width)
+            .enumerate()
+            .fold(
+                (0, 0),
+                |best, (ix, width)| if width > best.1 { (ix, width) } else { best },
+            );
+    match end_marker {
+        Some(marker) if marker.chars().count() > width => lines.len(),
+        _ => widest,
     }
 }
 
