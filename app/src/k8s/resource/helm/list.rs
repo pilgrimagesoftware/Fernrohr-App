@@ -17,6 +17,7 @@ mod table;
 
 pub(crate) use commands::register_commands;
 pub use panel::HelmReleasesPanel;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 pub use restore::register_restore;
 
 #[cfg(test)]
