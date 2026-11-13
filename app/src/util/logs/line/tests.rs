@@ -39,3 +39,17 @@ fn a_pods_colour_is_stable_and_shared_by_its_containers() {
         (0..40).map(|n| pod_colour(&format!("web-{n}"))).collect();
     assert!(spread.len() > 4, "pods spread over the palette: {spread:?}");
 }
+
+/// #365: a line's width counts what it shows - tag, separator and text - in
+/// characters, not bytes, so the widest line is the one that looks widest.
+#[test]
+fn a_lines_width_counts_shown_characters() {
+    assert_eq!(LogLine::plain("ready".into()).width(), 5);
+    assert_eq!(
+        LogLine::plain("größe".into()).width(),
+        5,
+        "chars, not bytes"
+    );
+    let tagged = LogLine::tagged(LineSource::new("web-1/app", "web-1"), "ready".into());
+    assert_eq!(tagged.width(), tagged.to_string().chars().count());
+}

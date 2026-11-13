@@ -200,7 +200,11 @@ impl Render for ClusterPicker {
                             crate::ui::picker_keys::manage_tunnels_key(window),
                         )),
                 )
-                .child(crate::ui::picker_keys::key_hints(window, cx))
+                .child(crate::ui::picker_keys::key_hints(
+                    self.selected_context.is_some(),
+                    window,
+                    cx,
+                ))
                 .track_focus(&self.focus_handle)
                 .into_any_element(),
         )

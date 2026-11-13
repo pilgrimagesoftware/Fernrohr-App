@@ -30,6 +30,11 @@ pub(crate) const BANNER: BannerIds = BannerIds {
 /// The hint row's id, which keeps whether it is collapsed.
 const HINTS_ID: &str = "helm-releases-hints";
 
+/// Every identifier the panel's element carries, for `keymap::conflicts`
+/// (#331): the panel's own and the sortable list's.
+pub(crate) const KEY_CONTEXT_GROUP: &[&str] =
+    &[PANEL_KEY_CONTEXT, crate::ui::list_sort::KEY_CONTEXT];
+
 /// What the loading and empty states call this list's rows.
 const KIND_LABEL: &str = "Helm releases";
 
