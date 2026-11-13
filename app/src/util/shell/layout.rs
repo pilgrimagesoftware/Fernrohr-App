@@ -144,8 +144,11 @@ pub(super) fn other_open_main_windows(except: WindowId, cx: &App) -> usize {
 }
 
 /// Closes `window` the way its close button does. `remove_window` skips the
-/// platform's should-close hook, so a main window's layout is recorded here first;
-/// other windows (Tunnels, About) have no layout to keep.
+/// platform's should-close hook, so a main window's dock arrangement is saved
+/// and its layout recorded here first, as that hook does - "Close Window?"'s
+/// confirm closes through here (#341); other windows (Tunnels, About) have no
+/// layout to keep. Never call it inside the window's `MainWindow` update: the
+/// save reads it (#135), which is why `Cmd-W` defers it.
 pub(crate) fn close_window(window: &mut Window, cx: &mut App) {
     let is_main = window.root::<Root>().flatten().is_some_and(|root| {
         root.read(cx)
@@ -155,6 +158,7 @@ pub(crate) fn close_window(window: &mut Window, cx: &mut App) {
             .is_ok()
     });
     if is_main {
+        save_window_dock_layout(window, cx);
         record_closing_layout(window.window_handle().window_id(), window, cx);
     }
     window.remove_window();
