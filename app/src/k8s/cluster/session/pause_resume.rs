@@ -47,6 +47,14 @@ impl ClusterRegistry {
                 {
                     events.task = None;
                 }
+                for (scope, watch) in &mut session.helm {
+                    if session
+                        .watchers
+                        .pause(&WatchKey::HelmReleases(scope.clone()), reason)
+                    {
+                        watch.task = None;
+                    }
+                }
             }
             HealthTransition::Resume => {
                 let session = cx
@@ -65,6 +73,15 @@ impl ClusterRegistry {
                     .keys()
                     .filter(|kind| {
                         let key = WatchKey::Kind((*kind).clone());
+                        session.watchers.resume(&key) && session.watchers.refcount(&key) > 0
+                    })
+                    .cloned()
+                    .collect();
+                let helm_scopes: Vec<HelmScope> = session
+                    .helm
+                    .keys()
+                    .filter(|scope| {
+                        let key = WatchKey::HelmReleases((*scope).clone());
                         session.watchers.resume(&key) && session.watchers.refcount(&key) > 0
                     })
                     .cloned()
@@ -90,6 +107,19 @@ impl ClusterRegistry {
                         .events
                     {
                         events.task = Some(task);
+                    }
+                }
+                for scope in helm_scopes {
+                    let task = Self::start_helm_watch(cx, context_name, client.clone(), &scope);
+                    if let Some(watch) = cx
+                        .global_mut::<Self>()
+                        .sessions
+                        .get_mut(context_name)
+                        .unwrap()
+                        .helm
+                        .get_mut(&scope)
+                    {
+                        watch.task = Some(task);
                     }
                 }
                 for kind in kinds {

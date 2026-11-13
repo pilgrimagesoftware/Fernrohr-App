@@ -19,6 +19,8 @@ pub(super) struct ClusterSession {
     /// The Event watch and its table, present while an events browser (or any
     /// other Event consumer) subscribes to it.
     pub(super) events: Option<EventsWatch>,
+    /// The Helm release watches, one per scope a Helm panel subscribes to.
+    pub(super) helm: HashMap<HelmScope, HelmWatch>,
     pub(super) watchers: WatchRegistry<WatchKey>,
     // Kept alive for as long as the session exists; aborts on drop like every other
     // owned background task. `None` for an unbound context, which has no forward to watch.
@@ -41,6 +43,13 @@ pub(super) struct KindWatch {
 /// task consuming the stream - `None` while the watch is paused.
 pub(super) struct EventsWatch {
     pub(super) table: Entity<EventsTable>,
+    pub(super) task: Option<gpui_kit::Task<()>>,
+}
+
+/// One scope's shared Helm release watch: the table its panels render from,
+/// and the task consuming the stream - `None` while the watch is paused.
+pub(super) struct HelmWatch {
+    pub(super) table: Entity<HelmReleasesTable>,
     pub(super) task: Option<gpui_kit::Task<()>>,
 }
 
@@ -132,6 +141,7 @@ impl ClusterRegistry {
                 client: None,
                 kinds: HashMap::new(),
                 events: None,
+                helm: HashMap::new(),
                 watchers: WatchRegistry::new(),
                 _health: health,
                 holders: HashSet::new(),
