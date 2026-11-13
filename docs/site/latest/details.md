@@ -170,9 +170,9 @@ Secret Values** (<kbd>H</kbd>).
 
 ### Events
 
-The Events tab lists events whose involved object is this pod, newest first, with
-age and repeat count, and updates live. It shows only events last seen inside the
-time window, and says how many older ones are hidden. If listing events fails,
+The Events tab lists events whose involved object is this pod, newest first, each
+with its age and, once it has repeated, how many times (x2, x3 and so on). The tab
+updates live. It shows only events last seen inside the time window, and says how many older ones are hidden. If listing events fails,
 for example because RBAC forbids it, the tab says so and the pod's other fields
 still load.
 
