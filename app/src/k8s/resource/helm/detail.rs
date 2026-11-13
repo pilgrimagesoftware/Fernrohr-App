@@ -19,6 +19,8 @@ pub(crate) use commands::{PANEL_KEY_CONTEXT as DETAIL_KEY_CONTEXT, register_comm
 pub use panel::HelmReleasePanel;
 #[cfg(test)]
 pub(crate) use panel::ReleaseTab;
+#[cfg(test)]
+pub(crate) use resources::Presence;
 pub use restore::register_restore;
 
 #[cfg(test)]

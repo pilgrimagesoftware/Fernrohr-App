@@ -12,6 +12,9 @@ pub(crate) mod manifest;
 mod table;
 mod watch;
 
+#[cfg(test)]
+mod live_tests;
+
 // UNWIRED(#370): the panels (helm-releases sections 3-4) are the first
 // callers of the rest.
 #[allow(unused_imports)]
