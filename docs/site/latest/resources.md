@@ -60,8 +60,12 @@ the top-level sections alone.
 The filter matches a kind's label, name, plural and API group, ignoring case,
 so `batch` finds the kinds in the `batch` group. A matching kind in a collapsed
 section or subgroup is shown anyway, and clearing the filter puts everything
-back as it was. Collapse state belongs to the window and isn't saved, so a new
-window starts with sections expanded and subgroups collapsed.
+back as it was.
+
+Fernrohr remembers which sections and subgroups you collapsed or expanded for
+each context, including across restarts. When the panel opens on a context, or
+you switch it to one, the groups are as you last left them there. A context you
+have never changed starts with sections expanded and subgroups collapsed.
 
 If the window has more than one cluster connection, a dropdown at the top of the
 panel chooses which cluster's kinds it shows.
@@ -73,9 +77,17 @@ add their own columns. A Services list, for example, adds type, cluster IP,
 external IP and ports, and a Deployments list adds replica counts. A kind with
 nothing extra to show has only the base columns.
 
-Any other kind, including custom resources such as Flux's HelmRelease and
-Kustomization, gains two columns once one of its objects reports
-`status.conditions`:
+A custom resource list shows the columns its CRD declares for `kubectl get`
+(`additionalPrinterColumns`), in the CRD's order. A CRD with a `Status` column
+reading `.status.phase`, for example, adds a Status column. Columns `kubectl`
+only shows with `-o wide` are left out, and so are ones that repeat Name,
+Namespace or Age. A value of True, False or Unknown is shown beside a dot in its
+tone, as Ready is below. To read a CRD you need permission to get
+`customresourcedefinitions`; without it, or if the CRD declares no columns, the
+list falls back to the columns below.
+
+Any other kind, and a custom resource whose CRD declares no columns, gains two
+columns once one of its objects reports `status.conditions`:
 
 - **Ready** shows the `Ready` condition's status (True, False or Unknown) beside
   a dot in its tone. It appears only if some object has a `Ready` condition.

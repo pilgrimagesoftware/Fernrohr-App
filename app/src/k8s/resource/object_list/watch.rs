@@ -1,17 +1,21 @@
 //! One kind's live rows over `Api<DynamicObject>`: a watch, or - for a kind that
-//! can be listed but not watched - polling (`unwatchable-kinds`).
+//! can be listed but not watched - polling (`unwatchable-kinds`). A custom
+//! resource's list first fetches its CRD's printer columns (#352).
 
+use super::columns::{self, PrinterColumns};
 use super::poll::poll_kind;
 use super::store::{ListMode, ObjectsTable};
+use crate::consts::CRD_COLUMNS_TIMEOUT;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::watch_stream::{self, OnNoResourceVersion, OnRefused, ReportRefusal};
 use gpui_kit::{App, Entity, Task};
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::api::{ApiResource, DynamicObject};
 use kube::{Api, Client};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc};
 
 /// Keeps `table` current with every `kind` object the client can see - across all
 /// namespaces for a namespaced kind, which the panel then narrows to its namespace
@@ -27,7 +31,59 @@ use tokio::sync::Notify;
 ///   silently forever, leaving the table empty.
 ///
 /// One task either way, so the registry entry that owns it owns the poller too.
+///
+/// A kind with no columns of its own waits first for its CRD's printer
+/// columns ([`printer_columns`]), so every row is built with their cells.
 pub fn watch_kind(
+    client: Client,
+    kind: &DiscoveredKind,
+    table: Entity<ObjectsTable>,
+    on_unauthorized: impl FnOnce(&mut App) + 'static,
+    cx: &mut App,
+) -> Task<()> {
+    let Some(mut printer) = printer_columns(client.clone(), kind, cx) else {
+        return list_kind(client, kind, table, on_unauthorized, cx);
+    };
+    let kind = kind.clone();
+    cx.spawn(async move |cx| {
+        if let Some(printer) = printer.recv().await {
+            cx.update(|cx| table.update(cx, |table, _| table.set_printer_columns(printer)));
+        }
+        let list = cx.update(|cx| list_kind(client, &kind, table, on_unauthorized, cx));
+        list.await;
+    })
+}
+
+/// Fetches `kind`'s CRD (`<plural>.<group>`) on the tokio runtime and sends
+/// its printer columns for the version listed, if it declares any. `None` -
+/// nothing to fetch - for a kind with columns of its own or in the core
+/// group. A CRD that can't be read (forbidden, an aggregated API with no CRD,
+/// [`CRD_COLUMNS_TIMEOUT`] passing) sends nothing: the list keeps the generic
+/// columns.
+fn printer_columns(
+    client: Client,
+    kind: &DiscoveredKind,
+    cx: &App,
+) -> Option<mpsc::Receiver<PrinterColumns>> {
+    let group = &kind.gvk.group;
+    if group.is_empty() || columns::for_kind(group, &kind.gvk.kind).is_some() {
+        return None;
+    }
+    let name = format!("{}.{group}", kind.plural);
+    let version = kind.gvk.version.clone();
+    Some(crate::runtime::spawn_stream(cx, 1, move |tx| async move {
+        let api: Api<CustomResourceDefinition> = Api::all(client);
+        let fetched = tokio::time::timeout(CRD_COLUMNS_TIMEOUT, api.get(&name)).await;
+        if let Ok(Ok(crd)) = fetched
+            && let Some(printer) = PrinterColumns::from_crd(&crd, &version)
+        {
+            let _ = tx.send(printer).await;
+        }
+    }))
+}
+
+/// Lists `kind` into `table` by its verbs, as [`watch_kind`] describes.
+fn list_kind(
     client: Client,
     kind: &DiscoveredKind,
     table: Entity<ObjectsTable>,

@@ -53,6 +53,7 @@ mod main_window;
 mod namespace_defaults;
 mod namespace_sets;
 mod new_instance;
+mod resource_groups;
 mod sort_defaults;
 mod tab_menu;
 mod warp;
@@ -110,6 +111,7 @@ pub(crate) use layout::{close_window, is_main_window, window_context_count, wind
 pub(crate) use logs_open::open_pods_logs;
 pub use main_window::MainWindow;
 // The list panels (`k8s::resource`) read and record per-kind sorts.
+pub(crate) use resource_groups::ResourceGroupMemory;
 pub(crate) use sort_defaults::SortDefaults;
 // `agent-mcp`'s navigation tools (`mcp::navigate`) are the callers.
 pub(crate) use agent::{

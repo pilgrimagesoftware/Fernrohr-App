@@ -16,7 +16,12 @@ impl ObjectListPanel {
         &self,
         cx: &App,
     ) -> Vec<ListColumn> {
-        ListColumn::for_kind(&self.kind, self.objects.read(cx).conditions_seen())
+        let objects = self.objects.read(cx);
+        ListColumn::for_kind(
+            &self.kind,
+            objects.conditions_seen(),
+            objects.printer_columns(),
+        )
     }
 
     /// The rows to show now: the kind's objects in this panel's namespaces

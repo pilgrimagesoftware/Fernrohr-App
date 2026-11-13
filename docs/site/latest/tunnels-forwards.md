@@ -144,7 +144,10 @@ You normally edit tunnels in the Tunnels window, not in the file.
 A context connects directly, or through exactly one tunnel. Many contexts can share a tunnel.
 
 - **Keyboard:** run **Set Tunnel for Context** (<kbd>⌘⇧B</kbd>, in the Context menu and the command
-  palette) and pick a tunnel, or Direct to unbind.
+  palette) and pick a tunnel, or Direct to unbind. In a connected window it applies to the active
+  context. In the cluster picker it applies to the selected context, so select one with
+  <kbd>↑</kbd>/<kbd>↓</kbd> first. Until you do, the menu item is disabled and the picker's
+  **Tunnel** hint is dimmed.
 - **Mouse:** use the tunnel selector on the context's row in the cluster picker.
 
 The picker shows each bound context's tunnel name, and says that an unbound context connects

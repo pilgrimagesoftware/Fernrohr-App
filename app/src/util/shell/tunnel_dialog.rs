@@ -98,4 +98,6 @@ pub(super) fn set_context_tunnel_and_close(
 }
 
 #[cfg(test)]
+mod picker_tests;
+#[cfg(test)]
 mod tests;
