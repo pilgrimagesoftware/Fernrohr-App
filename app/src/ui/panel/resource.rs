@@ -382,7 +382,7 @@ impl ResourcePanel {
         if !self.collapsed.remove(&category) {
             self.collapsed.insert(category);
         }
-        self.groups_changed(cx);
+        self.groups_changed(group_memory::Fold::Section(category), cx);
     }
 
     /// Flips the API-group subgroup `group`'s collapsed state inside Custom
@@ -391,7 +391,7 @@ impl ResourcePanel {
         if !self.expanded_subgroups.remove(group) {
             self.expanded_subgroups.insert(group.to_string());
         }
-        self.groups_changed(cx);
+        self.groups_changed(group_memory::Fold::Subgroup(group.to_string()), cx);
     }
 
     /// Collapses (`expanded: false`) or expands every Custom Resources
@@ -410,7 +410,7 @@ impl ResourcePanel {
         } else {
             HashSet::new()
         };
-        self.groups_changed(cx);
+        self.groups_changed(group_memory::Fold::AllSubgroups, cx);
     }
 
     /// The row for each discovered kind: its label, the target selecting it

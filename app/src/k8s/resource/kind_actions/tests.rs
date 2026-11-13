@@ -627,3 +627,65 @@ fn force_sync_is_offered_for_synced_kinds_that_can_be_patched() {
     config.verbs.patch = true;
     assert!(offered(&config, json!({})).is_empty());
 }
+
+/// `OFFERED_TOGETHER` holds whatever `offered` gives one object, for every
+/// kind with an action and every fact that changes which (#331).
+#[test]
+fn every_offer_is_one_of_the_sets_offered_together() {
+    let kinds = [
+        kind("", "Service", "services", true),
+        kind("batch", "CronJob", "cronjobs", true),
+        kind("batch", "Job", "jobs", true),
+        kind("apps", "Deployment", "deployments", true),
+        kind("", "PersistentVolumeClaim", "persistentvolumeclaims", true),
+        kind("", "Node", "nodes", false),
+        kind("", "ServiceAccount", "serviceaccounts", true),
+        kind("networking.k8s.io", "Ingress", "ingresses", true),
+        kind("", "ConfigMap", "configmaps", true),
+        kind(
+            "external-secrets.io",
+            "ExternalSecret",
+            "externalsecrets",
+            true,
+        ),
+        kind(
+            "kustomize.toolkit.fluxcd.io",
+            "Kustomization",
+            "kustomizations",
+            true,
+        ),
+        kind("argoproj.io", "Application", "applications", true),
+    ];
+    let taint = Taint {
+        key: "dedicated".into(),
+        value: None,
+        effect: "NoSchedule".into(),
+        raw: json!({}),
+    };
+    for facts in [
+        ObjectFacts::default(),
+        ObjectFacts {
+            suspended: true,
+            paused: true,
+            storage: Some("1Gi".into()),
+            taints: vec![taint],
+            host: Some("app.example.com".into()),
+            ..ObjectFacts::default()
+        },
+    ] {
+        for mut kind in kinds.clone() {
+            for patch in [false, true] {
+                kind.verbs.patch = patch;
+                let offered = KindAction::offered(&kind, &facts);
+                assert!(
+                    offered.is_empty()
+                        || KindAction::OFFERED_TOGETHER
+                            .iter()
+                            .any(|set| offered.iter().all(|action| set.contains(action))),
+                    "{}: {offered:?} is in no set",
+                    kind.gvk.kind
+                );
+            }
+        }
+    }
+}
