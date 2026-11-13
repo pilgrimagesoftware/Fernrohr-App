@@ -229,7 +229,11 @@ struct ClosingLoss {
 
 impl ClosingLoss {
     fn is_empty(&self) -> bool {
-        self.disconnecting.is_empty() && self.tunneled.is_empty() && self.unsaved.is_empty()
+        debug_assert!(
+            self.tunneled.iter().all(|c| self.disconnecting.contains(c)),
+            "a tunnel is lost only with its context"
+        );
+        self.disconnecting.is_empty() && self.unsaved.is_empty()
     }
 }
 

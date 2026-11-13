@@ -6,12 +6,14 @@
 //! and the edit.
 
 use super::tests::{Harness, edit_a_deployment, harness};
+use crate::config::dock_layouts::DockLayouts;
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::k8s::cluster::tunnel;
 use crate::tunnel::store::TunnelStore;
 use crate::ui::nav::OpenedPanel;
-use crate::util::shell::WindowMode;
+use crate::util::context_lifecycle::dock_layout_key;
+use crate::util::shell::{SavedDockLayouts, WindowMode};
 use gpui_kit::{AppContext as _, TestAppContext};
 
 impl Harness {
@@ -206,11 +208,24 @@ async fn the_close_button_with_a_connected_context_asks(cx: &mut TestAppContext)
     assert!(!h.dialog_open(), "Escape closes the question");
     assert_eq!(h.vcx.windows().len(), 1, "and keeps the window");
 
+    h.vcx
+        .update(|_, cx| cx.set_global(SavedDockLayouts(DockLayouts::default())));
     assert!(!h.vcx.simulate_close());
     h.vcx.run_until_parked();
     h.first_frame();
     h.press("enter");
     assert!(h.vcx.windows().is_empty(), "Enter closed the window");
+    // The window is gone, so read the global through the app.
+    let filed = h.vcx.cx.update(|cx| {
+        cx.global::<SavedDockLayouts>()
+            .0
+            .get(&dock_layout_key(&["demo".into()]))
+            .is_some()
+    });
+    assert!(
+        filed,
+        "the confirmed close saved the dock layout, as the hook does"
+    );
 }
 
 /// `Cmd-W`'s window close asks the same question over a connected context.
