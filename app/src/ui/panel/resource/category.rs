@@ -52,6 +52,27 @@ impl Category {
         }
     }
 
+    /// The section's stable name in the workspace file (#357) - unlike
+    /// [`Self::title`], never reworded.
+    pub(super) fn key(self) -> &'static str {
+        match self {
+            Category::Workloads => "workloads",
+            Category::Config => "config",
+            Category::Network => "network",
+            Category::Storage => "storage",
+            Category::Cluster => "cluster",
+            Category::AccessControl => "access-control",
+            Category::CustomResources => "custom-resources",
+        }
+    }
+
+    /// The section named `key`, or `None` for a name this build doesn't know.
+    pub(super) fn from_key(key: &str) -> Option<Category> {
+        Category::ALL
+            .into_iter()
+            .find(|category| category.key() == key)
+    }
+
     /// `group`/`plural`'s section, or [`Category::CustomResources`] when
     /// neither this table nor any earlier check names it - the fallback that
     /// keeps every discovered kind landing somewhere (design.md's "Grouping

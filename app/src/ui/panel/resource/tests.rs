@@ -18,6 +18,7 @@ use kube::core::GroupVersionKind;
 // `.claude/rules/rust-structure.md`.
 mod counts;
 mod filter;
+mod group_memory;
 mod grouping;
 mod keyboard_panel;
 mod logic;

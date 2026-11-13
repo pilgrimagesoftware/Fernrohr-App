@@ -1,6 +1,6 @@
 //! Tests for the shared detail-view pieces.
 
-use super::striped;
+use super::{event_meta, striped};
 use gpui_kit::{
     AvailableSpace, IntoElement, ParentElement as _, TestAppContext, div, point, px, size,
 };
@@ -205,4 +205,12 @@ fn a_secret_value_copies_only_while_revealed(cx: &mut gpui_kit::TestAppContext) 
     vcx.run_until_parked();
     let copied = vcx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()));
     assert_eq!(copied.as_deref(), Some("s3cret"));
+}
+
+/// A one-off event shows only its age; a repeated one adds its count.
+#[test]
+fn event_meta_hides_a_single_count() {
+    assert_eq!(event_meta("5m", 1), "5m");
+    assert_eq!(event_meta("5m", 0), "5m", "a missing count reads as once");
+    assert_eq!(event_meta("5m", 2), "5m · x2");
 }

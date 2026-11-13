@@ -60,8 +60,12 @@ the top-level sections alone.
 The filter matches a kind's label, name, plural and API group, ignoring case,
 so `batch` finds the kinds in the `batch` group. A matching kind in a collapsed
 section or subgroup is shown anyway, and clearing the filter puts everything
-back as it was. Collapse state belongs to the window and isn't saved, so a new
-window starts with sections expanded and subgroups collapsed.
+back as it was.
+
+Fernrohr remembers which sections and subgroups you collapsed or expanded for
+each context, including across restarts. When the panel opens on a context, or
+you switch it to one, the groups are as you last left them there. A context you
+have never changed starts with sections expanded and subgroups collapsed.
 
 If the window has more than one cluster connection, a dropdown at the top of the
 panel chooses which cluster's kinds it shows.

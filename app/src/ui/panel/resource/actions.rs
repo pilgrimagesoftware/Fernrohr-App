@@ -172,7 +172,7 @@ impl ResourcePanel {
     ) {
         if let Some(category) = self.highlighted_category() {
             self.collapsed.insert(category);
-            cx.notify();
+            self.groups_changed(super::group_memory::Fold::Section(category), cx);
         }
     }
 
@@ -185,7 +185,7 @@ impl ResourcePanel {
     ) {
         if let Some(category) = self.highlighted_category() {
             self.collapsed.remove(&category);
-            cx.notify();
+            self.groups_changed(super::group_memory::Fold::Section(category), cx);
         }
     }
 
