@@ -281,12 +281,22 @@ pub fn events(events: &Result<Vec<EventSummary>, String>, cx: &App) -> AnyElemen
                             div()
                                 .text_sm()
                                 .text_color(theme.muted_foreground)
-                                .child(format!("{} · x{}", event.age, event.count)),
+                                .child(event_meta(&event.age, event.count)),
                         ),
                 )
                 .child(div().text_sm().child(event.message.clone()))
         }))
         .into_any_element()
+}
+
+/// An event card's age line: the age, then "· xN" only once the event has
+/// repeated. A count of one says nothing the card doesn't already show.
+fn event_meta(age: &str, count: i32) -> String {
+    if count > 1 {
+        format!("{age} · x{count}")
+    } else {
+        age.to_owned()
+    }
 }
 
 /// One Secret key: its name, its size, a Show/Hide button (a tab stop, so

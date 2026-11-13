@@ -31,7 +31,7 @@ The icon's menu brings Fernrohr back:
 
 | Menu item | What it does |
 | --- | --- |
-| Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it. |
+| Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it, at the size and position of the window you closed last. |
 | Settings… | Opens Settings. |
 | MCP… | Opens Settings at Agent Access, with the MCP server's setting. |
 | Tunnel Manager… | Opens the Tunnel Manager. |
