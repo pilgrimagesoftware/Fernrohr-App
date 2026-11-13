@@ -20,8 +20,9 @@ pub(crate) fn redacted_manifest(manifest: &str) -> String {
 }
 
 /// The documents of a multi-document YAML stream: split at each line that
-/// starts a document (`---`, possibly followed by a comment).
-fn documents(manifest: &str) -> Vec<String> {
+/// starts a document (`---`, possibly followed by a comment). Each is parsed
+/// on its own, so a broken one costs only itself (also the Resources tab's).
+pub(crate) fn documents(manifest: &str) -> Vec<String> {
     let mut documents = vec![String::new()];
     for line in manifest.lines() {
         if line == "---" || line.starts_with("--- ") {

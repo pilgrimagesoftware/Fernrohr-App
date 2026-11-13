@@ -24,15 +24,17 @@ pub(crate) enum ReleaseTab {
     Values,
     Manifest,
     Notes,
+    Resources,
 }
 
 impl ReleaseTab {
-    pub(crate) const ALL: [ReleaseTab; 5] = [
+    pub(crate) const ALL: [ReleaseTab; 6] = [
         ReleaseTab::Overview,
         ReleaseTab::History,
         ReleaseTab::Values,
         ReleaseTab::Manifest,
         ReleaseTab::Notes,
+        ReleaseTab::Resources,
     ];
 
     /// Whether the tab shows text that stays hidden until revealed.
@@ -47,6 +49,7 @@ impl ReleaseTab {
             ReleaseTab::Values => "values",
             ReleaseTab::Manifest => "manifest",
             ReleaseTab::Notes => "notes",
+            ReleaseTab::Resources => "resources",
         }
     }
 
@@ -57,6 +60,7 @@ impl ReleaseTab {
             ReleaseTab::Values => "Values",
             ReleaseTab::Manifest => "Manifest",
             ReleaseTab::Notes => "Notes",
+            ReleaseTab::Resources => "Resources",
         }
     }
 
@@ -86,6 +90,12 @@ pub struct HelmReleasePanel {
     /// revision. Dropped on hide, on a tab or revision change, and with the
     /// panel (helm-releases D6).
     pub(super) revealed: Option<super::reveal::Revealed>,
+    /// The context's discovered kinds: which listed objects are cluster-scoped
+    /// and which can be followed (section 6).
+    pub(super) discovery: Entity<crate::k8s::cluster::discovery_registry::DiscoveredKinds>,
+    /// The Resources tab's objects, and its selection (section 6).
+    pub(super) resources: super::resources::Resources,
+    pub(super) selected_resource: usize,
     pub(super) focus_handle: FocusHandle,
 }
 
@@ -94,6 +104,15 @@ impl HelmReleasePanel {
         let connection = ClusterRegistry::connection(cx, &scope.context_name);
         cx.observe(&connection, |this: &mut Self, _, cx| {
             this.subscribe(cx);
+            cx.notify();
+        })
+        .detach();
+        let discovery = crate::k8s::cluster::discovery_registry::DiscoveryRegistry::kinds(
+            cx,
+            &scope.context_name,
+        );
+        cx.observe(&discovery, |this: &mut Self, _, cx| {
+            this.fetch_needed(cx);
             cx.notify();
         })
         .detach();
@@ -115,6 +134,9 @@ impl HelmReleasePanel {
             selected: None,
             actions: Default::default(),
             revealed: None,
+            discovery,
+            resources: Default::default(),
+            selected_resource: 0,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.subscribe(cx);
@@ -256,8 +278,12 @@ impl HelmReleasePanel {
             ReleaseTab::Overview
             | ReleaseTab::Values
             | ReleaseTab::Manifest
-            | ReleaseTab::Notes => history.iter().take(1).collect(),
+            | ReleaseTab::Notes
+            | ReleaseTab::Resources => history.iter().take(1).collect(),
         };
+        if self.tab == ReleaseTab::Resources {
+            self.fetch_resources(cx);
+        }
         let latest = history.first().map(|revision| revision.version);
         for revision in wanted {
             let current = self

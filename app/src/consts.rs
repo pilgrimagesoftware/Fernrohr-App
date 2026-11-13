@@ -53,6 +53,11 @@ pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// group is killed and the run reported failed (`helm-releases` D8).
 pub(crate) const HELM_ACTION_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// How many of a release's objects the Resources tab checks at once (one GET
+/// each): a large chart, perhaps through a tunnel, doesn't arrive at the API
+/// server as one burst its flow control would throttle.
+pub(crate) const HELM_RESOURCE_CHECKS: usize = 8;
+
 /// How long `helm version --short` may take when checking the binary.
 pub(crate) const HELM_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 

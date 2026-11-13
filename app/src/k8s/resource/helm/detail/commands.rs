@@ -12,18 +12,20 @@ actions!(
         ShowValues,
         ShowManifest,
         ShowNotes,
+        ShowResources,
         ToggleReveal,
         ViewValues,
         ViewManifest,
         CopyValues,
-        CopyManifest
+        CopyManifest,
+        OpenResource
     ]
 );
 
 /// The panel's key context.
 pub(crate) const PANEL_KEY_CONTEXT: &str = "HelmReleasePanel";
 
-/// The tabs' default keys; Resources (`6`) joins them with its tab.
+/// The tabs' default keys.
 pub(super) const OVERVIEW_KEY: &str = "1";
 pub(super) const HISTORY_KEY: &str = "2";
 pub(super) const VALUES_KEY: &str = "3";
@@ -34,6 +36,9 @@ pub(super) const REVEAL_KEY: &str = "r";
 /// From History: the selected revision's values, or its manifest.
 pub(super) const VIEW_VALUES_KEY: &str = "v";
 pub(super) const VIEW_MANIFEST_KEY: &str = "m";
+pub(super) const RESOURCES_KEY: &str = "6";
+/// Opens the Resources tab's selected object (section 6).
+pub(super) const OPEN_RESOURCE_KEY: &str = "enter";
 
 pub(crate) fn register_commands(registry: &mut CommandRegistry) {
     let mut register = |id, title, default_binding, action: Box<dyn Action>| {
@@ -106,5 +111,17 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         "Helm Release: Copy Manifest",
         "",
         Box::new(CopyManifest),
+    );
+    register(
+        "helm_release.resources",
+        "Helm Release: Resources",
+        RESOURCES_KEY,
+        Box::new(ShowResources),
+    );
+    register(
+        "helm_release.open_resource",
+        "Helm Release: Open Selected Resource",
+        OPEN_RESOURCE_KEY,
+        Box::new(OpenResource),
     );
 }
