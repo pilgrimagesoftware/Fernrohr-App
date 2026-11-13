@@ -9,6 +9,18 @@ Fernrohr lists a cluster's Helm releases by reading the Secrets Helm 3 and Helm 
 so you don't need the `helm` CLI to see them. The list stays live: an install, upgrade, rollback or
 uninstall shows up without refreshing.
 
+## Requirements
+
+Listing releases and reading their history, values and manifests need nothing beyond the cluster
+connection. Rolling back or uninstalling a release runs `helm` itself, so those actions need Helm 3
+or 4 installed. Fernrohr uses the `helm` on your login shell's PATH, or the one you name in
+**Settings → Tools** under **helm path**. Until it finds a usable `helm`, Rollback and Uninstall are
+shown disabled, with the reason. Settings → Tools also says which `helm` it found. See
+{{ '/latest/settings/' | relative_url }}.
+
+`helm` reaches the cluster the way the context does, through its tunnel if it has one, and signs in
+with the context's own credentials. Your kubeconfig isn't changed.
+
 ## Open the list
 
 - **Keyboard:** run **Helm Releases** from the command palette (<kbd>⌘⇧P</kbd>), or focus the
