@@ -3,8 +3,10 @@
 //! field conditions read as (`resource-status-message`).
 
 use super::super::model::{FieldValue, ObjectField};
+use crate::k8s::resource::pods::format_age;
 use crate::k8s::resource::status_tone;
 use crate::ui::detail::BadgeTone;
+use jiff::Timestamp;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use std::collections::BTreeMap;
@@ -108,6 +110,26 @@ pub(super) fn message_field(conditions: &[serde_json::Value]) -> Option<ObjectFi
     ))
 }
 
+/// The Last Transition field (#355): when the conditions' status last
+/// changed ([`status_tone::last_transition`]), as a time and how long ago -
+/// `None` without one.
+pub(super) fn transition_field(conditions: &[serde_json::Value]) -> Option<ObjectField> {
+    transition_field_at(conditions, Timestamp::now())
+}
+
+/// [`transition_field`] as of `now`.
+pub(super) fn transition_field_at(
+    conditions: &[serde_json::Value],
+    now: Timestamp,
+) -> Option<ObjectField> {
+    let time = status_tone::last_transition(conditions)?;
+    let age = format_age(now.duration_since(time).as_secs());
+    Some(ObjectField::text(
+        "Last Transition",
+        format!("{} ({age} ago)", time.strftime("%Y-%m-%d %H:%M:%S UTC")),
+    ))
+}
+
 /// The Ready field: the `Ready` condition's status, or `None` without one.
 pub(super) fn ready_field(conditions: &[serde_json::Value]) -> Option<ObjectField> {
     let status = status_tone::ready_status(conditions)?;
@@ -141,6 +163,37 @@ mod tests {
                 ("Stalled".into(), BadgeTone::Good),
                 ("Reconciling".into(), BadgeTone::Unknown),
             ]))
+        );
+    }
+
+    /// #355: the Last Transition field is when the Ready condition last changed,
+    /// with how long ago - else the latest any condition reports - and absent
+    /// when no condition gives a time.
+    #[test]
+    fn last_transition_reads_ready_first_then_the_latest() {
+        let now: jiff::Timestamp = "2026-10-02T03:00:00Z".parse().unwrap();
+        let text = |conditions: serde_json::Value| {
+            transition_field_at(conditions.as_array().unwrap(), now).map(|field| field.value.text())
+        };
+        assert_eq!(
+            text(serde_json::json!([
+                { "type": "Synced", "status": "True", "lastTransitionTime": "2026-10-02T02:00:00Z" },
+                { "type": "Ready", "status": "True", "lastTransitionTime": "2026-10-02T00:00:00Z" },
+            ])),
+            Some("2026-10-02 00:00:00 UTC (3h ago)".into()),
+            "Ready's, though Synced changed later"
+        );
+        assert_eq!(
+            text(serde_json::json!([
+                { "type": "Synced", "status": "True", "lastTransitionTime": "2026-10-02T02:00:00Z" },
+                { "type": "Healthy", "status": "True", "lastTransitionTime": "2026-10-01T00:00:00Z" },
+            ])),
+            Some("2026-10-02 02:00:00 UTC (1h ago)".into()),
+            "no Ready: the latest"
+        );
+        assert_eq!(
+            text(serde_json::json!([{ "type": "Ready", "status": "True" }])),
+            None
         );
     }
 }

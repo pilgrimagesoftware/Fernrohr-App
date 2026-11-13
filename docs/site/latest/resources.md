@@ -91,12 +91,15 @@ tone, as Ready is below. To read a CRD you need permission to get
 `customresourcedefinitions`; without it, or if the CRD declares no columns, the
 list falls back to the columns below.
 
-Any other kind, and a custom resource whose CRD declares no columns, gains two
+Any other kind, and a custom resource whose CRD declares no columns, gains these
 columns once one of its objects reports `status.conditions`:
 
 - **Ready** shows the `Ready` condition's status (True, False or Unknown) beside
   a dot in its tone. It appears only if some object has a `Ready` condition.
   Sorting ascending puts False first, so failures surface at the top.
+- **Last transition** shows how long ago the `Ready` condition last changed, or
+  without one, how long ago any condition last changed. It appears only if some
+  object's conditions give a time, and sorts by that time.
 - **Message** shows the `Ready` condition's message, coloured green for True,
   red for False and amber for anything else. Without a `Ready` condition, it
   shows the most recently changed condition's message, uncoloured.

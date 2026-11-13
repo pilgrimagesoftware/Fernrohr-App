@@ -4,7 +4,9 @@
 //! Overview's; a CronJob's active Jobs are references.
 
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
-use super::common::{condition_badges, conditions_json, message_field, non_empty, selector_chips};
+use super::common::{
+    condition_badges, conditions_json, message_field, non_empty, selector_chips, transition_field,
+};
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::status_tone::{self, JobStatus};
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
@@ -69,9 +71,9 @@ pub(super) fn replica_set(set: &ReplicaSet) -> Vec<ObjectSection> {
         desired.unwrap_or(DEFAULT_REPLICAS),
     )];
     selector(&mut fields, set.spec.as_ref().map(|spec| &spec.selector));
-    fields.extend(message_field(&conditions_json(
-        status.and_then(|status| status.conditions.as_ref()),
-    )));
+    let conditions = conditions_json(status.and_then(|status| status.conditions.as_ref()));
+    fields.extend(message_field(&conditions));
+    fields.extend(transition_field(&conditions));
     let conditions = status
         .into_iter()
         .flat_map(|status| status.conditions.iter().flatten())
@@ -108,9 +110,9 @@ pub(super) fn deployment(deployment: &Deployment) -> Vec<ObjectSection> {
         fields.push(ObjectField::text("Strategy", strategy));
     }
     selector(&mut fields, spec.map(|spec| &spec.selector));
-    fields.extend(message_field(&conditions_json(
-        status.and_then(|status| status.conditions.as_ref()),
-    )));
+    let conditions = conditions_json(status.and_then(|status| status.conditions.as_ref()));
+    fields.extend(message_field(&conditions));
+    fields.extend(transition_field(&conditions));
     let conditions = status
         .into_iter()
         .flat_map(|status| status.conditions.iter().flatten())
@@ -212,9 +214,9 @@ pub(super) fn job(job: &Job) -> Vec<ObjectSection> {
     if let Some(completed) = status.and_then(|status| status.completion_time.as_ref()) {
         fields.push(ObjectField::text("Completed", completed.0.to_string()));
     }
-    fields.extend(message_field(&conditions_json(
-        status.and_then(|status| status.conditions.as_ref()),
-    )));
+    let conditions = conditions_json(status.and_then(|status| status.conditions.as_ref()));
+    fields.extend(message_field(&conditions));
+    fields.extend(transition_field(&conditions));
     let conditions = status
         .into_iter()
         .flat_map(|status| status.conditions.iter().flatten())

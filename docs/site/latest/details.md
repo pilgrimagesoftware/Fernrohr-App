@@ -77,8 +77,8 @@ shows every value in full.
 Beyond that, these kinds have sections of their own: those in the table, plus
 Job and ServiceAccount. Any other kind whose object reports `status.conditions`,
 such as a Flux HelmRelease or Kustomization, gets a Status section instead. It
-shows the object's Ready status, its status message and every condition as a
-badge. Any other kind shows metadata only.
+shows the object's Ready status, its status message, when its status last
+changed and every condition as a badge. Any other kind shows metadata only.
 
 | Kind | What it shows |
 | --- | --- |
@@ -104,6 +104,12 @@ green for True, red for False and amber for anything else. Without a `Ready`
 condition, it's the most recently changed condition's message, uncoloured. The
 kinds above that show conditions as badges show this message right before them.
 The list's Message column shows the same text.
+
+Beside the message, **Last Transition** shows when the status last changed, as a
+time and how long ago, for example `2026-01-15 09:30:00 UTC (3h ago)`. It's the
+`Ready` condition's `lastTransitionTime`, or without a `Ready` condition the
+latest any condition reports. The list's Last transition column shows the same
+moment as an age.
 
 The panel also lists the events that name the object, newest first. If you can
 read the object but not list events, the object still loads and the events

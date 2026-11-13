@@ -318,6 +318,7 @@ fn every_condition() -> crate::k8s::resource::object_list::columns::ConditionsSe
     crate::k8s::resource::object_list::columns::ConditionsSeen {
         conditions: true,
         ready: true,
+        transition: true,
     }
 }
 
@@ -368,6 +369,7 @@ fn condition_columns_sort_resize_and_reorder() {
         let mut listed = row(name, Some("flux-system"), 0, now);
         listed.object.cells = vec![
             Cell::Condition(ConditionStatus::True),
+            Cell::Empty,
             Cell::status(message, Tone::Good),
         ];
         listed
@@ -379,7 +381,14 @@ fn condition_columns_sort_resize_and_reorder() {
     ));
     assert_eq!(
         ids(delegate.columns()),
-        ["name", "namespace", "ready", "message", "age"]
+        [
+            "name",
+            "namespace",
+            "ready",
+            "last_transition",
+            "message",
+            "age"
+        ]
     );
     delegate.set_rows(vec![
         condition_row("a", "Applied revision: main@2"),
@@ -388,8 +397,8 @@ fn condition_columns_sort_resize_and_reorder() {
     delegate.set_sort("message", false);
     assert_eq!(names(&delegate), ["b", "a"], "sorted by the message's text");
 
-    delegate.reorder_columns(3, 0);
-    delegate.set_widths(&[px(500.), px(200.), px(100.), px(80.), px(60.)]);
+    delegate.reorder_columns(4, 0);
+    delegate.set_widths(&[px(500.), px(200.), px(100.), px(80.), px(110.), px(60.)]);
     let layout = delegate.layout();
     assert_eq!(layout[0].id, "message");
     assert_eq!(layout[0].width, 500.);
@@ -413,6 +422,7 @@ fn condition_columns_join_and_leave_an_arranged_table() {
     let message_only = crate::k8s::resource::object_list::columns::ConditionsSeen {
         conditions: true,
         ready: false,
+        transition: false,
     };
     assert!(delegate.set_column_set(ListColumn::for_kind(&kind, message_only, None), &saved));
     assert_eq!(
@@ -424,7 +434,14 @@ fn condition_columns_join_and_leave_an_arranged_table() {
     assert!(delegate.set_column_set(ListColumn::for_kind(&kind, every_condition(), None), &saved));
     assert_eq!(
         ids(delegate.columns()),
-        ["age", "name", "namespace", "ready", "message"]
+        [
+            "age",
+            "name",
+            "namespace",
+            "ready",
+            "last_transition",
+            "message"
+        ]
     );
     assert!(
         !delegate.set_column_set(ListColumn::for_kind(&kind, every_condition(), None), &saved),

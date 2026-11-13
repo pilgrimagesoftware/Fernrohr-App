@@ -182,6 +182,7 @@ fn a_list_shows_its_printer_columns() {
     let every_condition = super::super::ConditionsSeen {
         conditions: true,
         ready: true,
+        transition: true,
     };
     let columns = ListColumn::for_kind(&kind, every_condition, table.printer_columns());
     let ids: Vec<&str> = columns.iter().map(|column| column.id.as_ref()).collect();
