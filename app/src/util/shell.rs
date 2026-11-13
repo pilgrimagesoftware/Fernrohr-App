@@ -86,6 +86,8 @@ pub(crate) use quiet::{
 #[cfg(any(target_os = "macos", test))]
 pub(crate) use quiet::OpenContextWindow;
 #[cfg(test)]
+mod palette_focus_tests;
+#[cfg(test)]
 mod pod_detail_logs_tests;
 #[cfg(test)]
 mod quick_look_window_tests;
