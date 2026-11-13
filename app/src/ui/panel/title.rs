@@ -104,7 +104,8 @@ impl PanelScope {
             | NavTarget::PodLogs(_)
             | NavTarget::LabelLogs(_)
             | NavTarget::Pod(_)
-            | NavTarget::Exec(_) => true,
+            | NavTarget::Exec(_)
+            | NavTarget::HelmReleases => true,
             NavTarget::Object(object) => object.kind.namespaced,
         }
     }

@@ -29,6 +29,7 @@ impl NavTarget {
         match self {
             NavTarget::Kind(kind) => kind.label(),
             NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) => "Logs".to_string(),
+            NavTarget::HelmReleases => "Helm Releases".to_string(),
             NavTarget::Pod(_) => Self::pod_kind().label(),
             NavTarget::Object(object) => object.kind.label(),
             NavTarget::Exec(exec) => exec
@@ -52,7 +53,8 @@ impl NavTarget {
             | NavTarget::LabelLogs(_)
             | NavTarget::Pod(_)
             | NavTarget::Object(_)
-            | NavTarget::Exec(_) => self.label(),
+            | NavTarget::Exec(_)
+            | NavTarget::HelmReleases => self.label(),
         }
     }
 
@@ -66,7 +68,8 @@ impl NavTarget {
             NavTarget::Logs
             | NavTarget::PodLogs(_)
             | NavTarget::LabelLogs(_)
-            | NavTarget::Exec(_) => None,
+            | NavTarget::Exec(_)
+            | NavTarget::HelmReleases => None,
         }
     }
 

@@ -79,6 +79,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Show Logs | <kbd>⌘2</kbd> | Global | — | `nav.show_logs` |
 | Show Logs (Other Panel Mode) | — | Global | — | `nav.show_logs_flipped` |
 | Show Events | — | Global | — | `nav.show_events` |
+| Helm Releases | — | Global | — | `nav.show_helm_releases` |
 | Open Logs by Label… | <kbd>⌘⇧L</kbd> | Global | Window | `logs.follow_labels` |
 | Fit Columns to Contents | — | Global | View | `table.fit_columns` |
 | Focus Resources | <kbd>⌘0</kbd> | Global | Navigate | `resource.focus` |
@@ -332,6 +333,13 @@ Pods, Deployments, StatefulSets, DaemonSets and Services, in their lists and det
 | Events: Clear Filters | <kbd>X</kbd> | `EventsPanel && !Input` | — | `events.clear_filters` |
 | Events: Pick Namespaces | <kbd>N</kbd> | `EventsPanel` | — | `events.pick_namespaces` |
 | Placeholder: Pick Namespaces | <kbd>N</kbd> | `PlaceholderPanel` | — | `placeholder.pick_namespaces` |
+
+### Helm Releases list
+
+| Command | Default binding | Context | Menu | ID |
+| --- | --- | --- | --- | --- |
+| Helm Releases: Search | <kbd>/</kbd> | `HelmReleasesPanel && !Input` | — | `helm.focus_search` |
+| Helm Releases: Show Uninstalled Releases | — | `HelmReleasesPanel && !Input` | — | `helm.show_uninstalled` |
 
 ### Saved layouts picker
 

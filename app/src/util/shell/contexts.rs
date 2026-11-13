@@ -180,6 +180,7 @@ impl MainWindow {
                 OpenedPanel::Pods(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::ObjectList(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Events(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::HelmReleases(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),

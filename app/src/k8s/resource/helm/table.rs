@@ -5,6 +5,7 @@
 //! list a release; chart and app version wait for the latest revision's fetch.
 
 use super::decode::{ChartMeta, ReleaseInfo};
+use crate::k8s::resource::load_phase::LoadPhase;
 use k8s_openapi::api::core::v1::Secret;
 use kube::core::{ObjectMeta, PartialObjectMeta};
 use kube_runtime::watcher;
@@ -72,7 +73,7 @@ pub(crate) struct HelmReleasesTable {
     decoded: HashMap<ReleaseKey, Decoded>,
     /// The revision Secrets a relist has seen so far, by (namespace, name).
     relisting: Option<HashSet<(String, String)>>,
-    loaded: bool,
+    phase: LoadPhase,
     refused: Option<String>,
 }
 
@@ -88,18 +89,20 @@ impl HelmReleasesTable {
                 if let Some(seen) = &mut self.relisting {
                     seen.insert(secret_id(&secret.metadata));
                 }
+                self.phase.received();
                 self.insert(&secret.metadata);
             }
             watcher::Event::Delete(secret) => self.remove(&secret.metadata),
             watcher::Event::Init => {
                 self.refused = None;
                 self.relisting = Some(HashSet::new());
+                self.phase.init();
             }
             watcher::Event::InitDone => {
                 if let Some(seen) = self.relisting.take() {
                     self.keep_only(&seen);
                 }
-                self.loaded = true;
+                self.phase.done();
             }
         }
     }
@@ -177,7 +180,12 @@ impl HelmReleasesTable {
 
     /// Whether the first list has completed.
     pub(crate) fn loaded(&self) -> bool {
-        self.loaded
+        self.phase.has_loaded()
+    }
+
+    /// Where the table is in its lists (`list-loading-indicator`).
+    pub(crate) fn phase(&self) -> LoadPhase {
+        self.phase
     }
 
     /// The API server's message when it refused the watch.

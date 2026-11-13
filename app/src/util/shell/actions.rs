@@ -51,6 +51,15 @@ impl MainWindow {
         self.open_target(NavTarget::Kind(kind), window, cx);
     }
 
+    pub(super) fn on_action_show_helm_releases(
+        &mut self,
+        _: &crate::ui::nav::ShowHelmReleases,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_target(NavTarget::HelmReleases, window, cx);
+    }
+
     pub(super) fn on_action_show_pods(
         &mut self,
         _: &ShowPods,

@@ -67,6 +67,8 @@ mod chord_precedence_tests;
 #[cfg(test)]
 mod edit_yaml_tests;
 #[cfg(test)]
+mod helm_list_tests;
+#[cfg(test)]
 mod label_logs_tests;
 #[cfg(test)]
 mod node_pods_window_tests;

@@ -158,6 +158,9 @@ pub(crate) fn kind_key(kind: &DiscoveredKind) -> String {
 /// The events browser's key: it is a list of its own, not the Event kind's.
 pub(crate) const EVENTS_KEY: &str = "events";
 
+/// The Helm Releases list's key: a list of releases, not of a kind.
+pub(crate) const HELM_RELEASES_KEY: &str = "helm-releases";
+
 /// A header click on `col_ix`, from the delegate's `perform_sort`.
 pub(crate) fn header_clicked<D: SortableTable + 'static>(
     delegate: &mut D,
