@@ -157,9 +157,11 @@ async fn it_starts_over_while_still_connecting(cx: &mut TestAppContext) {
     assert_started_over(&mut vcx, &panel);
 }
 
-/// The reset's key is its alone: `keymap::conflicts` reports no clash, now
-/// that it reads `TypedLabelLogs` and `TypedLabelLogs && !Input` - one panel's
-/// two scopes - as overlapping (#331).
+/// The reset's key is its alone: no other command has it in any context, and
+/// `keymap::conflicts` reports no clash. Since #331 `conflicts` reads every
+/// scope on the Logs panel's element (`LogsPanel`, `LabelLogs`,
+/// `TypedLabelLogs`, with or without `!Input`) as live at once; the sweep
+/// stays as the stricter check.
 #[test]
 fn its_key_collides_with_nothing() {
     use crate::keymap::{KeymapConfig, conflicts};
@@ -170,6 +172,16 @@ fn its_key_collides_with_nothing() {
         .expect("the reset is registered");
     assert_eq!(command.context, Some("TypedLabelLogs"));
     let key = command.default_binding;
+    let parsed = gpui_kit::Keystroke::parse(key).expect("the key parses");
+    let sharing: Vec<&str> = registry
+        .iter()
+        .filter(|other| other.id != command.id)
+        .filter(|other| {
+            gpui_kit::Keystroke::parse(other.default_binding).ok() == Some(parsed.clone())
+        })
+        .map(|other| other.id)
+        .collect();
+    assert!(sharing.is_empty(), "{key} is also {sharing:?}'s");
     let found = conflicts(
         &registry,
         &KeymapConfig::default(),
@@ -183,18 +195,19 @@ fn its_key_collides_with_nothing() {
         found.shadows.len(),
         found.prefixes.len()
     );
-    // The check sees this key: the panel's `!Input` scope given it clashes,
-    // and a global command given it is shadowed by it.
-    let narrower = conflicts(
-        &registry,
-        &KeymapConfig::default(),
-        "logs.pick_context",
-        key,
-    );
-    assert!(
-        narrower.same_scope.contains(&"logs.reset_labels"),
-        "TypedLabelLogs && !Input clashes with TypedLabelLogs on {key}"
-    );
+    // The check sees this key: any of the panel's other scopes given it
+    // clashes, and a global command given it is shadowed by it.
+    for (id, scope) in [
+        ("logs.pick_context", "TypedLabelLogs && !Input"),
+        ("logs.next_container", "LabelLogs && !Input"),
+        ("logs.toggle_previous", "LogsPanel && !Input"),
+    ] {
+        let found = conflicts(&registry, &KeymapConfig::default(), id, key);
+        assert!(
+            found.same_scope.contains(&"logs.reset_labels"),
+            "{scope} clashes with TypedLabelLogs on {key}"
+        );
+    }
     let other = conflicts(&registry, &KeymapConfig::default(), "nav.show_logs", key);
     assert_eq!(
         other.shadows.len(),

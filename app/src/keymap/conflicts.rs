@@ -1,11 +1,9 @@
 //! Which other commands a key would collide with, for the keybindings
 //! editor's warning.
 //!
-//! Every registered command is either global or gated to one key context. Two
+//! Every registered command is either global or gated to a key context. Two
 //! commands conflict when both are global or their contexts can match at
-//! once: the same context, or one a narrower clause of the other (`scope`,
-//! #331).
-//! A global and a panel command on one key don't
+//! once (`scope`, #331). A global and a panel command on one key don't
 //! conflict - GPUI gives the deeper (panel) binding precedence inside that
 //! panel and the global one everywhere else - but the editor shows it.
 //!
@@ -14,6 +12,7 @@
 //! one is reported wherever the scopes overlap - both global, one global, or
 //! the same context - since precedence doesn't untangle a half-typed chord.
 
+mod groups;
 mod scope;
 
 use super::{KeymapConfig, resolve};

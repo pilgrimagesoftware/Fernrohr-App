@@ -160,6 +160,16 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 
 /// Adds the gate of each of `offered`. In a list, Port Forward is the
 /// Services list's own command, so its gate isn't added there.
+/// Every gate [`add_contexts`] can add, for `keymap::conflicts` (#331): all
+/// of them may sit on one panel element at once.
+pub(crate) fn gates(in_list: bool) -> Vec<&'static str> {
+    KindAction::ALL
+        .into_iter()
+        .filter(|kind_action| !(in_list && *kind_action == KindAction::ForwardService))
+        .map(|kind_action| command(kind_action).gate)
+        .collect()
+}
+
 pub(crate) fn add_contexts(key_context: &mut KeyContext, offered: &[KindAction], in_list: bool) {
     for kind_action in offered {
         if in_list && *kind_action == KindAction::ForwardService {

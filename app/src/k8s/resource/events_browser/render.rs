@@ -22,6 +22,10 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+/// The Events panel element's identifiers, for `keymap::conflicts` (#331).
+pub(crate) const KEY_CONTEXT_GROUP: &[&str] =
+    &[PANEL_KEY_CONTEXT, crate::ui::list_sort::KEY_CONTEXT];
+
 /// The hint row's id, which keeps whether it is collapsed.
 pub(super) const HINTS_ID: &str = "events-hints";
 

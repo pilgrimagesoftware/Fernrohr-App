@@ -5,12 +5,12 @@
 //! A command's context is a GPUI predicate such as `PodsPanel` or
 //! `TypedLabelLogs && !Input`. Every one registered is a conjunction of
 //! identifiers, some negated, so each reduces to a [`Clause`]: the identifiers
-//! the matching context must carry, and the ones the focus path must not.
-//! Two clauses overlap when one's required identifiers include all of the
-//! other's - the same base context, one possibly narrower - and neither
-//! forbids an identifier the other requires. Different base contexts are
-//! different panels, which are never both the focus path's deepest context,
-//! so they don't overlap, as before.
+//! the matching element must carry, and the ones the focus path must not. Two
+//! clauses overlap when neither forbids an identifier the other requires, and
+//! the identifiers both require can sit on one element: one clause's include
+//! all of the other's, or together they fit one element's group (`groups`) -
+//! `LogsPanel` and `LabelLogs` do, `PodsPanel` and `LogsPanel` don't, since
+//! two panels are never both the focus path's deepest element.
 //!
 //! A predicate that isn't a plain conjunction (`||`, `>`, `==`) falls back to
 //! comparing the text exactly, the old rule.
@@ -80,11 +80,18 @@ impl Clause {
     }
 
     fn overlaps(&self, other: &Self) -> bool {
-        let same_base =
-            self.required.is_subset(&other.required) || other.required.is_subset(&self.required);
         let contradicts = !self.forbidden.is_disjoint(&other.required)
             || !other.forbidden.is_disjoint(&self.required);
-        same_base && !contradicts
+        if contradicts {
+            return false;
+        }
+        self.required.is_subset(&other.required)
+            || other.required.is_subset(&self.required)
+            || super::groups::share_an_element(
+                self.required
+                    .union(&other.required)
+                    .map(SharedString::as_ref),
+            )
     }
 }
 
@@ -109,6 +116,26 @@ mod tests {
         ));
     }
 
+    /// One element's panel identifier and flags overlap, though neither
+    /// clause includes the other's.
+    #[test]
+    fn identifiers_on_one_element_overlap() {
+        assert!(contexts_overlap(
+            "LogsPanel && !Input",
+            "LabelLogs && !Input"
+        ));
+        assert!(contexts_overlap("LogsPanel", "TypedLabelLogs"));
+        assert!(contexts_overlap(
+            "ObjectDetailPanel && !Input",
+            "PodSelectingObject && !Input"
+        ));
+        assert!(contexts_overlap(
+            "EditableList && !Input",
+            "ServicesList && !Input"
+        ));
+        assert!(contexts_overlap("PodsPanel", "CheckedRows && !Input"));
+    }
+
     #[test]
     fn different_contexts_and_contradictions_do_not() {
         assert!(!contexts_overlap("PodsPanel", "LogsPanel"));
@@ -128,6 +155,23 @@ mod tests {
         assert!(overlap(None, None));
         assert!(overlap(None, Some("PodsPanel && !Input")));
         assert!(overlap(Some("PodsPanel"), None));
+    }
+
+    /// Every registered command's context is a conjunction this module reads,
+    /// so none silently falls back to comparing text.
+    #[test]
+    fn every_registered_context_is_a_clause() {
+        let mut registry = crate::command::CommandRegistry::new();
+        crate::util::shell::register_commands(&mut registry);
+        for command in registry.iter() {
+            if let Some(context) = command.context {
+                assert!(
+                    super::Clause::parse(context).is_some(),
+                    "{}: {context} is not a conjunction of identifiers",
+                    command.id
+                );
+            }
+        }
     }
 
     #[test]
