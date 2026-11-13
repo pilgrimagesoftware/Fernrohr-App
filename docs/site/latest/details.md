@@ -152,6 +152,12 @@ name and key, and never the resolved value. Init containers show their real
 state: waiting with the reason and message, running, or terminated with an exit
 code and reason. A waiting init container is never shown as completed.
 
+Sidecar containers, init containers with `restartPolicy: Always`, keep running
+beside the app containers, so they're listed under their own **Sidecar
+Containers** heading between the containers and the init containers. The Pods
+list counts them in a pod's Ready and Restarts, as `kubectl get pods` does, and
+says how many there are: `2/2 (1 sidecar)`. Quick Look marks them `(sidecar)`.
+
 ### Configuration
 
 This tab lists each referenced ConfigMap and Secret once, however many ways the
