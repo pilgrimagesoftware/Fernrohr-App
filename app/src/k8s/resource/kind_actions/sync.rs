@@ -6,9 +6,12 @@
 //!   `external-secrets.io/force-sync` on a ClusterExternalSecret (it refreshes
 //!   every ExternalSecret it owns), with the time as Unix seconds.
 //! - Flux: `reconcile.fluxcd.io/requestedAt` on any `*.toolkit.fluxcd.io`
-//!   object, with the time as RFC 3339 - the `flux reconcile` request.
+//!   object that reconciles - not notification's Alert or Provider, which
+//!   don't - with the time as RFC 3339, the `flux reconcile` request.
 //! - Argo CD: `argocd.argoproj.io/refresh: normal` on an Application, which its
-//!   controller removes once refreshed.
+//!   controller removes once refreshed. A refresh re-reads the source and
+//!   compares; it deploys only where the Application syncs automatically, so
+//!   the action is worded as a refresh for Argo CD.
 
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use serde_json::{Value, json};
@@ -20,6 +23,34 @@ pub(crate) struct SyncAnnotation {
     value: SyncValue,
     /// Who acts on it, as the confirmation names it.
     pub(crate) controller: &'static str,
+    /// What the controller does on it, as the confirmation and its result
+    /// word it.
+    pub(crate) verb: SyncVerb,
+}
+
+/// What a controller does when its annotation changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SyncVerb {
+    Sync,
+    Refresh,
+}
+
+impl SyncVerb {
+    /// Lowercase, mid-sentence: "Ask Flux to sync …".
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            SyncVerb::Sync => "sync",
+            SyncVerb::Refresh => "refresh",
+        }
+    }
+
+    /// The confirmation's title and button: "Force Sync", "Refresh".
+    pub(crate) fn title(self) -> &'static str {
+        match self {
+            SyncVerb::Sync => "Force Sync",
+            SyncVerb::Refresh => "Refresh",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,6 +67,7 @@ pub(crate) fn sync_annotation(kind: &DiscoveredKind) -> Option<SyncAnnotation> {
         key,
         value: SyncValue::UnixSeconds,
         controller: "External Secrets",
+        verb: SyncVerb::Sync,
     };
     match (group, name) {
         ("external-secrets.io", "ExternalSecret") => Some(external_secrets("force-sync")),
@@ -46,11 +78,15 @@ pub(crate) fn sync_annotation(kind: &DiscoveredKind) -> Option<SyncAnnotation> {
             key: "argocd.argoproj.io/refresh",
             value: SyncValue::Fixed("normal"),
             controller: "Argo CD",
+            verb: SyncVerb::Refresh,
         }),
+        // Alerts and Providers configure notifications; nothing reconciles them.
+        ("notification.toolkit.fluxcd.io", "Alert" | "Provider") => None,
         _ if group.ends_with(".toolkit.fluxcd.io") => Some(SyncAnnotation {
             key: "reconcile.fluxcd.io/requestedAt",
             value: SyncValue::Rfc3339,
             controller: "Flux",
+            verb: SyncVerb::Sync,
         }),
         _ => None,
     }
@@ -120,5 +156,39 @@ mod tests {
         assert_eq!(patch("apps", "Deployment"), None);
         assert_eq!(patch("argoproj.io", "AppProject"), None);
         assert_eq!(patch("external-secrets.io", "SecretStore"), None);
+        assert_eq!(patch("notification.toolkit.fluxcd.io", "Alert"), None);
+        assert_eq!(patch("notification.toolkit.fluxcd.io", "Provider"), None);
+        assert!(patch("notification.toolkit.fluxcd.io", "Receiver").is_some());
+    }
+}
+
+#[cfg(test)]
+mod verb_tests {
+    use super::{SyncVerb, sync_annotation};
+    use crate::k8s::cluster::discovery::DiscoveredKind;
+    use kube::core::GroupVersionKind;
+
+    fn verb(group: &str, name: &str) -> Option<SyncVerb> {
+        let kind = DiscoveredKind {
+            gvk: GroupVersionKind::gvk(group, "v1", name),
+            plural: String::new(),
+            namespaced: true,
+            verbs: Default::default(),
+        };
+        sync_annotation(&kind).map(|annotation| annotation.verb)
+    }
+
+    /// Argo CD's annotation refreshes; it deploys only with auto-sync.
+    #[test]
+    fn argo_cd_refreshes_and_the_others_sync() {
+        assert_eq!(verb("argoproj.io", "Application"), Some(SyncVerb::Refresh));
+        assert_eq!(
+            verb("external-secrets.io", "ExternalSecret"),
+            Some(SyncVerb::Sync)
+        );
+        assert_eq!(
+            verb("kustomize.toolkit.fluxcd.io", "Kustomization"),
+            Some(SyncVerb::Sync)
+        );
     }
 }

@@ -280,10 +280,11 @@ fn force_sync<T: KindHost>(
     let Some(annotation) = kind_actions::sync_annotation(&target.kind) else {
         return;
     };
+    let (verb, title) = (annotation.verb.word(), annotation.verb.title());
     let body = ConfirmText::new()
         .text("Ask ")
         .text(annotation.controller)
-        .text(" to sync ")
+        .text(&format!(" to {verb} "))
         .append(named(&target))
         .text(" now? Fernrohr sets its ")
         .name(annotation.key)
@@ -298,13 +299,13 @@ fn force_sync<T: KindHost>(
     confirm_then(
         Ask {
             question: question(
-                format!("Force Sync {noun}?"),
+                format!("{title} {noun}?"),
                 body,
-                "Force Sync",
+                title,
                 Severity::Recoverable,
             ),
             target: target.clone(),
-            what: format!("Force Sync {noun}"),
+            what: format!("{title} {noun}"),
             panel,
         },
         move |client| {
@@ -326,7 +327,7 @@ fn force_sync<T: KindHost>(
             use gpui_kit::component::WindowExt as _;
             use gpui_kit::component::notification::Notification;
             window.push_notification(
-                Notification::success(format!("Asked {} to sync {noun}", annotation.controller)),
+                Notification::success(format!("Asked {} to {verb} {noun}", annotation.controller)),
                 cx,
             );
         },
