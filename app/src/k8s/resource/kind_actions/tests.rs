@@ -609,6 +609,25 @@ fn an_answer_without_a_token_says_so_and_carries_none_of_it() {
     assert!(failure.detail.is_empty());
 }
 
+/// #354: Force Sync is offered where a controller documents a sync
+/// annotation, and only with the patch verb.
+#[test]
+fn force_sync_is_offered_for_synced_kinds_that_can_be_patched() {
+    let mut external = kind(
+        "external-secrets.io",
+        "ExternalSecret",
+        "externalsecrets",
+        true,
+    );
+    external.verbs.patch = true;
+    assert_eq!(offered(&external, json!({})), [KindAction::ForceSync]);
+    external.verbs.patch = false;
+    assert!(offered(&external, json!({})).is_empty(), "no patch verb");
+    let mut config = kind("", "ConfigMap", "configmaps", true);
+    config.verbs.patch = true;
+    assert!(offered(&config, json!({})).is_empty());
+}
+
 /// `OFFERED_TOGETHER` holds whatever `offered` gives one object, for every
 /// kind with an action and every fact that changes which (#331).
 #[test]
@@ -623,6 +642,19 @@ fn every_offer_is_one_of_the_sets_offered_together() {
         kind("", "ServiceAccount", "serviceaccounts", true),
         kind("networking.k8s.io", "Ingress", "ingresses", true),
         kind("", "ConfigMap", "configmaps", true),
+        kind(
+            "external-secrets.io",
+            "ExternalSecret",
+            "externalsecrets",
+            true,
+        ),
+        kind(
+            "kustomize.toolkit.fluxcd.io",
+            "Kustomization",
+            "kustomizations",
+            true,
+        ),
+        kind("argoproj.io", "Application", "applications", true),
     ];
     let taint = Taint {
         key: "dedicated".into(),

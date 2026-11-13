@@ -24,6 +24,11 @@ const STORAGE_CLASS: ColumnDef = column("storage_class", "Storage class", 120.);
 const RECLAIM_POLICY: ColumnDef = column("reclaim_policy", "Reclaim policy", 110.);
 const ROLE: ColumnDef = column("role", "Role", 200.);
 const SUBJECTS: ColumnDef = column("subjects", "Subjects", 260.);
+const LABELS: ColumnDef = column("labels", "Labels", 320.);
+
+/// The label the API server sets on every namespace to its own name: it only
+/// repeats the Name column, so a namespace's Labels leave it out (#351).
+const NAMESPACE_NAME_LABEL: &str = "kubernetes.io/metadata.name";
 
 /// The prefix of the labels that name a Node's roles.
 const NODE_ROLE_LABEL: &str = "node-role.kubernetes.io/";
@@ -218,7 +223,7 @@ pub(super) static NODE: KindColumns = KindColumns {
 };
 
 pub(super) static NAMESPACE: KindColumns = KindColumns {
-    columns: &[STATUS],
+    columns: &[STATUS, LABELS],
     cells: |object| {
         typed_cells::<Namespace>(object, |namespace| {
             let phase = namespace
@@ -226,7 +231,10 @@ pub(super) static NAMESPACE: KindColumns = KindColumns {
                 .as_ref()
                 .and_then(|status| status.phase.as_deref())
                 .unwrap_or_default();
-            vec![Cell::status(phase, status_tone::namespace_phase(phase))]
+            vec![
+                Cell::status(phase, status_tone::namespace_phase(phase)),
+                labels_text(namespace.metadata.labels.as_ref()),
+            ]
         })
     },
 };
@@ -241,6 +249,18 @@ pub(super) static SERVICE_ACCOUNT: KindColumns = KindColumns {
         })
     },
 };
+
+/// A namespace's labels as `kubectl get --show-labels` shows them,
+/// `key=value` comma-separated in key order, less [`NAMESPACE_NAME_LABEL`].
+fn labels_text(labels: Option<&BTreeMap<String, String>>) -> Cell {
+    let labels: Vec<String> = labels
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| key.as_str() != NAMESPACE_NAME_LABEL)
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect();
+    Cell::text(labels.join(","))
+}
 
 /// `ClusterRole/view`, as `kubectl` names a binding's role - or empty for a
 /// binding without one, which `k8s-openapi` reads as an empty `RoleRef` rather

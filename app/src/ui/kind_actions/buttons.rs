@@ -24,6 +24,7 @@ fn icon(kind_action: KindAction) -> IconName {
         KindAction::RemoveTaint => IconName::ShieldMinus,
         KindAction::CreateToken => IconName::KeyRound,
         KindAction::OpenHost => IconName::ExternalLink,
+        KindAction::ForceSync => IconName::RefreshCw,
     }
 }
 
