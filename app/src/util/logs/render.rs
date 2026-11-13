@@ -41,7 +41,7 @@ impl Render for LogsPanel {
                 .child("Click a pod to view its logs.")
                 .into_any_element()
         } else {
-            self.lines_list(view.lines(), view.end_marker(), cx)
+            self.lines_list(view.lines(), view.widest_line(), view.end_marker(), cx)
         };
 
         // A container picker, not a namespace one: this panel streams one
@@ -196,9 +196,11 @@ impl LogsPanel {
     pub(super) fn lines_list(
         &self,
         lines: &[LogLine],
+        widest_line: Option<(usize, usize)>,
         end_marker: Option<&'static str>,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let widest = widest_row(widest_line, lines.len(), end_marker);
         let lines = Rc::new(lines.to_vec());
         let line_count = lines.len();
         let muted = cx.theme().muted_foreground;
@@ -211,7 +213,9 @@ impl LogsPanel {
             .size_full()
             .p(crate::ui::space::spacing(cx).panel_inset)
             .code_font(cx)
-            .overflow_x_scrollbar()
+            // The list scrolls itself both ways (#365); this only draws the
+            // horizontal bar for it.
+            .horizontal_scrollbar(&self.scroll_handle)
             .child(
                 uniform_list(
                     "logs-panel-lines",
@@ -233,9 +237,28 @@ impl LogsPanel {
                     },
                 )
                 .track_scroll(&self.scroll_handle)
+                // A uniform list measures one row for its width: the widest,
+                // so a long line scrolls into view instead of being cut off.
+                .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+                .with_width_from_item(Some(widest))
                 .size_full(),
             )
             .into_any_element()
+    }
+}
+
+/// The index of the list's widest row: the widest line
+/// ([`LogsView::widest_line`]), or the end marker (row `line_count`) when it
+/// is wider. O(1): the view keeps the widest line as lines arrive.
+pub(super) fn widest_row(
+    widest_line: Option<(usize, usize)>,
+    line_count: usize,
+    end_marker: Option<&str>,
+) -> usize {
+    let (widest, width) = widest_line.unwrap_or((0, 0));
+    match end_marker {
+        Some(marker) if marker.chars().count() > width => line_count,
+        _ => widest,
     }
 }
 
