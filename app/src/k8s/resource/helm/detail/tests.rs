@@ -375,3 +375,52 @@ async fn copy_is_only_offered_while_revealed(cx: &mut TestAppContext) {
         .and_then(|item| item.text());
     assert!(copied.is_some_and(|text| text.contains("replicaCount: 3")));
 }
+
+/// Drags across the element `selector` names and returns the selected text.
+fn drag_select(h: &mut Harness, selector: &'static str) -> String {
+    use gpui_kit::{Modifiers, MouseButton, point, px};
+    h.vcx.update(|window, cx| {
+        let _ = window.draw(cx);
+    });
+    let bounds = h.vcx.debug_bounds(selector).expect("the text is drawn");
+    let start = point(bounds.left() + px(1.), bounds.top() + px(2.));
+    let end = point(bounds.right() - px(1.), bounds.bottom() - px(1.));
+    h.vcx
+        .simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+    h.vcx
+        .simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::none());
+    h.vcx
+        .simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+    h.vcx.run_until_parked();
+    h.vcx.update(|window, cx| {
+        let _ = window.draw(cx);
+        gpui_kit::base::TextSelection::selected_text(window, cx)
+    })
+}
+
+/// Notes often hold commands to copy: their lines drag-select like log lines.
+#[gpui_kit::test]
+async fn notes_can_be_selected(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    h.vcx.simulate_keystrokes("5");
+    h.wait_for("read the notes", |panel, cx| panel.notes(cx).is_some());
+    let selected = drag_select(&mut h, "helm-release-notes");
+    assert!(selected.contains("Visit the app"), "selected: {selected:?}");
+}
+
+/// Revealed values drag-select the same way.
+#[gpui_kit::test]
+async fn revealed_values_can_be_selected(cx: &mut TestAppContext) {
+    let mut h = open(cx);
+    h.wait_for("listed", |panel, cx| panel.history(cx).len() == 3);
+    h.vcx.simulate_keystrokes("3");
+    h.vcx.simulate_keystrokes("r");
+    h.wait_for("revealed", |panel, cx| {
+        panel.revealed_text(ReleaseTab::Values, cx).is_some()
+    });
+    let selected = drag_select(&mut h, "helm-release-text");
+    assert!(
+        selected.contains("replicaCount: 3"),
+        "selected: {selected:?}"
+    );
+}

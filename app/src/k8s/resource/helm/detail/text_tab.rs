@@ -19,7 +19,6 @@ impl HelmReleasePanel {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        use crate::ui::typography::TypeRole as _;
         let what = match tab {
             ReleaseTab::Values => "values",
             _ => "manifest",
@@ -74,16 +73,8 @@ impl HelmReleasePanel {
                         .gap_1()
                         .child(div().flex().gap_2().child(toggle("Hide")).child(copy))
                         .child(
-                            div()
-                                .debug_selector(|| "helm-release-text".into())
-                                .flex()
-                                .flex_col()
-                                .data_font()
-                                .children(
-                                    super::render::plain_lines(text)
-                                        .into_iter()
-                                        .map(|line| div().whitespace_nowrap().child(line)),
-                                ),
+                            super::render::selectable_lines("helm-release-text", text)
+                                .debug_selector(|| "helm-release-text".into()),
                         )
                         .into_any_element()
                 }

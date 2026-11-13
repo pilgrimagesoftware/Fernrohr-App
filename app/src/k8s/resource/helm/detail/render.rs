@@ -189,29 +189,17 @@ impl HelmReleasePanel {
         rows.into_any_element()
     }
 
-    /// The notes as plain monospace lines, as `helm get notes` prints them.
+    /// The notes as plain, selectable monospace lines, as `helm get notes`
+    /// prints them.
     /// Never Markdown: they are the chart author's text, and a fence or a
     /// link in them must show as written, not render.
     fn notes_tab(&self, cx: &App) -> AnyElement {
-        use crate::ui::typography::TypeRole as _;
         match self.notes(cx) {
-            Some(notes) if !notes.trim().is_empty() => div()
-                .debug_selector(|| "helm-release-notes".into())
-                .flex()
-                .flex_col()
-                .data_font()
-                .children(
-                    plain_lines(notes)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(ix, line)| {
-                            div()
-                                .debug_selector(move || format!("helm-release-notes-line-{ix}"))
-                                .whitespace_nowrap()
-                                .child(line)
-                        }),
-                )
-                .into_any_element(),
+            Some(notes) if !notes.trim().is_empty() => {
+                selectable_lines("helm-release-notes", notes)
+                    .debug_selector(|| "helm-release-notes".into())
+                    .into_any_element()
+            }
             Some(_) => div().child("The chart has no notes.").into_any_element(),
             None => div().child("\u{2026}").into_any_element(),
         }
@@ -399,4 +387,20 @@ pub(super) fn plain_lines(notes: &str) -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// `text` as plain monospace lines that can be drag-selected across, in order,
+/// and copied - the Logs panel's selectable lines (#151) - each line exactly
+/// as written, never Markdown.
+pub(super) fn selectable_lines(id: &'static str, text: &str) -> Div {
+    use crate::ui::typography::TypeRole as _;
+    div()
+        .flex()
+        .flex_col()
+        .data_font()
+        .children(plain_lines(text).into_iter().enumerate().map(|(ix, line)| {
+            div().whitespace_nowrap().child(
+                gpui_kit::base::SelectableText::new((id, ix), line).document_order(ix as u64),
+            )
+        }))
 }

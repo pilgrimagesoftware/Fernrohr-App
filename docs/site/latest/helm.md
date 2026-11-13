@@ -91,8 +91,9 @@ To see an earlier revision's values or manifest, select the revision in History 
 <kbd>V</kbd> for its values or <kbd>M</kbd> for its manifest. The tab says which revision it
 shows.
 
-**Helm Release: Copy Values** and **Helm Release: Copy Manifest** copy the revealed text. They're
-in the command palette only while it shows, and the **Copy** button beside it does the same.
+Drag across the notes, or across revealed values or a revealed manifest, to select part of them
+and copy it. **Helm Release: Copy Values** and **Helm Release: Copy Manifest** copy all the revealed
+text. They're in the command palette only while it shows, and the **Copy** button beside it does the same.
 
 ## Access
 
