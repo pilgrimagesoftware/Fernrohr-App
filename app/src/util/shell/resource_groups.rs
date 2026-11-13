@@ -32,14 +32,20 @@ impl ResourceGroupMemory {
         cx.try_global::<Self>()?.0.get(context).cloned()
     }
 
-    /// Remembers `groups` for `context` and saves the workspace soon after -
-    /// the debounced save, so folding several groups in a row writes once.
-    /// Back at the default, the context is forgotten rather than stored empty.
-    pub(crate) fn record(cx: &mut App, context: &str, groups: ResourceGroups) {
+    /// Changes `context`'s remembered groups with `change`, then saves the
+    /// workspace soon after - the debounced save, so folding several groups
+    /// in a row writes once. The lists are kept sorted, so the file is
+    /// stable; back at the default, the context is forgotten rather than
+    /// stored empty.
+    pub(crate) fn update(cx: &mut App, context: &str, change: impl FnOnce(&mut ResourceGroups)) {
         let memory = &mut cx.default_global::<Self>().0;
-        if groups == ResourceGroups::default() {
-            memory.remove(context);
-        } else {
+        let mut groups = memory.remove(context).unwrap_or_default();
+        change(&mut groups);
+        groups.collapsed_sections.sort();
+        groups.collapsed_sections.dedup();
+        groups.expanded_subgroups.sort();
+        groups.expanded_subgroups.dedup();
+        if groups != ResourceGroups::default() {
             memory.insert(context.to_string(), groups);
         }
         super::persist::schedule_save(cx);

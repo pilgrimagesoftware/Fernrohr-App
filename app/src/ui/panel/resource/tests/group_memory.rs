@@ -118,3 +118,28 @@ async fn switching_context_swaps_the_folds(cx: &mut TestAppContext) {
     let remembered = cx.update(|cx| ResourceGroupMemory::get(cx, "demo"));
     assert_eq!(remembered, None, "back at the default, nothing is kept");
 }
+
+/// Two panels on one context each fold a different section: both folds are
+/// remembered, since each records only what it changed - the later panel
+/// doesn't write back the earlier one's stale view of the other section.
+#[gpui_kit::test]
+async fn two_panels_on_one_context_keep_each_others_folds(cx: &mut TestAppContext) {
+    init(cx);
+    let first = panel_on(cx, "demo");
+    let second = panel_on(cx, "demo");
+    first
+        .update(cx, |panel, _, cx| {
+            panel.toggle_section(Category::Network, cx)
+        })
+        .unwrap();
+    second
+        .update(cx, |panel, _, cx| {
+            panel.toggle_section(Category::Config, cx)
+        })
+        .unwrap();
+    let remembered = cx.update(|cx| ResourceGroupMemory::get(cx, "demo"));
+    assert_eq!(
+        remembered.map(|groups| groups.collapsed_sections),
+        Some(vec!["config".to_string(), "network".to_string()])
+    );
+}

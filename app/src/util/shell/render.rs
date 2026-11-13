@@ -144,6 +144,12 @@ impl Render for MainWindow {
             .when(context_count > 1, |root| {
                 root.on_action(cx.listener(Self::on_action_disconnect_other_contexts))
             });
+        // Set Tunnel for Context is handled only while it has a context to
+        // apply to, so from a picker with nothing selected its menu item shows
+        // disabled (`is_action_available`), as Connect's button does (#363).
+        let root = root.when(self.tunnel_target(cx).is_some(), |root| {
+            root.on_action(cx.listener(Self::on_action_set_tunnel))
+        });
         Self::with_tab_menu_actions(
             Self::with_arrange_actions(Self::with_tab_actions(root, cx), cx),
             cx,
@@ -177,7 +183,6 @@ impl Render for MainWindow {
         .on_action(cx.listener(Self::on_action_switch_label_logs_context))
         .on_action(cx.listener(Self::on_action_show_pod_detail))
         .on_action(cx.listener(Self::on_action_show_pod_detail_yaml))
-        .on_action(cx.listener(Self::on_action_set_tunnel))
         .on_action(cx.listener(Self::on_action_follow_reference))
         .on_action(cx.listener(Self::on_action_open_listed_object))
         .on_action(cx.listener(Self::on_action_open_pod_in_background))

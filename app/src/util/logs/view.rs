@@ -76,6 +76,9 @@ pub struct LogsView {
     /// The same for each of several streams, by tag: one pod's colour never
     /// runs into another's lines.
     carried_by_tag: HashMap<Arc<str>, Style>,
+    /// The widest line so far, as `(index, width)`: kept as lines arrive,
+    /// so the panel sizes its list without rescanning them every frame (#365).
+    widest: Option<(usize, usize)>,
 }
 
 impl LogsView {
@@ -92,11 +95,28 @@ impl LogsView {
             terminal_detail: None,
             carried: Style::default(),
             carried_by_tag: HashMap::new(),
+            widest: None,
         }
     }
 
     pub fn lines(&self) -> &[LogLine] {
         &self.lines
+    }
+
+    /// The widest line as `(index, width)` in [`LogLine::width`]'s
+    /// characters, or `None` with no lines. The first of equals.
+    pub fn widest_line(&self) -> Option<(usize, usize)> {
+        self.widest
+    }
+
+    /// Appends `line`, keeping [`Self::widest_line`] up to date - every line
+    /// goes in through here.
+    fn push(&mut self, line: LogLine) {
+        let width = line.width();
+        if self.widest.is_none_or(|(_, widest)| width > widest) {
+            self.widest = Some((self.lines.len(), width));
+        }
+        self.lines.push(line);
     }
 
     pub fn follow_state(&self) -> FollowState {
@@ -153,8 +173,7 @@ impl LogsView {
     pub fn append_line(&mut self, line: String) {
         let parsed = ansi::parse(line, self.carried);
         self.carried = parsed.end;
-        self.lines
-            .push(LogLine::styled(None, parsed.text, parsed.spans));
+        self.push(LogLine::styled(None, parsed.text, parsed.spans));
     }
 
     pub fn scroll_up(&mut self) {
@@ -178,6 +197,7 @@ impl LogsView {
         }
         self.selected_container = container.to_string();
         self.lines.clear();
+        self.widest = None;
         self.terminal_message = None;
         self.ended = false;
         self.terminal_detail = None;
@@ -204,11 +224,11 @@ impl LogsView {
             }
             LogEvent::Ended => {
                 self.carried_by_tag.remove(source.tag());
-                LogLine::tagged(source.clone(), ENDED_MARKER.to_string())
+                LogLine::notice(source.clone(), ENDED_MARKER.to_string())
             }
             LogEvent::RequestFailed { message, .. } => {
                 self.carried_by_tag.remove(source.tag());
-                LogLine::tagged(
+                LogLine::notice(
                     source.clone(),
                     format!("\u{2014} couldn't stream logs: {message}"),
                 )
@@ -217,7 +237,7 @@ impl LogsView {
             // never makes one.
             LogEvent::NoPreviousInstance => return,
         };
-        self.lines.push(line);
+        self.push(line);
     }
 
     pub fn apply(&mut self, event: LogEvent) {
