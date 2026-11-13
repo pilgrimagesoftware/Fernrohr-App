@@ -52,6 +52,8 @@ pub struct HelmReleasesPanel {
     /// Whether releases Helm uninstalled but kept the history of are listed
     /// (`helm list --uninstalled`); saved with the panel.
     pub(super) show_uninstalled: bool,
+    /// Uninstall's progress and last refusal (helm-releases section 8).
+    pub(super) actions: crate::k8s::resource::helm::actions::ActionState,
 }
 
 impl HelmReleasesPanel {
@@ -79,6 +81,7 @@ impl HelmReleasesPanel {
             indicators: Default::default(),
             search: ListSearch::new(),
             show_uninstalled: false,
+            actions: Default::default(),
         };
         this.subscribe(cx);
         this
@@ -284,8 +287,11 @@ impl HelmReleasesPanel {
             self.table = Some(table);
         }
         let table = self.table.clone().expect("built above");
+        let focus = self.focus_handle.clone();
+        let unavailable = self.actions_unavailable(cx);
         table.update(cx, |table, cx| {
             table.delegate_mut().set_rows(rows, jiff::Timestamp::now());
+            table.delegate_mut().set_menu(focus, unavailable);
             reselect(table, cx);
             cx.notify();
         });
