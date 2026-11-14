@@ -1,4 +1,93 @@
 
+## 0.16.0 - 2026-11-14
+
+### <!-- 0 -->🚀 Features
+- Show when an object's conditions last changed
+- Draw the panel's notes apart from log output
+- Run the user's helm CLI for release actions
+- Accept Helm 3 and 4
+- Decode Helm release payloads
+- Disconnect All and Disconnect Others
+- Watch a context's Helm releases
+- Helm Releases list panel
+- Release detail panel with Overview, History and Notes
+- Force Sync for External Secrets, Flux and Argo CD objects
+- Values and Manifest tabs, hidden until revealed
+- Selectable Notes, Values and Manifest lines
+- Roll back and uninstall releases
+- Documentation command and status-menu Help items
+- Distinguish sidecar containers
+- Resources tab on a release's panel
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Confirm the close button like the status bar's Disconnect
+- Save the dock layout when a confirmed close closes
+- Open status-menu windows at the last window's geometry
+- Hide the x1 count on one-off events
+- Remember collapsed groups per context
+- Show a CRD's printer columns in its list
+- Scroll long log lines sideways
+- Record only the fold that changed
+- Show Set Tunnel for Context disabled with nothing selected
+- Fit columns to the text as drawn
+- Show labels in the namespace list
+- Icon Edit button, Port Forwards heading, usage on the row
+- Compare key contexts as predicates in conflicts
+- Treat identifiers on one element as overlapping scopes
+- Group kind-action gates per kind, guard the default keymap
+- Kill helm's group on cancel and harden the kubeconfig dir
+- Keep payload text out of decode errors; hold notes as SecretValue
+- No misleading key on a capsule's Disconnect Others
+- FakeCluster label `!=`, refuse other syntax; decode off workers
+- Drop the list's table observer with its subscription
+- Show chart notes as plain text, never Markdown
+- Group the Helm Releases panel's key contexts
+- Declare the release panel's key context standalone
+- Word Argo CD's Force Sync as a refresh; skip Flux Alert/Provider
+- Keep only Helm's Source comment on a redacted Secret
+- Don't hang counting a manifest with a broken document
+- Re-export NewWindow only where the status menu uses it
+- Read each manifest document alone; bound Resources' checks
+- Keep the live test out of CI and guard the profile it deletes
+
+
+### <!-- 10 -->💼 Other
+- Bump nokogiri from 1.19.4 to 1.19.5 in /docs/site
+- Bump log from 0.4.34 to 0.4.35
+- Bump kube, kube-runtime to 5.0.0 and k8s-openapi to 0.29.0
+- Bump rmcp from 3.7.0 to 3.8.0
+- Bump addressable from 2.9.0 to 2.9.1 in /docs/site
+- Bump objc2 from 0.6.4 to 0.6.5
+
+
+### <!-- 2 -->🚜 Refactor
+- Typed actions with -- before the release, per-app run slots
+
+
+### <!-- 3 -->📚 Documentation
+- Add the Requirements note for Rollback and Uninstall
+- V0.16 documentation snapshot
+
+
+### <!-- 4 -->⚡ Performance
+- Parse printer column paths once
+- Track the widest log line as lines arrive
+
+
+### <!-- 6 -->🧪 Testing
+- Give the timeout test room to start its script
+- The palette opens from a focused Logs or detail panel
+- Wait on a deadline in the action window tests
+- Live integration test on a throwaway minikube profile
+- Avoid Text file busy when running fake helm
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.15.0
+
+
+
 ## 0.15.0 - 2026-10-30
 
 ### <!-- 0 -->🚀 Features
