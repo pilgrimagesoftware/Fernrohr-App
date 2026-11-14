@@ -53,6 +53,7 @@ mod main_window;
 mod namespace_defaults;
 mod namespace_sets;
 mod new_instance;
+mod resource_groups;
 mod sort_defaults;
 mod tab_menu;
 mod warp;
@@ -65,6 +66,8 @@ mod bulk_logs_tests;
 mod chord_precedence_tests;
 #[cfg(test)]
 mod edit_yaml_tests;
+#[cfg(test)]
+mod helm_list_tests;
 #[cfg(test)]
 mod label_logs_tests;
 #[cfg(test)]
@@ -82,6 +85,8 @@ pub(crate) use quiet::{
 // For the status menu, which is built only on macOS and for tests.
 #[cfg(any(target_os = "macos", test))]
 pub(crate) use quiet::OpenContextWindow;
+#[cfg(test)]
+mod palette_focus_tests;
 #[cfg(test)]
 mod pod_detail_logs_tests;
 #[cfg(test)]
@@ -104,12 +109,17 @@ mod window_title;
 // here, these shadow both globs, so `use super::*` in a submodule sees ours.
 #[cfg(test)]
 pub(crate) use app::register_commands;
+// Only the status menu (`ui::status_menu`, macOS or tests) names `NewWindow`
+// through here; elsewhere this re-export would be unused.
+#[cfg(any(target_os = "macos", test))]
+pub use app::NewWindow;
 pub use app::{SetContextTunnel, default_workspace_path, init};
 pub(crate) use app::{TOGGLE_PALETTE_DEFAULT_BINDING, ToggleCommandPalette};
 pub(crate) use layout::{close_window, is_main_window, window_context_count, window_contexts};
 pub(crate) use logs_open::open_pods_logs;
 pub use main_window::MainWindow;
 // The list panels (`k8s::resource`) read and record per-kind sorts.
+pub(crate) use resource_groups::ResourceGroupMemory;
 pub(crate) use sort_defaults::SortDefaults;
 // `agent-mcp`'s navigation tools (`mcp::navigate`) are the callers.
 pub(crate) use agent::{

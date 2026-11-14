@@ -73,7 +73,8 @@ impl PodColumn {
             // hash and pod suffix, like `checkout-service-7d9f8b6c5d-x2k9p`.
             PodColumn::Name => 320.,
             PodColumn::Namespace => 150.,
-            PodColumn::Ready => 80.,
+            // Room for a sidecar count too: `2/2 (1 sidecar)`.
+            PodColumn::Ready => 120.,
             PodColumn::Status => 130.,
             PodColumn::Restarts => 90.,
             PodColumn::Age => 70.,

@@ -77,8 +77,8 @@ shows every value in full.
 Beyond that, these kinds have sections of their own: those in the table, plus
 Job and ServiceAccount. Any other kind whose object reports `status.conditions`,
 such as a Flux HelmRelease or Kustomization, gets a Status section instead. It
-shows the object's Ready status, its status message and every condition as a
-badge. Any other kind shows metadata only.
+shows the object's Ready status, its status message, when its status last
+changed and every condition as a badge. Any other kind shows metadata only.
 
 | Kind | What it shows |
 | --- | --- |
@@ -104,6 +104,12 @@ green for True, red for False and amber for anything else. Without a `Ready`
 condition, it's the most recently changed condition's message, uncoloured. The
 kinds above that show conditions as badges show this message right before them.
 The list's Message column shows the same text.
+
+Beside the message, **Last Transition** shows when the status last changed, as a
+time and how long ago, for example `2026-01-15 09:30:00 UTC (3h ago)`. It's the
+`Ready` condition's `lastTransitionTime`, or without a `Ready` condition the
+latest any condition reports. The list's Last transition column shows the same
+moment as an age.
 
 The panel also lists the events that name the object, newest first. If you can
 read the object but not list events, the object still loads and the events
@@ -152,6 +158,12 @@ name and key, and never the resolved value. Init containers show their real
 state: waiting with the reason and message, running, or terminated with an exit
 code and reason. A waiting init container is never shown as completed.
 
+Sidecar containers, init containers with `restartPolicy: Always`, keep running
+beside the app containers, so they're listed under their own **Sidecar
+Containers** heading between the containers and the init containers. The Pods
+list counts them in a pod's Ready and Restarts, as `kubectl get pods` does, and
+says how many there are: `2/2 (1 sidecar)`. Quick Look marks them `(sidecar)`.
+
 ### Configuration
 
 This tab lists each referenced ConfigMap and Secret once, however many ways the
@@ -170,9 +182,9 @@ Secret Values** (<kbd>H</kbd>).
 
 ### Events
 
-The Events tab lists events whose involved object is this pod, newest first, with
-age and repeat count, and updates live. It shows only events last seen inside the
-time window, and says how many older ones are hidden. If listing events fails,
+The Events tab lists events whose involved object is this pod, newest first, each
+with its age and, once it has repeated, how many times (x2, x3 and so on). The tab
+updates live. It shows only events last seen inside the time window, and says how many older ones are hidden. If listing events fails,
 for example because RBAC forbids it, the tab says so and the pod's other fields
 still load.
 

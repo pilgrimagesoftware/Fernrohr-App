@@ -1,0 +1,27 @@
+//! The release detail panel (helm-releases section 4): one release's Overview,
+//! History and Notes, live from the release watch over its namespace.
+//!
+//! [`panel`] holds its state and data flow, [`fetch`] decodes one revision off
+//! the UI thread, [`render`] draws it, [`commands`] are its tab keys, and
+//! [`restore`] saves and rebuilds it with the window's layout.
+
+mod actions;
+mod commands;
+mod fetch;
+mod panel;
+mod render;
+mod resources;
+pub(crate) mod restore;
+mod reveal;
+mod text_tab;
+
+pub(crate) use commands::{PANEL_KEY_CONTEXT as DETAIL_KEY_CONTEXT, register_commands};
+pub use panel::HelmReleasePanel;
+#[cfg(test)]
+pub(crate) use panel::ReleaseTab;
+#[cfg(test)]
+pub(crate) use resources::Presence;
+pub use restore::register_restore;
+
+#[cfg(test)]
+mod tests;

@@ -21,6 +21,9 @@ pub struct UiConfig {
     /// Whether the MCP server keeps serving once the last window closes and
     /// the app runs on in the menu bar (quiet mode, #236; macOS).
     pub background_mcp: BackgroundMcp,
+    /// The `helm` binary Helm release actions run (`helm-releases` D8), when
+    /// it isn't the one on the login shell's PATH. Absent means look it up.
+    pub helm_path: Option<String>,
 }
 
 impl Default for UiConfig {
@@ -33,6 +36,7 @@ impl Default for UiConfig {
             shortcut_timeout_secs: ShortcutTimeout::DEFAULT,
             logs_panels: LogsPanels::default(),
             background_mcp: BackgroundMcp::default(),
+            helm_path: None,
         }
     }
 }
@@ -299,6 +303,7 @@ mod tests {
             shortcut_timeout_secs: ShortcutTimeout::from(7),
             logs_panels: LogsPanels::Reuse,
             background_mcp: BackgroundMcp::StopWithLastWindow,
+            helm_path: Some("/opt/helm/bin/helm".into()),
         };
         let text = toml::to_string(&config).unwrap();
         let parsed: UiConfig = toml::from_str(&text).unwrap();

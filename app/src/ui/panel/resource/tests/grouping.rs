@@ -46,11 +46,10 @@ async fn collapsing_a_section_keeps_reporting_its_count(cx: &mut TestAppContext)
         .unwrap();
 }
 
-/// Section 2.3: collapse state is per-panel, this window only - a freshly
-/// constructed panel starts with every section expanded, even after another
-/// panel collapsed one.
+/// #357: a fresh panel on a context starts with the groups another panel left
+/// for it - here Workloads collapsed - and `group_memory.rs` covers the rest.
 #[gpui_kit::test]
-async fn a_freshly_constructed_panel_starts_fully_expanded(cx: &mut TestAppContext) {
+async fn a_freshly_constructed_panel_starts_with_its_contexts_groups(cx: &mut TestAppContext) {
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
@@ -65,9 +64,10 @@ async fn a_freshly_constructed_panel_starts_fully_expanded(cx: &mut TestAppConte
     let fresh = stub_panel(cx);
     fresh
         .update(cx, |panel, _window, _cx| {
-            assert!(
-                panel.collapsed.is_empty(),
-                "a new panel starts with every section expanded"
+            assert_eq!(
+                panel.collapsed,
+                [Category::Workloads].into_iter().collect(),
+                "a new panel on the same context starts as it was left"
             );
         })
         .unwrap();

@@ -4,6 +4,7 @@ use super::health::{self, HealthTransition};
 use super::watch_registry::{PauseReason, WatchRegistry};
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::events_browser::{EventsTable, watch_events};
+use crate::k8s::resource::helm::{HelmReleasesTable, HelmScope, watch_helm_releases};
 use crate::k8s::resource::object_list::{ObjectsTable, watch_kind};
 use crate::k8s::resource::pods::{PodsTable, watch_all_namespaces};
 use gpui_kit::{App, AppContext as _, Entity, Global, WindowId};
@@ -11,6 +12,7 @@ use kube::Client;
 use std::collections::{HashMap, HashSet};
 
 mod events_watch;
+mod helm_watch;
 mod holds;
 mod kind_watch;
 mod pause_resume;
@@ -35,4 +37,7 @@ pub(crate) enum WatchKey {
     /// The typed all-namespaces Event watch behind the events browser
     /// (`events-browser` D1), shared by every Event consumer on the context.
     Events,
+    /// The metadata-only Helm release watch over one scope (helm-releases
+    /// D1), shared by every Helm panel of that scope on the context.
+    HelmReleases(HelmScope),
 }

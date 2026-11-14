@@ -45,9 +45,11 @@ pub(super) mod quick_look;
 #[cfg(test)]
 mod real_window_tests;
 mod render;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 mod rows;
 mod selection;
 mod shell;
+mod sidecars;
 mod store;
 #[cfg(test)]
 mod test_support;
@@ -63,6 +65,9 @@ pub use rows::{PodRow, matches_namespaces, pod_row};
 pub use selection::{PodSelection, SelectedPod};
 pub use shell::SHELL_KEY_CONTEXT;
 pub(crate) use shell::{running_containers, shell_into};
+pub(crate) use sidecars::is_sidecar;
+#[cfg(test)]
+pub(crate) use sidecars::tests::pod as sidecar_fixture;
 pub use store::PodsTable;
 pub use watch::watch_all_namespaces;
 

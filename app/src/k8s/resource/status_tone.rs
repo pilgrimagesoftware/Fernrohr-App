@@ -5,7 +5,9 @@
 
 mod conditions;
 
-pub use conditions::{ConditionStatus, condition_message, conditions_of, ready_status};
+pub use conditions::{
+    ConditionStatus, condition_message, conditions_of, last_transition, ready_status,
+};
 
 use crate::ui::style::Tone;
 use k8s_openapi::api::batch::v1::Job;

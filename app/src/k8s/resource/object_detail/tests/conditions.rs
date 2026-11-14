@@ -54,9 +54,9 @@ fn a_deployment_shows_its_latest_message_before_its_conditions() {
     let labels = labels(&sections);
     let message = labels.iter().position(|label| *label == "Message");
     assert_eq!(
-        labels.get(message.unwrap() + 1),
-        Some(&"Conditions"),
-        "Message sits right before Conditions: {labels:?}"
+        labels.get(message.unwrap() + 1..message.unwrap() + 3),
+        Some(&["Last Transition", "Conditions"][..]),
+        "Message, then when it last changed (#355), right before Conditions: {labels:?}"
     );
     assert_eq!(
         field(&sections, "Conditions").value,
@@ -113,7 +113,10 @@ fn a_failing_helm_release_gets_a_status_section() {
 
     assert_eq!(sections.len(), 1);
     assert_eq!(sections[0].title, "Status");
-    assert_eq!(labels(&sections), ["Ready", "Message", "Conditions"]);
+    assert_eq!(
+        labels(&sections),
+        ["Ready", "Message", "Last Transition", "Conditions"]
+    );
     assert_eq!(
         field(&sections, "Ready").value,
         FieldValue::Ready(ConditionStatus::False)

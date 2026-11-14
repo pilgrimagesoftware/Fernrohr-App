@@ -17,6 +17,7 @@ use std::collections::HashMap;
 mod context;
 mod follow;
 mod render;
+pub(crate) use render::KEY_CONTEXT_GROUP;
 mod scope;
 
 // For the window tests in `util::shell`.

@@ -1,7 +1,7 @@
 //! The live set of one kind's objects that one watch keeps up to date, including the
 //! relist sweep, and the refusal a forbidden kind shows in place of rows.
 
-use super::columns::{self, ConditionsSeen, KindColumns};
+use super::columns::{self, ConditionsSeen, PrinterColumns, RowColumns};
 use super::row::ObjectRow;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::load_phase::LoadPhase;
@@ -24,10 +24,10 @@ pub struct ObjectsTable {
     relisting: Option<HashSet<String>>,
     /// The API server's refusal, when it won't let this user list the kind (a 403).
     refused: Option<String>,
-    /// The columns whose cells each row is built with - the kind's own, else
-    /// the generic condition columns (`columns::for_rows`). `None` only for a
-    /// table not yet given its kind.
-    columns: Option<&'static KindColumns>,
+    /// The columns whose cells each row is built with - the kind's own, its
+    /// CRD's printer columns once fetched, else the generic condition columns
+    /// (`columns::for_rows`). `None` only for a table not yet given its kind.
+    columns: Option<RowColumns>,
     /// How the rows are kept current: a watch, polling, or not at all.
     mode: ListMode,
     /// Where the table is in its lists (`list-loading-indicator`); `synced`
@@ -55,8 +55,25 @@ impl ObjectsTable {
     /// columns' cells.
     pub fn for_kind(kind: &DiscoveredKind) -> Self {
         Self {
-            columns: Some(columns::for_rows(&kind.gvk.group, &kind.gvk.kind)),
+            columns: Some(RowColumns::Kind(columns::for_rows(
+                &kind.gvk.group,
+                &kind.gvk.kind,
+            ))),
             ..Self::default()
+        }
+    }
+
+    /// Builds rows with `printer`'s columns from now on (#352): set before
+    /// the first list, so every row has their cells.
+    pub fn set_printer_columns(&mut self, printer: PrinterColumns) {
+        self.columns = Some(RowColumns::Printer(std::sync::Arc::new(printer)));
+    }
+
+    /// The CRD printer columns rows are built with, if the kind has them.
+    pub fn printer_columns(&self) -> Option<&PrinterColumns> {
+        match &self.columns {
+            Some(RowColumns::Printer(printer)) => Some(printer),
+            Some(RowColumns::Kind(_)) | None => None,
         }
     }
 
@@ -165,7 +182,7 @@ impl ObjectsTable {
     pub fn apply(&mut self, event: watcher::Event<DynamicObject>) {
         match event {
             watcher::Event::Apply(object) => {
-                let row = ObjectRow::new(&object, self.columns);
+                let row = ObjectRow::new(&object, self.columns.as_ref());
                 if self.live() {
                     let change = if self.index.contains(&row.uid) {
                         RowChange::Modified
@@ -177,7 +194,7 @@ impl ObjectsTable {
                 self.index.apply_applied(row.uid.clone(), row);
             }
             watcher::Event::InitApply(object) => {
-                let row = ObjectRow::new(&object, self.columns);
+                let row = ObjectRow::new(&object, self.columns.as_ref());
                 if let Some(seen) = &mut self.relisting {
                     seen.insert(row.uid.clone());
                 }

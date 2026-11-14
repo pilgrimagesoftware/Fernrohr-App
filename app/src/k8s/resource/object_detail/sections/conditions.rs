@@ -5,7 +5,9 @@
 //! read as, and every condition as a badge.
 
 use super::super::model::{ObjectField, ObjectSection};
-use super::common::{condition_badges, json_condition_pairs, message_field, ready_field};
+use super::common::{
+    condition_badges, json_condition_pairs, message_field, ready_field, transition_field,
+};
 use crate::k8s::resource::status_tone;
 use kube::api::DynamicObject;
 
@@ -18,6 +20,7 @@ pub(super) fn status(object: &DynamicObject) -> Option<Vec<ObjectSection>> {
     }
     let mut fields: Vec<ObjectField> = ready_field(conditions).into_iter().collect();
     fields.extend(message_field(conditions));
+    fields.extend(transition_field(conditions));
     // An arbitrary condition's polarity can't be known, so each reads as
     // good news when it holds - the common case, `Ready` among them.
     if let Some(badges) = condition_badges(json_condition_pairs(conditions), |_| false) {

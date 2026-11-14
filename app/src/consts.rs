@@ -14,6 +14,10 @@ pub(crate) const APP_NAME: &str = "Fernrohr";
 /// that entry's name and icon and group them under it.
 pub(crate) const APP_ID: &str = "fernrohr";
 
+/// The user documentation site's current version, which Help > Fernrohr
+/// Documentation opens (#361). The site is published from `docs/site`.
+pub(crate) const DOCS_URL: &str = "https://pilgrimagesoftware.github.io/Fernrohr-App/latest/";
+
 /// The macOS bundle identifier (`[package.metadata.packager]`'s `identifier`):
 /// the app desktop notifications are posted as. Without it they would be
 /// posted as Finder.
@@ -45,6 +49,25 @@ pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
 pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
+/// How long a Helm release action's `helm` run may take before its process
+/// group is killed and the run reported failed (`helm-releases` D8).
+pub(crate) const HELM_ACTION_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// How many of a release's objects the Resources tab checks at once (one GET
+/// each): a large chart, perhaps through a tunnel, doesn't arrive at the API
+/// server as one burst its flow control would throttle.
+pub(crate) const HELM_RESOURCE_CHECKS: usize = 8;
+
+/// How long `helm version --short` may take when checking the binary.
+pub(crate) const HELM_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How many of stderr's last lines a failed `helm` run reports.
+pub(crate) const HELM_ERROR_LINES: usize = 5;
+
+/// How long a custom resource list waits for its CRD's printer columns (#352)
+/// before listing with the generic columns instead.
+pub(crate) const CRD_COLUMNS_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// How long resolving the login shell's `PATH` may take before falling back.
 pub(crate) const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -399,6 +422,11 @@ pub(crate) const EXEC_LIBRARY_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(720.), gpui_kit::px(520.));
 pub(crate) const EXEC_LIBRARY_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(480.), gpui_kit::px(320.));
+
+/// The most a Helm release's payload may decompress to (helm-releases D2). A
+/// real release is a few hundred KiB at most; past this the payload is refused
+/// as unreadable, so a hostile Secret can't exhaust memory.
+pub(crate) const HELM_RELEASE_MAX_DECODED_BYTES: u64 = 32 * 1024 * 1024;
 
 #[cfg(test)]
 mod tests {

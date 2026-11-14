@@ -201,6 +201,15 @@ pub(crate) fn check_all_hint(window: &Window) -> crate::ui::key_hint_row::KeyHin
 
 /// Adds a checkable list's contexts: always [`CHECKABLE_CONTEXT`], and while
 /// rows are checked [`CHECKED_CONTEXT`] and each of `offered`'s gate.
+/// Every identifier [`add_contexts`] can add, for `keymap::conflicts`
+/// (#331): all of them may sit on one list's element at once.
+pub(crate) fn key_contexts() -> Vec<&'static str> {
+    [CHECKABLE_CONTEXT, CHECKED_CONTEXT]
+        .into_iter()
+        .chain(BulkAction::ALL.into_iter().map(context))
+        .collect()
+}
+
 pub(crate) fn add_contexts(key_context: &mut KeyContext, checked: bool, offered: &[BulkAction]) {
     key_context.add(CHECKABLE_CONTEXT);
     if checked {

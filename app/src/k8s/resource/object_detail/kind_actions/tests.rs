@@ -218,3 +218,34 @@ async fn a_serviceaccounts_panel_shows_a_new_token_once(cx: &mut TestAppContext)
         .update(|_, cx| format!("{:?}", harness.panel.read(cx).refusal));
     assert!(!held.contains(crate::k8s::test_cluster::TEST_TOKEN));
 }
+
+/// #354: an ExternalSecret's panel offers Force Sync; `shift-s` asks, and
+/// Enter merges External Secrets' `force-sync` annotation onto the listed
+/// object only.
+#[gpui_kit::test]
+async fn an_external_secrets_panel_force_syncs_it(cx: &mut TestAppContext) {
+    let secret = json!({ "apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret",
+        "metadata": meta("db-credentials"), "spec": {} });
+    let mut harness = open(
+        cx,
+        kind("external-secrets.io", "ExternalSecret", "externalsecrets"),
+        secret,
+    );
+    assert!(harness.in_context("KindForceSync"));
+    harness.press("shift-s");
+    assert!(harness.dialog_open(), "it asks first");
+    harness.press("enter");
+    for _ in 0..400 {
+        if !harness.cluster.patches().is_empty() {
+            break;
+        }
+        harness.vcx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let patch = &harness.cluster.patches()[0].1;
+    assert_eq!(patch["metadata"]["uid"], "uid-db-credentials");
+    let token = patch["metadata"]["annotations"]["force-sync"]
+        .as_str()
+        .expect("the force-sync annotation");
+    assert!(token.parse::<i64>().is_ok(), "Unix seconds: {token}");
+}

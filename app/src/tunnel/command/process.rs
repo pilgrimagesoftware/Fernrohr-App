@@ -9,7 +9,7 @@
 use super::output::OutputTail;
 use crate::consts::COMMAND_TUNNEL_STOP_GRACE;
 use crate::util::pidfile::{self, PidFile};
-use std::path::{Path, PathBuf};
+use crate::util::which::find_program;
 use std::process::Stdio;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::task::JoinHandle;
@@ -25,30 +25,6 @@ pub(super) struct Running {
     /// Removed once the group is gone, so a crash in between still leaves it for the
     /// next launch's sweep.
     pidfile: Option<PidFile>,
-}
-
-/// `program` as a path to run: as given when it names a path, otherwise the first
-/// executable of that name on `path`.
-pub(super) fn find_program(program: &str, path: &str) -> Option<PathBuf> {
-    if program.contains('/') {
-        return Some(PathBuf::from(program));
-    }
-    path.split(':')
-        .filter(|dir| !dir.is_empty())
-        .map(|dir| Path::new(dir).join(program))
-        .find(|candidate| is_executable(candidate))
-}
-
-#[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt as _;
-    path.metadata()
-        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-}
-
-#[cfg(not(unix))]
-fn is_executable(path: &Path) -> bool {
-    path.is_file()
 }
 
 /// Spawns `argv` with `path` as its `PATH`, leading its own process group, its

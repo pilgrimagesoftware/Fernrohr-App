@@ -168,6 +168,9 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::k8s::resource::object_detail::register_commands(registry);
     crate::k8s::resource::object_list::register_commands(registry);
     crate::k8s::resource::events_browser::register_commands(registry);
+    crate::k8s::resource::helm::list::register_commands(registry);
+    crate::k8s::resource::helm::detail::register_commands(registry);
+    crate::k8s::resource::helm::actions::register_commands(registry);
     crate::ui::placeholder::register_commands(registry);
     crate::ui::namespace_sets::register_commands(registry);
     crate::ui::table_fit::register_commands(registry);
@@ -180,6 +183,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::shortcut_timeout::register_commands(registry);
     crate::ui::logs_panels::register_commands(registry);
     crate::ui::background_mcp::register_commands(registry);
+    crate::ui::help::register_commands(registry);
     crate::ui::report_issue::register_commands(registry);
     crate::ui::confirm_dialog::register_commands(registry);
     crate::ui::manual_tunnel::register_commands(registry);
@@ -209,6 +213,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.bind_keys(crate::ui::list_keys::bindings(&[
         crate::k8s::resource::object_list::LIST_KEY_CONTEXT,
         crate::k8s::resource::pods::PANEL_KEY_CONTEXT,
+        crate::k8s::resource::helm::list::LIST_KEY_CONTEXT,
     ]));
     super::panel_focus::register_unfocused_fallbacks(cx);
     crate::ui::settings::init(cx);
@@ -221,6 +226,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::ui::logs_panels::register_handlers(cx);
     crate::ui::background_mcp::register_handlers(cx);
     crate::ui::theme::register_handlers(cx);
+    crate::ui::help::register_handler(cx);
     crate::ui::report_issue::register_handler(cx);
     crate::ui::agent_setup::register_handler(cx);
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
@@ -246,6 +252,8 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     crate::k8s::resource::exec::register_restore(cx);
     crate::k8s::resource::object_list::register_restore(cx);
     crate::k8s::resource::events_browser::register_restore(cx);
+    crate::k8s::resource::helm::list::register_restore(cx);
+    crate::k8s::resource::helm::detail::register_restore(cx);
     crate::ui::placeholder::register_restore(cx);
     crate::ui::unrestored::register_restore(cx);
     let dock_layouts_path = default_dock_layouts_path();

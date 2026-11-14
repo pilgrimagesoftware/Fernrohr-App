@@ -17,7 +17,7 @@ The window title names the context the window shows. With two or more contexts i
 
 **Switch windows.** The Window menu lists every open window by its title, so two windows on different clusters are easy to tell apart. Choose one to bring it forward.
 
-**Close a window.** Choose Window > Close Window or press <kbd>⌘W</kbd>. Close Window closes the focused panel first, and closes the window only when no panel is on screen. If closing would stop a tunnel or discard an unsaved edit, Fernrohr asks first. On Linux, closing the last window quits Fernrohr after it saves its state. On macOS it keeps running in the menu bar; see [Quiet mode](#quiet-mode).
+**Close a window.** Choose Window > Close Window or press <kbd>⌘W</kbd>. Close Window closes the focused panel first, and closes the window only when no panel is on screen. If closing would disconnect a context that no other window uses, stop a tunnel, or discard an unsaved edit, Fernrohr asks first. The window's close button asks the same question. Press <kbd>Enter</kbd> to close, or <kbd>Esc</kbd> to keep the window. When an unsaved edit would be lost, <kbd>Enter</kbd> keeps the window instead, and only the dialog's **Close Window** button or <kbd>⌘⌫</kbd> closes it. On Linux, closing the last window quits Fernrohr after it saves its state. On macOS it keeps running in the menu bar; see [Quiet mode](#quiet-mode).
 
 Fernrohr remembers each window's size and position, the contexts it used, and its panels and their arrangement. On the next launch it reopens the windows the same way and reconnects their contexts. If the saved state file can't be read, Fernrohr starts with one default window and leaves the unreadable file in place.
 
@@ -31,10 +31,14 @@ The icon's menu brings Fernrohr back:
 
 | Menu item | What it does |
 | --- | --- |
-| Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it. |
+| New Window | Opens a window with the cluster picker. |
+| Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it, at the size and position of the window you closed last. |
 | Settings… | Opens Settings. |
 | MCP… | Opens Settings at Agent Access, with the MCP server's setting. |
 | Tunnel Manager… | Opens the Tunnel Manager. |
+| About Fernrohr | Opens the About window. |
+| Fernrohr Documentation | Opens this documentation in your browser. |
+| Report Issue | Opens Report Issue. |
 | Quit Fernrohr | Quits. |
 
 Clicking Fernrohr's Dock icon with no window open reopens the window you closed last, connected to
@@ -153,7 +157,7 @@ The menu bar has seven menus, in this order: App, Context, Edit, View, Navigate,
 | View | Command Palette, then theme and text size, then the Resource panel items, then Maximize/Restore Panel, then table columns |
 | Navigate | Focus Next Panel, Focus Previous Panel, Focus Resources, the tab commands, and a Select Tab submenu |
 | Window | One entry per open window, plus New Window, Save Panel Layout…, Saved Layouts…, Open Logs by Label…, Minimize, Zoom and Close Window |
-| Help | Report Issue |
+| Help | Fernrohr Documentation, Report Issue |
 
 Navigate holds only commands that work whichever panel has focus. A command for one panel type, such as describing the selected pod, stays out of the menu. It remains in the palette, in `keymap.toml` and in that panel's hint row.
 

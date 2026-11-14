@@ -1,5 +1,5 @@
-//! The generic condition columns (`resource-status-message` D2): Ready and
-//! Message, for a kind outside the per-kind table - every CRD, Flux's
+//! The generic condition columns (`resource-status-message` D2): Ready, Last
+//! transition (#355) and Message, for a kind outside the per-kind table - every CRD, Flux's
 //! `HelmRelease` and `Kustomization` among them. Every row of such a kind
 //! carries both cells; the list shows each column only once a loaded object
 //! has reported what fills it, so a kind whose objects never set
@@ -11,7 +11,8 @@ use kube::api::DynamicObject;
 
 /// Each column's index in [`CONDITIONS`]' cells.
 const READY: usize = 0;
-const MESSAGE: usize = 1;
+const TRANSITION: usize = 1;
+const MESSAGE: usize = 2;
 
 pub(super) static CONDITIONS: KindColumns = KindColumns {
     columns: &[
@@ -19,6 +20,11 @@ pub(super) static CONDITIONS: KindColumns = KindColumns {
             id: "ready",
             title: "Ready",
             width: 90.,
+        },
+        ColumnDef {
+            id: "last_transition",
+            title: "Last transition",
+            width: 110.,
         },
         ColumnDef {
             id: "message",
@@ -35,6 +41,9 @@ fn cells(object: &DynamicObject) -> Vec<Cell> {
     if let Some(status) = status_tone::ready_status(conditions) {
         cells[READY] = Cell::Condition(status);
     }
+    if let Some(time) = status_tone::last_transition(conditions) {
+        cells[TRANSITION] = Cell::Age(time);
+    }
     if let Some((message, tone)) = status_tone::condition_message(conditions) {
         cells[MESSAGE] = Cell::status(message, tone);
     }
@@ -49,6 +58,8 @@ pub struct ConditionsSeen {
     pub conditions: bool,
     /// A `Ready` condition among them: the Ready column shows too.
     pub ready: bool,
+    /// A last transition time among them: the Last transition column shows.
+    pub transition: bool,
 }
 
 impl ConditionsSeen {
@@ -58,6 +69,7 @@ impl ConditionsSeen {
         Self {
             conditions: !conditions.is_empty(),
             ready: status_tone::ready_status(conditions).is_some(),
+            transition: status_tone::last_transition(conditions).is_some(),
         }
     }
 
@@ -66,12 +78,13 @@ impl ConditionsSeen {
         Self {
             conditions: self.conditions || other.conditions,
             ready: self.ready || other.ready,
+            transition: self.transition || other.transition,
         }
     }
 }
 
-/// The condition columns `seen` calls for, with their cell indices: Ready
-/// before Message, and neither until conditions have been seen.
+/// The condition columns `seen` calls for, with their cell indices: Ready,
+/// Last transition and Message, each only once something fills it.
 pub(super) fn visible(seen: ConditionsSeen) -> impl Iterator<Item = (usize, ColumnDef)> {
     CONDITIONS
         .columns
@@ -80,6 +93,7 @@ pub(super) fn visible(seen: ConditionsSeen) -> impl Iterator<Item = (usize, Colu
         .enumerate()
         .filter(move |(cell, _)| match *cell {
             READY => seen.ready,
+            TRANSITION => seen.transition,
             _ => seen.conditions,
         })
 }

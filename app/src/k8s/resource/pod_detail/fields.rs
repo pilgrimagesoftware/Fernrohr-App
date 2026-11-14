@@ -72,16 +72,26 @@ pub fn pod_fields(pod: &Pod, now: Timestamp) -> Vec<PodField> {
             PodFieldValue::Containers(containers),
         );
     }
-    let init_containers = summarize_containers(
-        pod.spec
-            .as_ref()
-            .and_then(|spec| spec.init_containers.as_deref())
-            .unwrap_or_default(),
-        status
-            .and_then(|status| status.init_container_statuses.as_deref())
-            .unwrap_or_default(),
-        namespace,
-    );
+    // Sidecars (#353) run beside the app containers, so they're listed apart
+    // from the init containers that run once before them.
+    let (sidecars, init_containers): (Vec<_>, Vec<_>) = pod
+        .spec
+        .iter()
+        .flat_map(|spec| spec.init_containers.iter().flatten())
+        .cloned()
+        .partition(crate::k8s::resource::pods::is_sidecar);
+    let init_statuses = status
+        .and_then(|status| status.init_container_statuses.as_deref())
+        .unwrap_or_default();
+    let sidecars = summarize_containers(&sidecars, init_statuses, namespace);
+    if !sidecars.is_empty() {
+        push(
+            "Sidecar Containers",
+            DetailSection::Containers,
+            PodFieldValue::Containers(sidecars),
+        );
+    }
+    let init_containers = summarize_containers(&init_containers, init_statuses, namespace);
     if !init_containers.is_empty() {
         push(
             "Init Containers",

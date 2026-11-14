@@ -40,6 +40,58 @@ impl MainWindow {
         }
     }
 
+    /// Disconnect All Contexts… (#359): asks, through the status bar, before
+    /// disconnecting every context in the window.
+    pub(super) fn on_action_disconnect_all_contexts(
+        &mut self,
+        _: &crate::ui::status_bar::DisconnectAllContexts,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_disconnect_many(crate::ui::status_bar::Disconnecting::All, window, cx);
+    }
+
+    /// Disconnect Other Contexts… (#359): every context but the active one.
+    pub(super) fn on_action_disconnect_other_contexts(
+        &mut self,
+        _: &crate::ui::status_bar::DisconnectOtherContexts,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let WindowMode::Workspace {
+            contexts, active, ..
+        } = &self.mode
+        else {
+            return;
+        };
+        let Some(kept) = contexts.get(*active).cloned() else {
+            return;
+        };
+        self.open_disconnect_many(
+            crate::ui::status_bar::Disconnecting::OthersThan(kept),
+            window,
+            cx,
+        );
+    }
+
+    /// Deferred out of this update, as Disconnect Active Context is: the
+    /// confirmation reads `MainWindow`.
+    fn open_disconnect_many(
+        &mut self,
+        which: crate::ui::status_bar::Disconnecting,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let WindowMode::Workspace { status_bar, .. } = &self.mode {
+            let status_bar = status_bar.clone();
+            window.defer(cx, move |window, cx| {
+                status_bar.update(cx, |bar, cx| {
+                    bar.open_disconnect_many_dialog(which, window, cx);
+                });
+            });
+        }
+    }
+
     /// Pushes `contexts`/`active` to the Resource panel and the status bar - the one
     /// place that updates both, so `add_context`, `disconnect_context`, and
     /// `set_active_context` cannot update one and forget the other (see
@@ -180,6 +232,8 @@ impl MainWindow {
                 OpenedPanel::Pods(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::ObjectList(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Events(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::HelmReleases(panel) => area.remove_panel(panel, window, cx),
+                OpenedPanel::HelmRelease(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Placeholder(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::Logs(panel) => area.remove_panel(panel, window, cx),
                 OpenedPanel::PodDetail(panel) => area.remove_panel(panel, window, cx),
@@ -241,3 +295,5 @@ mod add_window_tests;
 mod awaiting_tests;
 #[cfg(test)]
 mod capsule_tests;
+#[cfg(test)]
+mod disconnect_many_tests;

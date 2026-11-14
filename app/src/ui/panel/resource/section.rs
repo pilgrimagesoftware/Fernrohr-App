@@ -8,6 +8,7 @@
 
 use super::category::Category;
 use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::ui::nav::NavTarget;
 use std::collections::HashSet;
 
 /// One non-empty category's kinds, in the fixed section order.
@@ -114,6 +115,37 @@ pub(super) struct VisibleSection {
     /// built from `matches`; empty for every other section, whose rows are
     /// `matches` directly.
     pub(super) subgroups: Vec<VisibleSubgroup>,
+    /// Rows after the kinds that aren't discovered kinds: Helm Releases, last
+    /// in Workloads (`resource-browser`), when the filter matches it. Not in
+    /// `total`, which counts kinds.
+    pub(super) extras: Vec<NavTarget>,
+}
+
+/// The labels a non-kind row is filtered by, with its target.
+const EXTRAS: [(Category, &str, NavTarget); 1] = [(
+    Category::Workloads,
+    "Helm Releases",
+    NavTarget::HelmReleases,
+)];
+
+/// The non-kind rows `category` holds that pass `filter`: case-insensitive,
+/// against the row's label - "helm", "releases" and "helm releases" all find
+/// Helm Releases.
+fn extras_for(category: Category, filter: &str) -> Vec<NavTarget> {
+    let filter = filter.to_lowercase();
+    EXTRAS
+        .iter()
+        .filter(|(home, label, _)| *home == category && label.to_lowercase().contains(&filter))
+        .map(|(_, _, target)| target.clone())
+        .collect()
+}
+
+/// The label a non-kind row shows.
+pub(super) fn extra_label(target: &NavTarget) -> &'static str {
+    EXTRAS
+        .iter()
+        .find(|(_, _, extra)| extra == target)
+        .map_or("", |(_, label, _)| label)
 }
 
 /// One API group inside Custom Resources, as it should render right now.
@@ -135,6 +167,8 @@ pub(super) enum Navigable<'a> {
     /// The header of the subgroup for this API group (`""` for core).
     Subgroup(&'a str),
     Kind(&'a DiscoveredKind),
+    /// A row that isn't a discovered kind (Helm Releases).
+    Target(&'a NavTarget),
 }
 
 impl VisibleSection {
@@ -163,6 +197,7 @@ impl VisibleSection {
                 std::iter::once(Navigable::Subgroup(subgroup.group.as_str()))
                     .chain(kinds.iter().map(Navigable::Kind))
             }))
+            .chain(self.extras.iter().map(Navigable::Target))
             .filter(move |_| shown)
     }
 }
@@ -191,7 +226,8 @@ pub(super) fn visible_sections(
                 .filter(|kind| matches_filter(kind, filter))
                 .cloned()
                 .collect();
-            if filtering && matches.is_empty() {
+            let extras = extras_for(section.category, filter);
+            if filtering && matches.is_empty() && extras.is_empty() {
                 return None;
             }
             let expanded = filtering || !collapsed.contains(&section.category);
@@ -217,6 +253,7 @@ pub(super) fn visible_sections(
                 matches,
                 expanded,
                 subgroups,
+                extras,
             })
         })
         .collect()

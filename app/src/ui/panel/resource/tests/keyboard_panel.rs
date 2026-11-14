@@ -78,11 +78,18 @@ async fn down_twice_then_enter_opens_the_second_visible_kind(cx: &mut TestAppCon
     vcx.simulate_keystrokes("down");
     vcx.simulate_keystrokes("down");
     vcx.simulate_keystrokes("enter");
-
     assert_eq!(
         opened.borrow().as_slice(),
-        [NavTarget::Kind(kinds[1].clone())],
-        "Down twice moves past Pod onto Service, and Enter opens it"
+        [NavTarget::HelmReleases],
+        "Down twice moves past Pod onto Helm Releases, last in Workloads"
+    );
+
+    vcx.simulate_keystrokes("down");
+    vcx.simulate_keystrokes("enter");
+    assert_eq!(
+        opened.borrow().last(),
+        Some(&NavTarget::Kind(kinds[1].clone())),
+        "and once more onto Service, and Enter opens it"
     );
 }
 
@@ -265,4 +272,59 @@ async fn every_hinted_action_resolves_in_the_live_keymap(cx: &mut TestAppContext
             );
         })
         .unwrap();
+}
+
+/// `resource-browser`'s "Helm Releases from the Resource panel": filter by
+/// "helm", move to the row with the arrows, Enter opens the Helm Releases list.
+/// The row isn't a kind, so Workloads still counts only its kinds.
+#[gpui_kit::test]
+async fn filtering_by_helm_reaches_helm_releases(cx: &mut TestAppContext) {
+    bind_panel_keys(cx);
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = stub_panel(cx);
+    let kinds = workloads_and_network_kinds();
+    let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = opened.clone();
+    window
+        .update(cx, |panel, window, cx| {
+            panel.state = ResourceState::Loaded(kinds.clone());
+            panel.focus_handle.clone().focus(window, cx);
+            let entity = cx.entity();
+            cx.subscribe_in(
+                &entity,
+                window,
+                move |_panel, _entity, event, _window, _cx| {
+                    let super::super::ResourceEvent::Open(target) = event else {
+                        return;
+                    };
+                    sink.borrow_mut().push(target.clone());
+                },
+            )
+            .detach();
+            cx.notify();
+        })
+        .unwrap();
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+
+    vcx.simulate_keystrokes("/");
+    vcx.simulate_input("helm");
+    vcx.run_until_parked();
+    window
+        .update(&mut vcx, |panel, _window, cx| {
+            let sections = panel.visible_sections(cx);
+            assert_eq!(sections.len(), 1, "only Workloads holds a match");
+            assert!(sections[0].matches.is_empty(), "no kind matches");
+            assert_eq!(sections[0].extras, [NavTarget::HelmReleases]);
+            assert_eq!(sections[0].total, 1, "the count is of kinds: Pod alone");
+        })
+        .unwrap();
+
+    vcx.simulate_keystrokes("down");
+    vcx.simulate_keystrokes("enter");
+    vcx.run_until_parked();
+    assert_eq!(opened.borrow().as_slice(), [NavTarget::HelmReleases]);
 }
