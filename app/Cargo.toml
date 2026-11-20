@@ -81,7 +81,7 @@ jsonpath-rust = "=1.0.13"
 # build through gpui, with these default features; pinned to that same
 # version. Unix only: the app posts none on Windows.
 [target.'cfg(unix)'.dependencies]
-notify-rust = "=4.18.2"
+notify-rust = "=4.19.0"
 
 # The user's accent colour for the focused-panel mark (`ui::accent`), and the
 # menu bar status item quiet mode runs in (`ui::status_menu::macos`, #236;
