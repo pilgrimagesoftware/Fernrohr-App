@@ -20,12 +20,67 @@ pub fn restorable_panels(layout: &WindowLayout) -> Vec<&PanelDescriptor> {
         .collect()
 }
 
+/// Where a window opened from `layout` goes: its saved frame, brought back onto
+/// a connected display by [`onto_connected_display`] when that display has
+/// since gone (#377), or centred on the main display when no position was saved.
 pub(super) fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixels> {
     let size = size(px(layout.width), px(layout.height));
     match (layout.x, layout.y) {
-        (Some(x), Some(y)) => Bounds::new(Point::new(px(x), px(y)), size),
+        (Some(x), Some(y)) => {
+            let saved = Bounds::new(Point::new(px(x), px(y)), size);
+            let displays = placement_displays(cx);
+            let main = cx.primary_display().map(|display| display.visible_bounds());
+            onto_connected_display(saved, &displays, main)
+        }
         _ => Bounds::centered(None, size, cx),
     }
+}
+
+/// The displays a saved frame is checked against, in the coordinates
+/// `open_window` places it in. On macOS that's the primary display alone:
+/// gpui's Mac backend is display-local - every display's `bounds()` has origin
+/// (0, 0), a window's `bounds()` is relative to its own screen, and a window
+/// opened with no `display_id` is placed relative to the primary screen - so
+/// only the primary's frame says whether the saved origin lands on a display.
+#[cfg(target_os = "macos")]
+fn placement_displays(cx: &App) -> Vec<Bounds<Pixels>> {
+    cx.primary_display()
+        .map(|display| display.bounds())
+        .into_iter()
+        .collect()
+}
+
+/// The displays a saved frame is checked against: every connected one, whose
+/// bounds share one global coordinate space with window positions here.
+#[cfg(not(target_os = "macos"))]
+fn placement_displays(cx: &App) -> Vec<Bounds<Pixels>> {
+    cx.displays()
+        .iter()
+        .map(|display| display.bounds())
+        .collect()
+}
+
+/// `saved` unchanged while it overlaps any of `displays`; otherwise (the display
+/// it was last on is disconnected) centred in `main`'s visible area, keeping its
+/// size where that fits and shrinking each dimension that doesn't. With no main
+/// display to move it to, `saved` is returned as is - the platform then places it.
+pub(super) fn onto_connected_display(
+    saved: Bounds<Pixels>,
+    displays: &[Bounds<Pixels>],
+    main: Option<Bounds<Pixels>>,
+) -> Bounds<Pixels> {
+    if displays.iter().any(|display| display.intersects(&saved)) {
+        return saved;
+    }
+    let Some(main) = main else {
+        return saved;
+    };
+    let size = saved.size.min(&main.size);
+    let origin = Point::new(
+        main.origin.x + (main.size.width - size.width) / 2.,
+        main.origin.y + (main.size.height - size.height) / 2.,
+    );
+    Bounds::new(origin, size)
 }
 
 /// The geometry a save records, from a live window's outer `frame`
