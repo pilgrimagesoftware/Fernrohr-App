@@ -141,6 +141,20 @@ fn a_terminated_container_or_finished_pod_is_not_followed() {
         follows(Some(&pod("Running", Some("terminated"))), "sidecar"),
         "only the named container's status counts"
     );
+    // #398: a sidecar's status is among the init containers'.
+    let sidecar = crate::k8s::resource::pods::sidecar_fixture();
+    assert!(follows(Some(&sidecar), "proxy"), "a running sidecar");
+    let mut ended = sidecar.clone();
+    let statuses = ended
+        .status
+        .as_mut()
+        .and_then(|s| s.init_container_statuses.as_mut());
+    let proxy = statuses.and_then(|s| s.iter_mut().find(|s| s.name == "proxy"));
+    proxy.expect("the fixture's sidecar").state = Some(
+        serde_json::from_value(serde_json::json!({"terminated": {"exitCode": 1}}))
+            .expect("a valid state"),
+    );
+    assert!(!follows(Some(&ended), "proxy"), "a terminated sidecar");
 }
 
 /// `completed-pod-logs` 2.3: a terminated container's log, read without

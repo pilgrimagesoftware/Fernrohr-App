@@ -143,3 +143,38 @@ async fn several_running_containers_ask_which(cx: &mut TestAppContext) {
     assert_eq!(opened[0].target.pod, "web-2");
     assert_eq!(opened[0].target.container, "sidecar", "the second button");
 }
+
+/// #398: a pod whose second long-running container is a sidecar - an init
+/// container with `restartPolicy: Always` - offers it, marked, and `s` then
+/// the second button opens a shell in it.
+#[gpui_kit::test]
+async fn a_running_sidecar_is_offered_and_opened(cx: &mut TestAppContext) {
+    let mut harness = open(cx);
+    let mut pod = serde_json::to_value(crate::k8s::resource::pods::sidecar_fixture()).unwrap();
+    pod["apiVersion"] = json!("v1");
+    pod["kind"] = json!("Pod");
+    pod["metadata"] = json!({ "name": "web-3", "namespace": "shop", "uid": "u3" });
+    harness.cluster.apply(PODS.0, PODS.1, pod);
+    harness.wait_for("listed the sidecar pod", |panel, cx| {
+        panel.table.read(cx).pods().len() == 3
+    });
+    harness.press("down");
+    harness.press("down");
+    assert_eq!(harness.selected().as_deref(), Some("web-3"));
+    let selection = harness.vcx.update(|_, cx| {
+        cx.global::<crate::k8s::resource::pods::SelectedPod>()
+            .0
+            .clone()
+            .expect("a selection")
+    });
+    assert_eq!(selection.containers, ["app", "proxy"]);
+    assert_eq!(selection.container_label("proxy"), "proxy (sidecar)");
+
+    let opened = record_opens(&mut harness);
+    harness.press("s");
+    // The buttons run app, proxy (sidecar), Cancel.
+    press_dialog_button(&mut harness, 2);
+    let opened = opened.borrow();
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0].target.container, "proxy");
+}

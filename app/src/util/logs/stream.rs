@@ -140,9 +140,11 @@ pub(super) fn follows(pod: Option<&k8s_openapi::api::core::v1::Pod>, container: 
     if matches!(status.phase.as_deref(), Some("Succeeded" | "Failed")) {
         return false;
     }
+    // A sidecar's status is among the init containers' (#398).
     let terminated = status
         .container_statuses
         .iter()
+        .chain(&status.init_container_statuses)
         .flatten()
         .find(|status| status.name == container)
         .and_then(|status| status.state.as_ref())

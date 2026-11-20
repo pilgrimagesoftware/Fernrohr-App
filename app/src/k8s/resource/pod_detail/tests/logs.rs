@@ -74,6 +74,7 @@ async fn l_on_a_loaded_pod_asks_for_its_logs(cx: &mut TestAppContext) {
             namespace: "staging".into(),
             name: "api-7d9f-ftg5t".into(),
             containers: vec!["app".into(), "sidecar".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })
     );
