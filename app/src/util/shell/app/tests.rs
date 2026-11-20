@@ -48,6 +48,7 @@ async fn a_pods_panel_shortcut_key_reaches_the_window(cx: &mut TestAppContext) {
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })));
     });

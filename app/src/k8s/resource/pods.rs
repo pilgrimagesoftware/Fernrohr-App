@@ -65,9 +65,9 @@ pub use rows::{PodRow, matches_namespaces, pod_row};
 pub use selection::{PodSelection, SelectedPod};
 pub use shell::SHELL_KEY_CONTEXT;
 pub(crate) use shell::{running_containers, shell_into};
-pub(crate) use sidecars::is_sidecar;
 #[cfg(test)]
 pub(crate) use sidecars::tests::pod as sidecar_fixture;
+pub(crate) use sidecars::{container_label, is_sidecar, long_running, long_running_names};
 pub use store::PodsTable;
 pub use watch::watch_all_namespaces;
 

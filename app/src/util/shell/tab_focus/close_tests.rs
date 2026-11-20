@@ -97,6 +97,7 @@ fn describe(h: &mut Harness, pod: &str) {
             namespace: "default".into(),
             name: pod.into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })))
     });

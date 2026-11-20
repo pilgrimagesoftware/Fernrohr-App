@@ -58,6 +58,8 @@ pub struct LogsView {
     lines: Vec<LogLine>,
     follow: FollowState,
     containers: Vec<String>,
+    /// Which of `containers` are sidecars, which the picker marks (#398).
+    sidecars: Vec<String>,
     #[allow(dead_code)]
     selected_container: String,
     /// What took the panel over instead of its lines: a failure, or no
@@ -89,6 +91,7 @@ impl LogsView {
             lines: Vec::new(),
             follow: FollowState::Following,
             containers,
+            sidecars: Vec::new(),
             selected_container,
             terminal_message: None,
             ended: false,
@@ -129,6 +132,23 @@ impl LogsView {
 
     pub fn containers(&self) -> &[String] {
         &self.containers
+    }
+
+    /// Marks `sidecars`, some of [`Self::containers`], as sidecars.
+    pub fn with_sidecars(mut self, sidecars: Vec<String>) -> Self {
+        self.sidecars = sidecars;
+        self
+    }
+
+    pub fn sidecars(&self) -> &[String] {
+        &self.sidecars
+    }
+
+    /// How the container picker names `container`: marked when it is a
+    /// sidecar.
+    pub fn container_label(&self, container: &str) -> String {
+        let sidecar = self.sidecars.iter().any(|name| name == container);
+        crate::k8s::resource::pods::container_label(container, sidecar)
     }
 
     pub fn terminal_message(&self) -> Option<&str> {

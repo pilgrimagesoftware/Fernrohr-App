@@ -119,14 +119,11 @@ pub(crate) async fn resolve_pods(
 }
 
 /// The container to run in on `pod`: `wanted`, when given - an error if the
-/// pod has no such container - else the pod's default-container annotation,
-/// else its first container.
+/// pod has no such app container or sidecar (#398) - else the pod's
+/// default-container annotation, else its first app container.
 pub(crate) fn container_for(pod: &Pod, wanted: Option<&str>) -> Result<String, String> {
-    let containers: Vec<&str> = pod
-        .spec
-        .iter()
-        .flat_map(|spec| &spec.containers)
-        .map(|container| container.name.as_str())
+    let containers: Vec<&str> = crate::k8s::resource::pods::long_running(pod)
+        .map(|(container, _)| container.name.as_str())
         .collect();
     let pod_name = format!(
         "{}/{}",

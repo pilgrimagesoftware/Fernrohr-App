@@ -124,19 +124,7 @@ impl Render for PodsPanel {
                                 && matches_node(pod, self.node.as_deref())
                         })
                         .map(|pod| {
-                            let containers = pod
-                                .spec
-                                .as_ref()
-                                .map(|spec| {
-                                    spec.containers.iter().map(|c| c.name.clone()).collect()
-                                })
-                                .unwrap_or_default();
-                            let selection = PodSelection {
-                                namespace: pod.metadata.namespace.clone().unwrap_or_default(),
-                                name: pod.metadata.name.clone().unwrap_or_default(),
-                                containers,
-                                context_name: self.scope.context_name.clone(),
-                            };
+                            let selection = PodSelection::of(pod, &self.scope.context_name);
                             let forwards = forwards.for_object(
                                 &crate::k8s::cluster::port_forwards::ForwardObject::pod(
                                     &selection.context_name,

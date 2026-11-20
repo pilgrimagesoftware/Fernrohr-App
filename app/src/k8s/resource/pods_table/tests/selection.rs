@@ -100,6 +100,7 @@ fn index_of_finds_the_row_by_namespace_and_name() {
             namespace: "ns-a".into(),
             name: "d-name".into(),
             containers: Vec::new(),
+            sidecars: Vec::new(),
             context_name: "ctx".into(),
         }),
         Some(1),
@@ -109,6 +110,7 @@ fn index_of_finds_the_row_by_namespace_and_name() {
             namespace: "ns-a".into(),
             name: "missing".into(),
             containers: Vec::new(),
+            sidecars: Vec::new(),
             context_name: "ctx".into(),
         }),
         None,
@@ -148,6 +150,7 @@ async fn perform_sort_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppCon
                 namespace: "ns-c".into(),
                 name: "b-name".into(),
                 containers: Vec::new(),
+                sidecars: Vec::new(),
                 context_name: "ctx".into(),
             }));
         })
@@ -205,6 +208,7 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
                 namespace: "ns-c".into(),
                 name: "b-name".into(),
                 containers: Vec::new(),
+                sidecars: Vec::new(),
                 context_name: "ctx".into(),
             }));
         })
@@ -217,6 +221,7 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
             namespace: "ns-a".into(),
             name: "d-name".into(),
             containers: Vec::new(),
+            sidecars: Vec::new(),
             context_name: "ctx".into(),
         })));
     });
@@ -248,6 +253,7 @@ async fn set_rows_reselects_the_pod_that_moved(cx: &mut gpui_kit::TestAppContext
                 namespace: "ns-e".into(),
                 name: "aa-name".into(),
                 containers: Vec::new(),
+                sidecars: Vec::new(),
                 context_name: "ctx".into(),
             },
             forwards: Vec::new(),
@@ -304,6 +310,7 @@ async fn set_rows_clears_selection_when_the_selected_pod_is_gone(
                 namespace: "ns-c".into(),
                 name: "b-name".into(),
                 containers: Vec::new(),
+                sidecars: Vec::new(),
                 context_name: "ctx".into(),
             }));
         })

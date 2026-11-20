@@ -53,6 +53,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
             namespace: "team-a".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "demo".into(),
         })));
     });

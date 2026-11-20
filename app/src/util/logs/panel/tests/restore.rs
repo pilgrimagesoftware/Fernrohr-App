@@ -126,6 +126,7 @@ async fn a_saved_pods_logs_panel_restores_pinned_to_its_pod_and_container(cx: &m
             namespace: "shop".into(),
             name: "web-2".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "demo".into(),
         })))
     });
