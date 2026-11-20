@@ -206,6 +206,7 @@ pub(super) fn render_capsule(
         ContextHealth::AwaitingConfirmation { tunnel_id, .. } => Some(tunnel_id.clone()),
         _ => None,
     };
+    let failed = matches!(item.health, ContextHealth::Failed { .. });
     let menu_button = Button::new(SharedString::from(format!(
         "context-chip-menu-{}",
         item.context_name
@@ -222,6 +223,17 @@ pub(super) fn render_capsule(
                 .item(answer_item(&tunnel_id, Decision::Cancel))
                 .separator(),
             None => menu,
+        };
+        // A failed connection can be tried again (#416).
+        let menu = if failed {
+            menu.item(PopupMenuItem::new("Reconnect").on_click({
+                let name = name.clone();
+                move |_event, _window, cx| {
+                    ClusterRegistry::reconnect(cx, &name);
+                }
+            }))
+        } else {
+            menu
         };
         let menu = menu.item(PopupMenuItem::new("Disconnect").on_click({
             let (this, name) = (this.clone(), name.clone());

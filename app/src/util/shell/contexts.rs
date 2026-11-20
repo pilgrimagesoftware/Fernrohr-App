@@ -40,6 +40,22 @@ impl MainWindow {
         }
     }
 
+    /// `context.reconnect_failed` (#416): tries every context in the window
+    /// whose connection failed again; the others are left as they are.
+    pub(super) fn on_action_reconnect_failed_contexts(
+        &mut self,
+        _: &crate::ui::status_bar::ReconnectFailedContexts,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let WindowMode::Workspace { contexts, .. } = &self.mode else {
+            return;
+        };
+        for context_name in contexts.clone() {
+            ClusterRegistry::reconnect(cx, &context_name);
+        }
+    }
+
     /// Disconnect All Contexts… (#359): asks, through the status bar, before
     /// disconnecting every context in the window.
     pub(super) fn on_action_disconnect_all_contexts(
@@ -297,3 +313,5 @@ mod awaiting_tests;
 mod capsule_tests;
 #[cfg(test)]
 mod disconnect_many_tests;
+#[cfg(test)]
+mod reconnect_tests;

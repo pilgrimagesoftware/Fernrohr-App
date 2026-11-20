@@ -63,6 +63,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Disconnect Active Context… | — | Global | Context | `context.disconnect` |
 | Disconnect All Contexts… | — | Global | Context | `context.disconnect_all` |
 | Disconnect Other Contexts… | — | Global | Context | `context.disconnect_others` |
+| Reconnect Failed Contexts | — | Global | Context | `context.reconnect_failed` |
 | Add Context: Close | <kbd>⎋</kbd> | `AddContextWindow` | — | `add_context.close` |
 | Switch Namespace Set… | <kbd>⌘⇧N</kbd> | Global | — | `namespace_sets.switch` |
 | Apply Namespace Set to Context… | <kbd>⌥⌘⇧N</kbd> | Global | — | `namespace_sets.switch_context` |

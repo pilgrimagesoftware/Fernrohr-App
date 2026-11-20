@@ -24,7 +24,7 @@ pub(super) struct ClusterSession {
     pub(super) watchers: WatchRegistry<WatchKey>,
     // Kept alive for as long as the session exists; aborts on drop like every other
     // owned background task. `None` for an unbound context, which has no forward to watch.
-    _health: Option<gpui_kit::Task<()>>,
+    pub(super) _health: Option<gpui_kit::Task<()>>,
     /// `window-context-bar` design.md decision 2: which windows currently use this
     /// context. The session (and so its connection and tunnel forward) lives exactly
     /// as long as this set is non-empty - see [`ClusterRegistry::hold`]/[`release`](
@@ -119,19 +119,7 @@ impl ClusterRegistry {
     /// driving pause/resume off its forward's state when it has one.
     fn insert_session(cx: &mut App, context_name: &str, connection: Entity<ClusterConnection>) {
         let pods = cx.new(|_| PodsTable::default());
-        let health = connection.read(cx).forward_state().map(|state_rx| {
-            let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
-                health::drive(state_rx, tx).await;
-            });
-            let context_name = context_name.to_string();
-            cx.spawn(async move |cx| {
-                crate::runtime::drain(rx, move |edge| {
-                    let context_name = context_name.clone();
-                    cx.update(move |cx| Self::apply_health_transition(cx, &context_name, edge));
-                })
-                .await;
-            })
-        });
+        let health = Self::drive_health(cx, context_name, &connection);
         cx.global_mut::<Self>().sessions.insert(
             context_name.to_string(),
             ClusterSession {
@@ -147,6 +135,29 @@ impl ClusterRegistry {
                 holders: HashSet::new(),
             },
         );
+    }
+
+    /// Pause/resume driven off `connection`'s forward's state, when it has a
+    /// forward - the session keeps the task. A reconnect that acquires a new
+    /// forward drives off that one instead (`session::reconnect`).
+    pub(super) fn drive_health(
+        cx: &mut App,
+        context_name: &str,
+        connection: &Entity<ClusterConnection>,
+    ) -> Option<gpui_kit::Task<()>> {
+        connection.read(cx).forward_state().map(|state_rx| {
+            let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
+                health::drive(state_rx, tx).await;
+            });
+            let context_name = context_name.to_string();
+            cx.spawn(async move |cx| {
+                crate::runtime::drain(rx, move |edge| {
+                    let context_name = context_name.clone();
+                    cx.update(move |cx| Self::apply_health_transition(cx, &context_name, edge));
+                })
+                .await;
+            })
+        })
     }
 
     /// Registers `context_name` with a connection fixed at `state`, so tests never race

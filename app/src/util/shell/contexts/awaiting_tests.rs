@@ -196,7 +196,7 @@ async fn proceeding_returns_the_capsule_to_its_usual_look(cx: &mut TestAppContex
     assert_ne!(items(&mut h)[0].severity, Severity::Attention);
 }
 
-fn click(h: &mut Harness, id: &'static str) {
+pub(super) fn click(h: &mut Harness, id: &'static str) {
     let center = h.vcx.update(|window, cx| {
         window.render_frame(cx);
         window
@@ -209,12 +209,12 @@ fn click(h: &mut Harness, id: &'static str) {
     h.vcx.run_until_parked();
 }
 
-fn keys(h: &mut Harness, keys: &str) {
+pub(super) fn keys(h: &mut Harness, keys: &str) {
     h.vcx.simulate_keystrokes(keys);
     h.vcx.run_until_parked();
 }
 
-fn dialog_open(h: &mut Harness) -> bool {
+pub(super) fn dialog_open(h: &mut Harness) -> bool {
     use gpui_kit::component::WindowExt as _;
     h.vcx.update(|window, cx| window.has_active_dialog(cx))
 }
