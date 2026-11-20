@@ -140,6 +140,7 @@ impl HelmReleasePanel {
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
         };
         this.subscribe(cx);
+        this.register_unavailable_reasons(cx);
         this
     }
 
