@@ -186,3 +186,22 @@ async fn escape_denies_a_connection(cx: &mut TestAppContext) {
     assert!(!dialog_open(&mut vcx));
     assert_eq!(answer.try_recv(), Ok(false));
 }
+
+/// The user's decision on review of App#435: showing an agent-only context in
+/// a window asks in the recoverable tier, and the question and its body say
+/// that every agent can then use it.
+#[gpui_kit::test]
+async fn showing_in_a_window_says_other_agents_can_then_use_it(cx: &mut TestAppContext) {
+    let request = ApprovalRequest::show_in_window("staging");
+    assert!(!request.irreversible());
+    let confirmation = super::confirmation(&request);
+    let body = confirmation.body.plain();
+    assert!(
+        body.contains("every agent can use this cluster without asking you"),
+        "{body}"
+    );
+    let (mut vcx, mut answer, _) = asked(cx, request);
+    press(&mut vcx, "enter");
+    assert!(!dialog_open(&mut vcx));
+    assert_eq!(answer.try_recv(), Ok(true));
+}

@@ -124,6 +124,14 @@ fn confirmation(request: &ApprovalRequest) -> Confirmation {
         Asking::Connect => ConfirmText::from("An agent connected to Fernrohr asks to connect ")
             .name(&request.context)
             .text(". Once connected, the agent can read this cluster. Nothing connects unless you allow it."),
+        Asking::ShowInWindow => {
+            ConfirmText::from("An agent connected to Fernrohr asks to show ")
+                .name(&request.context)
+                .text(
+                    " in a window. Once a window shows it, every agent can use this cluster \
+                     without asking you. Nothing changes unless you allow it.",
+                )
+        }
     };
     Confirmation {
         title: request.title.clone().into(),
