@@ -23,9 +23,11 @@ Fernrohr remembers each window's size and position, the contexts it used, and it
 
 ### Quiet mode
 
-On macOS, closing the last window doesn't quit Fernrohr. It disconnects every cluster, as quitting
-would, and keeps running with its icon in the menu bar. Its tunnels, port-forwards, shells and log
-streams stop, and it saves your windows' state.
+On macOS, closing the last window doesn't quit Fernrohr. It disconnects the clusters your windows
+held and keeps running with its icon in the menu bar. Their tunnels, port-forwards, shells and log
+streams stop, and it saves your windows' state. A cluster an AI agent holds stays connected, with its
+tunnel, while the MCP server keeps running, so the agent can go on reading it. See
+[When no window is open]({{ '/latest/agents/' | relative_url }}#when-no-window-is-open).
 
 The icon's menu brings Fernrohr back:
 

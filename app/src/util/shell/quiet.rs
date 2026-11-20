@@ -4,11 +4,14 @@
 //! (`ui::background_mcp`) says to stop it. Quit stays the only way out.
 //!
 //! - [`enter`]: the last window closed. Each window's holds were already
-//!   released as it closed, which drops every session - its connection,
-//!   watches and tunnel - so what's left is the app-wide port-forwards and any
-//!   `ssh`/command forward still alive, both stopped here, and the MCP
-//!   server, stopped only with the setting off. The workspace is saved now,
-//!   not only at quit, so a kill while quiet loses nothing.
+//!   released as it closed, which drops every session no agent holds - its
+//!   connection, watches and tunnel. A session an agent holds stays, with its
+//!   tunnel, so the agent's reads keep answering (`mcp-connections` design
+//!   decision 5). What's left is the app-wide port-forwards, stopped here, any
+//!   `ssh`/command forward still alive, killed here only once no session is
+//!   left to use it, and the MCP server, stopped only with the setting off -
+//!   which ends the agents' sessions, and so their holds. The workspace is
+//!   saved now, not only at quit, so a kill while quiet loses nothing.
 //! - [`leave`]: a main window is opening. It starts the MCP server again if it
 //!   was stopped, and forgets the closed window's layout: from here the open
 //!   windows are what quit saves.
@@ -132,9 +135,12 @@ pub(super) fn enter(cx: &mut App) {
     let Some(hooks) = hooks(cx) else {
         return;
     };
-    // Every session is already gone with its last holder, and its forward with
-    // it; this catches one anything else still held, as quitting does.
-    (hooks.kill_forwards)();
+    // A session still open now is an agent's, and its tunnel is in use (#367).
+    // With none, every forward went with its session; this catches one
+    // anything else still held, as quitting does.
+    if crate::k8s::cluster::session::ClusterRegistry::open_contexts(cx).is_empty() {
+        (hooks.kill_forwards)();
+    }
     if let Some(path) = cx.try_global::<WorkspacePath>().map(|path| path.0.clone()) {
         save(cx, &path);
     }

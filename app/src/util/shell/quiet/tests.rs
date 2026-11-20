@@ -6,7 +6,7 @@
 
 use crate::config::ui::BackgroundMcp;
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry, Holder};
 use crate::util::shell::quiet::{
     Hooks, OpenContextWindow, QUIET_MODE, context_window_layout, install, is_quiet, quit_mode,
     register_handlers, reopen,
@@ -128,6 +128,34 @@ async fn the_last_window_closing_disconnects_and_keeps_the_mcp_server(cx: &mut T
         0,
         "the server keeps serving"
     );
+}
+
+/// `mcp-connections` 6.1: a context an agent holds outlives the last window,
+/// connection and tunnel alike - quiet mode kills no forward while a session
+/// is left to use it - and port-forwards still stop.
+#[gpui_kit::test]
+async fn an_agent_held_context_outlives_the_last_window(cx: &mut TestAppContext) {
+    let window = quiet_app(BackgroundMcp::KeepRunning, cx);
+    let agent = AgentId::next();
+    let connection = cx.update(|cx| {
+        ClusterRegistry::hold(cx, "demo", agent);
+        ClusterRegistry::existing_connection(cx, "demo").expect("demo is open")
+    });
+
+    close(window, cx);
+
+    assert!(cx.update(|cx| is_quiet(cx)), "the app runs on, quiet");
+    assert_eq!(
+        cx.update(|cx| ClusterRegistry::holders(cx, "demo")),
+        [Holder::Agent(agent)],
+        "only the window's hold went"
+    );
+    assert_eq!(
+        cx.update(|cx| ClusterRegistry::existing_connection(cx, "demo")),
+        Some(connection),
+        "the same connection, not a redial"
+    );
+    assert_eq!(KILLS.with(Cell::get), 0, "its tunnel isn't killed");
 }
 
 #[gpui_kit::test]
