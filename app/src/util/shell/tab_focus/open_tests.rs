@@ -42,6 +42,7 @@ fn select_pod(cx: &mut VisualTestContext) {
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })))
     });

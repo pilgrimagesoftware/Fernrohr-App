@@ -67,6 +67,10 @@ than one container, the Logs panel streams the first container to start with, an
 to another. Opening another container's logs of a pod that already has a Logs panel switches that
 panel to the container.
 
+The container list has the pod's app containers first, then its sidecar containers (init
+containers with `restartPolicy: Always`), each marked `(sidecar)`. Init containers that run once
+aren't listed.
+
 ## Follow pods by label
 
 Press <kbd>⌘⇧L</kbd>, or choose **Open Logs by Label…** in the Window menu or the command palette,
@@ -131,7 +135,8 @@ Select a running pod in the Pods panel, or open its detail panel, and open a she
   panel and **Pod Detail: Shell into Pod** in the detail panel.
 - **Palette:** run the same command from the command palette (<kbd>⌘⇧P</kbd>) while the Pods panel or the detail panel has focus.
 
-When the pod runs more than one container, Fernrohr asks which one to open the shell in.
+When the pod runs more than one container, Fernrohr asks which one to open the shell in. Running
+sidecar containers are offered too, marked `(sidecar)`.
 
 To run a saved command instead of a shell, use the exec library. See
 {{ '/latest/exec-library/' | relative_url }}.

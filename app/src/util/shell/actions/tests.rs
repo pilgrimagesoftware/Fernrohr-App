@@ -24,6 +24,7 @@ async fn a_requested_pod_detail_opens_its_panel(cx: &mut TestAppContext) {
             namespace: "prod".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })));
     });
@@ -112,6 +113,7 @@ async fn asking_for_yaml_opens_and_switches_the_pod_panel_to_yaml(cx: &mut TestA
             namespace: "prod".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })));
     });
@@ -189,6 +191,7 @@ async fn show_logs_and_pod_detail_use_the_selected_pods_context_not_the_active_o
             namespace: "default".into(),
             name: "clamav-plc9g".into(),
             containers: vec!["clamav".into()],
+            sidecars: Vec::new(),
             context_name: "other-context".into(),
         })));
     });
@@ -253,6 +256,7 @@ async fn show_logs_no_ops_when_the_selected_pods_context_is_not_open_here(cx: &m
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "never-added".into(),
         })));
     });
