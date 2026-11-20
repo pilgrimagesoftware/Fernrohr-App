@@ -25,7 +25,7 @@ use crate::consts::{
     MCP_HANDSHAKE_TIMEOUT, MCP_MAX_CONNECTIONS, MCP_MAX_REPLY_BYTES, MCP_MAX_REQUEST_BYTES,
     MCP_MAX_SESSIONS, MCP_SESSION_GRACE,
 };
-use crate::k8s::cluster::session::{AgentId, ClusterRegistry};
+use crate::k8s::cluster::session::{AgentId, AgentLabels, ClusterRegistry};
 use gpui_kit::{App, Global};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -190,6 +190,7 @@ pub(super) fn stop(cx: &mut App) {
 /// session's own close path, so this stands in for it.
 fn end_every_session(cx: &mut App, sessions: &Sessions, grace: Duration) {
     for agent in sessions.close_all() {
+        AgentLabels::forget(cx, agent);
         ClusterRegistry::linger_agent(cx, agent, grace);
     }
 }
@@ -371,6 +372,12 @@ async fn serve_session(
         }
     };
     let agent = caller.agent;
+    let label = caller.client_name.clone();
+    let _ = state
+        .context
+        .foreground
+        .run(move |cx| AgentLabels::set(cx, agent, label))
+        .await;
     // Never the identifier, nor the self-reported name: the in-app handle only.
     log::info!(target: LOG_TARGET, "session opened agent={agent:?}");
     let opened = frame::write(
@@ -398,7 +405,10 @@ async fn end_session(state: &ServerState, agent: AgentId) {
     let _ = state
         .context
         .foreground
-        .run(move |cx| ClusterRegistry::linger_agent(cx, agent, grace))
+        .run(move |cx| {
+            AgentLabels::forget(cx, agent);
+            ClusterRegistry::linger_agent(cx, agent, grace);
+        })
         .await;
 }
 

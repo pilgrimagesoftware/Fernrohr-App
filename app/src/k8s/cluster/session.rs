@@ -11,6 +11,7 @@ use gpui_kit::{App, AppContext as _, Entity, Global, WindowId};
 use kube::Client;
 use std::collections::{HashMap, HashSet};
 
+mod agent_labels;
 mod events_watch;
 mod helm_watch;
 mod holder;
@@ -23,6 +24,7 @@ mod registry;
 #[cfg(test)]
 mod test_support;
 
+pub use agent_labels::AgentLabels;
 pub use holder::{AgentId, Holder};
 pub use registry::ClusterRegistry;
 

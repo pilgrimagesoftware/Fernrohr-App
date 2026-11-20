@@ -104,6 +104,17 @@ impl ClusterRegistry {
         .detach();
     }
 
+    /// Releases every holder of `context_name` - windows, agents and lingering
+    /// holds alike - dropping its session: the Connections window's Disconnect
+    /// (`connections-window`). Windows should close their panels for it first
+    /// ([`crate::util::shell::disconnect_everywhere`]); this then ends whatever
+    /// agents still hold.
+    pub fn release_all(cx: &mut App, context_name: &str) {
+        if cx.has_global::<Self>() {
+            cx.global_mut::<Self>().sessions.remove(context_name);
+        }
+    }
+
     /// Removes `holder` from every context's holders, dropping each session it
     /// leaves with none.
     fn release_everywhere(cx: &mut App, holder: Holder) {
