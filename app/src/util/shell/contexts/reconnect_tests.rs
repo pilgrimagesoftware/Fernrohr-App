@@ -22,6 +22,11 @@ const KEY: &str = "ctrl-alt-shift-r";
 /// A window holding `FAILED`, failed, and `qa`, still connecting, with
 /// Reconnect Failed Contexts bound to [`KEY`].
 fn harness(cx: &mut TestAppContext) -> Harness {
+    harness_with(cx, ConnectionState::Failed(REASON.into()))
+}
+
+/// [`harness`] with `FAILED` in `state` instead.
+fn harness_with(cx: &mut TestAppContext, state: ConnectionState) -> Harness {
     cx.executor().allow_parking();
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
     std::fs::write(
@@ -33,7 +38,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
-        ClusterRegistry::insert_test_session(cx, FAILED, ConnectionState::Failed(REASON.into()));
+        ClusterRegistry::insert_test_session(cx, FAILED, state);
         ClusterRegistry::insert_test_session(cx, "qa", ConnectionState::Connecting);
     });
     let names = vec![FAILED.to_string(), "qa".to_string()];
@@ -105,4 +110,33 @@ async fn a_capsule_that_hasnt_failed_has_no_reconnect(cx: &mut TestAppContext) {
     keys(&mut h, "down enter");
 
     assert!(dialog_open(&mut h), "the first row is Disconnect");
+}
+
+/// Why the palette would list Reconnect Failed Contexts dimmed, if it would.
+fn reconnect_unavailable(h: &mut Harness) -> Option<String> {
+    h.vcx.update(|window, cx| {
+        crate::command::unavailable::reason(
+            &crate::ui::status_bar::ReconnectFailedContexts,
+            window,
+            cx,
+        )
+        .map(|reason| reason.to_string())
+    })
+}
+
+/// With a failed context, the palette offers Reconnect Failed Contexts.
+#[gpui_kit::test]
+async fn reconnect_is_available_while_a_context_has_failed(cx: &mut TestAppContext) {
+    let mut h = harness(cx);
+    assert_eq!(reconnect_unavailable(&mut h), None);
+}
+
+/// With none failed, it's listed dimmed, saying why.
+#[gpui_kit::test]
+async fn reconnect_is_unavailable_while_no_context_has_failed(cx: &mut TestAppContext) {
+    let mut h = harness_with(cx, ConnectionState::Connecting);
+    assert_eq!(
+        reconnect_unavailable(&mut h).as_deref(),
+        Some("No context in this window has failed.")
+    );
 }

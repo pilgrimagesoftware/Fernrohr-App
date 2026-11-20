@@ -206,6 +206,7 @@ async fn a_window_closing_keeps_a_context_an_agent_holds(cx: &mut TestAppContext
     });
     let window = WindowId::from(1);
     let agent = AgentId::next();
+    cx.update(|cx| crate::k8s::cluster::session::LiveAgents::open(cx, agent, None));
 
     cx.update(|cx| ClusterRegistry::hold(cx, "kind-dev", agent));
     cx.update(|cx| ClusterRegistry::hold(cx, "kind-dev", window));
@@ -255,6 +256,7 @@ async fn an_agent_releasing_last_drops_only_the_sessions_it_alone_held(cx: &mut 
         ClusterRegistry::insert_test_session(cx, "staging", ConnectionState::Connected(client));
     });
     let agent = AgentId::next();
+    cx.update(|cx| crate::k8s::cluster::session::LiveAgents::open(cx, agent, None));
     let window = WindowId::from(7);
     cx.update(|cx| {
         ClusterRegistry::hold(cx, "kind-dev", agent);
@@ -299,6 +301,7 @@ async fn an_ended_agents_hold_lingers_for_the_grace_period_then_goes(cx: &mut Te
         ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connected(client))
     });
     let agent = AgentId::next();
+    cx.update(|cx| crate::k8s::cluster::session::LiveAgents::open(cx, agent, None));
     cx.update(|cx| ClusterRegistry::hold(cx, "kind-dev", agent));
 
     let grace = Duration::from_secs(30);
@@ -342,6 +345,7 @@ async fn a_lingering_hold_ending_leaves_a_windows_hold(cx: &mut TestAppContext) 
         ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connected(client))
     });
     let agent = AgentId::next();
+    cx.update(|cx| crate::k8s::cluster::session::LiveAgents::open(cx, agent, None));
     let window = WindowId::from(3);
     cx.update(|cx| {
         ClusterRegistry::hold(cx, "kind-dev", agent);
@@ -354,4 +358,41 @@ async fn a_lingering_hold_ending_leaves_a_windows_hold(cx: &mut TestAppContext) 
         cx.update(|cx| ClusterRegistry::holders(cx, "kind-dev")),
         vec![Holder::Window(window)]
     );
+}
+
+/// Review of App#434, F1: an agent that isn't live - its session ended, or
+/// never reached the main thread - can't take a hold, and nothing connects.
+#[gpui_kit::test]
+async fn an_agent_that_isnt_live_holds_nothing(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::session::{AgentId, LiveAgents};
+    use std::time::Duration;
+    let never_live = AgentId::next();
+    assert!(!cx.update(|cx| ClusterRegistry::hold(cx, "kind-dev", never_live)));
+    assert!(
+        cx.update(|cx| ClusterRegistry::existing_connection(cx, "kind-dev"))
+            .is_none(),
+        "refused before anything connected"
+    );
+
+    let ended = AgentId::next();
+    cx.update(|cx| {
+        LiveAgents::open(cx, ended, Some("assistant".into()));
+        LiveAgents::end(cx, ended, Duration::from_secs(30));
+    });
+    assert!(!cx.update(|cx| ClusterRegistry::hold(cx, "kind-dev", ended)));
+    assert!(
+        cx.update(|cx| ClusterRegistry::holders(cx, "kind-dev"))
+            .is_empty()
+    );
+}
+
+/// Review of App#433, note A: releasing a holder that wasn't holding leaves
+/// even a holder-less session alone.
+#[gpui_kit::test]
+async fn releasing_a_non_holder_keeps_a_holderless_session(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connecting);
+        ClusterRegistry::release(cx, "kind-dev", WindowId::from(42));
+        assert!(ClusterRegistry::existing_connection(cx, "kind-dev").is_some());
+    });
 }

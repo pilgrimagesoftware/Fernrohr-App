@@ -2,10 +2,11 @@
 //! the selected row; a row's icon button selects its row first, so the click and
 //! the key do the same thing.
 //!
-//! End Agent's Hold ends every agent's hold on the row's context, not one
-//! agent's: a row with a single agent (the common case) is exactly that agent's,
-//! and with several there is no sub-selection to keep keyboard-operable. Each
-//! agent's later request for the context then needs approval, as for a new one.
+//! End Agent's Hold ends exactly one agent's hold. By mouse, each agent on the
+//! row has its own button. By key, a row with one agent ends that agent's hold
+//! at once, and a row with several opens a picker ([`super::agent_picker`]) so
+//! the user chooses which; the others keep the context. That agent's later
+//! request for the context then needs approval, as for a new one.
 
 use super::rows::{ConnectionRow, HolderLabel};
 use super::window::ConnectionsWindow;

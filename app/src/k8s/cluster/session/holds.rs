@@ -11,8 +11,19 @@ impl ClusterRegistry {
     /// context is independent of whether any panel has subscribed to a watch - the
     /// Resource panel can list kinds for a context with no open panels. The first
     /// holder a session ever has is remembered as the one that connected it.
-    pub fn hold(cx: &mut App, context_name: &str, holder: impl Into<Holder>) {
+    ///
+    /// An agent must be live ([`LiveAgents`]): a call that outlived its MCP
+    /// session (an approval answered after the client left) is refused here,
+    /// before anything connects, so it can't leave a hold no session will ever
+    /// release (review of App#434, F1). Returns whether the hold was taken;
+    /// a window's always is.
+    pub fn hold(cx: &mut App, context_name: &str, holder: impl Into<Holder>) -> bool {
         let holder = holder.into();
+        if let Holder::Agent(agent) = holder
+            && !LiveAgents::is_live(cx, agent)
+        {
+            return false;
+        }
         Self::ensure_init(cx, context_name);
         let session = cx
             .global_mut::<Self>()
@@ -21,12 +32,13 @@ impl ClusterRegistry {
             .expect("ensure_init just inserted this session");
         session.connected_by.get_or_insert(holder);
         session.holders.insert(holder);
+        true
     }
 
     /// Removes `holder` from `context_name`'s holders. On the last release, drops
     /// the session entirely - its connection (and so, via `ClusterConnection`'s own
     /// `Drop`, its tunnel forward) and its watches. A no-op if the context has no
-    /// session, or `holder` wasn't holding it.
+    /// session, or `holder` wasn't holding it - even for a session no one holds.
     ///
     /// `window-context-bar` section 3.3's Disconnect calls this directly for the one
     /// context being disconnected; closing a window releases every context it holds
@@ -40,8 +52,7 @@ impl ClusterRegistry {
             let Some(session) = cx.global_mut::<Self>().sessions.get_mut(context_name) else {
                 return;
             };
-            session.holders.remove(&holder);
-            session.holders.is_empty()
+            session.holders.remove(&holder) && session.holders.is_empty()
         };
         if should_remove {
             cx.global_mut::<Self>().sessions.remove(context_name);
@@ -155,7 +166,14 @@ impl ClusterRegistry {
             .and_then(|registry| registry.sessions.get(context_name))
             .map(|session| session.holders.iter().copied().collect())
             .unwrap_or_default();
-        holders.sort_by_key(|holder| !holder.is_window());
+        // A stable order, not the set's (review of App#433, note B): windows by
+        // id, then agents by id - so in the order they connected - then
+        // lingering holds.
+        holders.sort_by_key(|holder| match holder {
+            Holder::Window(window) => (0, window.as_u64()),
+            Holder::Agent(agent) => (1, agent.order()),
+            Holder::Lingering(hold) => (2, hold.order()),
+        });
         holders
     }
 

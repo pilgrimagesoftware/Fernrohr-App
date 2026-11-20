@@ -121,6 +121,7 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
                     unreachable!("just constructed a picker-mode window")
                 };
                 watch_picker(picker, window, cx);
+                view.register_unavailable_reasons(cx);
                 cx.observe_window_bounds(window, |_, _, cx| schedule_save(cx))
                     .detach();
                 crate::ui::accent::watch_activation(window, cx);

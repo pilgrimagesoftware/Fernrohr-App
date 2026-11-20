@@ -3,7 +3,7 @@
 //! Connections window opened by its command key from a stand-in window.
 
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::k8s::cluster::session::{AgentId, AgentLabels, ClusterRegistry};
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry, LiveAgents};
 use crate::ui::connections::rows::ConnectionRow;
 use crate::ui::connections::window::ConnectionsWindow;
 use crate::util::shell::MainWindow;
@@ -39,7 +39,7 @@ pub(super) fn session(cx: &mut TestAppContext, context: &str, state: ConnectionS
 pub(super) fn agent(cx: &mut TestAppContext, context: &str, name: Option<&str>) -> AgentId {
     let agent = AgentId::next();
     cx.update(|cx| {
-        AgentLabels::set(cx, agent, name.map(str::to_string));
+        LiveAgents::open(cx, agent, name.map(str::to_string));
         ClusterRegistry::hold(cx, context, agent);
     });
     agent

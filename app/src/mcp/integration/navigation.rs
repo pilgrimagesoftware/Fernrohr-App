@@ -34,9 +34,11 @@ async fn an_agent_opens_a_panel_in_the_window_holding_its_context(cx: &mut TestA
 }
 
 #[gpui_kit::test]
-async fn an_agent_with_no_window_to_open_in_is_told_so(cx: &mut TestAppContext) {
+/// `mcp-connections` design decision 4: with no window open, an agent's
+/// `open_panel` opens a window on the context rather than failing.
+async fn an_agent_with_no_window_open_gets_one(cx: &mut TestAppContext) {
     let h = harness(cx, &["dev"]);
-    // Usable by any caller - as if a window held it - with no window to open in.
+    // Usable by any caller - as if a window held it - with no window open yet.
     cx.update(|cx| {
         crate::k8s::cluster::session::ClusterRegistry::hold(
             cx,
@@ -50,7 +52,8 @@ async fn an_agent_with_no_window_to_open_in_is_told_so(cx: &mut TestAppContext) 
         .call(cx, "open_panel", json!({"context": "dev", "kind": "Pod"}))
         .await;
 
-    assert_eq!(error_code(&result), "ui_unavailable");
+    assert!(content(&result).get("panel_id").is_some(), "{result}");
+    assert!(!cx.update(|cx| cx.windows()).is_empty(), "a window opened");
 }
 
 #[gpui_kit::test]

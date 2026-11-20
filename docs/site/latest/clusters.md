@@ -104,8 +104,9 @@ connect. Fix the cause, then try again:
 - **Mouse:** open the menu on the context's capsule and choose **Reconnect**. Only a failed
   context's menu has it.
 - **Keyboard:** run **Reconnect Failed Contexts** from the command palette or the Context menu. It
-  tries every failed context in the window again and leaves the others alone. It has no default
-  key. To give it one, bind `context.reconnect_failed` in `keymap.toml`.
+  tries every failed context in the window again and leaves the others alone. While none has
+  failed, the palette lists it dimmed with the reason. It has no default key. To give it one, bind
+  `context.reconnect_failed` in `keymap.toml`.
 
 The context's panels stay open and fill in once the connection succeeds.
 
