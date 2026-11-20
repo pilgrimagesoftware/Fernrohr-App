@@ -82,6 +82,13 @@ impl ClusterConnection {
             .map(|handle| handle.forward().state())
     }
 
+    /// The pid of the process the bound forward runs now - its `ssh` or its
+    /// command - so quiet mode's leftover sweep spares it (#367). `None` for an
+    /// unbound context, a manual tunnel, or a forward between processes.
+    pub(crate) fn forward_pid(&self) -> Option<u32> {
+        self._forward.as_ref()?.forward().pid()
+    }
+
     /// The state receiver, local address and route together, for section 7.3's
     /// credential-refresh path - it needs them to call [`connect_and_probe`] again
     /// without re-resolving the context's tunnel binding, exactly what

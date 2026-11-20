@@ -30,37 +30,57 @@ impl Global for Calls {}
 
 thread_local! {
     static KILLS: Cell<usize> = const { Cell::new(0) };
+    /// The pids the last kill was told to spare.
+    static SPARED: std::cell::RefCell<Vec<u32>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 fn hooks() -> Hooks {
     Hooks {
         start_mcp: |cx: &mut App| cx.global_mut::<Calls>().starts += 1,
         stop_mcp: |cx: &mut App| cx.global_mut::<Calls>().stops += 1,
-        kill_forwards: || KILLS.with(|kills| kills.set(kills.get() + 1)),
+        kill_forwards: |spare| {
+            KILLS.with(|kills| kills.set(kills.get() + 1));
+            SPARED.with(|spared| *spared.borrow_mut() = spare.to_vec());
+        },
     }
 }
 
 /// An app with the shell and quiet mode installed, `background` as the
 /// setting, and a main window connected to `demo`.
 fn quiet_app(background: BackgroundMcp, cx: &mut TestAppContext) -> AnyWindowHandle {
+    quiet_app_with(background, hooks(), "demo", cx, |cx| {
+        ClusterRegistry::insert_test_session(cx, "demo", ConnectionState::Connecting);
+    })
+}
+
+/// [`quiet_app`] with `hooks`, and a window on `context`, whose session
+/// `seed` registers first.
+fn quiet_app_with(
+    background: BackgroundMcp,
+    hooks: Hooks,
+    context: &str,
+    cx: &mut TestAppContext,
+    seed: impl FnOnce(&mut App),
+) -> AnyWindowHandle {
     cx.executor().allow_parking();
     KILLS.with(|kills| kills.set(0));
+    SPARED.with(|spared| spared.borrow_mut().clear());
     let (workspace, keymap) = (temp_workspace_path(), temp_workspace_path());
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         init(cx, workspace, &keymap);
-        ClusterRegistry::insert_test_session(cx, "demo", ConnectionState::Connecting);
+        seed(cx);
         cx.set_global(Calls::default());
         crate::ui::background_mcp::set(background, cx);
-        register_handlers(hooks(), cx);
+        register_handlers(hooks, cx);
         install(cx);
     });
     let handle = cx.update(|cx| {
         open_window(
             cx,
             WindowLayout {
-                contexts: vec!["demo".into()],
+                contexts: vec![context.into()],
                 ..WindowLayout::default()
             },
         )
@@ -131,8 +151,8 @@ async fn the_last_window_closing_disconnects_and_keeps_the_mcp_server(cx: &mut T
 }
 
 /// `mcp-connections` 6.1: a context an agent holds outlives the last window,
-/// connection and tunnel alike - quiet mode kills no forward while a session
-/// is left to use it - and port-forwards still stop.
+/// connection and tunnel alike - quiet mode's sweep spares the forwards open
+/// sessions use - and port-forwards still stop.
 #[gpui_kit::test]
 async fn an_agent_held_context_outlives_the_last_window(cx: &mut TestAppContext) {
     let window = quiet_app(BackgroundMcp::KeepRunning, cx);
@@ -155,7 +175,16 @@ async fn an_agent_held_context_outlives_the_last_window(cx: &mut TestAppContext)
         Some(connection),
         "the same connection, not a redial"
     );
-    assert_eq!(KILLS.with(Cell::get), 0, "its tunnel isn't killed");
+    assert_eq!(
+        KILLS.with(Cell::get),
+        1,
+        "leftover forwards are still swept"
+    );
+    assert_eq!(
+        SPARED.with(|spared| spared.borrow().clone()),
+        cx.update(|cx| ClusterRegistry::forward_pids_in_use(cx)),
+        "sparing the ones open sessions use"
+    );
 }
 
 #[gpui_kit::test]

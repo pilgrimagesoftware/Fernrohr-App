@@ -44,6 +44,16 @@ impl TunnelForward {
         }
     }
 
+    /// The pid of the process this forward runs now, if any: its `ssh` or its
+    /// command. A manual tunnel runs none.
+    pub fn pid(&self) -> Option<u32> {
+        match self {
+            Self::Ssh(tunnel) => tunnel.pid(),
+            Self::Command(tunnel) => tunnel.pid(),
+            Self::Manual(_) => None,
+        }
+    }
+
     /// Where the forward's supervisor leaves its reason if it gives up.
     pub fn failure(&self) -> FailureSlot {
         match self {

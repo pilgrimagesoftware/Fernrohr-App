@@ -99,6 +99,9 @@ fn signal_process_group(signal: &str, pid: u32) -> bool {
 /// the *next* startup's [`sweep_stale`] to find.
 pub(crate) struct PidFile {
     path: PathBuf,
+    pid: u32,
+    /// The owner's slot this file's pid is recorded in, if any.
+    slot: Option<PidSlot>,
 }
 
 impl PidFile {
@@ -109,7 +112,18 @@ impl PidFile {
         fs::create_dir_all(&dir)?;
         let path = dir.join(format!("{pid}.pid"));
         fs::write(&path, pid.to_string())?;
-        Ok(Self { path })
+        Ok(Self {
+            path,
+            pid,
+            slot: None,
+        })
+    }
+
+    /// Records this file's pid in `slot` for as long as the file lives.
+    pub(crate) fn owned_by(mut self, slot: &PidSlot) -> Self {
+        slot.set(self.pid);
+        self.slot = Some(slot.clone());
+        self
     }
 
     /// Writes a command tunnel's pidfile: `pid`, then its program's basename, which
@@ -122,6 +136,9 @@ impl PidFile {
 impl Drop for PidFile {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
+        if let Some(slot) = &self.slot {
+            slot.clear(self.pid);
+        }
     }
 }
 
@@ -131,8 +148,8 @@ impl Drop for PidFile {
 /// confirms it's still ours, not a recycled pid - and removes the file either way.
 /// Returns the number of pidfiles found (killed, refused, or already dead).
 pub(crate) fn sweep_stale() -> usize {
-    sweep_dir(&pid_dir(), looks_like_orphaned_forward)
-        + command::sweep_dir(&command::pid_dir(), command::looks_like_orphaned)
+    sweep_dir(&pid_dir(), &[], looks_like_orphaned_forward)
+        + command::sweep_dir(&command::pid_dir(), &[], command::looks_like_orphaned)
 }
 
 /// Quit-time teardown: kills every pidfile-recorded forward this *running* process
@@ -142,15 +159,23 @@ pub(crate) fn sweep_stale() -> usize {
 /// runs the `Drop` glue that would otherwise kill these forwards on its own. Returns
 /// the number of pidfiles found.
 pub(crate) fn kill_live_forwards() -> usize {
-    sweep_dir(&pid_dir(), looks_like_live_forward)
-        + command::sweep_dir(&command::pid_dir(), command::looks_like_live)
+    kill_live_forwards_except(&[])
+}
+
+/// [`kill_live_forwards`], sparing the forwards whose pids are in `spare` - the
+/// ones a live session's connection still uses (quiet mode, #367). A spared
+/// pidfile is left in place, neither killed nor removed: its forward is live and
+/// its own `Drop` removes it.
+pub(crate) fn kill_live_forwards_except(spare: &[u32]) -> usize {
+    sweep_dir(&pid_dir(), spare, looks_like_live_forward)
+        + command::sweep_dir(&command::pid_dir(), spare, command::looks_like_live)
 }
 
 /// Shared sweep loop behind [`sweep_stale`] and [`kill_live_forwards`]: every `*.pid`
 /// file in `dir` is removed unconditionally (stale either way, once sweept), but its
 /// process group is only killed when `should_kill` - the caller's parent/cmdline
 /// check - agrees, and only while it's still alive.
-fn sweep_dir(dir: &Path, should_kill: impl Fn(u32) -> bool) -> usize {
+fn sweep_dir(dir: &Path, spare: &[u32], should_kill: impl Fn(u32) -> bool) -> usize {
     let Ok(entries) = fs::read_dir(dir) else {
         return 0;
     };
@@ -161,7 +186,11 @@ fn sweep_dir(dir: &Path, should_kill: impl Fn(u32) -> bool) -> usize {
         if path.extension().is_none_or(|ext| ext != "pid") {
             continue;
         }
-        if let Some(pid) = read_pid(&path) {
+        let pid = read_pid(&path);
+        if pid.is_some_and(|pid| spare.contains(&pid)) {
+            continue;
+        }
+        if let Some(pid) = pid {
             if process_group_alive(pid) && should_kill(pid) {
                 kill_process_group(pid);
             }
@@ -252,6 +281,8 @@ fn process_command(pid: u32) -> Option<String> {
 }
 
 mod command;
+mod slot;
+pub(crate) use slot::PidSlot;
 
 #[cfg(all(test, unix))]
 mod tests;

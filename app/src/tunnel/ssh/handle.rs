@@ -58,6 +58,7 @@ impl Drop for TransientIdentityFile {
 pub struct SshTunnel {
     supervisor: ForwardSupervisor,
     _identity_file: Option<TransientIdentityFile>,
+    pid: crate::util::pidfile::PidSlot,
 }
 
 impl SshTunnel {
@@ -73,12 +74,19 @@ impl SshTunnel {
         local_addr: SocketAddr,
         options: SupervisorOptions,
     ) -> Self {
-        let transport = SshTransport::new(config);
+        let pid = crate::util::pidfile::PidSlot::default();
+        let transport = SshTransport::new(config).with_pid_slot(pid.clone());
         let supervisor = ForwardSupervisor::spawn(rt, local_addr, transport, options);
         Self {
             supervisor,
             _identity_file: identity_file,
+            pid,
         }
+    }
+
+    /// The running `ssh`'s pid, while there is one.
+    pub fn pid(&self) -> Option<u32> {
+        self.pid.get()
     }
 }
 

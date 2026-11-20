@@ -8,7 +8,7 @@
 
 use super::output::OutputTail;
 use crate::consts::COMMAND_TUNNEL_STOP_GRACE;
-use crate::util::pidfile::{self, PidFile};
+use crate::util::pidfile::{self, PidFile, PidSlot};
 use crate::util::which::find_program;
 use std::process::Stdio;
 use tokio::process::{Child, ChildStdin, Command};
@@ -28,8 +28,13 @@ pub(super) struct Running {
 }
 
 /// Spawns `argv` with `path` as its `PATH`, leading its own process group, its
-/// output drained into `tail`.
-pub(super) fn spawn(argv: &[String], path: &str, tail: &OutputTail) -> Result<Running, String> {
+/// output drained into `tail` and its pid recorded in `pid_slot` while it runs.
+pub(super) fn spawn(
+    argv: &[String],
+    path: &str,
+    tail: &OutputTail,
+    pid_slot: &PidSlot,
+) -> Result<Running, String> {
     let (name, args) = argv.split_first().ok_or("the command is empty")?;
     let program = find_program(name, path)
         .ok_or_else(|| format!("{name}: command not found on the login shell's PATH"))?;
@@ -56,7 +61,8 @@ pub(super) fn spawn(argv: &[String], path: &str, tail: &OutputTail) -> Result<Ru
     }
     let pidfile = child
         .id()
-        .and_then(|pid| PidFile::write_command(pid, &program.display().to_string()).ok());
+        .and_then(|pid| PidFile::write_command(pid, &program.display().to_string()).ok())
+        .map(|file| file.owned_by(pid_slot));
     Ok(Running {
         child,
         _stdin: stdin,
