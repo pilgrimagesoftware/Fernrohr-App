@@ -184,6 +184,7 @@ fn the_tooltip_names_the_state_its_duration_and_a_failures_reason() {
         text,
         elapsed: elapsed.map(Duration::from_secs),
         reason: reason.map(str::to_string),
+        agents: Vec::new(),
     };
     assert_eq!(item("Connected", None, None).tooltip(), "Connected");
     assert_eq!(

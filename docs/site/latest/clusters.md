@@ -74,6 +74,12 @@ Connection failed or Awaiting confirmation. States other than Connected also sho
 have lasted, and a failure shows its reason. A context that needs your attention is filled in the
 warning color and sorted to the front.
 
+When a coding agent also uses the context, the capsule shows an agent icon beside its state. Point
+at it to see which agents, named as they report themselves, for example "Also used by an agent
+reporting itself as “assistant”". A name is whatever the agent's MCP client says, so treat it as a
+label, not proof of who the agent is. The [Connections window](#see-every-connection) lists every
+agent's connections, including ones no window shows.
+
 A tunnel dropping, or a credential plugin needing a new sign-in, pauses the connection instead
 of ending it. The status bar shows Reconnecting or Refreshing credentials once for the whole
 window. Panels stay open with their last data, and resume when the tunnel returns or the
@@ -133,7 +139,9 @@ the kubeconfig for a cluster that needs a proxy.
   which acts on the window's active context. It has no default key.
 
 Fernrohr asks you to confirm. The dialog says how many panels for that context will close, and
-that the context stays connected if other windows still use it. Confirm with <kbd>Enter</kbd> or
+that the context stays connected if other windows or agents still use it, naming each agent as it
+reports itself. Disconnecting from the window leaves an agent's connection open; to end that too,
+use the [Connections window](#see-every-connection). Confirm with <kbd>Enter</kbd> or
 by clicking Disconnect, or cancel with <kbd>Esc</kbd>.
 
 To disconnect several contexts at once, when the window has more than one:

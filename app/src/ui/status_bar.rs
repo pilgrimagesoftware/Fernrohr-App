@@ -25,12 +25,16 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+mod agents;
 mod capsule;
 mod chord;
 mod commands;
 mod disconnect;
 mod theme_switch;
 
+#[cfg(test)]
+pub(crate) use agents::agent_icon_selector;
+pub(crate) use agents::describe as describe_agent;
 #[cfg(test)]
 pub(crate) use capsule::{attention_selector, icon_selector};
 pub(crate) use commands::{
@@ -72,6 +76,9 @@ pub struct StatusItem {
     pub elapsed: Option<Duration>,
     /// Why a failed connection failed, for the tooltip.
     pub reason: Option<String>,
+    /// The self-reported names of agents also holding the context (`None`: an
+    /// unnamed agent), for the capsule's agent icon. Display only.
+    pub agents: Vec<Option<String>>,
 }
 
 impl StatusItem {
@@ -349,6 +356,7 @@ impl StatusBarView {
             text,
             elapsed,
             reason,
+            agents: agents::agent_names(cx, context_name),
         }
     }
 
