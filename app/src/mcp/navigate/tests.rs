@@ -183,6 +183,8 @@ async fn open_panel_refuses_a_name_that_would_change_the_request_path(cx: &mut T
 #[gpui_kit::test]
 async fn open_panel_with_no_window_reports_the_ui_unavailable(cx: &mut TestAppContext) {
     let h = harness(cx, &["dev"]);
+    // Usable by any caller - as if a window held it - with no window to open in.
+    cx.update(|cx| ClusterRegistry::hold(cx, "dev", crate::mcp::read::test_support::USER_WINDOW()));
     let result = call(
         cx,
         &h,

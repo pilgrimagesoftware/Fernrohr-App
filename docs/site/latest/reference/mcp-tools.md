@@ -12,7 +12,7 @@ Every tool takes named arguments, and an unknown argument is rejected. Arguments
 Tools fall into three kinds:
 
 - **Read-only.** Nothing changes in the cluster or in the app, and no approval is asked. Fernrohr stays in the background.
-- **Changes what the app shows.** Opens a panel, loads a layout or connects a context. These bring Fernrohr to the front and focus the window they acted on. They change no cluster object. `connect_context` asks for approval first, unless the window already holds the context.
+- **Changes what the app shows.** Opens a panel, loads a layout or connects a context. These bring Fernrohr to the front and focus the window they acted on. They change no cluster object. `connect_context` asks for approval first, unless a window already holds the context, and opens no window.
 - **Acts after in-app approval.** Changes a cluster object, only after you allow the exact action in Fernrohr.
 
 Arguments named `context` are a context name as `list_contexts` reports it. Arguments named `kind` accept a kind's name (`Deployment`), plural (`deployments`) or singular (`deployment`) as `list_resource_kinds` reports it.
@@ -117,7 +117,7 @@ Returns `name` and `placeholders`: a list of objects with the `context` each pla
 
 ### connect_context
 
-Connects a kubeconfig context in the frontmost window, as the status bar's add-context control does, after you approve it in the app. It opens a window for the context when none is open. A context the window already holds is brought forward without a second connection and without asking. A name that isn't in the kubeconfig is an unknown-context error, and nothing is asked.
+Connects a kubeconfig context for the agent that asks, after you approve it in the app. No window opens for it, and closing your windows doesn't disconnect it while the agent is running. A context one of your windows already holds needs no approval: the agent shares that connection, and the window comes forward if it's the frontmost one. Each agent is approved on its own: a context another agent connected still asks you before this one can use it. A name that isn't in the kubeconfig is an unknown-context error, and nothing is asked.
 
 | Parameter | Type | Required | Meaning |
 |---|---|---|---|
@@ -132,6 +132,8 @@ After approval it waits up to 20 seconds for the connection to settle. Returns `
 - `connecting`, when the wait ended first. Check later with `list_contexts`.
 
 A denied, timed-out or abandoned request connects nothing.
+
+An agent's connections close about 30 seconds after the agent exits, unless a window holds them too. A restarted agent asks for approval again.
 
 ## Tools that act after approval
 

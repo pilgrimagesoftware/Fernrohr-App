@@ -105,30 +105,6 @@ pub(crate) fn focus_if_held(context_name: &str, cx: &mut App) -> bool {
     true
 }
 
-/// Connects `context_name` for an agent, once the user has allowed it: adds it
-/// to the frontmost workspace window exactly as the status bar's add-context
-/// control does ([`MainWindow::add_context`] - tunnel binding, a shared
-/// connection, its Pods panel, selected), or opens a window on it when none
-/// shows a workspace, then brings that window forward.
-pub(crate) fn connect_context(context_name: String, cx: &mut App) {
-    let handle = match workspace_windows(cx).into_iter().next() {
-        Some((handle, main)) => {
-            let _ = handle.update(cx, |_, window, cx| {
-                main.update(cx, |main, cx| main.add_context(context_name, window, cx))
-            });
-            handle
-        }
-        None => open_window(
-            cx,
-            WindowLayout {
-                contexts: vec![context_name],
-                ..Default::default()
-            },
-        ),
-    };
-    focus_window(handle, cx);
-}
-
 /// Brings Fernrohr to the front with `window` focused - what a click on one of
 /// its notifications does too (`notify::focus`). A window that has closed is
 /// left alone.

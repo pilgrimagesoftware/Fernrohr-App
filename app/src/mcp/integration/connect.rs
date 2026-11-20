@@ -1,10 +1,11 @@
-//! `connect_context` through the adapter (`mcp-connect-and-focus` 3.1): an
-//! approved connect reaches connected against the fixture API server and
-//! joins the frontmost window; a denied one starts nothing.
+//! `connect_context` through the adapter (`mcp-connections`): an approved
+//! connect reaches connected against the fixture API server, held by the
+//! agent's session and no window, and that agent can then read it; a denied
+//! one starts nothing.
 
 use super::{Agent, content, error_code};
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::session::{ClusterRegistry, Holder};
 use crate::mcp::approval::scripted::{Script, Scripted};
 use crate::mcp::navigate::test_support::{harness_with, workspace};
 use crate::mcp::tools::ToolContext;
@@ -36,9 +37,21 @@ async fn an_approved_connect_reaches_connected(cx: &mut TestAppContext) {
     assert_eq!(user.asked().len(), 1, "the user was asked once");
     assert_eq!(
         cx.update(|cx| ClusterRegistry::window_holder_count(cx, "staging")),
-        1,
-        "the frontmost window holds it"
+        0,
+        "no window gained it"
     );
+    assert!(
+        matches!(
+            cx.update(|cx| ClusterRegistry::holders(cx, "staging"))
+                .as_slice(),
+            [Holder::Agent(_)]
+        ),
+        "the agent's session holds it"
+    );
+    let kinds = agent
+        .call(cx, "list_resource_kinds", json!({"context": "staging"}))
+        .await;
+    assert!(content(&kinds).get("kinds").is_some(), "{kinds}");
 }
 
 #[gpui_kit::test]

@@ -36,6 +36,14 @@ async fn an_agent_opens_a_panel_in_the_window_holding_its_context(cx: &mut TestA
 #[gpui_kit::test]
 async fn an_agent_with_no_window_to_open_in_is_told_so(cx: &mut TestAppContext) {
     let h = harness(cx, &["dev"]);
+    // Usable by any caller - as if a window held it - with no window to open in.
+    cx.update(|cx| {
+        crate::k8s::cluster::session::ClusterRegistry::hold(
+            cx,
+            "dev",
+            crate::mcp::read::test_support::USER_WINDOW(),
+        )
+    });
     let mut agent = Agent::connect(cx, h.tools.clone()).await;
 
     let result = agent
