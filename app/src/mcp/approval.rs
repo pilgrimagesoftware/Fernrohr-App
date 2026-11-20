@@ -56,6 +56,11 @@ pub(crate) enum Asking {
     /// it. It changes nothing in the cluster and disconnecting undoes it, so
     /// it is the recoverable tier (`mcp-connect-and-focus` D2).
     Connect,
+    /// Showing a context only the asking agent holds in a window
+    /// (`open_panel`, `mcp-connections`: the user's decision on review of
+    /// App#435). The window then holds it, so every other agent can use it
+    /// without asking; closing the window undoes that, so it is recoverable.
+    ShowInWindow,
 }
 
 impl ApprovalRequest {
@@ -63,7 +68,23 @@ impl ApprovalRequest {
     pub(crate) fn irreversible(&self) -> bool {
         match self.asking {
             Asking::Action { irreversible } => irreversible,
-            Asking::Connect => false,
+            Asking::Connect | Asking::ShowInWindow => false,
+        }
+    }
+
+    /// The question `open_panel` asks before showing `context`, which only the
+    /// asking agent holds, in a window - where other agents can then use it.
+    pub(crate) fn show_in_window(context: &str) -> Self {
+        Self {
+            title: format!("Show {context} in a window? Other agents can then use it."),
+            confirm: "Show".into(),
+            tool: "open_panel".into(),
+            context: context.to_string(),
+            namespace: String::new(),
+            kind: String::new(),
+            targets: Vec::new(),
+            parameters: Vec::new(),
+            asking: Asking::ShowInWindow,
         }
     }
 

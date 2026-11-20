@@ -23,29 +23,68 @@ pub(crate) enum NavigateError {
     NoWindow,
     /// No workspace window holds the requested context.
     ContextNotHeld,
+    /// Only agents hold the context, and showing it in a window - where every
+    /// agent can then use it - wasn't allowed for this call: the caller asks the
+    /// user, then calls again with permission.
+    NeedsApproval,
 }
 
 /// Opens or focuses the panel for `target` in `context_name`, with
 /// `namespaces` as its scope (empty for the context's default, as an in-app
 /// open with no scope gets), in the frontmost workspace window holding that
 /// context. Every other window is left as it was.
+///
+/// A context no window holds - one only the calling agent's session holds,
+/// which its caller has already checked it may use - is added to the frontmost
+/// workspace window as the add-context control does, or a window is opened on
+/// it when none shows a workspace; that window then holds it too
+/// (`mcp-connections` design decision 4).
 pub(crate) fn open_panel(
     context_name: String,
     target: NavTarget,
     namespaces: Vec<String>,
+    may_show_agent_only: bool,
     cx: &mut App,
 ) -> Result<ShownPanel, NavigateError> {
+    // Decided here, in the same main-thread step that opens the panel, so no
+    // window can close between the check and the act and let an agent-only
+    // context into a window unasked (review of App#435).
+    if !may_show_agent_only && !held_by_a_window(&context_name, cx) {
+        return Err(NavigateError::NeedsApproval);
+    }
     // With no window open (quiet mode, #236), the one that closed last comes
     // back - holding the context the agent asks for, if it held it before.
     super::quiet::ensure_main_window(cx);
     let windows = workspace_windows(cx);
-    if windows.is_empty() {
-        return Err(NavigateError::NoWindow);
-    }
-    let (handle, main) = windows
-        .into_iter()
+    let holding = windows
+        .iter()
         .find(|(_, main)| main.read(cx).contexts().contains(&context_name))
-        .ok_or(NavigateError::ContextNotHeld)?;
+        .cloned();
+    let (handle, main) = match (holding, windows.into_iter().next()) {
+        (Some(holding), _) => holding,
+        (None, Some((handle, main))) => {
+            let name = context_name.clone();
+            handle
+                .update(cx, |_, window, cx| {
+                    main.update(cx, |main, cx| main.add_context(name, window, cx))
+                })
+                .map_err(|_| NavigateError::NoWindow)?;
+            (handle, main)
+        }
+        (None, None) => {
+            open_window(
+                cx,
+                WindowLayout {
+                    contexts: vec![context_name.clone()],
+                    ..Default::default()
+                },
+            );
+            workspace_windows(cx)
+                .into_iter()
+                .find(|(_, main)| main.read(cx).contexts().contains(&context_name))
+                .ok_or(NavigateError::NoWindow)?
+        }
+    };
     let shown = handle
         .update(cx, |_, window, cx| {
             main.update(cx, |main, cx| {
@@ -65,6 +104,14 @@ pub(crate) fn open_panel(
         .ok_or(NavigateError::ContextNotHeld)?;
     focus_window(handle, cx);
     Ok(shown)
+}
+
+/// Whether a user window holds `context_name` - so showing it in a window gives
+/// other agents nothing they didn't already have.
+fn held_by_a_window(context_name: &str, cx: &App) -> bool {
+    ClusterRegistry::holders(cx, context_name)
+        .iter()
+        .any(|holder| holder.is_window())
 }
 
 /// Loads `layout` in `mode` into the frontmost workspace window; `None` when
@@ -103,30 +150,6 @@ pub(crate) fn focus_if_held(context_name: &str, cx: &mut App) -> bool {
     }
     focus_window(handle, cx);
     true
-}
-
-/// Connects `context_name` for an agent, once the user has allowed it: adds it
-/// to the frontmost workspace window exactly as the status bar's add-context
-/// control does ([`MainWindow::add_context`] - tunnel binding, a shared
-/// connection, its Pods panel, selected), or opens a window on it when none
-/// shows a workspace, then brings that window forward.
-pub(crate) fn connect_context(context_name: String, cx: &mut App) {
-    let handle = match workspace_windows(cx).into_iter().next() {
-        Some((handle, main)) => {
-            let _ = handle.update(cx, |_, window, cx| {
-                main.update(cx, |main, cx| main.add_context(context_name, window, cx))
-            });
-            handle
-        }
-        None => open_window(
-            cx,
-            WindowLayout {
-                contexts: vec![context_name],
-                ..Default::default()
-            },
-        ),
-    };
-    focus_window(handle, cx);
 }
 
 /// Brings Fernrohr to the front with `window` focused - what a click on one of

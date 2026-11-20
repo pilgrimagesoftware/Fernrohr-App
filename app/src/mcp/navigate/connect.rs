@@ -1,25 +1,32 @@
 //! `connect_context` (`agent-mcp`: Connect context tool, Connecting requires
-//! approval, Connect reports the settled state; `mcp-connect-and-focus`
-//! D1-D3): connects a kubeconfig context in the frontmost Fernrohr window, so
-//! an agent can bring a cluster online without the user leaving it.
+//! approval, Connect reports the settled state; `mcp-connections` design
+//! decision 4): connects a kubeconfig context for the calling MCP session,
+//! without adding it to any window, so an agent can use a cluster the user
+//! doesn't want a window for.
 //!
-//! In order: the name is checked against the kubeconfig; a context the
-//! frontmost window already holds is just brought forward, with no question;
-//! anything else is asked through the approval gate - naming the context and
-//! its tunnel - before `util::shell::connect_context` adds it as the status
-//! bar's add-context control does. Then the tool watches the connection for a
+//! In order: the call must come from a live session; the name is checked
+//! against the kubeconfig; then the context's current holders decide:
+//!
+//! | Holders now                     | Approval | Result                        |
+//! |---------------------------------|----------|-------------------------------|
+//! | this session already           | no       | its state                     |
+//! | a user window                   | no       | the session holds it too; the frontmost window comes forward if it's one of them |
+//! | only other sessions, lingering, or nobody | yes | the session holds it, connecting if needed |
+//!
+//! Approval is bound to the asking session (Security 1): another session's
+//! hold never stands in for it. Then the tool watches the connection for a
 //! bounded time and reports the first settled state, or `connecting` when the
 //! wait ends; the connection carries on either way.
 
 use super::super::approval::{ApprovalRequest, approve};
-use super::super::cluster::{ContextStatus, kubeconfig_contexts, status};
-use super::super::error::ToolError;
+use super::super::cluster::{ContextStatus, caller_agent, kubeconfig_contexts, status};
+use super::super::error::{ToolError, Unavailability};
 use super::super::redact::redact;
 use super::super::tools::{ToolContext, ToolKind, ToolOutput, ToolRegistry, ToolResult};
 use crate::config::tunnels::TunnelKind;
 use crate::consts::MCP_CONNECT_POLL;
 use crate::k8s::cluster::context_health::ContextHealth;
-use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry, Holder};
 use crate::tunnel::store::TunnelStore;
 use crate::util::shell;
 use schemars::JsonSchema;
@@ -34,9 +41,9 @@ pub(super) fn register(registry: &mut ToolRegistry) {
     registry.add(
         CONNECT_CONTEXT,
         "Connect context",
-        "Connects a kubeconfig context in the frontmost Fernrohr window, as its add-context \
-         control does, after the user approves it in the app, and brings that window forward. \
-         A context the window already has is just brought forward. Waits briefly, then \
+        "Connects a kubeconfig context for this MCP client, without opening a window for it, \
+         after the user approves it in the app. A context a Fernrohr window already has needs \
+         no approval, and that window comes forward if it's the frontmost one. Waits briefly, then \
          reports `connected`, `waiting_for_tunnel`, `awaiting_confirmation` (the user must \
          confirm a manual tunnel), `failed` with a reason, or `connecting` if it is still \
          going; `list_contexts` reports later changes.",
@@ -55,6 +62,11 @@ pub(super) struct ConnectContextInput {
 
 async fn connect_context(input: ConnectContextInput, tools: ToolContext) -> ToolResult {
     let context = input.context;
+    let Some(agent) = caller_agent(&tools) else {
+        return Err(ToolError::Unavailable {
+            reason: Unavailability::NoSession,
+        });
+    };
     let known = kubeconfig_contexts(tools.kubeconfig.clone())
         .await
         .is_some_and(|names| names.contains(&context));
@@ -63,11 +75,14 @@ async fn connect_context(input: ConnectContextInput, tools: ToolContext) -> Tool
     }
 
     let name = context.clone();
-    if tools
+    let standing = tools
         .foreground
-        .run(move |cx| shell::focus_if_held(&name, cx))
-        .await?
-    {
+        .run(move |cx| take_without_approval(cx, &name, agent))
+        .await?;
+    if standing == Standing::Ended {
+        return Err(session_ended());
+    }
+    if standing == Standing::Held {
         let (state, reason) = state_of(&tools, &context).await?;
         return Ok(output(&context, state, reason, true));
     }
@@ -82,13 +97,54 @@ async fn connect_context(input: ConnectContextInput, tools: ToolContext) -> Tool
     )
     .await?;
 
+    // The session may have ended while the user was deciding; its approval
+    // then grants nothing (review of App#434, F1).
     let name = context.clone();
-    tools
+    let held = tools
         .foreground
-        .run(move |cx| shell::connect_context(name, cx))
+        .run(move |cx| ClusterRegistry::hold(cx, &name, agent))
         .await?;
+    if !held {
+        return Err(session_ended());
+    }
     let (state, reason) = settle(&tools, &context).await?;
     Ok(output(&context, state, reason, false))
+}
+
+/// The error for a call whose session ended before it could hold anything.
+fn session_ended() -> ToolError {
+    ToolError::Unavailable {
+        reason: Unavailability::NoSession,
+    }
+}
+
+/// Whether `connect_context` can go ahead without asking.
+#[derive(Debug, PartialEq, Eq)]
+enum Standing {
+    /// The session holds the context now: it already did, or a user window
+    /// does, so it took a hold of its own.
+    Held,
+    /// Only other sessions, lingering holds, or nobody have it: the user must
+    /// approve this session.
+    NeedsApproval,
+    /// The session ended while the call was on its way: it can hold nothing.
+    Ended,
+}
+
+/// The no-approval rows of the module's table, on the main thread.
+fn take_without_approval(cx: &mut gpui_kit::App, context: &str, agent: AgentId) -> Standing {
+    let holders = ClusterRegistry::holders(cx, context);
+    if holders.contains(&Holder::Agent(agent)) {
+        return Standing::Held;
+    }
+    if !holders.iter().any(Holder::is_window) {
+        return Standing::NeedsApproval;
+    }
+    if !ClusterRegistry::hold(cx, context, agent) {
+        return Standing::Ended;
+    }
+    shell::focus_if_held(context, cx);
+    Standing::Held
 }
 
 /// Watches `context` until it settles or `tools.connect_settle` passes
@@ -126,6 +182,7 @@ async fn state_of(
     context: &str,
 ) -> Result<(ContextStatus, Option<String>), ToolError> {
     let context = context.to_string();
+    let agent = caller_agent(tools);
     tools
         .foreground
         .run(move |cx| {
@@ -133,7 +190,7 @@ async fn state_of(
                 ContextHealth::Failed { reason, .. } => Some(redact(&reason)),
                 _ => None,
             };
-            (status(cx, &context), reason)
+            (status(cx, &context, agent), reason)
         })
         .await
 }

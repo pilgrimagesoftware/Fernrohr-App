@@ -149,9 +149,6 @@ impl ClusterRegistry {
 
     /// Everyone holding `context_name`, windows first, then agents - empty for a
     /// context with no session.
-    // UNWIRED(#367): read by the Connections window and the status bar's agent
-    // marker (sections 4 and 5).
-    #[allow(dead_code)]
     pub fn holders(cx: &App, context_name: &str) -> Vec<Holder> {
         let mut holders: Vec<Holder> = cx
             .try_global::<Self>()

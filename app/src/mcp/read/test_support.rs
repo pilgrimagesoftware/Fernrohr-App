@@ -13,6 +13,12 @@ use gpui_kit::TestAppContext;
 use serde_json::Value;
 use std::path::PathBuf;
 
+/// The stand-in for the user's window in these fixtures.
+#[allow(non_snake_case)]
+pub(in crate::mcp) fn USER_WINDOW() -> gpui_kit::WindowId {
+    gpui_kit::WindowId::from(9_000)
+}
+
 /// The app's tool context for a test whose kubeconfig lists `contexts`.
 /// Starts the runtime and lets the test wait on it.
 pub(in crate::mcp) fn tools(cx: &mut TestAppContext, contexts: &[&str]) -> ToolContext {
@@ -31,9 +37,23 @@ pub(in crate::mcp) fn tools(cx: &mut TestAppContext, contexts: &[&str]) -> ToolC
     }
 }
 
-/// Registers `context` as an open session in `state`, with `kinds` as its
-/// discovery when given.
+/// Registers `context` as a session the user has open - held by a stand-in
+/// window, as a real one would, so every caller may use it
+/// (`mcp-connections` Security 6) - in `state`, with `kinds` as its discovery
+/// when given.
 pub(in crate::mcp) fn open(
+    cx: &mut TestAppContext,
+    context: &str,
+    state: ConnectionState,
+    kinds: Option<Vec<DiscoveredKind>>,
+) {
+    open_unheld(cx, context, state, kinds);
+    cx.update(|cx| ClusterRegistry::hold(cx, context, USER_WINDOW()));
+}
+
+/// [`open`] with no holder: for tests whose own windows hold their contexts,
+/// so a window closing really lets go.
+pub(in crate::mcp) fn open_unheld(
     cx: &mut TestAppContext,
     context: &str,
     state: ConnectionState,
