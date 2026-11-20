@@ -23,6 +23,34 @@ impl HelmReleasesPanel {
             .map(|why| why.to_string())
     }
 
+    /// Tells the palette when Uninstall can't run from the list, and why
+    /// (#406): `helm` or the connection isn't usable, or no release is selected.
+    pub(super) fn register_unavailable_reasons(&self, cx: &mut Context<Self>) {
+        let panel = cx.weak_entity();
+        crate::command::unavailable::register(
+            &self.focus_handle,
+            move |action, cx| {
+                if !action
+                    .as_any()
+                    .is::<crate::k8s::resource::helm::actions::UninstallRelease>()
+                {
+                    return None;
+                }
+                let panel = panel.upgrade()?;
+                let panel = panel.read(cx);
+                if let Some(why) = panel.actions_unavailable(cx) {
+                    return Some(why.into());
+                }
+                let selected = panel
+                    .table
+                    .as_ref()
+                    .is_some_and(|table| table.read(cx).delegate().selected().is_some());
+                (!selected).then(|| "No release is selected.".into())
+            },
+            cx,
+        );
+    }
+
     /// Uninstall's command, key and menu item: confirms uninstalling the
     /// selected release. Nothing selected, nothing happens.
     pub(super) fn uninstall_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
