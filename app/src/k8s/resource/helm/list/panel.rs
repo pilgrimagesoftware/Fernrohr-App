@@ -84,6 +84,7 @@ impl HelmReleasesPanel {
             actions: Default::default(),
         };
         this.subscribe(cx);
+        this.register_unavailable_reasons(cx);
         this
     }
 

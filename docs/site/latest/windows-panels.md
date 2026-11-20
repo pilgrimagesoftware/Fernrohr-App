@@ -141,7 +141,7 @@ Moving the panel changes only the current window. **Make Resource Panel's Side t
 
 ## The command palette
 
-Press <kbd>⇧⌘P</kbd>, choose View > Command Palette, or run **Command Palette**. Every user-facing action is in the palette, with its key binding shown. Type to filter, move with <kbd>↑</kbd> and <kbd>↓</kbd>, and press <kbd>Enter</kbd> to run the highlighted command. Commands that belong to one panel, such as the pod commands, appear only while that panel has focus.
+Press <kbd>⇧⌘P</kbd>, choose View > Command Palette, or run **Command Palette**. Every user-facing action is in the palette, with its key binding shown. Type to filter, move with <kbd>↑</kbd> and <kbd>↓</kbd>, and press <kbd>Enter</kbd> to run the highlighted command. Commands that belong to one panel, such as the pod commands, appear only while that panel has focus. A command that can't run right now is listed dimmed, with the reason beside it, and the palette skips it: the arrows don't stop on it, and clicking it does nothing.
 
 Hovering over a row with the mouse doesn't move the keyboard selection. You can change any key in `keymap.toml`. See {{ '/latest/settings/' | relative_url }} and {{ '/latest/reference/keybindings/' | relative_url }}.
 

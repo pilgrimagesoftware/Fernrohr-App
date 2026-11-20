@@ -216,3 +216,23 @@ async fn a_running_action_refuses_a_second(cx: &mut TestAppContext) {
     );
     assert_eq!(h.refusal(), None, "nothing stale left behind");
 }
+
+/// #406: the palette learns why Rollback and Uninstall can't run - the same
+/// reason the panel would refuse with - and that they can once `helm` is usable.
+#[gpui_kit::test]
+async fn the_palette_is_told_why_rollback_and_uninstall_cant_run(cx: &mut TestAppContext) {
+    use crate::command::unavailable::reason;
+    use crate::k8s::resource::helm::actions::{RollbackRelease, UninstallRelease};
+    let mut h = open(cx, "s8-palette-reason", "exit 0");
+    h.vcx.update(|window, cx| {
+        assert_eq!(reason(&RollbackRelease, window, cx), None, "helm is usable");
+        assert_eq!(reason(&UninstallRelease, window, cx), None);
+    });
+    let why = "helm isn't on your login shell's PATH.";
+    h.vcx
+        .update(|_, cx| set_status(HelmStatus::Unusable(why.into()), cx));
+    h.vcx.update(|window, cx| {
+        assert_eq!(reason(&RollbackRelease, window, cx), Some(why.into()));
+        assert_eq!(reason(&UninstallRelease, window, cx), Some(why.into()));
+    });
+}

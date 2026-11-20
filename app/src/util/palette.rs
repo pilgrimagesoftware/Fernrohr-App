@@ -13,9 +13,13 @@
 //!   nearly invisible in a dialog and follows the mouse, so Enter could run whatever
 //!   was under the pointer; here Enter runs the keyboard selection and a click runs
 //!   the row clicked.
+//! - A command the focused panel says can't run now (`command::unavailable`, #406)
+//!   is listed disabled - dimmed, with the reason beside its title - and never runs:
+//!   neither the arrows nor a click select it, and Enter skips it.
 
 use crate::command::CommandRegistry;
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::Disableable as _;
 use gpui_kit::component::Root;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::command::{Command, CommandItem, CommandState};
@@ -47,10 +51,15 @@ pub fn open(window: &mut Window, cx: &mut App) {
 
     let registry = cx.global::<CommandRegistry>();
     let commands = registry.available(&context_names);
+    // Asked now, while focus is still where the palette was summoned from.
+    let reasons: Vec<Option<SharedString>> = commands
+        .iter()
+        .map(|command| crate::command::unavailable::reason(command.action.as_ref(), window, cx))
+        .collect();
     // Items carry no `action`: `Command` would dispatch it from inside the dialog,
     // missing panel-scoped handlers. So each row draws its own key - looked up
     // against the element that had focus, where panel-scoped keys resolve.
-    let selected = Rc::new(Cell::new((!commands.is_empty()).then_some(0usize)));
+    let selected = Rc::new(Cell::new(reasons.iter().position(Option::is_none)));
     let items: Vec<CommandItem> = commands
         .iter()
         .enumerate()
@@ -63,28 +72,49 @@ pub fn open(window: &mut Window, cx: &mut App) {
                 .or_else(|| Kbd::binding_for_action(command.action.as_ref(), None, window));
             let title = command.title;
             let selected = selected.clone();
-            CommandItem::new().label(title).child(move |_window, cx| {
-                div()
-                    .flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
-                    .px_1()
-                    .rounded(cx.theme().radius)
-                    .when(selected.get() == Some(row), |el| {
-                        el.bg(crate::ui::style::accent_subtle(cx))
-                    })
-                    .child(title)
-                    .children(key.clone())
-                    .into_any_element()
-            })
+            let reason = reasons[row].clone();
+            let disabled = reason.is_some();
+            CommandItem::new()
+                .label(title)
+                .disabled(disabled)
+                .child(move |_window, cx| {
+                    div()
+                        .flex()
+                        .flex_1()
+                        .items_center()
+                        .justify_between()
+                        .gap_2()
+                        .px_1()
+                        .rounded(cx.theme().radius)
+                        .when(selected.get() == Some(row), |el| {
+                            el.bg(crate::ui::style::accent_subtle(cx))
+                        })
+                        .when(disabled, |el| el.text_color(cx.theme().muted_foreground))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .min_w_0()
+                                .child(title)
+                                .children(reason.clone().map(|reason| {
+                                    div()
+                                        .debug_selector(move || format!("palette-reason-{row}"))
+                                        .text_xs()
+                                        .truncate()
+                                        .child(reason)
+                                })),
+                        )
+                        .children(key.clone())
+                        .into_any_element()
+                })
         })
         .collect();
     let actions: Vec<Box<dyn Action>> = commands
         .iter()
         .map(|command| command.action.boxed_clone())
         .collect();
+    let runnable: Rc<[bool]> = reasons.iter().map(Option::is_none).collect();
 
     let state = cx.new(|cx| CommandState::new(window, cx));
     let search_focus = state.read(cx).focus_handle(cx);
@@ -95,13 +125,18 @@ pub fn open(window: &mut Window, cx: &mut App) {
             actions.iter().map(|action| action.boxed_clone()).collect();
         let previous_focus = previous_focus.clone();
         let selected = selected.clone();
+        let runnable = runnable.clone();
         dialog.content(move |content, _window, _cx| {
             let actions: Vec<Box<dyn Action>> =
                 actions.iter().map(|action| action.boxed_clone()).collect();
             let previous_focus = previous_focus.clone();
             let on_select_selected = selected.clone();
             let on_select_state = state.clone();
+            let select_runnable = runnable.clone();
+            let on_select_runnable =
+                move |row: usize| select_runnable.get(row).copied().unwrap_or(false);
             let confirm_selected = selected.clone();
+            let runnable = runnable.clone();
             content.child(
                 Command::new(&state)
                     .items(items.clone())
@@ -109,7 +144,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
                     // Only keyboard moves (arrows, typing) move the selection;
                     // `Command` reports hover the same way, and hover must not.
                     .on_select(move |index_path, window, cx| {
-                        if window.last_input_was_keyboard() {
+                        if window.last_input_was_keyboard() && on_select_runnable(index_path.row) {
                             on_select_selected.set(Some(index_path.row));
                             on_select_state.update(cx, |_, cx| cx.notify());
                         }
@@ -121,6 +156,11 @@ pub fn open(window: &mut Window, cx: &mut App) {
                         } else {
                             index_path.row
                         };
+                        // Belt and braces: `Command` doesn't confirm a disabled row,
+                        // but the kept selection must not run one either.
+                        if !runnable.get(row).copied().unwrap_or(false) {
+                            return;
+                        }
                         run(&actions, row, previous_focus.as_ref(), window, cx)
                     }),
             )
@@ -351,5 +391,79 @@ mod tests {
         vcx.simulate_keystrokes("enter");
         vcx.run_until_parked();
         assert!(ran_second.get(), "the filter's first match runs on Enter");
+    }
+
+    /// #406: a command the focused panel says can't run is listed with its
+    /// reason, the selection starts past it so Enter runs the next one, and
+    /// clicking it runs nothing.
+    #[gpui_kit::test]
+    async fn an_unavailable_command_is_listed_with_its_reason_and_never_runs(
+        cx: &mut TestAppContext,
+    ) {
+        let (ran_first, ran_second) = (Rc::new(Cell::new(false)), Rc::new(Cell::new(false)));
+        cx.update(|cx| {
+            crate::util::test_ui::init(cx);
+            let mut registry = CommandRegistry::new();
+            for (id, title, action) in [
+                (
+                    "test.first",
+                    "First Test Command",
+                    Box::new(First) as Box<dyn gpui_kit::Action>,
+                ),
+                ("test.second", "Second Test Command", Box::new(Second)),
+            ] {
+                registry.register(Command {
+                    id,
+                    title,
+                    default_binding: "",
+                    context: None,
+                    action,
+                    menu: None,
+                });
+            }
+            cx.set_global(registry);
+            let first = ran_first.clone();
+            cx.on_action(move |_: &First, _cx| first.set(true));
+            let second = ran_second.clone();
+            cx.on_action(move |_: &Second, _cx| second.set(true));
+        });
+        let window = cx.add_window(|window, cx| {
+            let host = cx.new(|cx| Host {
+                focus: cx.focus_handle(),
+            });
+            let focus = host.read(cx).focus.clone();
+            crate::command::unavailable::register(
+                &focus,
+                |action, _| {
+                    action
+                        .as_any()
+                        .is::<First>()
+                        .then(|| "Not right now.".into())
+                },
+                cx,
+            );
+            window.focus(&focus, cx);
+            Root::new(host, window, cx)
+        });
+        let mut vcx = VisualTestContext::from_window(window.into(), cx);
+        vcx.run_until_parked();
+        vcx.update(open);
+        vcx.run_until_parked();
+
+        let reason = vcx
+            .debug_bounds("palette-reason-0")
+            .expect("the first row shows its reason");
+        assert!(
+            vcx.debug_bounds("palette-reason-1").is_none(),
+            "a runnable row shows none"
+        );
+        vcx.simulate_click(reason.center(), gpui_kit::Modifiers::default());
+        vcx.run_until_parked();
+        assert!(!ran_first.get(), "clicking it runs nothing");
+
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert!(!ran_first.get(), "Enter doesn't run it either");
+        assert!(ran_second.get(), "Enter runs the first runnable command");
     }
 }

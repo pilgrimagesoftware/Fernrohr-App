@@ -1,5 +1,7 @@
 use gpui_kit::Action;
 
+pub(crate) mod unavailable;
+
 /// Where a command sits in the application menu: which of the seven top-level
 /// menus and, in the menus that group their items, which group. A command
 /// names at most one - the menu is a curated subset of commands, not every
