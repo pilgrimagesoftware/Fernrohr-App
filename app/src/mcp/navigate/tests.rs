@@ -180,10 +180,12 @@ async fn open_panel_refuses_a_name_that_would_change_the_request_path(cx: &mut T
     assert_eq!(open_targets(cx, &dev), before, "nothing opened");
 }
 
+/// `mcp-connections` design decision 4: with no workspace window open, a panel
+/// on a context the caller may use opens a window on that context.
 #[gpui_kit::test]
-async fn open_panel_with_no_window_reports_the_ui_unavailable(cx: &mut TestAppContext) {
+async fn open_panel_with_no_window_opens_one(cx: &mut TestAppContext) {
     let h = harness(cx, &["dev"]);
-    // Usable by any caller - as if a window held it - with no window to open in.
+    // Usable by any caller - as if a window held it - with no window open yet.
     cx.update(|cx| ClusterRegistry::hold(cx, "dev", crate::mcp::read::test_support::USER_WINDOW()));
     let result = call(
         cx,
@@ -192,7 +194,11 @@ async fn open_panel_with_no_window_reports_the_ui_unavailable(cx: &mut TestAppCo
         json!({"context": "dev", "kind": "Pod"}),
     )
     .await;
-    assert_eq!(result, Err(ToolError::UiUnavailable));
+    assert!(result.is_ok(), "{result:?}");
+    assert!(
+        !cx.update(|cx| cx.windows()).is_empty(),
+        "a window opened on the context"
+    );
 }
 
 #[gpui_kit::test]

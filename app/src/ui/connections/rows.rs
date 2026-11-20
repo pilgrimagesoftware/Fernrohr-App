@@ -8,7 +8,7 @@
 //! because the connection is open and Disconnect can close it; the row says so
 //! ([`ConnectionRow::lingering`]).
 
-use crate::k8s::cluster::session::{AgentId, AgentLabels, ClusterRegistry, Holder};
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry, Holder, LiveAgents};
 use crate::ui::picker_tunnel::TunnelChoice;
 use crate::ui::status_bar::{StatusBarView, StatusItem};
 use gpui_kit::App;
@@ -141,7 +141,7 @@ pub(super) fn rows(cx: &App, tunnels: &TunnelNames) -> Vec<ConnectionRow> {
                     }),
                     Holder::Agent(id) => Some(HolderLabel::Agent {
                         id: *id,
-                        name: AgentLabels::name(cx, *id),
+                        name: LiveAgents::name(cx, *id),
                         connected_it: connected_by == Some(*holder),
                     }),
                     Holder::Lingering(_) => None,

@@ -37,8 +37,11 @@ only (`window_holder_count`).
 - Ownership stays on `ClusterSession`, so pause and resume (`_health`), watches and the tunnel
   forward need no change for agent-only holders.
 - Anything that assumed "no window holds it" means "nobody uses it" is now wrong. The picker's retry
-  (`ClusterRegistry::retry_with`) swaps in a new connection when no holder remains; it must redial
-  in place instead (App#431's `redial`) so an agent isn't left on an orphaned entity.
+  (`ClusterRegistry::retry_with`) used to swap in a new connection when no window held it; it now
+  redials in place (App#431's `redial`) for every holder, so an agent isn't left on an orphaned
+  entity. A connection also stores its own context name, so a redial can't target another context.
+- An agent can hold a context only while its MCP session is live (`LiveAgents`, on the main thread),
+  so a call that outlives its session can't leave a hold behind.
 - Code that shows or counts holders has to say which kind it means.
 
 ## Alternatives Considered

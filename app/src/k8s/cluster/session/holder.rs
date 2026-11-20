@@ -16,6 +16,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct AgentId(u64);
 
 impl AgentId {
+    /// Where this agent falls in the order agents were created.
+    pub(super) fn order(self) -> u64 {
+        self.0
+    }
+
     /// A fresh handle, distinct from every one handed out before.
     pub fn next() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -26,10 +31,15 @@ impl AgentId {
 /// An ended agent session's hold, kept only until its grace period ends
 /// (`mcp-connections` design decision 3). Unique and never reused, so no later
 /// session can claim it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LingerId(u64);
 
 impl LingerId {
+    /// Where this hold falls in the order lingering holds were created.
+    pub(super) fn order(self) -> u64 {
+        self.0
+    }
+
     fn next() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         Self(NEXT.fetch_add(1, Ordering::Relaxed))
