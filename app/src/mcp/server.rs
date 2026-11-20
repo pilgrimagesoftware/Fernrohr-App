@@ -25,7 +25,7 @@ use crate::consts::{
     MCP_HANDSHAKE_TIMEOUT, MCP_MAX_CONNECTIONS, MCP_MAX_REPLY_BYTES, MCP_MAX_REQUEST_BYTES,
     MCP_MAX_SESSIONS, MCP_SESSION_GRACE,
 };
-use crate::k8s::cluster::session::{AgentId, ClusterRegistry};
+use crate::k8s::cluster::session::{AgentId, LiveAgents};
 use gpui_kit::{App, Global};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -185,13 +185,14 @@ pub(super) fn stop(cx: &mut App) {
 }
 
 /// What stopping the endpoint does to its sessions (`agent-mcp` "Stop serving
-/// with the last window"): every identifier stops working, and every session's
-/// holds linger for `grace`, then go. Aborting the serving task skips each
-/// session's own close path, so this stands in for it.
+/// with the last window"): every identifier stops working, and every live
+/// agent ends - its holds linger for `grace`, then go. Aborting the serving
+/// task skips each session's own close path, so this stands in for it. The
+/// main thread's live set is the source, not the endpoint's session list, so an
+/// agent whose own end was cut short mid-way still ends (review of App#434, F2).
 fn end_every_session(cx: &mut App, sessions: &Sessions, grace: Duration) {
-    for agent in sessions.close_all() {
-        ClusterRegistry::linger_agent(cx, agent, grace);
-    }
+    sessions.close_all();
+    LiveAgents::end_all(cx, grace);
 }
 
 /// Accepts connections on `listener` forever, serving at most
@@ -346,7 +347,9 @@ async fn serve_session(
         let _ = frame::write(
             &mut writer,
             &Reply::Refused {
-                error: ToolError::Internal,
+                error: ToolError::Unavailable {
+                    reason: Unavailability::TooManySessions,
+                },
             },
             MCP_MAX_REPLY_BYTES,
         )
@@ -371,6 +374,17 @@ async fn serve_session(
         }
     };
     let agent = caller.agent;
+    // Live on the main thread before the identifier is handed out, so nothing
+    // the session asks for can find it not live.
+    let name = caller.client_name.clone();
+    // Fails only with no main thread (the app quitting): the session is still
+    // served, and since its agent never became live, `ClusterRegistry::hold`
+    // refuses it anything to hold.
+    let _ = state
+        .context
+        .foreground
+        .run(move |cx| LiveAgents::open(cx, agent, name))
+        .await;
     // Never the identifier, nor the self-reported name: the in-app handle only.
     log::info!(target: LOG_TARGET, "session opened agent={agent:?}");
     let opened = frame::write(
@@ -398,7 +412,7 @@ async fn end_session(state: &ServerState, agent: AgentId) {
     let _ = state
         .context
         .foreground
-        .run(move |cx| ClusterRegistry::linger_agent(cx, agent, grace))
+        .run(move |cx| LiveAgents::end(cx, agent, grace))
         .await;
 }
 

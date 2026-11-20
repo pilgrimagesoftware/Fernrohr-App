@@ -56,6 +56,41 @@ impl MainWindow {
         }
     }
 
+    /// Tells the palette Reconnect Failed Contexts has nothing to do while no
+    /// context in this window has failed (#406, #416), so it's listed dimmed
+    /// with the reason rather than run for nothing. Registered once per
+    /// window, against its root focus handle, which contains every focus in it;
+    /// the window's contexts are read each time the palette asks.
+    pub(super) fn register_unavailable_reasons(&self, cx: &mut Context<Self>) {
+        let main = cx.weak_entity();
+        crate::command::unavailable::register(
+            &self.focus_handle,
+            move |action, cx| {
+                if !action
+                    .as_any()
+                    .is::<crate::ui::status_bar::ReconnectFailedContexts>()
+                {
+                    return None;
+                }
+                let main = main.upgrade()?;
+                let contexts = match &main.read(cx).mode {
+                    WindowMode::Workspace { contexts, .. } => contexts.as_slice(),
+                    WindowMode::Picker(_) => &[],
+                };
+                let failed = contexts.iter().any(|context| {
+                    ClusterRegistry::existing_connection(cx, context).is_some_and(|connection| {
+                        matches!(
+                            connection.read(cx).state,
+                            crate::k8s::cluster::connection::ConnectionState::Failed(_)
+                        )
+                    })
+                });
+                (!failed).then(|| "No context in this window has failed.".into())
+            },
+            cx,
+        );
+    }
+
     /// Disconnect All Contexts… (#359): asks, through the status bar, before
     /// disconnecting every context in the window.
     pub(super) fn on_action_disconnect_all_contexts(

@@ -65,6 +65,7 @@ fn retry_keeps_an_agents_hold(cx: &mut TestAppContext) {
     cx.update(|cx| {
         let failed = failed(cx);
         let agent = AgentId::next();
+        crate::k8s::cluster::session::LiveAgents::open(cx, agent, None);
         ClusterRegistry::hold(cx, "demo", agent);
         let calls = Rc::new(Cell::new(0));
         let retried = ClusterRegistry::retry_with(cx, "demo", stub(calls.clone()));
