@@ -16,8 +16,8 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::delete_flow::refusal::{self, Refusal};
 use crate::k8s::resource::delete_flow::{self, DeleteTarget};
 use crate::k8s::resource::pods::{
-    DeletePod, KillPod, PodSelection, PortForwardPod, ShellPod, forward_pod, running_containers,
-    shell_into,
+    DeletePod, KillPod, PodSelection, PortForwardPod, ShellPod, forward_pod, long_running_names,
+    running_containers, shell_into,
 };
 use crate::ui::detail::lifecycle::Lifecycle;
 use gpui_kit::component::kbd::Kbd;
@@ -68,15 +68,12 @@ impl PodDetailPanel {
 
     /// The pod as the Pods list's actions address it.
     pub(super) fn selection(&self) -> PodSelection {
-        let containers = self
-            .live_pod()
-            .and_then(|pod| pod.spec.as_ref())
-            .map(|spec| spec.containers.iter().map(|c| c.name.clone()).collect())
-            .unwrap_or_default();
+        let (containers, sidecars) = self.live_pod().map(long_running_names).unwrap_or_default();
         PodSelection {
             namespace: self.pod.namespace.clone(),
             name: self.pod.name.clone(),
             containers,
+            sidecars,
             context_name: self.scope.context_name.clone(),
         }
     }

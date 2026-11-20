@@ -64,6 +64,7 @@ pub(super) fn pod_table_rows_fixture() -> Vec<crate::k8s::resource::pods_table::
                 namespace: namespace.into(),
                 name: name.into(),
                 containers: Vec::new(),
+                sidecars: Vec::new(),
                 context_name: "ctx".into(),
             },
             forwards: Vec::new(),
