@@ -14,12 +14,14 @@
 mod connect;
 mod request;
 
+use super::approval::{ApprovalRequest, approve};
 use super::cluster::session;
 use super::error::ToolError;
 use super::kinds::KindQuery;
 use super::names::{LabelName, ObjectName};
 use super::tools::{ToolContext, ToolKind, ToolOutput, ToolRegistry, ToolResult};
 use crate::config::saved_layouts::{self, SavedLayout};
+use crate::k8s::cluster::session::{ClusterRegistry, Holder};
 use crate::util::shell::{self, LoadMode, NavigateError};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -104,6 +106,21 @@ async fn open_panel(input: OpenPanelInput, tools: ToolContext) -> ToolResult {
     let kind = session.kind(&tools, &query).await?;
     let (target, namespaces) = request::panel_target(&kind, namespace, name)?;
     let context = input.context;
+    // Showing a context only this agent holds puts it in a window, where every
+    // other agent can then use it without asking: the user decides that first
+    // (`mcp-connections`, the user's decision on review of App#435).
+    let name = context.clone();
+    let window_holds = tools
+        .foreground
+        .run(move |cx| {
+            ClusterRegistry::holders(cx, &name)
+                .iter()
+                .any(Holder::is_window)
+        })
+        .await?;
+    if !window_holds {
+        approve(&tools.approvals, ApprovalRequest::show_in_window(&context)).await?;
+    }
     let shown = tools
         .foreground
         .run(move |cx| {

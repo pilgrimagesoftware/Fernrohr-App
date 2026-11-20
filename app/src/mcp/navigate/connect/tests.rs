@@ -497,3 +497,110 @@ async fn opening_a_panel_on_the_sessions_context_brings_it_into_a_window(cx: &mu
     assert_eq!(windows_holding(cx, "staging"), 1, "a window holds it now");
     assert!(holders(cx, "staging").contains(&Holder::Agent(agent_of(&tools))));
 }
+
+/// The same session's tools, with `script` answering instead.
+fn answering(
+    tools: &ToolContext,
+    script: Script,
+    timeout: Duration,
+) -> (ToolContext, Arc<Scripted>) {
+    let user = Scripted::new(script);
+    let tools = ToolContext {
+        approvals: user.gate_with_timeout(timeout),
+        ..tools.clone()
+    };
+    (tools, user)
+}
+
+/// `staging` connected by a fresh agent, held by it alone, with discovery,
+/// beside a window on `dev`.
+async fn agent_only_staging(cx: &mut TestAppContext) -> (Harness, ToolContext) {
+    let h = known(cx);
+    let _ = workspace(cx, &["dev"]);
+    open_unheld(
+        cx,
+        "staging",
+        ConnectionState::Connected(h.client.clone()),
+        Some(crate::mcp::navigate::test_support::core_kinds()),
+    );
+    let (tools, _) = answered_by(cx, &h, Script::Allow);
+    content(connect(cx, &tools, "staging").await);
+    (h, tools)
+}
+
+async fn open_pods(cx: &mut TestAppContext, tools: &ToolContext, context: &str) -> ToolResult {
+    let result = call(
+        cx,
+        tools,
+        "open_panel",
+        json!({"context": context, "kind": "Pod"}),
+    )
+    .await;
+    cx.run_until_parked();
+    result
+}
+
+/// The user's decision on review of App#435: before a context only this agent
+/// holds goes into a window (where every agent can then use it), the user is
+/// asked, and the question says so.
+#[gpui_kit::test]
+async fn showing_an_agent_only_context_asks_first(cx: &mut TestAppContext) {
+    let (_h, tools) = agent_only_staging(cx).await;
+    let (tools, user) = answering(&tools, Script::Allow, Duration::from_secs(30));
+
+    assert!(open_pods(cx, &tools, "staging").await.is_ok());
+
+    let asked = user.asked();
+    assert_eq!(asked.len(), 1, "asked once, before showing it");
+    assert_eq!(asked[0].context, "staging");
+    assert_eq!(asked[0].tool, "open_panel");
+    assert!(asked[0].title.contains("Other agents can then use it"));
+    assert!(!asked[0].irreversible(), "the recoverable tier");
+    assert_eq!(windows_holding(cx, "staging"), 1);
+}
+
+/// Denied or unanswered: no window gains it, and the tool says why.
+#[gpui_kit::test]
+async fn a_refused_show_changes_nothing(cx: &mut TestAppContext) {
+    for (script, error) in [
+        (Script::Deny, ToolError::Denied),
+        (Script::Never, ToolError::ApprovalTimedOut),
+    ] {
+        let (_h, tools) = agent_only_staging(cx).await;
+        let (tools, _) = answering(&tools, script, Duration::from_millis(50));
+
+        assert_eq!(open_pods(cx, &tools, "staging").await, Err(error));
+        assert_eq!(windows_holding(cx, "staging"), 0, "no window gained it");
+        assert_eq!(
+            holders(cx, "staging"),
+            vec![Holder::Agent(agent_of(&tools))]
+        );
+    }
+}
+
+/// A context a user window already holds is shown with no question.
+#[gpui_kit::test]
+async fn showing_a_windows_context_asks_nothing(cx: &mut TestAppContext) {
+    let h = known(cx);
+    let _ = workspace(cx, &["dev"]);
+    let (tools, user) = answered_by(cx, &h, Script::Deny);
+
+    assert!(open_pods(cx, &tools, "dev").await.is_ok());
+    assert!(user.asked().is_empty());
+}
+
+/// The consequence the user agreed to: once agent A's allowed show puts the
+/// context in a window, agent B connects it without a dialog.
+#[gpui_kit::test]
+async fn after_an_allowed_show_another_agent_connects_without_asking(cx: &mut TestAppContext) {
+    let (h, a) = agent_only_staging(cx).await;
+    let (a, _) = answering(&a, Script::Allow, Duration::from_secs(30));
+    assert!(open_pods(cx, &a, "staging").await.is_ok());
+
+    let (b, user) = answered_by(cx, &h, Script::Deny);
+    let output = content(connect(cx, &b, "staging").await);
+
+    assert!(user.asked().is_empty(), "no dialog for B");
+    assert_eq!(output["already_open"], json!(true));
+    assert!(holders(cx, "staging").contains(&Holder::Agent(agent_of(&b))));
+}
