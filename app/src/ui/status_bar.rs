@@ -35,7 +35,7 @@ mod theme_switch;
 pub(crate) use capsule::{attention_selector, icon_selector};
 pub(crate) use commands::{
     AddContext, DisconnectActiveContext, DisconnectAllContexts, DisconnectOtherContexts,
-    register_commands,
+    ReconnectFailedContexts, register_commands,
 };
 pub(crate) use disconnect::Disconnecting;
 /// The chord indicator's debug selectors, for tests outside this module.

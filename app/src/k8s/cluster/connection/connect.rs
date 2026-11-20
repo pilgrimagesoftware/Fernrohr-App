@@ -283,47 +283,75 @@ impl ClusterConnection {
     /// ever starts.
     pub fn connect(cx: &mut App, context_name: Option<String>) -> Entity<Self> {
         cx.new(|cx: &mut Context<Self>| {
-            let bound_context = resolve_bound_context(context_name.clone());
-            let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
-            let acquired = bound_context
-                .as_deref()
-                .map(|context| tunnel::acquire_for_context(cx, &tunnels_path, None, context));
-
-            if let Some(Err(error)) = acquired {
-                return Self {
-                    state: ConnectionState::Failed(error.to_string()),
-                    since: Instant::now(),
-                    _forward: None,
-                };
-            }
-            let forward = acquired.and_then(Result::ok).flatten();
-            let forward_wait = forward.as_ref().map(ForwardWait::of);
-            let route = forward.as_ref().map(|handle| handle.forward().route());
-
-            let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
-                let config_result = resolve_config(context_name.as_deref()).await;
-                connect_and_probe(config_result, forward_wait, tx).await;
-            });
-            cx.spawn(async move |this, cx| {
-                crate::runtime::drain(rx, |state| {
-                    let _ = this.update(cx, |this, cx| {
-                        if releases_forward_on(&state, route) {
-                            this._forward = None;
-                        }
-                        this.state = state;
-                        this.since = Instant::now();
-                        cx.notify();
-                    });
-                })
-                .await;
-            })
-            .detach();
-            Self {
+            let mut this = Self {
                 state: ConnectionState::Connecting,
                 since: Instant::now(),
-                _forward: forward,
-            }
+                _forward: None,
+            };
+            this.start(context_name, cx);
+            this
         })
+    }
+
+    /// Tries a failed connection again, in place (#416): this same entity goes
+    /// back to `Connecting` and runs a fresh attempt, so everything observing
+    /// it - the status bar, the window's panels, discovery - follows the retry
+    /// without being rebuilt. The tunnel binding is resolved again, so a fixed
+    /// `tunnels.toml` takes effect. Returns whether an attempt started: only a
+    /// `Failed` connection is retried, which also keeps two retries from
+    /// overlapping, since the first leaves `Failed` at once.
+    pub(crate) fn redial(&mut self, context_name: &str, cx: &mut Context<Self>) -> bool {
+        if !matches!(self.state, ConnectionState::Failed(_)) {
+            return false;
+        }
+        self.start(Some(context_name.to_string()), cx);
+        cx.notify();
+        true
+    }
+
+    /// One attempt: resolves the tunnel binding and acquires its forward here,
+    /// then resolves the config and probes on the runtime, writing each state
+    /// into `self`. The previous attempt has ended - a `Failed` state is final -
+    /// so nothing else writes these fields meanwhile. A held forward is
+    /// replaced by the one acquired: the same shared forward when it's still
+    /// up, which the old handle kept alive until now.
+    fn start(&mut self, context_name: Option<String>, cx: &mut Context<Self>) {
+        self.since = Instant::now();
+        let bound_context = resolve_bound_context(context_name.clone());
+        let tunnels_path = crate::util::paths::preference_dir().join("tunnels.toml");
+        let acquired = bound_context
+            .as_deref()
+            .map(|context| tunnel::acquire_for_context(cx, &tunnels_path, None, context));
+
+        if let Some(Err(error)) = acquired {
+            self.state = ConnectionState::Failed(error.to_string());
+            self._forward = None;
+            return;
+        }
+        let forward = acquired.and_then(Result::ok).flatten();
+        let forward_wait = forward.as_ref().map(ForwardWait::of);
+        let route = forward.as_ref().map(|handle| handle.forward().route());
+
+        let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
+            let config_result = resolve_config(context_name.as_deref()).await;
+            connect_and_probe(config_result, forward_wait, tx).await;
+        });
+        cx.spawn(async move |this, cx| {
+            crate::runtime::drain(rx, |state| {
+                let _ = this.update(cx, |this, cx| {
+                    if releases_forward_on(&state, route) {
+                        this._forward = None;
+                    }
+                    this.state = state;
+                    this.since = Instant::now();
+                    cx.notify();
+                });
+            })
+            .await;
+        })
+        .detach();
+        self.state = ConnectionState::Connecting;
+        self._forward = forward;
     }
 }
 

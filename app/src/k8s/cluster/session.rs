@@ -17,6 +17,7 @@ mod holds;
 mod kind_watch;
 mod pause_resume;
 mod pods_watch;
+mod reconnect;
 mod registry;
 #[cfg(test)]
 mod test_support;
