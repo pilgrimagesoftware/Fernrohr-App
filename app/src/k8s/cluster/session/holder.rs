@@ -16,10 +16,20 @@ pub struct AgentId(u64);
 
 impl AgentId {
     /// A fresh handle, distinct from every one handed out before.
-    // UNWIRED(#367): the MCP session layer (section 2) allocates these; until it
-    // lands only tests create agent holders.
-    #[allow(dead_code)]
     pub fn next() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// An ended agent session's hold, kept only until its grace period ends
+/// (`mcp-connections` design decision 3). Unique and never reused, so no later
+/// session can claim it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LingerId(u64);
+
+impl LingerId {
+    fn next() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         Self(NEXT.fetch_add(1, Ordering::Relaxed))
     }
@@ -31,10 +41,10 @@ pub enum Holder {
     /// A window that uses the context: its capsule, Resource panel and panels.
     Window(WindowId),
     /// An agent's MCP session, approved for the context or sharing a window's.
-    // UNWIRED(#367): constructed by the MCP session layer (section 2); until then
-    // only tests hold a context for an agent.
-    #[allow(dead_code)]
     Agent(AgentId),
+    /// What an ended agent session's hold becomes: it keeps the connection open
+    /// until its grace period ends, and no session can claim it.
+    Lingering(LingerId),
 }
 
 impl From<WindowId> for Holder {
@@ -50,6 +60,11 @@ impl From<AgentId> for Holder {
 }
 
 impl Holder {
+    /// A fresh lingering hold.
+    pub(super) fn lingering() -> Self {
+        Self::Lingering(LingerId::next())
+    }
+
     /// Whether this holder is a window.
     pub fn is_window(&self) -> bool {
         matches!(self, Self::Window(_))

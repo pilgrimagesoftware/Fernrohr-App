@@ -52,6 +52,8 @@ mod read;
 mod redact;
 #[cfg(unix)]
 mod server;
+#[cfg(unix)]
+mod session;
 pub(crate) mod setup;
 #[cfg(all(test, unix))]
 mod test_support;

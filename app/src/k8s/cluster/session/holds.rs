@@ -11,8 +11,19 @@ impl ClusterRegistry {
     /// context is independent of whether any panel has subscribed to a watch - the
     /// Resource panel can list kinds for a context with no open panels. The first
     /// holder a session ever has is remembered as the one that connected it.
-    pub fn hold(cx: &mut App, context_name: &str, holder: impl Into<Holder>) {
+    ///
+    /// An agent must be live ([`LiveAgents`]): a call that outlived its MCP
+    /// session (an approval answered after the client left) is refused here,
+    /// before anything connects, so it can't leave a hold no session will ever
+    /// release (review of App#434, F1). Returns whether the hold was taken;
+    /// a window's always is.
+    pub fn hold(cx: &mut App, context_name: &str, holder: impl Into<Holder>) -> bool {
         let holder = holder.into();
+        if let Holder::Agent(agent) = holder
+            && !LiveAgents::is_live(cx, agent)
+        {
+            return false;
+        }
         Self::ensure_init(cx, context_name);
         let session = cx
             .global_mut::<Self>()
@@ -21,12 +32,13 @@ impl ClusterRegistry {
             .expect("ensure_init just inserted this session");
         session.connected_by.get_or_insert(holder);
         session.holders.insert(holder);
+        true
     }
 
     /// Removes `holder` from `context_name`'s holders. On the last release, drops
     /// the session entirely - its connection (and so, via `ClusterConnection`'s own
     /// `Drop`, its tunnel forward) and its watches. A no-op if the context has no
-    /// session, or `holder` wasn't holding it.
+    /// session, or `holder` wasn't holding it - even for a session no one holds.
     ///
     /// `window-context-bar` section 3.3's Disconnect calls this directly for the one
     /// context being disconnected; closing a window releases every context it holds
@@ -40,8 +52,7 @@ impl ClusterRegistry {
             let Some(session) = cx.global_mut::<Self>().sessions.get_mut(context_name) else {
                 return;
             };
-            session.holders.remove(&holder);
-            session.holders.is_empty()
+            session.holders.remove(&holder) && session.holders.is_empty()
         };
         if should_remove {
             cx.global_mut::<Self>().sessions.remove(context_name);
@@ -63,6 +74,45 @@ impl ClusterRegistry {
     #[allow(dead_code)]
     pub fn release_agent(cx: &mut App, agent: AgentId) {
         Self::release_everywhere(cx, Holder::Agent(agent));
+    }
+
+    /// What `agent`'s MCP session ending does (`mcp-connections` design decision
+    /// 3): each of its holds becomes a [`Holder::Lingering`] that keeps the
+    /// connection open for `grace`, then is released. No session can claim a
+    /// lingering hold, so a restarted client asks for approval again; the grace
+    /// period only spares the cluster a redial if the user approves it in time.
+    pub fn linger_agent(cx: &mut App, agent: AgentId, grace: std::time::Duration) {
+        if !cx.has_global::<Self>() {
+            return;
+        }
+        let lingering: Vec<Holder> = cx
+            .global_mut::<Self>()
+            .sessions
+            .values_mut()
+            .filter_map(|session| {
+                if !session.holders.remove(&Holder::Agent(agent)) {
+                    return None;
+                }
+                let hold = Holder::lingering();
+                session.holders.insert(hold);
+                Some(hold)
+            })
+            .collect();
+        if lingering.is_empty() {
+            return;
+        }
+        // Detached on purpose: the timer owns only the ids, and releasing one
+        // that something else already dropped (the session's last window
+        // disconnecting it, say) is a no-op.
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(grace).await;
+            cx.update(|cx| {
+                for hold in lingering {
+                    Self::release_everywhere(cx, hold);
+                }
+            });
+        })
+        .detach();
     }
 
     /// Removes `holder` from every context's holders, dropping each session it

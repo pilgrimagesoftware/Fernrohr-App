@@ -322,6 +322,17 @@ pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// so this bounds the work a misbehaving client can queue up.
 pub(crate) const MCP_MAX_CONNECTIONS: usize = 16;
 
+/// `mcp-connections`: how many MCP sessions (one per running `fernrohr mcp`,
+/// so one per MCP client) the app keeps open at once. A session holds its
+/// socket for the client's whole life, so sessions get their own budget rather
+/// than taking request slots.
+pub(crate) const MCP_MAX_SESSIONS: usize = 8;
+
+/// `mcp-connections` design decision 3: how long an ended MCP session's
+/// connections stay open, ownerless, before they're released. Only delays the
+/// disconnect - nothing can claim them meanwhile (Security 2).
+pub(crate) const MCP_SESSION_GRACE: Duration = Duration::from_secs(30);
+
 /// `agent-mcp`: how many objects `list_resources` returns in one page when
 /// the client doesn't say, and the most it may ask for - a page, not a whole
 /// cluster, so one call can't pull every object of a big kind at once.
