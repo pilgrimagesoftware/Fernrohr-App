@@ -208,7 +208,8 @@ traffic, and reconnects with backoff, keeping the same port, if the connection d
 - **Keyboard:** select a pod and press <kbd>⇧F</kbd> (**Pods: Port-Forward Selected Pod** in the
   Pods panel, **Pod Detail: Port-Forward Pod** in its detail panel, **Services: Port-Forward
   Selected Service** in the Services list, **Service: Port Forward…** in a Service's detail
-  panel). It asks for the port when there are several.
+  panel). It asks for the port when there are several. A pod's ports include its sidecar
+  containers' ports, marked `(sidecar)`.
 - **Mouse:** right-click a pod or service row and choose Port Forward…, or click the forward
   button in a Service's detail panel header. In the pod detail panel's Containers tab, click the
   forward icon next to a declared container port. That forward starts with no port prompt.

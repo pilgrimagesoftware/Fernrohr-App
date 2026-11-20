@@ -231,3 +231,14 @@ fn a_tagged_streams_end_and_failure_are_notices() {
     let notices: Vec<bool> = view.lines().iter().map(|line| line.is_notice()).collect();
     assert_eq!(notices, [false, true, true]);
 }
+
+/// #398: the container picker marks a sidecar, and still selects it by name.
+#[test]
+fn the_picker_marks_sidecars() {
+    let mut view =
+        LogsView::new(vec!["app".into(), "proxy".into()]).with_sidecars(vec!["proxy".into()]);
+    assert_eq!(view.container_label("app"), "app");
+    assert_eq!(view.container_label("proxy"), "proxy (sidecar)");
+    view.select_container("proxy");
+    assert_eq!(view.selected_container(), "proxy");
+}

@@ -185,6 +185,7 @@ async fn an_opened_or_reshown_panel_takes_focus(cx: &mut TestAppContext) {
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })));
     });
