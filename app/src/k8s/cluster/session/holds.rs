@@ -65,6 +65,45 @@ impl ClusterRegistry {
         Self::release_everywhere(cx, Holder::Agent(agent));
     }
 
+    /// What `agent`'s MCP session ending does (`mcp-connections` design decision
+    /// 3): each of its holds becomes a [`Holder::Lingering`] that keeps the
+    /// connection open for `grace`, then is released. No session can claim a
+    /// lingering hold, so a restarted client asks for approval again; the grace
+    /// period only spares the cluster a redial if the user approves it in time.
+    pub fn linger_agent(cx: &mut App, agent: AgentId, grace: std::time::Duration) {
+        if !cx.has_global::<Self>() {
+            return;
+        }
+        let lingering: Vec<Holder> = cx
+            .global_mut::<Self>()
+            .sessions
+            .values_mut()
+            .filter_map(|session| {
+                if !session.holders.remove(&Holder::Agent(agent)) {
+                    return None;
+                }
+                let hold = Holder::lingering();
+                session.holders.insert(hold);
+                Some(hold)
+            })
+            .collect();
+        if lingering.is_empty() {
+            return;
+        }
+        // Detached on purpose: the timer owns only the ids, and releasing one
+        // that something else already dropped (the session's last window
+        // disconnecting it, say) is a no-op.
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(grace).await;
+            cx.update(|cx| {
+                for hold in lingering {
+                    Self::release_everywhere(cx, hold);
+                }
+            });
+        })
+        .detach();
+    }
+
     /// Removes `holder` from every context's holders, dropping each session it
     /// leaves with none.
     fn release_everywhere(cx: &mut App, holder: Holder) {

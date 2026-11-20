@@ -27,6 +27,7 @@ pub(in crate::mcp) fn tools(cx: &mut TestAppContext, contexts: &[&str]) -> ToolC
         // Never this machine's own `tunnels.toml`.
         tunnels: Some(crate::util::test_paths::temp_path("mcp-tunnels")),
         connect_settle: crate::consts::MCP_CONNECT_SETTLE,
+        caller: None,
     }
 }
 

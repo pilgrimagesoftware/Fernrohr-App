@@ -12,10 +12,10 @@
 //! errors - no tool by that name, or no tool list to give - are JSON-RPC
 //! errors, carrying the same object as their `data`.
 
-use super::client::AppClient;
+use super::client::{AppClient, Call};
 use super::endpoint::EndpointPaths;
 use super::error::ToolError;
-use super::protocol::{Reply, Request};
+use super::protocol::Reply;
 use super::tools::{ToolKind, ToolOutput, ToolSpec};
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ErrorCode, ErrorData, Implementation,
@@ -112,13 +112,21 @@ impl ServerHandler for Adapter {
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        match self.client.request(&Request::ListTools).await {
+        let client_name = client_name(&context);
+        match self
+            .client
+            .request(&Call::ListTools, client_name.as_deref())
+            .await
+        {
             Ok(Reply::Tools { tools }) => Ok(ListToolsResult::with_all_items(
                 tools.into_iter().map(mcp_tool).collect(),
             )),
-            Ok(Reply::Called { .. }) => Err(protocol_error(&ToolError::Internal)),
+            Ok(Reply::Refused { error }) => Err(protocol_error(&error)),
+            Ok(Reply::Called { .. } | Reply::Session { .. }) => {
+                Err(protocol_error(&ToolError::Internal))
+            }
             Err(error) => Err(protocol_error(&error)),
         }
     }
@@ -126,15 +134,17 @@ impl ServerHandler for Adapter {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let request = Request::CallTool {
+        let call = Call::CallTool {
             name: request.name.into_owned(),
             arguments: request.arguments.unwrap_or_default(),
         };
-        let result = match self.client.request(&request).await {
+        let client_name = client_name(&context);
+        let result = match self.client.request(&call, client_name.as_deref()).await {
             Ok(Reply::Called { result }) => result,
-            Ok(Reply::Tools { .. }) => Err(ToolError::Internal),
+            Ok(Reply::Refused { error }) => Err(error),
+            Ok(Reply::Tools { .. } | Reply::Session { .. }) => Err(ToolError::Internal),
             Err(error) => Err(error),
         };
         match result {
@@ -148,6 +158,16 @@ impl ServerHandler for Adapter {
             }
         }
     }
+}
+
+/// The name the MCP client reported in `initialize`, if any: self-reported,
+/// so the app shows it as a label and never trusts it (`mcp-connections`
+/// Security 5).
+fn client_name(context: &RequestContext<RoleServer>) -> Option<String> {
+    context
+        .peer
+        .peer_info()
+        .map(|info| info.client_info.name.clone())
 }
 
 /// A tool as MCP lists it. Its kind becomes the read-only hint; the hint is

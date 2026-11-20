@@ -1,6 +1,8 @@
 //! The app's side of the endpoint: [`start`] binds it at launch, and
 //! [`serve`] answers each connection on the tokio runtime - the peer's uid,
-//! then the token handshake, then one request.
+//! then the token handshake, then one request. A request is either a session
+//! opening, which keeps its connection for the MCP client's life
+//! (`mcp-connections` design decision 3), or a call naming a live session.
 //!
 //! A tool call runs until it finishes or the adapter hangs up, whichever comes
 //! first; hanging up drops the call's future, which is how a disconnected
@@ -11,22 +13,26 @@
 use super::approval::ApprovalGate;
 use super::endpoint::{BindError, Endpoint, EndpointFiles, EndpointPaths};
 use super::error::ToolError;
+use super::error::Unavailability;
 use super::foreground::Foreground;
 use super::frame::{self, FrameError};
 use super::protocol::{
     EndpointToken, Hello, HelloReply, PROTOCOL_VERSION, Rejection, Reply, Request,
 };
+use super::session::Sessions;
 use super::tools::{ToolContext, ToolRegistry};
 use crate::consts::{
     MCP_HANDSHAKE_TIMEOUT, MCP_MAX_CONNECTIONS, MCP_MAX_REPLY_BYTES, MCP_MAX_REQUEST_BYTES,
+    MCP_MAX_SESSIONS, MCP_SESSION_GRACE,
 };
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry};
 use gpui_kit::{App, Global};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
 use tokio::net::unix::OwnedReadHalf;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::{JoinHandle, JoinSet};
 
 /// The `log` target every endpoint line is written under.
@@ -42,12 +48,42 @@ pub(super) struct ServerState {
     pub(super) token: EndpointToken,
     pub(super) owner_uid: u32,
     pub(super) context: ToolContext,
+    /// The MCP sessions open now.
+    pub(super) sessions: Arc<Sessions>,
+    /// How many more sessions may open: [`MCP_MAX_SESSIONS`].
+    pub(super) session_slots: Arc<Semaphore>,
+    /// How long an ended session's holds linger: [`MCP_SESSION_GRACE`] but in
+    /// tests.
+    pub(super) session_grace: Duration,
+}
+
+impl ServerState {
+    /// A served endpoint's state, with no session open yet.
+    pub(super) fn new(
+        registry: ToolRegistry,
+        token: EndpointToken,
+        owner_uid: u32,
+        context: ToolContext,
+    ) -> Self {
+        Self {
+            registry,
+            token,
+            owner_uid,
+            context,
+            sessions: Arc::default(),
+            session_slots: Arc::new(Semaphore::new(MCP_MAX_SESSIONS)),
+            session_grace: MCP_SESSION_GRACE,
+        }
+    }
 }
 
 /// The endpoint this app serves, from [`start`] until [`stop`].
 struct McpEndpoint {
     files: EndpointFiles,
     task: JoinHandle<()>,
+    /// Kept here too, so [`stop`] can end every session: aborting the serving
+    /// task drops their connections without running their close path.
+    sessions: Arc<Sessions>,
 }
 
 impl Global for McpEndpoint {}
@@ -90,23 +126,30 @@ pub(super) fn start(cx: &mut App, registry: ToolRegistry) {
         }
     };
     let files = endpoint.files.clone();
-    let state = Arc::new(ServerState {
+    let context = {
+        let foreground = Foreground::spawn_on(cx);
+        ToolContext {
+            approvals: ApprovalGate::ui(foreground.clone()),
+            foreground,
+            kubeconfig: None,
+            tunnels: None,
+            connect_settle: crate::consts::MCP_CONNECT_SETTLE,
+            caller: None,
+        }
+    };
+    let state = Arc::new(ServerState::new(
         registry,
-        token: files.token.clone(),
-        owner_uid: endpoint.owner_uid,
-        context: {
-            let foreground = Foreground::spawn_on(cx);
-            ToolContext {
-                approvals: ApprovalGate::ui(foreground.clone()),
-                foreground,
-                kubeconfig: None,
-                tunnels: None,
-                connect_settle: crate::consts::MCP_CONNECT_SETTLE,
-            }
-        },
-    });
+        files.token.clone(),
+        endpoint.owner_uid,
+        context,
+    ));
+    let sessions = Arc::clone(&state.sessions);
     let task = handle.spawn(serve(endpoint.listener, state));
-    cx.set_global(McpEndpoint { files, task });
+    cx.set_global(McpEndpoint {
+        files,
+        task,
+        sessions,
+    });
     if cx.has_global::<QuitHook>() {
         return;
     }
@@ -126,16 +169,29 @@ pub(super) fn running(cx: &App) -> bool {
 }
 
 /// Stops serving the endpoint, if this app serves it: every connection is
-/// dropped, and the socket and token are removed, so `fernrohr mcp` finds no
-/// app until [`start`] binds it again.
+/// dropped, every session ends - its holds linger for the grace period, then
+/// go - and the socket and token are removed, so `fernrohr mcp` finds no app
+/// until [`start`] binds it again.
 pub(super) fn stop(cx: &mut App) {
     if !running(cx) {
         return;
     }
     let endpoint = cx.remove_global::<McpEndpoint>();
     endpoint.files.remove();
+    let sessions = Arc::clone(&endpoint.sessions);
     // Dropping it aborts the serving task, and with it every connection.
     drop(endpoint);
+    end_every_session(cx, &sessions, MCP_SESSION_GRACE);
+}
+
+/// What stopping the endpoint does to its sessions (`agent-mcp` "Stop serving
+/// with the last window"): every identifier stops working, and every session's
+/// holds linger for `grace`, then go. Aborting the serving task skips each
+/// session's own close path, so this stands in for it.
+fn end_every_session(cx: &mut App, sessions: &Sessions, grace: Duration) {
+    for agent in sessions.close_all() {
+        ClusterRegistry::linger_agent(cx, agent, grace);
+    }
 }
 
 /// Accepts connections on `listener` forever, serving at most
@@ -158,8 +214,7 @@ pub(super) async fn serve(listener: UnixListener, state: Arc<ServerState>) {
                     };
                     let state = Arc::clone(&state);
                     connections.spawn(async move {
-                        serve_connection(stream, &state).await;
-                        drop(slot);
+                        serve_connection(stream, &state, slot).await;
                     });
                 }
                 Err(error) => {
@@ -172,8 +227,10 @@ pub(super) async fn serve(listener: UnixListener, state: Arc<ServerState>) {
     }
 }
 
-/// One connection, start to finish.
-async fn serve_connection(stream: UnixStream, state: &ServerState) {
+/// One connection, start to finish. `slot` is its place among
+/// [`MCP_MAX_CONNECTIONS`]; a session gives it back once it holds a session
+/// slot instead.
+async fn serve_connection(stream: UnixStream, state: &ServerState, slot: OwnedSemaphorePermit) {
     let peer_uid = stream.peer_cred().map(|cred| cred.uid());
     if peer_uid.as_ref().ok() != Some(&state.owner_uid) {
         log::warn!(target: LOG_TARGET, "refused a connection from another user");
@@ -217,14 +274,32 @@ async fn serve_connection(stream: UnixStream, state: &ServerState) {
     };
     let started = Instant::now();
     let (label, reply) = match request {
-        Request::ListTools => (
+        Request::OpenSession { client_name } => {
+            return serve_session(client_name, reader, writer, state, slot).await;
+        }
+        Request::ListTools { session } => (
             "tools/list".to_string(),
-            Reply::Tools {
-                tools: state.registry.specs(),
+            match state.sessions.caller(&session) {
+                Some(_) => Reply::Tools {
+                    tools: state.registry.specs(),
+                },
+                None => no_session(),
             },
         ),
-        Request::CallTool { name, arguments } => {
-            let call = state.registry.call(&name, arguments, state.context.clone());
+        Request::CallTool {
+            session,
+            name,
+            arguments,
+        } => {
+            let Some(caller) = state.sessions.caller(&session) else {
+                let reply = no_session();
+                log_request(&name, outcome(&reply), started);
+                let _ = frame::write(&mut writer, &reply, MCP_MAX_REPLY_BYTES).await;
+                return;
+            };
+            let mut context = state.context.clone();
+            context.caller = Some(caller);
+            let call = state.registry.call(&name, arguments, context);
             let result = tokio::select! {
                 result = call => result,
                 () = hang_up(&mut reader) => {
@@ -256,6 +331,86 @@ async fn serve_connection(stream: UnixStream, state: &ServerState) {
     }
 }
 
+/// A session's connection (`mcp-connections` design decision 3): opens the
+/// session, hands the adapter its identifier, and holds the connection until
+/// the adapter closes it - which ends the session.
+async fn serve_session(
+    client_name: Option<String>,
+    mut reader: OwnedReadHalf,
+    mut writer: tokio::net::unix::OwnedWriteHalf,
+    state: &ServerState,
+    connection_slot: OwnedSemaphorePermit,
+) {
+    let Ok(session_slot) = Arc::clone(&state.session_slots).try_acquire_owned() else {
+        log::warn!(target: LOG_TARGET, "refused a session: all session slots busy");
+        let _ = frame::write(
+            &mut writer,
+            &Reply::Refused {
+                error: ToolError::Internal,
+            },
+            MCP_MAX_REPLY_BYTES,
+        )
+        .await;
+        return;
+    };
+    // A session lasts the client's lifetime; it mustn't keep a request slot.
+    drop(connection_slot);
+    let (id, caller) = match state.sessions.open(client_name) {
+        Ok(opened) => opened,
+        Err(error) => {
+            log::warn!(target: LOG_TARGET, "could not open a session: {error}");
+            let _ = frame::write(
+                &mut writer,
+                &Reply::Refused {
+                    error: ToolError::Internal,
+                },
+                MCP_MAX_REPLY_BYTES,
+            )
+            .await;
+            return;
+        }
+    };
+    let agent = caller.agent;
+    // Never the identifier, nor the self-reported name: the in-app handle only.
+    log::info!(target: LOG_TARGET, "session opened agent={agent:?}");
+    let opened = frame::write(
+        &mut writer,
+        &Reply::Session { session: id },
+        MCP_MAX_REPLY_BYTES,
+    )
+    .await;
+    if opened.is_ok() {
+        hang_up(&mut reader).await;
+    }
+    end_session(state, agent).await;
+    log::info!(target: LOG_TARGET, "session ended agent={agent:?}");
+    drop(session_slot);
+}
+
+/// Ends `agent`'s session: its identifier stops working now, and its holds
+/// linger on the main thread for the grace period. Awaited rather than posted,
+/// so a full main-thread queue delays the hand-off instead of dropping it and
+/// leaving the holds in place for good. Fails only when the app is quitting,
+/// which drops every hold anyway.
+async fn end_session(state: &ServerState, agent: AgentId) {
+    state.sessions.close(agent);
+    let grace = state.session_grace;
+    let _ = state
+        .context
+        .foreground
+        .run(move |cx| ClusterRegistry::linger_agent(cx, agent, grace))
+        .await;
+}
+
+/// The refusal for a request naming no live session.
+fn no_session() -> Reply {
+    Reply::Refused {
+        error: ToolError::Unavailable {
+            reason: Unavailability::NoSession,
+        },
+    }
+}
+
 /// Resolves once the adapter closes its end - after its request it sends
 /// nothing more, so any read returning means it is gone.
 async fn hang_up(reader: &mut OwnedReadHalf) {
@@ -265,8 +420,8 @@ async fn hang_up(reader: &mut OwnedReadHalf) {
 
 fn outcome(reply: &Reply) -> &'static str {
     match reply {
-        Reply::Tools { .. } | Reply::Called { result: Ok(_) } => "ok",
-        Reply::Called { result: Err(error) } => error.code(),
+        Reply::Session { .. } | Reply::Tools { .. } | Reply::Called { result: Ok(_) } => "ok",
+        Reply::Called { result: Err(error) } | Reply::Refused { error } => error.code(),
     }
 }
 

@@ -1,20 +1,25 @@
 //! The internal RPC between `fernrohr mcp` and the app: its messages, and the
 //! token the handshake carries.
 //!
-//! One connection serves one request:
+//! Every connection opens with a [`Hello`], answered by a [`HelloReply`]. If
+//! accepted, the adapter sends one [`Request`], which is one of two kinds:
 //!
-//! 1. The adapter sends a [`Hello`]; the app answers a [`HelloReply`].
-//! 2. If accepted, the adapter sends one [`Request`]; the app answers one
-//!    [`Reply`] and closes.
+//! - [`Request::OpenSession`] opens the adapter's MCP session (`mcp-connections`
+//!   design decision 3): the app answers [`Reply::Session`] and keeps the
+//!   connection open for the session's whole life. Closing it ends the session.
+//! - Any other request names that session and gets one [`Reply`], after which
+//!   the app closes. The adapter closing its end before the reply cancels the
+//!   request - the one signal a call awaiting the user's approval needs
+//!   (design.md Risks: client disconnects).
 //!
-//! The adapter closing its end before the reply cancels the request - the
-//! one signal a call awaiting the user's approval needs (design.md Risks:
-//! client disconnects). Each message is one `frame`.
+//! Each message is one `frame`.
 //!
 //! [`PROTOCOL_VERSION`] changes whenever these shapes do. The adapter and the
 //! app are one binary, so a mismatch means two installed builds, which the
 //! handshake reports rather than misreading the other side's messages.
 
+use super::error::ToolError;
+use super::session::SessionId;
 use super::tools::{ToolResult, ToolSpec};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -23,7 +28,7 @@ use std::io;
 use std::path::Path;
 
 /// The version of the shapes in this module.
-pub(super) const PROTOCOL_VERSION: u32 = 1;
+pub(super) const PROTOCOL_VERSION: u32 = 2;
 
 /// The adapter's opening message.
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,8 +60,17 @@ pub(super) enum Rejection {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Request {
-    ListTools,
+    /// Opens the adapter's session, carrying the name its MCP client reported
+    /// in `initialize`, if any. Self-reported: a label, never an identity.
+    OpenSession {
+        #[serde(default)]
+        client_name: Option<String>,
+    },
+    ListTools {
+        session: SessionId,
+    },
     CallTool {
+        session: SessionId,
         name: String,
         #[serde(default)]
         arguments: Map<String, Value>,
@@ -67,8 +81,20 @@ pub(super) enum Request {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "reply", rename_all = "snake_case")]
 pub(super) enum Reply {
-    Tools { tools: Vec<ToolSpec> },
-    Called { result: ToolResult },
+    /// The session [`Request::OpenSession`] opened.
+    Session {
+        session: SessionId,
+    },
+    Tools {
+        tools: Vec<ToolSpec>,
+    },
+    Called {
+        result: ToolResult,
+    },
+    /// The request was refused before it ran: no live session, chiefly.
+    Refused {
+        error: ToolError,
+    },
 }
 
 /// The per-launch secret an adapter proves itself with. Its `Debug` never
@@ -159,19 +185,41 @@ mod tests {
             json!({"result": "rejected", "reason": "token"})
         );
         assert_eq!(
+            serde_json::to_value(Request::OpenSession {
+                client_name: Some("assistant".into()),
+            })
+            .unwrap(),
+            json!({"method": "open_session", "client_name": "assistant"})
+        );
+        let session = serde_json::from_value::<SessionId>(json!("ab")).unwrap();
+        assert_eq!(
             serde_json::to_value(Request::CallTool {
+                session: session.clone(),
                 name: "list_contexts".into(),
                 arguments: Map::new(),
             })
             .unwrap(),
-            json!({"method": "call_tool", "name": "list_contexts", "arguments": {}})
+            json!({"method": "call_tool", "session": "ab", "name": "list_contexts", "arguments": {}})
         );
         assert_eq!(
-            serde_json::from_value::<Request>(json!({"method": "call_tool", "name": "x"})).unwrap(),
+            serde_json::from_value::<Request>(
+                json!({"method": "call_tool", "session": "ab", "name": "x"})
+            )
+            .unwrap(),
             Request::CallTool {
+                session,
                 name: "x".into(),
                 arguments: Map::new()
             }
+        );
+    }
+
+    /// A version-1 request, with no session, doesn't parse as any request.
+    #[test]
+    fn a_request_without_a_session_does_not_parse() {
+        assert!(serde_json::from_value::<Request>(json!({"method": "list_tools"})).is_err());
+        assert!(
+            serde_json::from_value::<Request>(json!({"method": "call_tool", "name": "x"})).is_err()
         );
     }
 

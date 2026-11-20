@@ -283,3 +283,75 @@ fn agent_ids_are_never_reused() {
     let ids: std::collections::HashSet<AgentId> = (0..1000).map(|_| AgentId::next()).collect();
     assert_eq!(ids.len(), 1000);
 }
+
+/// `mcp-connections` "Client exits": an ended agent's hold lingers - the
+/// connection stays open, held by nobody who can act for it - and is released
+/// when the grace period ends. Releasing the agent again changes nothing: the
+/// lingering hold isn't its any more.
+#[gpui_kit::test]
+async fn an_ended_agents_hold_lingers_for_the_grace_period_then_goes(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::session::{AgentId, Holder};
+    use std::time::Duration;
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let client = test_client(cx);
+    cx.update(|cx| {
+        ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connected(client))
+    });
+    let agent = AgentId::next();
+    cx.update(|cx| ClusterRegistry::hold(cx, "kind-dev", agent));
+
+    let grace = Duration::from_secs(30);
+    cx.update(|cx| ClusterRegistry::linger_agent(cx, agent, grace));
+    cx.update(|cx| {
+        let holders = ClusterRegistry::holders(cx, "kind-dev");
+        assert!(
+            matches!(holders.as_slice(), [Holder::Lingering(_)]),
+            "the agent's hold became a lingering one: {holders:?}"
+        );
+        ClusterRegistry::release_agent(cx, agent);
+        assert!(
+            ClusterRegistry::existing_connection(cx, "kind-dev").is_some(),
+            "the ended agent can't release, or claim, the lingering hold"
+        );
+    });
+
+    cx.executor().advance_clock(grace - Duration::from_secs(1));
+    cx.run_until_parked();
+    assert!(
+        cx.update(|cx| ClusterRegistry::existing_connection(cx, "kind-dev").is_some()),
+        "still open inside the grace period"
+    );
+    cx.executor().advance_clock(Duration::from_secs(2));
+    cx.run_until_parked();
+    assert!(
+        cx.update(|cx| ClusterRegistry::existing_connection(cx, "kind-dev").is_none()),
+        "released when the grace period ends"
+    );
+}
+
+/// A window holding the context too keeps it after the lingering hold goes.
+#[gpui_kit::test]
+async fn a_lingering_hold_ending_leaves_a_windows_hold(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::session::{AgentId, Holder};
+    use std::time::Duration;
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let client = test_client(cx);
+    cx.update(|cx| {
+        ClusterRegistry::insert_test_session(cx, "kind-dev", ConnectionState::Connected(client))
+    });
+    let agent = AgentId::next();
+    let window = WindowId::from(3);
+    cx.update(|cx| {
+        ClusterRegistry::hold(cx, "kind-dev", agent);
+        ClusterRegistry::hold(cx, "kind-dev", window);
+        ClusterRegistry::linger_agent(cx, agent, Duration::from_secs(30));
+    });
+    cx.executor().advance_clock(Duration::from_secs(31));
+    cx.run_until_parked();
+    assert_eq!(
+        cx.update(|cx| ClusterRegistry::holders(cx, "kind-dev")),
+        vec![Holder::Window(window)]
+    );
+}
