@@ -1,5 +1,6 @@
 pub(crate) mod app_log;
 pub(crate) mod context_lifecycle;
+pub(crate) mod exec_busy;
 pub(crate) mod key_hints;
 pub(crate) mod keychain;
 pub(crate) mod login_env;
