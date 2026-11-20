@@ -21,7 +21,6 @@ use super::kinds::KindQuery;
 use super::names::{LabelName, ObjectName};
 use super::tools::{ToolContext, ToolKind, ToolOutput, ToolRegistry, ToolResult};
 use crate::config::saved_layouts::{self, SavedLayout};
-use crate::k8s::cluster::session::{ClusterRegistry, Holder};
 use crate::util::shell::{self, LoadMode, NavigateError};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -108,36 +107,48 @@ async fn open_panel(input: OpenPanelInput, tools: ToolContext) -> ToolResult {
     let context = input.context;
     // Showing a context only this agent holds puts it in a window, where every
     // other agent can then use it without asking: the user decides that first
-    // (`mcp-connections`, the user's decision on review of App#435).
-    let name = context.clone();
-    let window_holds = tools
-        .foreground
-        .run(move |cx| {
-            ClusterRegistry::holders(cx, &name)
-                .iter()
-                .any(Holder::is_window)
-        })
-        .await?;
-    if !window_holds {
-        approve(&tools.approvals, ApprovalRequest::show_in_window(&context)).await?;
-    }
-    let shown = tools
-        .foreground
-        .run(move |cx| {
-            shell::open_panel(context.clone(), target, namespaces, cx).map_err(|error| {
-                match error {
-                    NavigateError::NoWindow => ToolError::UiUnavailable,
-                    // Connected, but only a window that isn't a workspace (or
-                    // none) holds it.
-                    NavigateError::ContextNotHeld => ToolError::Disconnected { context },
-                }
-            })
-        })
-        .await??;
+    // (`mcp-connections`, the user's decision on review of App#435). The shell
+    // makes that call in the same step that opens the panel; when it needs the
+    // user, ask, then try again with their permission.
+    let shown = match show(&tools, &context, target.clone(), namespaces.clone(), false).await? {
+        Err(NavigateError::NeedsApproval) => {
+            approve(&tools.approvals, ApprovalRequest::show_in_window(&context)).await?;
+            show(&tools, &context, target, namespaces, true).await?
+        }
+        shown => shown,
+    };
+    let shown = shown.map_err(|error| match error {
+        NavigateError::NoWindow => ToolError::UiUnavailable,
+        // Connected, but only a window that isn't a workspace (or none) holds it.
+        NavigateError::ContextNotHeld => ToolError::Disconnected {
+            context: context.clone(),
+        },
+        // Only asked for without permission, which the first attempt handled.
+        NavigateError::NeedsApproval => ToolError::Internal,
+    })?;
+    let (id, created) = shown;
     Ok(ToolOutput::new(object(json!({
-        "panel_id": panel_id(shown.id.as_u64()),
-        "created": shown.created,
+        "panel_id": panel_id(id),
+        "created": created,
     }))))
+}
+
+/// One attempt at `shell::open_panel` on the main thread.
+async fn show(
+    tools: &ToolContext,
+    context: &str,
+    target: crate::ui::nav::NavTarget,
+    namespaces: Vec<String>,
+    may_show_agent_only: bool,
+) -> Result<Result<(u64, bool), NavigateError>, ToolError> {
+    let context = context.to_string();
+    tools
+        .foreground
+        .run(move |cx| {
+            shell::open_panel(context, target, namespaces, may_show_agent_only, cx)
+                .map(|shown| (shown.id.as_u64(), shown.created))
+        })
+        .await
 }
 
 /// A panel's ID as a client sees it. Opaque: stable while the panel stays
