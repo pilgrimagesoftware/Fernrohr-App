@@ -109,12 +109,15 @@ fn macos_quits_only_when_asked() {
 #[gpui_kit::test]
 async fn the_last_window_closing_disconnects_and_keeps_the_mcp_server(cx: &mut TestAppContext) {
     let window = quiet_app(BackgroundMcp::KeepRunning, cx);
-    assert_eq!(cx.update(|cx| ClusterRegistry::holder_count(cx, "demo")), 1);
+    assert_eq!(
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "demo")),
+        1
+    );
 
     close(window, cx);
     assert!(cx.update(|cx| cx.windows().is_empty()), "no window is left");
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "demo")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "demo")),
         0,
         "the context is disconnected"
     );
@@ -158,7 +161,10 @@ async fn reopening_restores_the_window_that_closed_last(cx: &mut TestAppContext)
     cx.run_until_parked();
     assert_eq!(main_windows(cx).len(), 1, "one main window");
     assert_eq!(contexts_of(reopened, cx), ["demo"], "connected as it was");
-    assert_eq!(cx.update(|cx| ClusterRegistry::holder_count(cx, "demo")), 1);
+    assert_eq!(
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "demo")),
+        1
+    );
     let remembered = cx.update(|cx| {
         cx.try_global::<ClosedWindowLayouts>()
             .map_or(0, |closed| closed.0.len())

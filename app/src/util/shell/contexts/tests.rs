@@ -54,7 +54,7 @@ async fn add_context_holds_switches_active_and_opens_pods(cx: &mut TestAppContex
         })
         .unwrap();
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "staging")),
         1
     );
 }
@@ -123,7 +123,7 @@ async fn adding_a_context_another_window_holds_reuses_its_session(cx: &mut TestA
         "adding an already-connected context must not start a second session"
     );
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "kind-dev")),
         2,
         "both windows now hold kind-dev"
     );
@@ -187,7 +187,7 @@ async fn disconnect_context_closes_its_panels_and_releases_the_hold(cx: &mut Tes
         })
         .unwrap();
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "staging")),
         0,
         "this window was staging's only holder"
     );
@@ -237,7 +237,7 @@ async fn disconnecting_the_last_context_returns_to_the_picker(cx: &mut TestAppCo
         })
         .unwrap();
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "kind-dev")),
         1,
         "the other window still holds kind-dev"
     );

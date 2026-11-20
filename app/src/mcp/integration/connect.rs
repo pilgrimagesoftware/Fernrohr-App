@@ -35,7 +35,7 @@ async fn an_approved_connect_reaches_connected(cx: &mut TestAppContext) {
     assert_eq!(content(&result)["state"], "connected", "{result}");
     assert_eq!(user.asked().len(), 1, "the user was asked once");
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "staging")),
         1,
         "the frontmost window holds it"
     );

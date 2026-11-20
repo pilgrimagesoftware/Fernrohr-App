@@ -52,7 +52,7 @@ fn content(result: ToolResult) -> Map<String, Value> {
 }
 
 fn holders(cx: &mut TestAppContext, context: &str) -> usize {
-    cx.update(|cx| ClusterRegistry::holder_count(cx, context))
+    cx.update(|cx| ClusterRegistry::window_holder_count(cx, context))
 }
 
 struct Terminal;

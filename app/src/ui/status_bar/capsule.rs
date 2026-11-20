@@ -362,7 +362,8 @@ impl StatusBarView {
             return;
         };
         let panel_count = main_window.read(cx).context_panel_count(&context_name);
-        let other_windows = ClusterRegistry::holder_count(cx, &context_name).saturating_sub(1);
+        let other_windows =
+            ClusterRegistry::window_holder_count(cx, &context_name).saturating_sub(1);
         let body = context_lifecycle::disconnect_confirmation_body(
             &context_name,
             panel_count,

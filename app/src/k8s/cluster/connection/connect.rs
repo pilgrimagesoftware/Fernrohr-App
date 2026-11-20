@@ -287,6 +287,7 @@ impl ClusterConnection {
                 state: ConnectionState::Connecting,
                 since: Instant::now(),
                 _forward: None,
+                context_name: context_name.clone(),
             };
             this.start(context_name, cx);
             this
@@ -299,12 +300,13 @@ impl ClusterConnection {
     /// without being rebuilt. The tunnel binding is resolved again, so a fixed
     /// `tunnels.toml` takes effect. Returns whether an attempt started: only a
     /// `Failed` connection is retried, which also keeps two retries from
-    /// overlapping, since the first leaves `Failed` at once.
-    pub(crate) fn redial(&mut self, context_name: &str, cx: &mut Context<Self>) -> bool {
+    /// overlapping, since the first leaves `Failed` at once. It redials the
+    /// context the connection was made for, never one a caller names.
+    pub(crate) fn redial(&mut self, cx: &mut Context<Self>) -> bool {
         if !matches!(self.state, ConnectionState::Failed(_)) {
             return false;
         }
-        self.start(Some(context_name.to_string()), cx);
+        self.start(self.context_name.clone(), cx);
         cx.notify();
         true
     }
