@@ -128,11 +128,8 @@ pub(crate) async fn run(command: HelmCommand) -> Result<HelmOutput, HelmFailure>
         .kill_on_drop(true);
     #[cfg(unix)]
     process.process_group(0);
-    #[cfg(not(test))]
-    let spawned = process.spawn();
-    // Parallel tests can briefly hold a fake `helm` open (`test_helm::past_busy`).
-    #[cfg(test)]
-    let spawned = super::test_helm::past_busy(|| std::future::ready(process.spawn())).await;
+    // Parallel tests can briefly hold a fake `helm` open (`util::exec_busy`).
+    let spawned = crate::util::exec_busy::past_busy(|| std::future::ready(process.spawn())).await;
     let child = spawned.map_err(|error| {
         HelmFailure::Start(format!(
             "Couldn't run {}: {error}",

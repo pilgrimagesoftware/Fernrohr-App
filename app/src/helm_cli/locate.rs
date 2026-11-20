@@ -132,11 +132,8 @@ pub(super) async fn locate(
         .args(["version", "--short"])
         .env("PATH", path_env)
         .kill_on_drop(true);
-    #[cfg(not(test))]
-    let ran = version_command.output();
-    // Parallel tests can briefly hold a fake `helm` open (`test_helm::past_busy`).
-    #[cfg(test)]
-    let ran = super::test_helm::past_busy(|| version_command.output());
+    // Parallel tests can briefly hold a fake `helm` open (`util::exec_busy`).
+    let ran = crate::util::exec_busy::past_busy(|| version_command.output());
     let output = tokio::time::timeout(HELM_VERSION_TIMEOUT, ran)
         .await
         .map_err(|_| format!("{} didn't report its version in time.", path.display()))?

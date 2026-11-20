@@ -115,28 +115,43 @@ async fn a_client_runs_a_bare_plugin_found_only_on_the_login_path() {
     // the first request: the failure may surface at either.
     let unfound = config(kubeconfig(&server, "")).await;
     let error = match kube::Client::try_from(unfound) {
-        Err(error) => format!("{error:?}"),
-        Ok(client) => format!(
-            "{:?}",
-            client
-                .apiserver_version()
-                .await
-                .expect_err("the plugin isn't on the process PATH")
-        ),
+        Err(error) => error,
+        Ok(client) => client
+            .apiserver_version()
+            .await
+            .expect_err("the plugin isn't on the process PATH"),
     };
     assert!(
-        error.contains("No such file"),
-        "the field report's failure: {error}"
+        format!("{error:?}").contains("No such file"),
+        "the field report's failure: {error:?}"
+    );
+    // The spawn's own io error is in kube's source chain, which is where
+    // `exec_busy::caused_by_busy` looks for a busy one.
+    let spawn_error = std::iter::successors(
+        Some(&error as &(dyn std::error::Error + 'static)),
+        |error| error.source(),
+    )
+    .find_map(|error| error.downcast_ref::<std::io::Error>());
+    assert_eq!(
+        spawn_error.map(std::io::Error::kind),
+        Some(std::io::ErrorKind::NotFound),
+        "{error:?}"
     );
     assert!(!dir.join("ran").exists());
 
-    let mut found = config(kubeconfig(&server, "")).await;
-    use_login_path(&mut found, &format!("{}:/usr/bin:/bin", dir.display()));
-    let version = kube::Client::try_from(found)
-        .unwrap()
-        .apiserver_version()
-        .await
-        .expect("the plugin ran and the request got through");
+    // Parallel tests can briefly hold the just-written plugin open, and
+    // Linux won't exec it until they let go (#413, `util::exec_busy`).
+    let login_path = format!("{}:/usr/bin:/bin", dir.display());
+    let version = crate::util::exec_busy::retry_while(
+        || async {
+            let mut found = config(kubeconfig(&server, "")).await;
+            use_login_path(&mut found, &login_path);
+            kube::Client::try_from(found)?.apiserver_version().await
+        },
+        |error: &kube::Error| crate::util::exec_busy::caused_by_busy(error),
+    )
+    .await
+    .expect("the plugin ran and the request got through");
     assert_eq!(version.git_version, "v1.30.0");
     assert!(dir.join("ran").exists(), "the plugin ran");
 }

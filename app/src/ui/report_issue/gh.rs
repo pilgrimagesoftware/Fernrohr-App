@@ -13,13 +13,15 @@ pub(super) const REPO: &str = "pilgrimagesoftware/Fernrohr-App";
 /// Whether `gh` is on `path` and signed in to github.com - what decides that
 /// Report files the issue itself rather than opening the browser.
 pub(super) fn ready(path: &str) -> bool {
-    Command::new("gh")
+    let mut command = Command::new("gh");
+    command
         .env("PATH", path)
         .args(["auth", "status", "--hostname", "github.com"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stderr(Stdio::null());
+    // Parallel tests can briefly hold a fake `gh` open (`util::exec_busy`).
+    crate::util::exec_busy::past_busy_blocking(|| command.status())
         .is_ok_and(|status| status.success())
 }
 
@@ -59,13 +61,15 @@ pub(super) fn create(
     if let Some(label) = label {
         args.extend(["--label", label]);
     }
-    let mut child = Command::new("gh")
+    let mut command = Command::new("gh");
+    command
         .env("PATH", path)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+    // Parallel tests can briefly hold a fake `gh` open (`util::exec_busy`).
+    let mut child = crate::util::exec_busy::past_busy_blocking(|| command.spawn())
         .map_err(|error| format!("couldn't run gh: {error}"))?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin
