@@ -117,7 +117,7 @@ async fn closing_a_window_releases_only_its_own_hold(cx: &mut TestAppContext) {
     cx.run_until_parked();
 
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "kind-dev")),
         2,
         "both windows took a hold on entering their workspace"
     );
@@ -127,7 +127,7 @@ async fn closing_a_window_releases_only_its_own_hold(cx: &mut TestAppContext) {
         .unwrap();
     cx.run_until_parked();
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "kind-dev")),
         1,
         "closing one window must release only its own hold"
     );
@@ -137,7 +137,7 @@ async fn closing_a_window_releases_only_its_own_hold(cx: &mut TestAppContext) {
         .unwrap();
     cx.run_until_parked();
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "kind-dev")),
         0,
         "closing the last window must release the session entirely"
     );

@@ -52,7 +52,7 @@ fn a_failed_session_a_window_holds_is_kept(cx: &mut TestAppContext) {
             .get_mut("demo")
             .expect("inserted above")
             .holders
-            .insert(WindowId::from(1));
+            .insert(WindowId::from(1).into());
         let calls = Rc::new(Cell::new(0));
         ClusterRegistry::retry_with(cx, "demo", stub(calls.clone()));
         assert_eq!(calls.get(), 0, "its panels observe that connection");

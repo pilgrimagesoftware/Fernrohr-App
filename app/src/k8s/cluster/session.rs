@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 mod events_watch;
 mod helm_watch;
+mod holder;
 mod holds;
 mod kind_watch;
 mod pause_resume;
@@ -22,6 +23,7 @@ mod registry;
 #[cfg(test)]
 mod test_support;
 
+pub use holder::{AgentId, Holder};
 pub use registry::ClusterRegistry;
 
 /// What a session's [`WatchRegistry`] counts subscriptions by: one entry per

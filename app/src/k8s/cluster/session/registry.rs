@@ -25,11 +25,13 @@ pub(super) struct ClusterSession {
     // Kept alive for as long as the session exists; aborts on drop like every other
     // owned background task. `None` for an unbound context, which has no forward to watch.
     pub(super) _health: Option<gpui_kit::Task<()>>,
-    /// `window-context-bar` design.md decision 2: which windows currently use this
-    /// context. The session (and so its connection and tunnel forward) lives exactly
-    /// as long as this set is non-empty - see [`ClusterRegistry::hold`]/[`release`](
-    /// ClusterRegistry::release).
-    pub(super) holders: HashSet<WindowId>,
+    /// `mcp-connections` design decision 2: which windows and agents currently use
+    /// this context. The session (and so its connection and tunnel forward) lives
+    /// exactly as long as this set is non-empty - see [`ClusterRegistry::hold`]/
+    /// [`release`](ClusterRegistry::release).
+    pub(super) holders: HashSet<Holder>,
+    /// The first holder this session had: who connected it.
+    pub(super) connected_by: Option<Holder>,
 }
 
 /// One kind's shared watch on a context: the table its panels render from, and the
@@ -133,6 +135,7 @@ impl ClusterRegistry {
                 watchers: WatchRegistry::new(),
                 _health: health,
                 holders: HashSet::new(),
+                connected_by: None,
             },
         );
     }

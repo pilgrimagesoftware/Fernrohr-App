@@ -14,7 +14,7 @@
 //!   - `context_lifecycle::disconnect_confirmation_body`'s own tests in
 //!     `util/context_lifecycle.rs` already exercise 0/1/n panels and 0/1/n other
 //!     windows. `open_disconnect_dialog` only feeds it two already-tested numbers
-//!     (`MainWindow::context_panel_count`, `ClusterRegistry::holder_count`).
+//!     (`MainWindow::context_panel_count`, `ClusterRegistry::window_holder_count`).
 //!
 //! Not `use super::*;` - see the comment above `mod tests;` in `status_bar.rs`
 //! for why a glob here crashes the compiler.

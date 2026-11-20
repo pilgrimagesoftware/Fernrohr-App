@@ -92,7 +92,7 @@ async fn disconnect_others_keeps_the_active_context(cx: &mut TestAppContext) {
         "Enter keeps only the active one"
     );
     assert_eq!(
-        vcx.update(|_, cx| ClusterRegistry::holder_count(cx, "staging")),
+        vcx.update(|_, cx| ClusterRegistry::window_holder_count(cx, "staging")),
         0,
         "and releases the others"
     );
@@ -119,14 +119,14 @@ async fn disconnect_all_leaves_another_windows_context_connected(cx: &mut TestAp
     let other = cx.add_window(|_, _| gpui_kit::Empty);
     cx.update(|cx| ClusterRegistry::hold(cx, "staging", other.window_id()));
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "staging")),
         2
     );
 
     run(&mut vcx, DisconnectAllContexts);
     press(&mut vcx, "enter");
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "staging")),
         1,
         "the other window still holds staging"
     );
