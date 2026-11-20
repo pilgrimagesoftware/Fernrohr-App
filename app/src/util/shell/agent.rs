@@ -23,6 +23,10 @@ pub(crate) enum NavigateError {
     NoWindow,
     /// No workspace window holds the requested context.
     ContextNotHeld,
+    /// Only agents hold the context, and showing it in a window - where every
+    /// agent can then use it - wasn't allowed for this call: the caller asks the
+    /// user, then calls again with permission.
+    NeedsApproval,
 }
 
 /// Opens or focuses the panel for `target` in `context_name`, with
@@ -39,8 +43,15 @@ pub(crate) fn open_panel(
     context_name: String,
     target: NavTarget,
     namespaces: Vec<String>,
+    may_show_agent_only: bool,
     cx: &mut App,
 ) -> Result<ShownPanel, NavigateError> {
+    // Decided here, in the same main-thread step that opens the panel, so no
+    // window can close between the check and the act and let an agent-only
+    // context into a window unasked (review of App#435).
+    if !may_show_agent_only && !held_by_a_window(&context_name, cx) {
+        return Err(NavigateError::NeedsApproval);
+    }
     // With no window open (quiet mode, #236), the one that closed last comes
     // back - holding the context the agent asks for, if it held it before.
     super::quiet::ensure_main_window(cx);
@@ -93,6 +104,14 @@ pub(crate) fn open_panel(
         .ok_or(NavigateError::ContextNotHeld)?;
     focus_window(handle, cx);
     Ok(shown)
+}
+
+/// Whether a user window holds `context_name` - so showing it in a window gives
+/// other agents nothing they didn't already have.
+fn held_by_a_window(context_name: &str, cx: &App) -> bool {
+    ClusterRegistry::holders(cx, context_name)
+        .iter()
+        .any(|holder| holder.is_window())
 }
 
 /// Loads `layout` in `mode` into the frontmost workspace window; `None` when
