@@ -28,16 +28,36 @@ pub(super) fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixel
     match (layout.x, layout.y) {
         (Some(x), Some(y)) => {
             let saved = Bounds::new(Point::new(px(x), px(y)), size);
-            let displays: Vec<Bounds<Pixels>> = cx
-                .displays()
-                .iter()
-                .map(|display| display.bounds())
-                .collect();
+            let displays = placement_displays(cx);
             let main = cx.primary_display().map(|display| display.visible_bounds());
             onto_connected_display(saved, &displays, main)
         }
         _ => Bounds::centered(None, size, cx),
     }
+}
+
+/// The displays a saved frame is checked against, in the coordinates
+/// `open_window` places it in. On macOS that's the primary display alone:
+/// gpui's Mac backend is display-local - every display's `bounds()` has origin
+/// (0, 0), a window's `bounds()` is relative to its own screen, and a window
+/// opened with no `display_id` is placed relative to the primary screen - so
+/// only the primary's frame says whether the saved origin lands on a display.
+#[cfg(target_os = "macos")]
+fn placement_displays(cx: &App) -> Vec<Bounds<Pixels>> {
+    cx.primary_display()
+        .map(|display| display.bounds())
+        .into_iter()
+        .collect()
+}
+
+/// The displays a saved frame is checked against: every connected one, whose
+/// bounds share one global coordinate space with window positions here.
+#[cfg(not(target_os = "macos"))]
+fn placement_displays(cx: &App) -> Vec<Bounds<Pixels>> {
+    cx.displays()
+        .iter()
+        .map(|display| display.bounds())
+        .collect()
 }
 
 /// `saved` unchanged while it overlaps any of `displays`; otherwise (the display

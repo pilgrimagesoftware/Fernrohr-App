@@ -230,7 +230,8 @@ fn restorable_bounds_keeps_the_frame_origin_and_the_content_size() {
 }
 
 /// #377: a saved frame that still overlaps a connected display - even partly, on
-/// a second display left of the main one - is restored exactly as saved.
+/// a second display left of the main one - is restored exactly as saved. This is
+/// the global-coordinate model (X11), where displays have distinct origins.
 #[test]
 fn a_saved_frame_on_a_connected_display_is_kept() {
     use gpui_kit::{Bounds, point, px, size};
@@ -246,6 +247,30 @@ fn a_saved_frame_on_a_connected_display_is_kept() {
             saved
         );
     }
+}
+
+/// #377, macOS's display-local model (review of #425): every display reports
+/// origin (0, 0) and a window is placed relative to the primary, so only the
+/// primary is checked. A frame saved at x=3000 on a 5K display left of a
+/// 1440-wide laptop would otherwise "overlap" the 5K's (0, 0, 5120, 2880) and
+/// open at primary-relative x=3000, off every display; checked against the
+/// primary alone it's moved.
+#[test]
+fn display_local_bounds_check_the_primary_only() {
+    use gpui_kit::{Bounds, point, px, size};
+    let laptop = Bounds::new(point(px(0.), px(0.)), size(px(1440.), px(900.)));
+    let external = Bounds::new(point(px(0.), px(0.)), size(px(5120.), px(2880.)));
+    let saved = Bounds::new(point(px(3000.), px(400.)), size(px(1000.), px(700.)));
+    assert_eq!(
+        super::onto_connected_display(saved, &[laptop, external], Some(laptop)),
+        saved,
+        "checked against every display-local frame, the bug: kept"
+    );
+    assert_eq!(
+        super::onto_connected_display(saved, &[laptop], Some(laptop)),
+        Bounds::new(point(px(220.), px(100.)), size(px(1000.), px(700.))),
+        "checked against the primary alone: centred on it"
+    );
 }
 
 /// #377: a frame left on a display that's since been disconnected is centred on
