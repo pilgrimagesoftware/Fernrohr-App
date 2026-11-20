@@ -1,9 +1,10 @@
 //! Retrying a failed context's connection (#416). A context a window holds keeps
 //! its session and the very [`ClusterConnection`] entity its panels observe, so
 //! the retry runs inside that entity (`ClusterConnection::redial`) rather than
-//! swapping in a new one, which nothing would be watching. The picker's Connect,
-//! for a context no window holds yet, starts afresh instead
-//! (`ClusterRegistry::connection_retrying`).
+//! swapping in a new one, which nothing would be watching. The picker's Connect
+//! retries in place too (`ClusterRegistry::connection_retrying`): with agents
+//! holding connections, "no window holds it" no longer means "nobody observes
+//! it" (`mcp-connections` design decision 6).
 
 use super::ClusterRegistry;
 use crate::k8s::cluster::connection::ClusterConnection;
@@ -14,10 +15,7 @@ impl ClusterRegistry {
     /// attempt started: not for a context with no open session, nor for one
     /// that isn't failed.
     pub fn reconnect(cx: &mut App, context_name: &str) -> bool {
-        let name = context_name.to_string();
-        Self::reconnect_with(cx, context_name, move |connection, cx| {
-            connection.redial(&name, cx)
-        })
+        Self::reconnect_with(cx, context_name, |connection, cx| connection.redial(cx))
     }
 
     /// [`Self::reconnect`] with the redial injected - the seam tests use

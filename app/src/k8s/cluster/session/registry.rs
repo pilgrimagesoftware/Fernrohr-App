@@ -78,40 +78,27 @@ impl ClusterRegistry {
     }
 
     /// [`Self::connection`] for an explicit attempt to connect - the picker's
-    /// Connect - which, after a failure, is a retry (#198): a session whose
-    /// connection failed, and that no window holds, is dropped and connected
-    /// afresh rather than handed back with its old failure. A failed session a
-    /// window holds stays - its panels observe that connection. Readers that
+    /// Connect - which, after a failure, is a retry (#198): a failed connection
+    /// is redialled in place (`ClusterConnection::redial`), whoever holds it, so
+    /// every holder - a window's panels, an agent's session - keeps the very
+    /// entity it observes (`mcp-connections` design decision 6). Readers that
     /// only look at a context's connection keep using [`Self::connection`],
     /// which never re-dials.
     pub fn connection_retrying(cx: &mut App, context_name: &str) -> Entity<ClusterConnection> {
-        let name = context_name.to_string();
-        Self::retry_with(cx, context_name, move |cx| {
-            ClusterConnection::connect(cx, Some(name))
-        })
+        Self::retry_with(cx, context_name, |connection, cx| connection.redial(cx))
     }
 
-    /// [`Self::connection_retrying`] with the connect it starts injected - the
-    /// seam tests use instead of a real kubeconfig and cluster.
+    /// [`Self::connection_retrying`] with the redial injected - the seam tests
+    /// use instead of a real kubeconfig and cluster.
     pub(super) fn retry_with(
         cx: &mut App,
         context_name: &str,
-        connect: impl FnOnce(&mut App) -> Entity<ClusterConnection>,
+        redial: impl FnOnce(&mut ClusterConnection, &mut gpui_kit::Context<ClusterConnection>) -> bool,
     ) -> Entity<ClusterConnection> {
-        let stale = cx
-            .try_global::<Self>()
-            .and_then(|registry| registry.sessions.get(context_name))
-            .is_some_and(|session| {
-                session.holders.is_empty()
-                    && matches!(
-                        session.connection.read(cx).state,
-                        ConnectionState::Failed(_)
-                    )
-            });
-        if stale {
-            cx.global_mut::<Self>().sessions.remove(context_name);
-            let connection = connect(cx);
-            Self::insert_session(cx, context_name, connection.clone());
+        if let Some(connection) = Self::existing_connection(cx, context_name) {
+            if matches!(connection.read(cx).state, ConnectionState::Failed(_)) {
+                Self::reconnect_with(cx, context_name, redial);
+            }
             return connection;
         }
         Self::connection(cx, context_name)

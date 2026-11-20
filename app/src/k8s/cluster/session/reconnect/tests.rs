@@ -22,7 +22,7 @@ fn a_held_failed_context_is_retried_in_the_same_connection(cx: &mut TestAppConte
             .get_mut("demo")
             .expect("inserted above")
             .holders
-            .insert(WindowId::from(1));
+            .insert(WindowId::from(1).into());
         let observation = cx.observe(&failed, {
             let notified = notified.clone();
             move |_, _| notified.set(notified.get() + 1)
@@ -45,7 +45,11 @@ fn a_held_failed_context_is_retried_in_the_same_connection(cx: &mut TestAppConte
         let now = ClusterRegistry::connection(cx, "demo");
         assert_eq!(now, failed, "the connection its panels observe");
         assert!(matches!(now.read(cx).state, ConnectionState::Connecting));
-        assert_eq!(ClusterRegistry::holder_count(cx, "demo"), 1, "still held");
+        assert_eq!(
+            ClusterRegistry::window_holder_count(cx, "demo"),
+            1,
+            "still held"
+        );
     });
 }
 
@@ -76,7 +80,7 @@ fn a_connection_that_hasnt_failed_isnt_redialled(cx: &mut TestAppContext) {
             ConnectionState::WaitingForTunnel,
         ] {
             let connection = cx.new(|_| ClusterConnection::test_with_state(state));
-            assert!(!connection.update(cx, |connection, cx| connection.redial("demo", cx)));
+            assert!(!connection.update(cx, |connection, cx| connection.redial(cx)));
             assert!(!matches!(
                 connection.read(cx).state,
                 ConnectionState::Failed(_)
