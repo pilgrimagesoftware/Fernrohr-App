@@ -1,4 +1,5 @@
 use super::*;
+use crate::k8s::cluster::session::{ClusterRegistry, LiveAgents};
 use crate::mcp::session::SessionId;
 use crate::mcp::test_support::{TestServer, echo_tool_registry, object, temp_endpoint_paths};
 use crate::mcp::tools::{ToolKind, ToolOutput, ToolSpec};
@@ -430,15 +431,31 @@ async fn stopping_ends_every_session(cx: &mut gpui_kit::TestAppContext) {
     });
     let sessions = Sessions::default();
     let (id, caller) = sessions.open(Some("assistant".into())).unwrap();
-    cx.update(|cx| ClusterRegistry::hold(cx, "demo", caller.agent));
+    // A second agent whose own end was cut short (review of App#434, F2): the
+    // endpoint already closed its session, but its end never reached the main
+    // thread, so it is still live and still holds "demo".
+    let (_, cut_short) = sessions.open(None).unwrap();
+    cx.update(|cx| {
+        for agent in [caller.agent, cut_short.agent] {
+            LiveAgents::open(cx, agent, None);
+            assert!(ClusterRegistry::hold(cx, "demo", agent));
+        }
+    });
+    sessions.close(cut_short.agent);
 
     cx.update(|cx| end_every_session(cx, &sessions, MCP_SESSION_GRACE));
     assert!(sessions.caller(&id).is_none(), "its id stopped working");
-    assert!(matches!(
-        cx.update(|cx| ClusterRegistry::holders(cx, "demo"))
-            .as_slice(),
-        [Holder::Lingering(_)]
-    ));
+    let holders = cx.update(|cx| ClusterRegistry::holders(cx, "demo"));
+    assert!(
+        holders
+            .iter()
+            .all(|holder| matches!(holder, Holder::Lingering(_))),
+        "both agents' holds linger, the cut-short one's too: {holders:?}"
+    );
+    assert!(
+        !cx.update(|cx| LiveAgents::is_live(cx, cut_short.agent)),
+        "and neither is live any more"
+    );
     cx.executor()
         .advance_clock(MCP_SESSION_GRACE + Duration::from_secs(1));
     cx.run_until_parked();
