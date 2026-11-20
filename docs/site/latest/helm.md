@@ -140,8 +140,9 @@ release gone after an uninstall. If `helm` fails, for example because a hook fai
 `helm`'s own error until you dismiss it.
 
 Without a usable `helm`, or while the context isn't connected, the buttons and the row's menu item
-are disabled and say why. Running either action from its key or the palette then shows the reason
-on the panel instead.
+are disabled and say why. The palette lists them dimmed with the same reason, and so does Uninstall
+in the list while no release is selected, or Roll back while the release has no earlier revision.
+Pressing either action's key then shows the reason on the panel instead.
 
 ## Access
 
