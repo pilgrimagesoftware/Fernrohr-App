@@ -92,7 +92,7 @@ Returns `layouts`: a list of objects with `name` and `contexts`.
 
 ### open_panel
 
-Opens a resource panel in the frontmost window connected to the context, or focuses it if that window already shows it. When only the agent's own connection has the context, the context joins the frontmost window first, or a window opens on it, and that window then keeps it connected too. Without `name` it opens the kind's list. With `name` it opens that object's detail panel. It never starts a connection.
+Opens a resource panel in the frontmost window connected to the context, or focuses it if that window already shows it. When only the agent's own connection has the context, you are asked first: once a window shows it, every agent can use it without asking. Allowed, the context joins the frontmost window, or a window opens on it, and that window keeps it connected too. Denied or unanswered, nothing changes and the tool reports `denied` or `approval_timed_out`. Without `name` it opens the kind's list. With `name` it opens that object's detail panel. It never starts a connection.
 
 | Parameter | Type | Required | Meaning |
 |---|---|---|---|

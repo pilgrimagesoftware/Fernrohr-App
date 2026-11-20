@@ -52,7 +52,7 @@ To see what the command does, ask it for help. Neither of these opens the app or
 An agent can only use clusters open in your windows, or ones you approved it to connect, through the same sessions the app uses. A cluster another agent connected stays hidden from it until you approve it for that agent too. It never gets Kubernetes credentials, kubeconfig contents, authorization headers or tunnel secrets, and error messages are cleaned of them.
 
 - **Read.** List contexts and whether each is connected, list a context's resource kinds, list and get resources, and read a pod's logs. Secret values come back as their sizes, never their contents. Large results are cut short and say so.
-- **Navigate.** Open or focus a resource list or an object's detail panel in the window holding its context (a context only the agent connected joins a window first), list your saved layouts, and load one in Add or Replace mode. A layout panel for a context the window isn't connected to comes back as a placeholder, and loading a layout never connects a context. Opening a panel or loading a layout brings Fernrohr to the front with that window focused, so you see what the agent is showing you. Reads and listing layouts never take focus.
+- **Navigate.** Open or focus a resource list or an object's detail panel in the window holding its context (a context only the agent connected joins a window first, after you approve it), list your saved layouts, and load one in Add or Replace mode. A layout panel for a context the window isn't connected to comes back as a placeholder, and loading a layout never connects a context. Opening a panel or loading a layout brings Fernrohr to the front with that window focused, so you see what the agent is showing you. Reads and listing layouts never take focus.
 - **Connect.** Connect a context from your kubeconfig, only with your approval. The connection belongs to that agent: no window opens for it, and closing your windows doesn't cut the agent off. The agent is told within 20 seconds whether the context connected, is waiting for its tunnel, is waiting for you to confirm a manual tunnel, or failed. Otherwise it is told the context is still connecting. A context one of your windows already has needs no approval, and that window comes to the front if it's the frontmost one.
 - **Act**, only with your approval, on this fixed list: set or remove one ConfigMap key, scale a Deployment, StatefulSet or ReplicaSet, restart or roll back a Deployment, StatefulSet or DaemonSet, pause or resume a Deployment's rollout, delete 1 to 10 named Pods, trigger a Job from a CronJob, and suspend or resume a CronJob.
 
@@ -70,6 +70,9 @@ Every action opens a confirmation in Fernrohr. It names the action, context, nam
 - Requests are asked one at a time. A second waits until you answer the first.
 
 Connecting a context asks too. The prompt names the context and the tunnel it is bound to, with the tunnel's kind, and says the agent will be able to read it. Connecting changes nothing in the cluster and disconnecting undoes it, so <kbd>Enter</kbd> allows it. A denied or unanswered request connects nothing and starts no tunnel or sign-in.
+
+Showing a context in a window asks too, when only the asking agent has it connected. The prompt
+says that once a window shows it, every agent can use it without asking you. <kbd>Enter</kbd> allows it.
 
 You approve each agent separately. Another agent's approval never counts, and an agent that restarts asks again. When an agent exits, its connections close about 30 seconds later, unless one of your windows uses them too. If an agent reports that its session with Fernrohr has ended, restart the agent's MCP client.
 
