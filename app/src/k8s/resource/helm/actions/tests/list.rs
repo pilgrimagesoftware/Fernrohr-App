@@ -33,8 +33,19 @@ async fn uninstall_from_the_list_by_keys(cx: &mut TestAppContext) {
         })
     });
 
+    // #406: until a release is selected, the palette is told why Uninstall
+    // can't run; once one is, it can.
+    let uninstall = crate::k8s::resource::helm::actions::UninstallRelease;
+    assert_eq!(
+        vcx.update(|window, cx| crate::command::unavailable::reason(&uninstall, window, cx)),
+        Some("No release is selected.".into())
+    );
     vcx.simulate_keystrokes("down");
     vcx.run_until_parked();
+    assert_eq!(
+        vcx.update(|window, cx| crate::command::unavailable::reason(&uninstall, window, cx)),
+        None
+    );
     let selected = panel.clone();
     assert_eq!(
         vcx.update(|_, cx| selected.read(cx).selected_release(cx)),
