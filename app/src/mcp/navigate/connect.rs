@@ -79,6 +79,9 @@ async fn connect_context(input: ConnectContextInput, tools: ToolContext) -> Tool
         .foreground
         .run(move |cx| take_without_approval(cx, &name, agent))
         .await?;
+    if standing == Standing::Ended {
+        return Err(session_ended());
+    }
     if standing == Standing::Held {
         let (state, reason) = state_of(&tools, &context).await?;
         return Ok(output(&context, state, reason, true));
@@ -94,13 +97,25 @@ async fn connect_context(input: ConnectContextInput, tools: ToolContext) -> Tool
     )
     .await?;
 
+    // The session may have ended while the user was deciding; its approval
+    // then grants nothing (review of App#434, F1).
     let name = context.clone();
-    tools
+    let held = tools
         .foreground
         .run(move |cx| ClusterRegistry::hold(cx, &name, agent))
         .await?;
+    if !held {
+        return Err(session_ended());
+    }
     let (state, reason) = settle(&tools, &context).await?;
     Ok(output(&context, state, reason, false))
+}
+
+/// The error for a call whose session ended before it could hold anything.
+fn session_ended() -> ToolError {
+    ToolError::Unavailable {
+        reason: Unavailability::NoSession,
+    }
 }
 
 /// Whether `connect_context` can go ahead without asking.
@@ -112,6 +127,8 @@ enum Standing {
     /// Only other sessions, lingering holds, or nobody have it: the user must
     /// approve this session.
     NeedsApproval,
+    /// The session ended while the call was on its way: it can hold nothing.
+    Ended,
 }
 
 /// The no-approval rows of the module's table, on the main thread.
@@ -123,7 +140,9 @@ fn take_without_approval(cx: &mut gpui_kit::App, context: &str, agent: AgentId) 
     if !holders.iter().any(Holder::is_window) {
         return Standing::NeedsApproval;
     }
-    ClusterRegistry::hold(cx, context, agent);
+    if !ClusterRegistry::hold(cx, context, agent) {
+        return Standing::Ended;
+    }
     shell::focus_if_held(context, cx);
     Standing::Held
 }

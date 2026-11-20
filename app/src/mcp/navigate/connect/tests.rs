@@ -10,7 +10,7 @@
 
 use crate::config::tunnels::{TunnelConfig, TunnelKind};
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::k8s::cluster::session::{AgentId, ClusterRegistry, Holder};
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry, Holder, LiveAgents};
 use crate::mcp::approval::scripted::{Script, Scripted};
 use crate::mcp::error::{ToolError, Unavailability};
 use crate::mcp::navigate::test_support::{Harness, harness_with, workspace};
@@ -31,16 +31,28 @@ fn known(cx: &mut TestAppContext) -> Harness {
 
 /// `h`'s tools as a fresh agent's session, with `user` answering every
 /// question.
-fn answered_by(h: &Harness, script: Script) -> (ToolContext, Arc<Scripted>) {
-    as_agent(h, script, Duration::from_secs(30))
+fn answered_by(
+    cx: &mut TestAppContext,
+    h: &Harness,
+    script: Script,
+) -> (ToolContext, Arc<Scripted>) {
+    as_agent(cx, h, script, Duration::from_secs(30))
 }
 
-fn as_agent(h: &Harness, script: Script, timeout: Duration) -> (ToolContext, Arc<Scripted>) {
+/// A live agent's session (`LiveAgents`, as the endpoint opens one).
+fn as_agent(
+    cx: &mut TestAppContext,
+    h: &Harness,
+    script: Script,
+    timeout: Duration,
+) -> (ToolContext, Arc<Scripted>) {
     let user = Scripted::new(script);
+    let agent = AgentId::next();
+    cx.update(|cx| LiveAgents::open(cx, agent, Some("assistant".into())));
     let tools = ToolContext {
         approvals: user.gate_with_timeout(timeout),
         caller: Some(Caller {
-            agent: AgentId::next(),
+            agent,
             client_name: Some("assistant".into()),
         }),
         ..h.tools.clone()
@@ -103,7 +115,7 @@ fn active(cx: &mut TestAppContext) -> Option<gpui_kit::WindowId> {
 async fn an_unknown_context_asks_nothing_and_connects_nothing(cx: &mut TestAppContext) {
     let h = known(cx);
     let _ = workspace(cx, &["dev"]);
-    let (tools, user) = answered_by(&h, Script::Allow);
+    let (tools, user) = answered_by(cx, &h, Script::Allow);
 
     let result = connect(cx, &tools, "nope").await;
 
@@ -121,7 +133,7 @@ async fn an_unknown_context_asks_nothing_and_connects_nothing(cx: &mut TestAppCo
 #[gpui_kit::test]
 async fn a_call_without_a_session_is_refused(cx: &mut TestAppContext) {
     let h = known(cx);
-    let (tools, user) = answered_by(&h, Script::Allow);
+    let (tools, user) = answered_by(cx, &h, Script::Allow);
     let tools = ToolContext {
         caller: None,
         ..tools
@@ -142,7 +154,7 @@ async fn a_context_the_window_holds_is_brought_forward_without_asking(cx: &mut T
     let h = known(cx);
     let (dev, _) = workspace(cx, &["dev"]);
     terminal(cx);
-    let (tools, user) = answered_by(&h, Script::Deny);
+    let (tools, user) = answered_by(cx, &h, Script::Deny);
 
     let output = content(connect(cx, &tools, "dev").await);
 
@@ -164,7 +176,7 @@ async fn an_approved_connect_is_held_by_the_session_and_no_window(cx: &mut TestA
     let h = known(cx);
     let _ = workspace(cx, &["dev"]);
     staging(cx, ConnectionState::Connected(h.client.clone()));
-    let (tools, user) = answered_by(&h, Script::Allow);
+    let (tools, user) = answered_by(cx, &h, Script::Allow);
 
     let output = content(connect(cx, &tools, "staging").await);
 
@@ -194,7 +206,7 @@ async fn an_approved_connect_is_held_by_the_session_and_no_window(cx: &mut TestA
 async fn a_context_the_session_holds_asks_nothing_again(cx: &mut TestAppContext) {
     let h = known(cx);
     staging(cx, ConnectionState::Connected(h.client.clone()));
-    let (tools, user) = answered_by(&h, Script::Allow);
+    let (tools, user) = answered_by(cx, &h, Script::Allow);
     content(connect(cx, &tools, "staging").await);
     assert_eq!(user.asked().len(), 1);
 
@@ -210,10 +222,10 @@ async fn a_context_the_session_holds_asks_nothing_again(cx: &mut TestAppContext)
 async fn another_agents_connection_needs_this_sessions_own_approval(cx: &mut TestAppContext) {
     let h = known(cx);
     staging(cx, ConnectionState::Connected(h.client.clone()));
-    let (first, _) = answered_by(&h, Script::Allow);
+    let (first, _) = answered_by(cx, &h, Script::Allow);
     content(connect(cx, &first, "staging").await);
 
-    let (second, user) = as_agent(&h, Script::Deny, Duration::from_millis(50));
+    let (second, user) = as_agent(cx, &h, Script::Deny, Duration::from_millis(50));
     assert_eq!(
         connect(cx, &second, "staging").await,
         Err(ToolError::Denied)
@@ -225,7 +237,7 @@ async fn another_agents_connection_needs_this_sessions_own_approval(cx: &mut Tes
         "denied: the second holds nothing, the first is unchanged"
     );
 
-    let (third, user) = answered_by(&h, Script::Allow);
+    let (third, user) = answered_by(cx, &h, Script::Allow);
     let output = content(connect(cx, &third, "staging").await);
     assert_eq!(user.asked().len(), 1);
     assert_eq!(
@@ -242,9 +254,9 @@ async fn another_agents_connection_needs_this_sessions_own_approval(cx: &mut Tes
 async fn another_agents_connection_is_not_readable(cx: &mut TestAppContext) {
     let h = known(cx);
     staging(cx, ConnectionState::Connected(h.client.clone()));
-    let (first, _) = answered_by(&h, Script::Allow);
+    let (first, _) = answered_by(cx, &h, Script::Allow);
     content(connect(cx, &first, "staging").await);
-    let (second, _) = answered_by(&h, Script::Deny);
+    let (second, _) = answered_by(cx, &h, Script::Deny);
 
     let listed = content(call(cx, &second, "list_contexts", json!({})).await);
     let staging_status = listed["contexts"]
@@ -285,7 +297,7 @@ async fn a_denied_or_unanswered_connect_starts_nothing(cx: &mut TestAppContext) 
     ] {
         let h = known(cx);
         let _ = workspace(cx, &["dev"]);
-        let (tools, _) = as_agent(&h, script, Duration::from_millis(50));
+        let (tools, _) = as_agent(cx, &h, script, Duration::from_millis(50));
 
         assert_eq!(connect(cx, &tools, "staging").await, Err(error));
         assert!(holders(cx, "staging").is_empty(), "nothing holds it");
@@ -304,7 +316,7 @@ async fn a_failed_connect_reports_a_redacted_reason(cx: &mut TestAppContext) {
         cx,
         ConnectionState::Failed("exec plugin refused: token=s3cr3t".into()),
     );
-    let (tools, _) = answered_by(&h, Script::Allow);
+    let (tools, _) = answered_by(cx, &h, Script::Allow);
 
     let output = content(connect(cx, &tools, "staging").await);
 
@@ -335,7 +347,7 @@ async fn a_manual_tunnel_awaiting_the_user_is_reported_at_once(cx: &mut TestAppC
     let _answer = cx.update(|cx| {
         ManualConfirmations::insert_test_pending(cx, "corp-vpn-id", "corp-vpn", None, &["staging"])
     });
-    let (tools, user) = answered_by(&h, Script::Allow);
+    let (tools, user) = answered_by(cx, &h, Script::Allow);
 
     let output = content(connect(cx, &tools, "staging").await);
 
@@ -351,7 +363,7 @@ async fn a_manual_tunnel_awaiting_the_user_is_reported_at_once(cx: &mut TestAppC
 async fn a_connection_still_going_when_the_wait_ends_is_connecting(cx: &mut TestAppContext) {
     let h = known(cx);
     staging(cx, ConnectionState::Connecting);
-    let (tools, _) = answered_by(&h, Script::Allow);
+    let (tools, _) = answered_by(cx, &h, Script::Allow);
     let tools = ToolContext {
         connect_settle: Duration::from_millis(50),
         ..tools
@@ -365,4 +377,85 @@ async fn a_connection_still_going_when_the_wait_ends_is_connecting(cx: &mut Test
         vec![Holder::Agent(agent_of(&tools))],
         "the connection carries on, held by the session"
     );
+}
+
+/// Review of App#434 F1: the session ends while the user is deciding. Their
+/// approval then grants nothing - no hold, no connection - and the call gets
+/// the restart error.
+#[gpui_kit::test]
+async fn an_approval_for_an_ended_session_holds_nothing(cx: &mut TestAppContext) {
+    let h = known(cx);
+    let (tools, user) = answered_by(cx, &h, Script::Allow);
+    // Ended before the approved hold: the client left while the dialog was up.
+    cx.update(|cx| LiveAgents::end(cx, agent_of(&tools), Duration::from_secs(30)));
+
+    let result = connect(cx, &tools, "staging").await;
+
+    assert_eq!(user.asked().len(), 1, "the user was asked");
+    assert_eq!(
+        result,
+        Err(ToolError::Unavailable {
+            reason: Unavailability::NoSession
+        })
+    );
+    assert!(holders(cx, "staging").is_empty(), "nothing holds it");
+    assert!(
+        cx.update(|cx| ClusterRegistry::existing_connection(cx, "staging"))
+            .is_none(),
+        "nothing connected"
+    );
+}
+
+/// The no-approval path too: an ended session can't join a window's context.
+#[gpui_kit::test]
+async fn an_ended_session_cant_join_a_windows_context(cx: &mut TestAppContext) {
+    let h = known(cx);
+    let _ = workspace(cx, &["dev"]);
+    let (tools, user) = answered_by(cx, &h, Script::Allow);
+    cx.update(|cx| LiveAgents::end(cx, agent_of(&tools), Duration::from_secs(30)));
+
+    let result = connect(cx, &tools, "dev").await;
+
+    assert!(user.asked().is_empty());
+    assert_eq!(
+        result,
+        Err(ToolError::Unavailable {
+            reason: Unavailability::NoSession
+        })
+    );
+    assert!(!holders(cx, "dev").contains(&Holder::Agent(agent_of(&tools))));
+}
+
+/// `mcp-connections` design decision 4: opening a panel on a context only the
+/// session holds adds it to the frontmost window, which then holds it as well.
+#[gpui_kit::test]
+async fn opening_a_panel_on_the_sessions_context_brings_it_into_a_window(cx: &mut TestAppContext) {
+    let h = known(cx);
+    let _ = workspace(cx, &["dev"]);
+    open_unheld(
+        cx,
+        "staging",
+        ConnectionState::Connected(h.client.clone()),
+        Some(crate::mcp::navigate::test_support::core_kinds()),
+    );
+    let (tools, _) = answered_by(cx, &h, Script::Allow);
+    content(connect(cx, &tools, "staging").await);
+    assert_eq!(
+        windows_holding(cx, "staging"),
+        0,
+        "the agent's alone so far"
+    );
+
+    let opened = call(
+        cx,
+        &tools,
+        "open_panel",
+        json!({"context": "staging", "kind": "Pod"}),
+    )
+    .await;
+    cx.run_until_parked();
+
+    assert!(opened.is_ok(), "{opened:?}");
+    assert_eq!(windows_holding(cx, "staging"), 1, "a window holds it now");
+    assert!(holders(cx, "staging").contains(&Holder::Agent(agent_of(&tools))));
 }
