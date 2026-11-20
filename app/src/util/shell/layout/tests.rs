@@ -228,3 +228,138 @@ fn restorable_bounds_keeps_the_frame_origin_and_the_content_size() {
         Bounds::new(point(px(300.), px(200.)), size(px(1000.), px(760.)))
     );
 }
+
+/// #377: a saved frame that still overlaps a connected display - even partly, on
+/// a second display left of the main one - is restored exactly as saved. This is
+/// the global-coordinate model (X11), where displays have distinct origins.
+#[test]
+fn a_saved_frame_on_a_connected_display_is_kept() {
+    use gpui_kit::{Bounds, point, px, size};
+    let main = Bounds::new(point(px(0.), px(0.)), size(px(1920.), px(1080.)));
+    let left = Bounds::new(point(px(-2560.), px(0.)), size(px(2560.), px(1440.)));
+    for saved in [
+        Bounds::new(point(px(300.), px(200.)), size(px(1000.), px(760.))),
+        Bounds::new(point(px(-2000.), px(100.)), size(px(1000.), px(760.))),
+        Bounds::new(point(px(1800.), px(900.)), size(px(1000.), px(760.))),
+    ] {
+        assert_eq!(
+            super::onto_connected_display(saved, &[main, left], Some(main)),
+            saved
+        );
+    }
+}
+
+/// #377, macOS's display-local model (review of #425): every display reports
+/// origin (0, 0) and a window is placed relative to the primary, so only the
+/// primary is checked. A frame saved at x=3000 on a 5K display left of a
+/// 1440-wide laptop would otherwise "overlap" the 5K's (0, 0, 5120, 2880) and
+/// open at primary-relative x=3000, off every display; checked against the
+/// primary alone it's moved.
+#[test]
+fn display_local_bounds_check_the_primary_only() {
+    use gpui_kit::{Bounds, point, px, size};
+    let laptop = Bounds::new(point(px(0.), px(0.)), size(px(1440.), px(900.)));
+    let external = Bounds::new(point(px(0.), px(0.)), size(px(5120.), px(2880.)));
+    let saved = Bounds::new(point(px(3000.), px(400.)), size(px(1000.), px(700.)));
+    assert_eq!(
+        super::onto_connected_display(saved, &[laptop, external], Some(laptop)),
+        saved,
+        "checked against every display-local frame, the bug: kept"
+    );
+    assert_eq!(
+        super::onto_connected_display(saved, &[laptop], Some(laptop)),
+        Bounds::new(point(px(220.), px(100.)), size(px(1000.), px(700.))),
+        "checked against the primary alone: centred on it"
+    );
+}
+
+/// #377: a frame left on a display that's since been disconnected is centred on
+/// the main display's visible area, at its saved size since that fits.
+#[test]
+fn a_frame_on_a_disconnected_display_moves_to_the_main_display_keeping_its_size() {
+    use gpui_kit::{Bounds, point, px, size};
+    let main = Bounds::new(point(px(0.), px(25.)), size(px(1920.), px(1055.)));
+    let saved = Bounds::new(point(px(-2000.), px(100.)), size(px(1000.), px(755.)));
+    assert_eq!(
+        super::onto_connected_display(saved, &[main], Some(main)),
+        Bounds::new(point(px(460.), px(175.)), size(px(1000.), px(755.)))
+    );
+}
+
+/// #377: a frame bigger than the main display in either dimension shrinks to fit
+/// it in that dimension only.
+#[test]
+fn a_frame_too_big_for_the_main_display_shrinks_to_it() {
+    use gpui_kit::{Bounds, point, px, size};
+    let main = Bounds::new(point(px(0.), px(0.)), size(px(1440.), px(900.)));
+    let saved = Bounds::new(point(px(3000.), px(0.)), size(px(2400.), px(800.)));
+    assert_eq!(
+        super::onto_connected_display(saved, &[main], Some(main)),
+        Bounds::new(point(px(0.), px(50.)), size(px(1440.), px(800.)))
+    );
+}
+
+/// Touching a display's edge isn't overlapping it: nothing of the window would be
+/// on screen, so it is moved.
+#[test]
+fn a_frame_only_touching_a_display_edge_is_moved() {
+    use gpui_kit::{Bounds, point, px, size};
+    let main = Bounds::new(point(px(0.), px(0.)), size(px(1920.), px(1080.)));
+    let saved = Bounds::new(point(px(1920.), px(0.)), size(px(800.), px(600.)));
+    assert_ne!(
+        super::onto_connected_display(saved, &[main], Some(main)),
+        saved
+    );
+}
+
+/// With no main display reported there is nowhere to move the frame, so it is
+/// left for the platform to place.
+#[test]
+fn with_no_main_display_the_saved_frame_is_kept() {
+    use gpui_kit::{Bounds, point, px, size};
+    let saved = Bounds::new(point(px(-5000.), px(0.)), size(px(800.), px(600.)));
+    assert_eq!(super::onto_connected_display(saved, &[], None), saved);
+}
+
+/// #377 end to end: `open_window` with a layout saved on a display that isn't
+/// connected (the test platform has one 1920x1080 display at the origin) opens
+/// the window on that display, at its saved size.
+#[gpui_kit::test]
+async fn open_window_brings_an_off_screen_layout_onto_the_main_display(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    let handle = cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+        open_window(
+            cx,
+            WindowLayout {
+                width: 1000.,
+                height: 700.,
+                x: Some(-3000.),
+                y: Some(200.),
+                ..Default::default()
+            },
+        )
+    });
+    cx.run_until_parked();
+
+    let bounds = handle.update(cx, |_, window, _| window.bounds()).unwrap();
+    let display = gpui_kit::Bounds::new(
+        gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(0.)),
+        gpui_kit::size(gpui_kit::px(1920.), gpui_kit::px(1080.)),
+    );
+    assert!(
+        display.intersects(&bounds),
+        "window opened off-screen at {bounds:?}"
+    );
+    assert_eq!(
+        bounds.size,
+        gpui_kit::size(gpui_kit::px(1000.), gpui_kit::px(700.))
+    );
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}
