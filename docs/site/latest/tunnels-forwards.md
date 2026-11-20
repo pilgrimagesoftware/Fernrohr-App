@@ -197,6 +197,10 @@ working while one waits.
 > On macOS, a development build run with `cargo run` has no app bundle, so the system may not show
 > its notifications. The status bar and the picker still ask.
 
+To see which connections are open, and which window or agent holds each one with its tunnel, open
+the Connections window. See
+[See every connection]({{ '/latest/clusters/' | relative_url }}#see-every-connection).
+
 ## Port forwards
 
 A port forward makes a pod's or service's port reachable on `127.0.0.1` on your machine. Fernrohr

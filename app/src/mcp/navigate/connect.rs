@@ -16,7 +16,8 @@
 //! Approval is bound to the asking session (Security 1): another session's
 //! hold never stands in for it. Then the tool watches the connection for a
 //! bounded time and reports the first settled state, or `connecting` when the
-//! wait ends; the connection carries on either way.
+//! wait ends; the connection carries on either way. An approved connection no
+//! window holds also opens the Connections window with its row selected.
 
 use super::super::approval::{ApprovalRequest, approve};
 use super::super::cluster::{ContextStatus, caller_agent, kubeconfig_contexts, status};
@@ -97,7 +98,10 @@ async fn connect_context(input: ConnectContextInput, tools: ToolContext) -> Tool
     let name = context.clone();
     tools
         .foreground
-        .run(move |cx| ClusterRegistry::hold(cx, &name, agent))
+        .run(move |cx| {
+            ClusterRegistry::hold(cx, &name, agent);
+            show_in_connections(cx, &name);
+        })
         .await?;
     let (state, reason) = settle(&tools, &context).await?;
     Ok(output(&context, state, reason, false))
@@ -126,6 +130,23 @@ fn take_without_approval(cx: &mut gpui_kit::App, context: &str, agent: AgentId) 
     ClusterRegistry::hold(cx, context, agent);
     shell::focus_if_held(context, cx);
     Standing::Held
+}
+
+/// A connection only agents hold has no window to show it, so the Connections
+/// window opens (or comes forward) with its row selected: the user sees what
+/// they approved, and can open or end it. A context a window also holds is
+/// already visible there.
+fn show_in_connections(cx: &mut gpui_kit::App, context: &str) {
+    if ClusterRegistry::holders(cx, context)
+        .iter()
+        .any(Holder::is_window)
+    {
+        return;
+    }
+    if let Some(handle) = crate::ui::connections::open_or_focus(cx) {
+        crate::ui::connections::select_context(context, cx);
+        shell::focus_window(handle.into(), cx);
+    }
 }
 
 /// Watches `context` until it settles or `tools.connect_settle` passes

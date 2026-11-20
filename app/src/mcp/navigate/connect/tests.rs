@@ -189,6 +189,44 @@ async fn an_approved_connect_is_held_by_the_session_and_no_window(cx: &mut TestA
     );
 }
 
+/// `connections-window` 4.2: an approved connection no window holds opens the
+/// Connections window with that row selected - beside the connection a window
+/// already holds, so the selection is the new one, not just the first.
+#[gpui_kit::test]
+async fn an_approved_connect_opens_the_connections_window_on_its_row(cx: &mut TestAppContext) {
+    let h = known(cx);
+    let _ = workspace(cx, &["dev"]);
+    staging(cx, ConnectionState::Connected(h.client.clone()));
+    let (tools, _user) = answered_by(&h, Script::Allow);
+    assert_eq!(
+        cx.update(crate::ui::connections::test_selection),
+        None,
+        "not open before"
+    );
+
+    connect(cx, &tools, "staging").await.expect("connected");
+
+    assert_eq!(
+        cx.update(crate::ui::connections::test_selection),
+        Some(Some("staging".to_string())),
+        "open, with the approved connection selected"
+    );
+}
+
+/// A context a window holds is already visible there, so nothing opens.
+#[gpui_kit::test]
+async fn a_connect_to_a_windows_context_does_not_open_the_connections_window(
+    cx: &mut TestAppContext,
+) {
+    let h = known(cx);
+    let _ = workspace(cx, &["dev"]);
+    let (tools, _user) = answered_by(&h, Script::Deny);
+
+    connect(cx, &tools, "dev").await.expect("connected");
+
+    assert_eq!(cx.update(crate::ui::connections::test_selection), None);
+}
+
 /// A context the session already holds is reported without a question.
 #[gpui_kit::test]
 async fn a_context_the_session_holds_asks_nothing_again(cx: &mut TestAppContext) {

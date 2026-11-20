@@ -10,8 +10,9 @@ use gpui_kit::WindowId;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// An agent's in-app handle: unique for the app's lifetime and never reused, so a
-/// hold can't pass from an ended agent to a new one. Carries no secret.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// hold can't pass from an ended agent to a new one. Carries no secret. Ordered by
+/// when it was handed out, so a list of agents reads the same on every draw.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AgentId(u64);
 
 impl AgentId {

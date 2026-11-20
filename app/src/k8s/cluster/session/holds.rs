@@ -162,8 +162,6 @@ impl ClusterRegistry {
     /// The holder that first held `context_name`'s current session: who connected
     /// it, for the Connections window's "connected by" - `None` for a context with
     /// no session, or one created by a read and never held.
-    // UNWIRED(#367): read by the Connections window (section 4).
-    #[allow(dead_code)]
     pub fn connected_by(cx: &App, context_name: &str) -> Option<Holder> {
         cx.try_global::<Self>()
             .and_then(|registry| registry.sessions.get(context_name))
