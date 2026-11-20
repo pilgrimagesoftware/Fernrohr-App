@@ -604,3 +604,33 @@ async fn after_an_allowed_show_another_agent_connects_without_asking(cx: &mut Te
     assert_eq!(output["already_open"], json!(true));
     assert!(holders(cx, "staging").contains(&Holder::Agent(agent_of(&b))));
 }
+
+/// Review of App#435: the decision is made in the same main-thread step that
+/// would show the context, so no window can close between a check and the act.
+/// Without permission, an agent-only context gets `NeedsApproval` and no window
+/// gains it.
+#[gpui_kit::test]
+async fn the_shell_refuses_an_agent_only_context_without_permission(cx: &mut TestAppContext) {
+    use crate::util::shell::{NavigateError, open_panel};
+    let (_h, _tools) = agent_only_staging(cx).await;
+    let windows_before = cx.update(|cx| cx.windows().len());
+
+    let result = cx.update(|cx| {
+        open_panel(
+            "staging".into(),
+            crate::ui::nav::NavTarget::pods(),
+            Vec::new(),
+            false,
+            cx,
+        )
+        .map(|_| ())
+    });
+
+    assert_eq!(result, Err(NavigateError::NeedsApproval));
+    assert_eq!(windows_holding(cx, "staging"), 0, "nothing added");
+    assert_eq!(
+        cx.update(|cx| cx.windows().len()),
+        windows_before,
+        "no window opened"
+    );
+}
