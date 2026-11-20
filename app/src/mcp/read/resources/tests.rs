@@ -363,6 +363,7 @@ async fn an_agent_still_reads_after_every_window_closes(cx: &mut TestAppContext)
     let window = crate::mcp::read::test_support::USER_WINDOW();
     cx.update(|cx| {
         use crate::k8s::cluster::session::ClusterRegistry;
+        crate::k8s::cluster::session::LiveAgents::open(cx, agent, None);
         ClusterRegistry::hold(cx, "dev", window);
         ClusterRegistry::hold(cx, "dev", agent);
         ClusterRegistry::release_window(cx, window);

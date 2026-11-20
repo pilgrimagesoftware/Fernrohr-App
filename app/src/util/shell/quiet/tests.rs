@@ -158,6 +158,7 @@ async fn an_agent_held_context_outlives_the_last_window(cx: &mut TestAppContext)
     let window = quiet_app(BackgroundMcp::KeepRunning, cx);
     let agent = AgentId::next();
     let connection = cx.update(|cx| {
+        crate::k8s::cluster::session::LiveAgents::open(cx, agent, None);
         ClusterRegistry::hold(cx, "demo", agent);
         ClusterRegistry::existing_connection(cx, "demo").expect("demo is open")
     });
@@ -362,21 +363,14 @@ fn a_context_window_layout_keeps_geometry_not_contexts() {
     );
 }
 
-thread_local! {
-    /// The agent whose session the stand-in MCP stop ends.
-    static AGENT: Cell<Option<AgentId>> = const { Cell::new(None) };
-}
-
-/// [`hooks`], with a `stop_mcp` that does to the agent's session what the real
-/// one (`mcp::server::stop`) does to every session: its holds linger for
+/// [`hooks`], with a `stop_mcp` that ends the live agents as the real one
+/// (`mcp::server::stop`) does: their holds linger for
 /// [`MCP_SESSION_GRACE`](crate::consts::MCP_SESSION_GRACE), then go.
 fn hooks_ending_the_agents_session() -> Hooks {
     Hooks {
         stop_mcp: |cx: &mut App| {
             cx.global_mut::<Calls>().stops += 1;
-            if let Some(agent) = AGENT.with(Cell::get) {
-                ClusterRegistry::linger_agent(cx, agent, crate::consts::MCP_SESSION_GRACE);
-            }
+            crate::k8s::cluster::session::LiveAgents::end_all(cx, crate::consts::MCP_SESSION_GRACE);
         },
         ..hooks()
     }
@@ -422,7 +416,6 @@ async fn stopping_with_the_last_window_ends_the_agents_hold_and_tunnel(cx: &mut 
         port: 6443,
     };
     let agent = AgentId::next();
-    AGENT.with(|slot| slot.set(Some(agent)));
 
     let window = quiet_app_with(
         BackgroundMcp::StopWithLastWindow,
@@ -446,6 +439,7 @@ async fn stopping_with_the_last_window_ends_the_agents_hold_and_tunnel(cx: &mut 
                 )
             });
             ClusterRegistry::insert_test_session_with_connection(cx, "kind-dev", connection);
+            crate::k8s::cluster::session::LiveAgents::open(cx, agent, None);
             ClusterRegistry::hold(cx, "kind-dev", agent);
         },
     );
@@ -469,7 +463,6 @@ async fn stopping_with_the_last_window_ends_the_agents_hold_and_tunnel(cx: &mut 
     );
     assert!(!live.borrow().contains(&key), "its tunnel went too");
 
-    AGENT.with(|slot| slot.set(None));
     let _ = std::fs::remove_file(&tunnels);
     let _ = std::fs::remove_file(&kubeconfig);
 }
