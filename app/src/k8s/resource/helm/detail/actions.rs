@@ -15,6 +15,8 @@ use gpui_kit::*;
 /// The header's action buttons.
 pub(crate) const ROLLBACK_BUTTON: &str = "helm-release-rollback";
 pub(crate) const UNINSTALL_BUTTON: &str = "helm-release-uninstall";
+/// Why Rollback can't run on a release with a single revision.
+const NO_EARLIER_REVISION: &str = "There's no earlier revision to roll back to.";
 
 impl ActionHost for HelmReleasePanel {
     fn action_state(&mut self) -> &mut ActionState {
@@ -37,6 +39,30 @@ impl HelmReleasePanel {
         helm_cli::availability(&self.scope.context_name, cx)
             .err()
             .map(|why| why.to_string())
+    }
+
+    /// Tells the palette when Rollback or Uninstall can't run from this panel,
+    /// and why (#406), with the reasons their handlers would refuse with.
+    pub(super) fn register_unavailable_reasons(&self, cx: &mut Context<Self>) {
+        let panel = cx.weak_entity();
+        crate::command::unavailable::register(
+            &self.focus_handle,
+            move |action, cx| {
+                let action = action.as_any();
+                let rollback = action.is::<RollbackRelease>();
+                if !rollback && !action.is::<UninstallRelease>() {
+                    return None;
+                }
+                let panel = panel.upgrade()?;
+                let panel = panel.read(cx);
+                if let Some(why) = panel.actions_unavailable(cx) {
+                    return Some(why.into());
+                }
+                (rollback && panel.rollback_target(cx).is_none())
+                    .then(|| NO_EARLIER_REVISION.into())
+            },
+            cx,
+        );
     }
 
     /// Where Rollback would go: History's selection, unless that is the
@@ -65,12 +91,7 @@ impl HelmReleasePanel {
         let what = format!("Roll back {}", self.key.name);
         let current = self.history(cx).first().map(|revision| revision.version);
         let (Some(current), Some(target)) = (current, self.rollback_target(cx)) else {
-            actions::refuse(
-                self,
-                &what,
-                "There's no earlier revision to roll back to.".into(),
-                cx,
-            );
+            actions::refuse(self, &what, NO_EARLIER_REVISION.into(), cx);
             return;
         };
         let rollback = Rollback {
