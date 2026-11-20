@@ -4,7 +4,7 @@
 //! agent's MCP client gave itself, never an identity, so it is always shown as
 //! self-reported and never decides anything.
 
-use crate::k8s::cluster::session::{AgentLabels, ClusterRegistry, Holder};
+use crate::k8s::cluster::session::{ClusterRegistry, Holder, LiveAgents};
 use gpui_kit::App;
 
 /// The self-reported names of the agents holding `context_name`, in holder
@@ -13,7 +13,7 @@ pub(crate) fn agent_names(cx: &App, context_name: &str) -> Vec<Option<String>> {
     ClusterRegistry::holders(cx, context_name)
         .into_iter()
         .filter_map(|holder| match holder {
-            Holder::Agent(agent) => Some(AgentLabels::name(cx, agent)),
+            Holder::Agent(agent) => Some(LiveAgents::name(cx, agent)),
             Holder::Window(_) | Holder::Lingering(_) => None,
         })
         .collect()

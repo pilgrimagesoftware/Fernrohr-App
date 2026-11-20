@@ -4,7 +4,7 @@
 //! Named imports, not a glob: see `status_bar.rs` on the compiler crash.
 
 use crate::k8s::cluster::connection::ConnectionState;
-use crate::k8s::cluster::session::{AgentId, AgentLabels, ClusterRegistry};
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry, LiveAgents};
 use crate::ui::status_bar::{StatusBarView, agent_icon_selector};
 use crate::util::context_lifecycle::disconnect_confirmation_body;
 use crate::util::shell::MainWindow;
@@ -35,7 +35,7 @@ fn bar_on(cx: &mut TestAppContext, context: &str) -> (Entity<StatusBarView>, Vis
 fn agent(cx: &mut VisualTestContext, context: &str, name: Option<&str>) -> AgentId {
     let agent = AgentId::next();
     cx.update(|_, cx| {
-        AgentLabels::set(cx, agent, name.map(str::to_string));
+        LiveAgents::open(cx, agent, name.map(str::to_string));
         ClusterRegistry::hold(cx, context, agent);
     });
     cx.run_until_parked();
