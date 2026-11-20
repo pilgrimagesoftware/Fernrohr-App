@@ -16,6 +16,7 @@ mod helm_watch;
 mod holder;
 mod holds;
 mod kind_watch;
+mod live_agents;
 mod pause_resume;
 mod pods_watch;
 mod reconnect;
@@ -24,6 +25,7 @@ mod registry;
 mod test_support;
 
 pub use holder::{AgentId, Holder};
+pub use live_agents::LiveAgents;
 pub use registry::ClusterRegistry;
 
 /// What a session's [`WatchRegistry`] counts subscriptions by: one entry per

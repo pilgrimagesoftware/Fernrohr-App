@@ -29,6 +29,12 @@ pub(crate) enum NavigateError {
 /// `namespaces` as its scope (empty for the context's default, as an in-app
 /// open with no scope gets), in the frontmost workspace window holding that
 /// context. Every other window is left as it was.
+///
+/// A context no window holds - one only the calling agent's session holds,
+/// which its caller has already checked it may use - is added to the frontmost
+/// workspace window as the add-context control does, or a window is opened on
+/// it when none shows a workspace; that window then holds it too
+/// (`mcp-connections` design decision 4).
 pub(crate) fn open_panel(
     context_name: String,
     target: NavTarget,
@@ -39,13 +45,35 @@ pub(crate) fn open_panel(
     // back - holding the context the agent asks for, if it held it before.
     super::quiet::ensure_main_window(cx);
     let windows = workspace_windows(cx);
-    if windows.is_empty() {
-        return Err(NavigateError::NoWindow);
-    }
-    let (handle, main) = windows
-        .into_iter()
+    let holding = windows
+        .iter()
         .find(|(_, main)| main.read(cx).contexts().contains(&context_name))
-        .ok_or(NavigateError::ContextNotHeld)?;
+        .cloned();
+    let (handle, main) = match (holding, windows.into_iter().next()) {
+        (Some(holding), _) => holding,
+        (None, Some((handle, main))) => {
+            let name = context_name.clone();
+            handle
+                .update(cx, |_, window, cx| {
+                    main.update(cx, |main, cx| main.add_context(name, window, cx))
+                })
+                .map_err(|_| NavigateError::NoWindow)?;
+            (handle, main)
+        }
+        (None, None) => {
+            open_window(
+                cx,
+                WindowLayout {
+                    contexts: vec![context_name.clone()],
+                    ..Default::default()
+                },
+            );
+            workspace_windows(cx)
+                .into_iter()
+                .find(|(_, main)| main.read(cx).contexts().contains(&context_name))
+                .ok_or(NavigateError::NoWindow)?
+        }
+    };
     let shown = handle
         .update(cx, |_, window, cx| {
             main.update(cx, |main, cx| {

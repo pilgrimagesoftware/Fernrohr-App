@@ -14,8 +14,8 @@ uninstall shows up without refreshing.
 Listing releases and reading their history, values and manifests need nothing beyond the cluster
 connection. Rolling back or uninstalling a release runs `helm` itself, so those actions need Helm 3
 or 4 installed. Fernrohr uses the `helm` on your login shell's PATH, or the one you name in
-**Settings → Tools** under **helm path**. Until it finds a usable `helm`, Rollback and Uninstall are
-shown disabled, with the reason. Settings → Tools also says which `helm` it found. See
+**Settings → Tools** under **helm path**. Until it finds a usable `helm`, the **Roll back** and
+**Uninstall** buttons and their palette entries are shown disabled, with the reason. Settings → Tools also says which `helm` it found. See
 {{ '/latest/settings/' | relative_url }}.
 
 `helm` reaches the cluster the way the context does, through its tunnel if it has one, and signs in
@@ -119,8 +119,8 @@ with the context's own credentials.
 
 | Action | Key | Where |
 | --- | --- | --- |
-| Roll back | <kbd>⌃R</kbd> | A release's panel: its key, the **Roll back** button (an undo arrow) in the header, or the palette |
-| Uninstall | <kbd>⌃D</kbd> | The list's selected row (its key, its right-click menu, or the palette) and a release's panel (its key, the **Uninstall** button (a trash can) in the header, or the palette) |
+| Roll back | <kbd>⌃R</kbd> | A release's panel: its key, the **Roll back** button (an undo arrow) in the header, or **Helm Release: Roll Back…** in the palette |
+| Uninstall | <kbd>⌃D</kbd> | The list's selected row (its key, its right-click menu, or **Helm Releases: Uninstall Release…** in the palette) and a release's panel (its key, the **Uninstall** button (a trash can) in the header, or **Helm Release: Uninstall…** in the palette) |
 
 **Roll back** goes to the revision selected in History. If the selection is the current revision,
 which it is by default, it goes to the one before. To roll back to revision 3, for example, press
@@ -140,8 +140,9 @@ release gone after an uninstall. If `helm` fails, for example because a hook fai
 `helm`'s own error until you dismiss it.
 
 Without a usable `helm`, or while the context isn't connected, the buttons and the row's menu item
-are disabled and say why. The palette lists them dimmed with the same reason, and so does Uninstall
-in the list while no release is selected, or Roll back while the release has no earlier revision.
+are disabled and say why. The palette lists their entries dimmed with the same reason. It also
+dims **Helm Releases: Uninstall Release…** while no release is selected in the list, and
+**Helm Release: Roll Back…** while the release has no earlier revision.
 Pressing either action's key then shows the reason on the panel instead.
 
 ## Access

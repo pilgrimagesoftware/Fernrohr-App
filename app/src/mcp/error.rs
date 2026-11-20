@@ -79,6 +79,8 @@ pub(crate) enum Unavailability {
     /// restarted, or this adapter predates sessions. Restarting the MCP client
     /// starts a new session.
     NoSession,
+    /// Every session slot the app allows is taken by other MCP clients.
+    TooManySessions,
 }
 
 impl ToolError {
@@ -193,6 +195,13 @@ impl fmt::Display for ToolError {
                 reason: Unavailability::NoSession,
             } => f.write_str(
                 "this MCP client's session with Fernrohr has ended; restart your MCP client",
+            ),
+            Self::Unavailable {
+                reason: Unavailability::TooManySessions,
+            } => write!(
+                f,
+                "Fernrohr already serves {} MCP clients, its limit; close one and try again",
+                crate::consts::MCP_MAX_SESSIONS
             ),
             Self::UnknownTool { name } => write!(f, "no tool named {name:?}"),
             Self::InvalidArguments { message } => write!(f, "invalid arguments: {message}"),

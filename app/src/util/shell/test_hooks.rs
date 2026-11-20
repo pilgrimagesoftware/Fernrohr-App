@@ -11,13 +11,15 @@ impl MainWindow {
     /// `MainWindow` literal directly.
     #[cfg(test)]
     pub(crate) fn test_picker_window(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self {
+        let this = Self {
             mode: WindowMode::Picker(
                 cx.new(|cx| crate::ui::picker::ClusterPicker::new(window, cx)),
             ),
             focus_handle: cx.focus_handle(),
             tab_menu: Default::default(),
-        }
+        };
+        this.register_unavailable_reasons(cx);
+        this
     }
 
     /// Test-only: focuses the window's own handle, the way `focus_initial`
