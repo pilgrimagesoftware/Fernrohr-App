@@ -46,6 +46,7 @@ async fn a_logs_panel_ignores_a_selection_from_a_different_context(cx: &mut Test
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "b".into(),
         })));
     });

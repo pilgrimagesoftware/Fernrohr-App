@@ -78,3 +78,28 @@ fn the_quick_look_marks_the_sidecar() {
         .collect();
     assert_eq!(containers, [("app", false), ("proxy", true)]);
 }
+
+/// #398: the pickers offer the app containers, then the sidecars - never a
+/// run-once init container - and say which are sidecars.
+#[test]
+fn pickers_offer_app_containers_then_sidecars() {
+    let pod = pod();
+    let (containers, sidecars) = super::long_running_names(&pod);
+    assert_eq!(containers, ["app", "proxy"]);
+    assert_eq!(sidecars, ["proxy"]);
+
+    let selection = crate::k8s::resource::pods::PodSelection::of(&pod, "ctx");
+    assert_eq!(selection.containers, ["app", "proxy"]);
+    assert_eq!(selection.container_label("proxy"), "proxy (sidecar)");
+    assert_eq!(selection.container_label("app"), "app");
+}
+
+/// #398: a running sidecar can be shelled into; the finished init container
+/// can't.
+#[test]
+fn a_running_sidecar_is_a_shell_target() {
+    assert_eq!(
+        crate::k8s::resource::pods::running_containers(&pod()),
+        ["app", "proxy"]
+    );
+}

@@ -114,6 +114,7 @@ fn open(cx: &mut TestAppContext, restarted: bool) -> Harness {
             namespace: "shop".into(),
             name: "web-1".into(),
             containers: vec!["app".into()],
+            sidecars: Vec::new(),
             context_name: "demo".into(),
         })));
     });

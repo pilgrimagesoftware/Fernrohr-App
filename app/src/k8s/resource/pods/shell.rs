@@ -24,26 +24,31 @@ pub(super) fn container_button_id(container: &str) -> SharedString {
 }
 pub(super) const CANCEL_SHELL_ID: &str = "pods-shell-cancel";
 
-/// `pod`'s running containers, in the order its spec lists them.
+/// `pod`'s running containers: its app containers in spec order, then its
+/// sidecars (#398) - their statuses are among the init containers'.
 pub(crate) fn running_containers(pod: &Pod) -> Vec<String> {
-    let statuses = pod
-        .status
-        .as_ref()
+    let status = pod.status.as_ref();
+    let statuses = status
         .and_then(|status| status.container_statuses.as_deref())
-        .unwrap_or_default();
-    pod.spec
+        .unwrap_or_default()
         .iter()
-        .flat_map(|spec| &spec.containers)
-        .filter(|container| {
-            statuses.iter().any(|status| {
-                status.name == container.name
-                    && status
-                        .state
-                        .as_ref()
-                        .is_some_and(|state| state.running.is_some())
-            })
+        .chain(
+            status
+                .and_then(|status| status.init_container_statuses.as_deref())
+                .unwrap_or_default(),
+        );
+    let running: Vec<&str> = statuses
+        .filter(|status| {
+            status
+                .state
+                .as_ref()
+                .is_some_and(|state| state.running.is_some())
         })
-        .map(|container| container.name.clone())
+        .map(|status| status.name.as_str())
+        .collect();
+    super::long_running(pod)
+        .filter(|(container, _)| running.contains(&container.name.as_str()))
+        .map(|(container, _)| container.name.clone())
         .collect()
 }
 
@@ -94,7 +99,7 @@ pub(crate) fn shell_into(
             let (selection, container) = (selection.clone(), container.clone());
             footer = footer.child(
                 Button::new(container_button_id(&container))
-                    .label(container.clone())
+                    .label(selection.container_label(&container))
                     .primary()
                     .on_click(move |_event, window, cx| {
                         window.close_dialog(cx);

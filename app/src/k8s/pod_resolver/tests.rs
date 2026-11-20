@@ -172,3 +172,13 @@ fn the_container_is_the_entrys_then_the_default_annotation_then_the_first() {
         "names the container and the pod: {missing}"
     );
 }
+
+/// #398: a sidecar is a container to run in by name; a run-once init
+/// container isn't, and the default stays the first app container.
+#[test]
+fn a_sidecar_is_a_container_to_run_in() {
+    let pod = crate::k8s::resource::pods::sidecar_fixture();
+    assert_eq!(container_for(&pod, Some("proxy")).unwrap(), "proxy");
+    assert!(container_for(&pod, Some("migrate")).is_err());
+    assert_eq!(container_for(&pod, None).unwrap(), "app");
+}

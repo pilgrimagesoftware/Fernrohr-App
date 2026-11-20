@@ -48,11 +48,13 @@ impl Render for LogsPanel {
         // pod's logs, already chosen by clicking that pod - there is no
         // namespace left to scope, only which of its containers to read.
         let container_picker = view.needs_container_picker().then(|| {
-            let containers = view.containers().to_vec();
+            let containers: Vec<(String, String)> = (view.containers().iter())
+                .map(|container| (container.clone(), view.container_label(container)))
+                .collect();
             let selected = view.selected_container().to_string();
             let this = cx.weak_entity();
             Button::new("logs-container")
-                .label(selected.clone())
+                .label(view.container_label(&selected))
                 .icon(gpui_kit::assets::IconName::ChevronDown)
                 .xsmall()
                 .ghost()
@@ -60,12 +62,12 @@ impl Render for LogsPanel {
                 .tooltip("Container")
                 .dropdown_menu(move |menu, _window, _cx| {
                     let mut menu = menu;
-                    for container in &containers {
+                    for (container, label) in &containers {
                         let this = this.clone();
                         let container = container.clone();
                         let checked = container == selected;
                         menu = menu.item(
-                            gpui_kit::component::menu::PopupMenuItem::new(container.clone())
+                            gpui_kit::component::menu::PopupMenuItem::new(label.clone())
                                 .checked(checked)
                                 .on_click(move |_event, _window, cx| {
                                     let _ = this.update(cx, |this: &mut Self, cx| {

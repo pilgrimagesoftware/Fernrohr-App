@@ -6,6 +6,7 @@
 //! the app's list (`k8s::cluster::port_forwards`), where Manage Tunnels shows it.
 
 use crate::k8s::cluster::port_forwards::{ForwardObject, PortForwardRequest, PortForwards};
+use crate::k8s::resource::pods::{container_label, long_running};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::DialogFooter;
@@ -32,10 +33,12 @@ pub(crate) fn port_button_id(port: u16) -> SharedString {
     format!("port-forward-port-{port}").into()
 }
 
-/// `pod`'s declared container ports, each once, in spec order.
+/// `pod`'s declared container ports, each once: its app containers' in spec
+/// order, then its sidecars' (#398), which the label marks.
 pub(crate) fn pod_ports(pod: &Pod) -> Vec<PortChoice> {
     let mut ports: Vec<PortChoice> = Vec::new();
-    for container in pod.spec.iter().flat_map(|spec| &spec.containers) {
+    for (container, sidecar) in long_running(pod) {
+        let owner = container_label(&container.name, sidecar);
         for declared in container.ports.iter().flatten() {
             let Ok(port) = u16::try_from(declared.container_port) else {
                 continue;
@@ -44,8 +47,8 @@ pub(crate) fn pod_ports(pod: &Pod) -> Vec<PortChoice> {
                 continue;
             }
             let label = match &declared.name {
-                Some(name) => format!("{port} ({name}, {})", container.name),
-                None => format!("{port} ({})", container.name),
+                Some(name) => format!("{port} ({name}, {owner})"),
+                None => format!("{port} ({owner})"),
             };
             ports.push(PortChoice { port, label });
         }
@@ -111,11 +114,8 @@ pub(crate) async fn resolve_service(
     let target = match &port.target_port {
         None => Some(service_port),
         Some(IntOrString::Int(number)) => u16::try_from(*number).ok(),
-        Some(IntOrString::String(name)) => pod
-            .spec
-            .iter()
-            .flat_map(|spec| &spec.containers)
-            .flat_map(|container| container.ports.iter().flatten())
+        Some(IntOrString::String(name)) => long_running(&pod)
+            .flat_map(|(container, _)| container.ports.iter().flatten())
             .find(|declared| declared.name.as_deref() == Some(name.as_str()))
             .and_then(|declared| u16::try_from(declared.container_port).ok()),
     }

@@ -5,26 +5,23 @@
 use super::commands::{ViewLogs, ViewLogsFlipped};
 use super::fetch::PodDetailState;
 use super::panel::PodDetailPanel;
-use crate::k8s::resource::pods::{PodSelection, SelectedPod};
+use crate::k8s::resource::pods::{PodSelection, SelectedPod, long_running_names};
 use gpui_kit::*;
 
 impl PodDetailPanel {
-    /// The selection the Pods list would publish for this pod: its containers
-    /// in `spec.containers` order. `None` until the pod has loaded - there is
-    /// no container list to hand Logs before then.
+    /// The selection the Pods list would publish for this pod: its app
+    /// containers in spec order, then its sidecars. `None` until the pod has
+    /// loaded - there is no container list to hand Logs before then.
     pub(super) fn log_selection(&self) -> Option<PodSelection> {
         let PodDetailState::Loaded(pod) = &self.state else {
             return None;
         };
-        let containers = pod
-            .spec
-            .as_ref()
-            .map(|spec| spec.containers.iter().map(|c| c.name.clone()).collect())
-            .unwrap_or_default();
+        let (containers, sidecars) = long_running_names(pod);
         Some(PodSelection {
             namespace: self.pod.namespace.clone(),
             name: self.pod.name.clone(),
             containers,
+            sidecars,
             context_name: self.scope.context_name.clone(),
         })
     }

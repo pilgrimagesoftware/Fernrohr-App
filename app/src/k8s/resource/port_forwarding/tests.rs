@@ -20,6 +20,34 @@ fn web_pod(name: &str, phase: &str, app: &str) -> serde_json::Value {
         "status": { "phase": phase } })
 }
 
+/// #398: a sidecar's ports are offered after the app containers', marked.
+#[test]
+fn a_sidecars_ports_are_offered_and_marked() {
+    let pod: Pod = serde_json::from_value(json!({
+        "metadata": { "name": "web-1", "namespace": "shop" },
+        "spec": {
+            "containers": [{ "name": "app", "ports": [{ "containerPort": 8080 }] }],
+            "initContainers": [
+                { "name": "migrate", "ports": [{ "containerPort": 7000 }] },
+                { "name": "proxy", "restartPolicy": "Always",
+                  "ports": [{ "containerPort": 15000, "name": "admin" }] },
+            ],
+        },
+    }))
+    .unwrap();
+    let ports: Vec<(u16, String)> = pod_ports(&pod)
+        .into_iter()
+        .map(|choice| (choice.port, choice.label))
+        .collect();
+    assert_eq!(
+        ports,
+        [
+            (8080, "8080 (app)".to_string()),
+            (15000, "15000 (admin, proxy (sidecar))".to_string()),
+        ]
+    );
+}
+
 fn web_service() -> serde_json::Value {
     json!({ "apiVersion": "v1", "kind": "Service",
         "metadata": { "name": "web", "namespace": "shop", "uid": "svc" },

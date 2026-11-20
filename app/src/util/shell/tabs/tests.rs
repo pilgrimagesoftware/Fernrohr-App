@@ -41,6 +41,7 @@ fn pods_and_detail(
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "kind-dev".into(),
         })));
     });

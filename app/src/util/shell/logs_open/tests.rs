@@ -52,6 +52,7 @@ impl Harness {
             namespace: "shop".into(),
             name: pod.into(),
             containers: containers.iter().map(|c| c.to_string()).collect(),
+            sidecars: Vec::new(),
             context_name: "demo".into(),
         };
         let main = self.main.clone();
@@ -168,6 +169,7 @@ async fn a_pods_panel_ignores_later_selections(cx: &mut TestAppContext) {
             namespace: "shop".into(),
             name: "web-2".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "demo".into(),
         })))
     });
