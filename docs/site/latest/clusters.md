@@ -91,6 +91,18 @@ opens Report Issue with the error filled in. See
 To retry, press <kbd>Enter</kbd> or click Connect again, on the same context or another. Choosing
 a different context needs no reset.
 
+A context already in the window can fail too, for example when a restored workspace opens while
+its cluster is unreachable. Its capsule shows Connection failed, and its panels say they couldn't
+connect. Fix the cause, then try again:
+
+- **Mouse:** open the menu on the context's capsule and choose **Reconnect**. Only a failed
+  context's menu has it.
+- **Keyboard:** run **Reconnect Failed Contexts** from the command palette or the Context menu. It
+  tries every failed context in the window again and leaves the others alone. It has no default
+  key. To give it one, bind `context.reconnect_failed` in `keymap.toml`.
+
+The context's panels stay open and fill in once the connection succeeds.
+
 ### When the connection times out
 
 If the API server doesn't answer within 30 seconds, the reason says what timed out and what to

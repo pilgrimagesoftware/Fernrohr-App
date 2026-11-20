@@ -213,6 +213,7 @@ fn the_context_menu_puts_tunnels_last() {
             "Disconnect Active Context…",
             "Disconnect All Contexts…",
             "Disconnect Other Contexts…",
+            "Reconnect Failed Contexts",
             "Open Exec Library",
             "---",
             "Set Tunnel for Context",

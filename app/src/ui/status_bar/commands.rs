@@ -1,6 +1,7 @@
 //! The status bar's keyboard routes (`toolbar-layout-with-gpui-kit` 1.2-1.3): adding
 //! a context to the window and disconnecting its active one - or all of its
-//! contexts, or all but the active one (#359) - as registered commands
+//! contexts, or all but the active one (#359) - and retrying the ones whose
+//! connection failed (#416), as registered commands
 //! in the Context menu and the palette. `MainWindow` handles them by asking its
 //! status bar, which owns the Add Context window and the disconnect confirmation.
 
@@ -13,7 +14,8 @@ actions!(
         AddContext,
         DisconnectActiveContext,
         DisconnectAllContexts,
-        DisconnectOtherContexts
+        DisconnectOtherContexts,
+        ReconnectFailedContexts
     ]
 );
 
@@ -21,6 +23,7 @@ const ADD_COMMAND_ID: &str = "context.add";
 const DISCONNECT_COMMAND_ID: &str = "context.disconnect";
 const DISCONNECT_ALL_COMMAND_ID: &str = "context.disconnect_all";
 const DISCONNECT_OTHERS_COMMAND_ID: &str = "context.disconnect_others";
+const RECONNECT_FAILED_COMMAND_ID: &str = "context.reconnect_failed";
 
 /// All global, with no default key: they're occasional, and the menu and the
 /// palette reach them.
@@ -55,6 +58,14 @@ pub(crate) fn register_commands(registry: &mut CommandRegistry) {
         default_binding: "",
         context: None,
         action: Box::new(DisconnectOtherContexts),
+        menu: Some(MenuSlot::Context(ContextGroup::Contexts)),
+    });
+    registry.register(Command {
+        id: RECONNECT_FAILED_COMMAND_ID,
+        title: "Reconnect Failed Contexts",
+        default_binding: "",
+        context: None,
+        action: Box::new(ReconnectFailedContexts),
         menu: Some(MenuSlot::Context(ContextGroup::Contexts)),
     });
 }

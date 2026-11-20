@@ -130,9 +130,9 @@ impl Render for MainWindow {
             .flex()
             .flex_col()
             .track_focus(&self.focus_handle);
-        // Disconnect All needs a context to disconnect, and Disconnect Others
-        // a second one; otherwise the window doesn't handle them, so their
-        // menu items show disabled (#359).
+        // Disconnect All and Reconnect Failed Contexts need a context, and
+        // Disconnect Others a second one; otherwise the window doesn't handle
+        // them, so their menu items show disabled (#359, #416).
         let context_count = match &self.mode {
             WindowMode::Workspace { contexts, .. } => contexts.len(),
             WindowMode::Picker(_) => 0,
@@ -140,6 +140,7 @@ impl Render for MainWindow {
         let root = root
             .when(context_count > 0, |root| {
                 root.on_action(cx.listener(Self::on_action_disconnect_all_contexts))
+                    .on_action(cx.listener(Self::on_action_reconnect_failed_contexts))
             })
             .when(context_count > 1, |root| {
                 root.on_action(cx.listener(Self::on_action_disconnect_other_contexts))
