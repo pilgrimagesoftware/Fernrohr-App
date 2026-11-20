@@ -10,11 +10,17 @@ use gpui_kit::WindowId;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// An agent's in-app handle: unique for the app's lifetime and never reused, so a
-/// hold can't pass from an ended agent to a new one. Carries no secret.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// hold can't pass from an ended agent to a new one. Carries no secret. Ordered by
+/// when it was handed out, so a list of agents reads the same on every draw.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AgentId(u64);
 
 impl AgentId {
+    /// Where this agent falls in the order agents were created.
+    pub(super) fn order(self) -> u64 {
+        self.0
+    }
+
     /// A fresh handle, distinct from every one handed out before.
     pub fn next() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -25,10 +31,15 @@ impl AgentId {
 /// An ended agent session's hold, kept only until its grace period ends
 /// (`mcp-connections` design decision 3). Unique and never reused, so no later
 /// session can claim it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LingerId(u64);
 
 impl LingerId {
+    /// Where this hold falls in the order lingering holds were created.
+    pub(super) fn order(self) -> u64 {
+        self.0
+    }
+
     fn next() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         Self(NEXT.fetch_add(1, Ordering::Relaxed))

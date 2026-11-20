@@ -152,6 +152,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
     crate::ui::menu::register_commands(registry);
     nav::register_commands(registry);
     tunnels::register_commands(registry);
+    crate::ui::connections::register_commands(registry);
     crate::k8s::resource::pods::register_commands(registry);
     crate::util::logs::register_commands(registry);
     crate::ui::panel::arrange::register_commands(registry);
@@ -232,6 +233,11 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.on_action(|_: &tunnels::TunnelsManage, cx: &mut App| {
         tunnels::open_or_focus(cx);
     });
+    cx.on_action(
+        |_: &crate::ui::connections::ConnectionsOpen, cx: &mut App| {
+            crate::ui::connections::open_or_focus(cx);
+        },
+    );
     cx.on_action(|_: &NewWindow, cx: &mut App| {
         open_window(cx, WindowLayout::default());
     });

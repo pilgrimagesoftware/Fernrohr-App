@@ -152,6 +152,68 @@ pub(crate) fn focus_if_held(context_name: &str, cx: &mut App) -> bool {
     true
 }
 
+/// The Connections window's Open in Window (`connections-window`): adds
+/// `context_name` to the frontmost workspace window exactly as the status
+/// bar's add-context control does ([`MainWindow::add_context`] - its Pods
+/// panel, selected, reusing the open connection), or opens a window on it when
+/// none shows a workspace, then brings that window forward. No approval: the
+/// user asked for it.
+pub(crate) fn open_context_in_window(context_name: String, cx: &mut App) {
+    let handle = match workspace_windows(cx).into_iter().next() {
+        Some((handle, main)) => {
+            let _ = handle.update(cx, |_, window, cx| {
+                main.update(cx, |main, cx| main.add_context(context_name, window, cx))
+            });
+            handle
+        }
+        None => open_window(
+            cx,
+            WindowLayout {
+                contexts: vec![context_name],
+                ..Default::default()
+            },
+        ),
+    };
+    focus_window(handle, cx);
+}
+
+/// Every workspace window that holds `context_name`, frontmost first, with its
+/// title: how the Connections window names a window holder.
+pub(crate) fn windows_holding(context_name: &str, cx: &App) -> Vec<(AnyWindowHandle, String)> {
+    workspace_windows(cx)
+        .into_iter()
+        .filter(|(_, main)| {
+            main.read(cx)
+                .contexts()
+                .iter()
+                .any(|held| held == context_name)
+        })
+        .map(|(handle, main)| (handle, window_title::title_for(&main.read(cx).mode)))
+        .collect()
+}
+
+/// The Connections window's Disconnect (`connections-window`): every window
+/// holding `context_name` disconnects it as its capsule's Disconnect does -
+/// closing its panels, returning to the picker if it was the last - and then
+/// every agent's and lingering hold is released, closing the connection.
+pub(crate) fn disconnect_everywhere(context_name: &str, cx: &mut App) {
+    for (handle, main) in workspace_windows(cx) {
+        if !main
+            .read(cx)
+            .contexts()
+            .iter()
+            .any(|held| held == context_name)
+        {
+            continue;
+        }
+        let name = context_name.to_string();
+        let _ = handle.update(cx, |_, window, cx| {
+            main.update(cx, |main, cx| main.disconnect_context(name, window, cx))
+        });
+    }
+    ClusterRegistry::release_all(cx, context_name);
+}
+
 /// Brings Fernrohr to the front with `window` focused - what a click on one of
 /// its notifications does too (`notify::focus`). A window that has closed is
 /// left alone.

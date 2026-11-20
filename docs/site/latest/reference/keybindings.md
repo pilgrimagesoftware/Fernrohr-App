@@ -59,6 +59,10 @@ This list matches the commands registered in `app/src/command.rs`.
 | --- | --- | --- | --- | --- |
 | Set Tunnel for Context | <kbd>⌘⇧B</kbd> | Global | Context | `context.set_tunnel` |
 | Manage Tunnels… | <kbd>⌘⇧T</kbd> | Global | Context | `tunnels.manage` |
+| Connections | <kbd>⌘⇧C</kbd> | Global | Window | `connections.open` |
+| Connections: Open in Window | <kbd>↵</kbd> | `ConnectionsWindow` | — | `connections.open_in_window` |
+| Connections: Disconnect… | <kbd>D</kbd> | `ConnectionsWindow` | — | `connections.disconnect` |
+| Connections: End Agent's Hold | <kbd>E</kbd> | `ConnectionsWindow` | — | `connections.end_agent_hold` |
 | Add Context to Window… | — | Global | Context | `context.add` |
 | Disconnect Active Context… | — | Global | Context | `context.disconnect` |
 | Disconnect All Contexts… | — | Global | Context | `context.disconnect_all` |

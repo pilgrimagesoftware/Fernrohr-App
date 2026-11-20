@@ -5,7 +5,8 @@
 //!
 //! - **New Window**, then **Contexts ▸**: every kubeconfig context; one
 //!   opens a main window connected to it.
-//! - **Settings…**, **MCP…** (Settings at Agent Access), **Tunnel Manager…**
+//! - **Settings…**, **MCP…** (Settings at Agent Access), **Connections…**,
+//!   **Tunnel Manager…**
 //! - a separator, **About Fernrohr**, **Fernrohr Documentation**, **Report
 //!   Issue** (#362)
 //! - a separator, then **Quit Fernrohr**.
@@ -47,6 +48,7 @@ pub enum Choice {
     Settings,
     /// Settings, at Agent Access: the MCP server's setting and agent setup.
     Mcp,
+    Connections,
     TunnelManager,
     NewWindow,
     About,
@@ -64,6 +66,7 @@ impl Choice {
             }),
             Choice::Settings => Box::new(crate::ui::settings::OpenSettings),
             Choice::Mcp => Box::new(crate::ui::settings::OpenAgentAccess),
+            Choice::Connections => Box::new(crate::ui::connections::ConnectionsOpen),
             Choice::TunnelManager => Box::new(crate::ui::tunnels::TunnelsManage),
             Choice::NewWindow => Box::new(crate::util::shell::NewWindow),
             Choice::About => Box::new(crate::ui::menu::About),
@@ -81,6 +84,7 @@ impl Choice {
             Choice::Context(_)
             | Choice::Settings
             | Choice::Mcp
+            | Choice::Connections
             | Choice::TunnelManager
             | Choice::NewWindow
             | Choice::About
@@ -105,6 +109,10 @@ pub fn items(contexts: &[String]) -> Vec<Item> {
         Item::Command {
             title: "MCP\u{2026}",
             choice: Choice::Mcp,
+        },
+        Item::Command {
+            title: "Connections\u{2026}",
+            choice: Choice::Connections,
         },
         Item::Command {
             title: "Tunnel Manager\u{2026}",

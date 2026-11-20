@@ -115,6 +115,17 @@ impl ClusterRegistry {
         .detach();
     }
 
+    /// Releases every holder of `context_name` - windows, agents and lingering
+    /// holds alike - dropping its session: the Connections window's Disconnect
+    /// (`connections-window`). Windows should close their panels for it first
+    /// ([`crate::util::shell::disconnect_everywhere`]); this then ends whatever
+    /// agents still hold.
+    pub fn release_all(cx: &mut App, context_name: &str) {
+        if cx.has_global::<Self>() {
+            cx.global_mut::<Self>().sessions.remove(context_name);
+        }
+    }
+
     /// Removes `holder` from every context's holders, dropping each session it
     /// leaves with none.
     fn release_everywhere(cx: &mut App, holder: Holder) {
@@ -155,15 +166,20 @@ impl ClusterRegistry {
             .and_then(|registry| registry.sessions.get(context_name))
             .map(|session| session.holders.iter().copied().collect())
             .unwrap_or_default();
-        holders.sort_by_key(|holder| !holder.is_window());
+        // A stable order, not the set's (review of App#433, note B): windows by
+        // id, then agents by id - so in the order they connected - then
+        // lingering holds.
+        holders.sort_by_key(|holder| match holder {
+            Holder::Window(window) => (0, window.as_u64()),
+            Holder::Agent(agent) => (1, agent.order()),
+            Holder::Lingering(hold) => (2, hold.order()),
+        });
         holders
     }
 
     /// The holder that first held `context_name`'s current session: who connected
     /// it, for the Connections window's "connected by" - `None` for a context with
     /// no session, or one created by a read and never held.
-    // UNWIRED(#367): read by the Connections window (section 4).
-    #[allow(dead_code)]
     pub fn connected_by(cx: &App, context_name: &str) -> Option<Holder> {
         cx.try_global::<Self>()
             .and_then(|registry| registry.sessions.get(context_name))

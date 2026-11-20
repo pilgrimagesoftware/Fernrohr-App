@@ -325,7 +325,9 @@ impl StatusBarView {
         items
     }
 
-    fn item_for(context_name: &str, cx: &App, now: Instant) -> StatusItem {
+    /// `context_name`'s item as its status bar capsule shows it, also read by the
+    /// Connections window so a state looks the same in both.
+    pub(crate) fn item_for(context_name: &str, cx: &App, now: Instant) -> StatusItem {
         let health = ClusterRegistry::health(cx, context_name);
         let (icon, text) = Self::icon_and_text(&health);
         let elapsed = Self::elapsed(&health, now);

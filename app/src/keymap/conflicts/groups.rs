@@ -71,6 +71,7 @@ pub(super) fn share_an_element<'a>(identifiers: impl IntoIterator<Item = &'a str
 #[cfg(test)]
 pub(super) const STANDALONE: &[&str] = &[
     "AddContextWindow",
+    "ConnectionsWindow",
     // gpui-component's dialog's own context.
     "Dialog",
     "Dock",

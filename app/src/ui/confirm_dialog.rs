@@ -261,7 +261,7 @@ fn render_details(details: &[Detail], cx: &App) -> impl IntoElement {
 /// the whole window, and the dialog draws last, so the stop after it may be
 /// one behind it: step on until focus is back inside - as gpui-base's own Tab
 /// does in a focus trap - and leave it on `dialog` if no stop inside is found.
-fn focus_first_stop_in(dialog: &FocusHandle, window: &mut Window, cx: &mut App) {
+pub(crate) fn focus_first_stop_in(dialog: &FocusHandle, window: &mut Window, cx: &mut App) {
     /// More stops than any window here has, so a lap always comes back round.
     const MAX_STEPS: usize = 200;
     for _ in 0..MAX_STEPS {

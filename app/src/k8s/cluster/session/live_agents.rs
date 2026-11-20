@@ -56,9 +56,6 @@ impl LiveAgents {
 
     /// The name `agent`'s client reported: `None` when it reported none, or the
     /// agent isn't live.
-    // UNWIRED(#367): read by the Connections window and status bar (sections 4
-    // and 5).
-    #[allow(dead_code)]
     pub fn name(cx: &App, agent: AgentId) -> Option<String> {
         cx.try_global::<Self>()
             .and_then(|live| live.agents.get(&agent).cloned().flatten())
