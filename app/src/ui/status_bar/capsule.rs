@@ -159,6 +159,19 @@ pub(super) fn render_capsule(
         Icon::new(item.icon).size(px(12.)).text_color(tint),
     )
     .debug_selector(move || icon_selector);
+    // An agent also holding the context: its own icon beside the state's,
+    // which it neither replaces nor recolors.
+    let agents = super::agents::tooltip(&item.agents).map(|tooltip| {
+        let selector = super::agents::agent_icon_selector(&context);
+        icon_tooltip::with_tooltip_text(
+            SharedString::from(selector.clone()),
+            tooltip,
+            Icon::new(IconName::Bot)
+                .size(px(12.))
+                .text_color(secondary_tint),
+        )
+        .debug_selector(move || selector)
+    });
     let name = item.context_name.clone();
     let name_for_fill = item.context_name.clone();
     let click_target = this.clone();
@@ -186,6 +199,7 @@ pub(super) fn render_capsule(
                     .map(|tunnel| secondary(format!("[{tunnel}]"), tunnel_selector(&context))),
             )
             .child(icon)
+            .children(agents)
             .children(item.elapsed.map(|elapsed| {
                 secondary(
                     format_age(elapsed.as_secs() as i64),
@@ -364,10 +378,12 @@ impl StatusBarView {
         let panel_count = main_window.read(cx).context_panel_count(&context_name);
         let other_windows =
             ClusterRegistry::window_holder_count(cx, &context_name).saturating_sub(1);
+        let agents = super::agents::agent_names(cx, &context_name);
         let body = context_lifecycle::disconnect_confirmation_body(
             &context_name,
             panel_count,
             other_windows,
+            &agents,
         );
         let title = format!("Disconnect {context_name}?");
         let target = self.main_window.clone();
