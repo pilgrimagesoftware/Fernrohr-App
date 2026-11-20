@@ -26,6 +26,8 @@ pub(crate) struct CommandTransport {
     running: Option<Running>,
     /// Overrides the login `PATH`, for tests.
     path: Option<String>,
+    /// Where the running command's pid is recorded for the owning tunnel.
+    pid_slot: crate::util::pidfile::PidSlot,
 }
 
 impl CommandTransport {
@@ -37,7 +39,14 @@ impl CommandTransport {
             tail: OutputTail::default(),
             running: None,
             path: None,
+            pid_slot: crate::util::pidfile::PidSlot::default(),
         }
+    }
+
+    /// Records the running command's pid in `slot`, while it runs.
+    pub(crate) fn with_pid_slot(mut self, slot: crate::util::pidfile::PidSlot) -> Self {
+        self.pid_slot = slot;
+        self
     }
 
     /// The running command's pid, for tests to signal it directly.
@@ -122,7 +131,12 @@ impl ForwardTransport for CommandTransport {
             });
         }
         let path = self.login_path().await;
-        self.running = Some(process::spawn(&self.argv, &path, &self.tail)?);
+        self.running = Some(process::spawn(
+            &self.argv,
+            &path,
+            &self.tail,
+            &self.pid_slot,
+        )?);
         self.wait_until_ready().await
     }
 

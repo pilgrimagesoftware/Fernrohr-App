@@ -176,7 +176,7 @@ fn sweep_ignores_non_pid_files_and_empty_dirs() {
     let dir = scratch_dir("empty");
     fs::write(dir.join("notes.txt"), "not a pidfile").unwrap();
 
-    assert_eq!(sweep_dir(&dir, looks_like_orphaned_forward), 0);
+    assert_eq!(sweep_dir(&dir, &[], looks_like_orphaned_forward), 0);
     assert!(dir.join("notes.txt").exists());
 
     let _ = fs::remove_dir_all(&dir);
@@ -212,11 +212,57 @@ fn live_forward_predicate_kills_a_live_stand_in_and_removes_its_pidfile() {
     let dir = scratch_dir("kill-live");
     let pidfile_path = write_pidfile(&dir, pid);
 
-    assert_eq!(sweep_dir(&dir, looks_like_live_forward), 1);
+    assert_eq!(sweep_dir(&dir, &[], looks_like_live_forward), 1);
     assert!(!pidfile_path.exists());
     let status = child.wait().expect("child should be waitable after kill");
     assert!(!status.success());
 
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Quiet mode's sweep (#367): a forward a live session uses is spared - not
+/// killed, its pidfile kept for its own `Drop` - while another is still killed.
+#[test]
+fn a_spared_live_forward_is_kept_while_another_is_killed() {
+    let mut spared = spawn_ssh_stand_in();
+    let mut leaked = spawn_ssh_stand_in();
+    let dir = scratch_dir("kill-live-except");
+    let spared_path = write_pidfile(&dir, spared.id());
+    let leaked_path = write_pidfile(&dir, leaked.id());
+
+    assert_eq!(sweep_dir(&dir, &[spared.id()], looks_like_live_forward), 1);
+
+    assert!(spared_path.exists(), "the spared forward's pidfile stays");
+    assert!(
+        spared.try_wait().expect("waitable").is_none(),
+        "the spared forward still runs"
+    );
+    assert!(!leaked_path.exists());
+    assert!(!leaked.wait().expect("waitable after kill").success());
+
+    let _ = spared.kill();
+    let _ = spared.wait();
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A pidfile owned by a slot records its pid there until it's dropped, and a
+/// newer pid in the slot isn't cleared by an older file going.
+#[test]
+fn a_pid_slot_follows_its_pidfile() {
+    let dir = scratch_dir("slot");
+    let slot = PidSlot::default();
+    assert_eq!(slot.get(), None);
+    let first = super::command::write_in(&dir, 41, "kubectl")
+        .expect("written")
+        .owned_by(&slot);
+    assert_eq!(slot.get(), Some(41));
+    let second = super::command::write_in(&dir, 42, "kubectl")
+        .expect("written")
+        .owned_by(&slot);
+    drop(first);
+    assert_eq!(slot.get(), Some(42), "the older file leaves the newer pid");
+    drop(second);
+    assert_eq!(slot.get(), None);
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -234,7 +280,7 @@ fn orphaned_forward_predicate_kills_an_orphaned_stand_in_and_removes_its_pidfile
     let dir = scratch_dir("sweep-orphan");
     let pidfile_path = write_pidfile(&dir, pid);
 
-    assert_eq!(sweep_dir(&dir, looks_like_orphaned_forward), 1);
+    assert_eq!(sweep_dir(&dir, &[], looks_like_orphaned_forward), 1);
     assert!(!pidfile_path.exists());
     // SIGKILL is delivered asynchronously, and the killed orphan lingers as a
     // zombie - which `kill -0` still finds - until init (or a CI runner's
@@ -260,7 +306,7 @@ fn a_non_ssh_pid_is_never_killed_by_either_predicate() {
     let pidfile_path = write_pidfile(&dir, pid);
 
     assert_eq!(
-        sweep_dir(&dir, looks_like_live_forward),
+        sweep_dir(&dir, &[], looks_like_live_forward),
         1,
         "still counted as a found pidfile"
     );
@@ -331,7 +377,7 @@ fn the_command_sweep_kills_a_matching_child_and_spares_a_recycled_pid() {
     let path = super::command::write_in(&dir, pid, "/opt/sdk/bin/gcloud").expect("pidfile");
     std::mem::forget(path);
     assert_eq!(
-        super::command::sweep_dir(&dir, super::command::looks_like_live),
+        super::command::sweep_dir(&dir, &[], super::command::looks_like_live),
         1
     );
     assert!(
@@ -344,7 +390,7 @@ fn the_command_sweep_kills_a_matching_child_and_spares_a_recycled_pid() {
     let path = super::command::write_in(&dir, pid, "gcloud").expect("pidfile");
     std::mem::forget(path);
     assert_eq!(
-        super::command::sweep_dir(&dir, super::command::looks_like_live),
+        super::command::sweep_dir(&dir, &[], super::command::looks_like_live),
         1
     );
     assert!(

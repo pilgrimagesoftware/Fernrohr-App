@@ -133,6 +133,22 @@ async fn ready_when_the_port_listens() {
     assert!(eventually(|| port_is_free(port)).await);
 }
 
+/// #367: the tunnel's pid slot names the running command while it runs - what
+/// quiet mode's sweep spares - and nothing once it's stopped.
+#[tokio::test]
+async fn the_pid_slot_names_the_running_command() {
+    let _serial = PORT_TESTS.lock().await;
+    let port = free_port();
+    let slot = crate::util::pidfile::PidSlot::default();
+    let mut transport = transport(&format!("listen:{port}"), port, Duration::from_secs(20))
+        .with_pid_slot(slot.clone());
+    transport.connect().await.expect("ready");
+    let pid = transport.pid().expect("running");
+    assert_eq!(slot.get(), Some(pid));
+    transport.stop().await;
+    assert_eq!(slot.get(), None);
+}
+
 /// 2.2: a command that exits first fails with its status and its output.
 #[tokio::test]
 async fn exiting_before_ready_fails_with_the_output() {
@@ -175,8 +191,10 @@ async fn a_timeout_quotes_what_the_command_printed() {
     let port = free_port();
     let mut transport = transport("late-hang", port, Duration::from_secs(1));
     let path = transport.login_path().await;
-    transport.running =
-        Some(process::spawn(&transport.argv, &path, &transport.tail).expect("started"));
+    transport.running = Some(
+        process::spawn(&transport.argv, &path, &transport.tail, &transport.pid_slot)
+            .expect("started"),
+    );
     let tail = transport.tail.clone();
     assert!(
         eventually_within(Duration::from_secs(60), || tail

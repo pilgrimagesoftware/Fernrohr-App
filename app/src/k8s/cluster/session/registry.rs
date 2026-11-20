@@ -217,6 +217,21 @@ impl ClusterRegistry {
             .unwrap_or_default()
     }
 
+    /// The pids of the forwards open sessions' connections run now - what quiet
+    /// mode's leftover sweep must spare, since a session still open after the
+    /// last window closed is an agent's, and its tunnel is in use (#367).
+    pub(crate) fn forward_pids_in_use(cx: &App) -> Vec<u32> {
+        cx.try_global::<Self>()
+            .map(|registry| {
+                registry
+                    .sessions
+                    .values()
+                    .filter_map(|session| session.connection.read(cx).forward_pid())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Returns `context_name`'s cluster connection, connecting lazily on first use.
     pub fn connection(cx: &mut App, context_name: &str) -> Entity<ClusterConnection> {
         Self::ensure_init(cx, context_name);
