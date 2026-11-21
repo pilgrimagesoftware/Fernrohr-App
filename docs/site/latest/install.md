@@ -16,6 +16,17 @@ architecture. Download the one for your system from the release page.
 
 The `.dmg` is for Apple silicon only.
 
+### Install with Homebrew
+
+Each release also updates a cask in the Pilgrimage Software tap:
+
+```sh
+brew install --cask pilgrimagesoftware/tap/fernrohr
+```
+
+The cask clears the quarantine flag after installing, so the Gatekeeper steps below don't apply
+to it.
+
 The app is ad-hoc signed, which lets Apple silicon run it, but it carries no Developer ID and
 isn't notarized. A copy downloaded through a browser is quarantined, so Gatekeeper reports it as
 damaged or from an unidentified developer.
