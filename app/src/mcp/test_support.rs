@@ -67,6 +67,7 @@ pub(super) fn test_context() -> ToolContext {
         approvals: super::approval::scripted::Scripted::deny().gate(),
         tunnels: Some(crate::util::test_paths::temp_path("mcp-tunnels")),
         connect_settle: crate::consts::MCP_CONNECT_SETTLE,
+        caller: None,
     }
 }
 
@@ -99,12 +100,12 @@ impl TestServer {
         context: ToolContext,
     ) -> Self {
         let endpoint = Endpoint::bind(paths).expect("the test endpoint binds");
-        let state = Arc::new(ServerState {
+        let state = Arc::new(ServerState::new(
             registry,
-            token: endpoint.files.token.clone(),
-            owner_uid: endpoint.owner_uid,
+            endpoint.files.token.clone(),
+            endpoint.owner_uid,
             context,
-        });
+        ));
         let files = endpoint.files.clone();
         let task = tokio::spawn(serve(endpoint.listener, state));
         Self { files, task }

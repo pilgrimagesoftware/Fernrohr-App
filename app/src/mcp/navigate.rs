@@ -14,6 +14,7 @@
 mod connect;
 mod request;
 
+use super::approval::{ApprovalRequest, approve};
 use super::cluster::session;
 use super::error::ToolError;
 use super::kinds::KindQuery;
@@ -104,23 +105,50 @@ async fn open_panel(input: OpenPanelInput, tools: ToolContext) -> ToolResult {
     let kind = session.kind(&tools, &query).await?;
     let (target, namespaces) = request::panel_target(&kind, namespace, name)?;
     let context = input.context;
-    let shown = tools
+    // Showing a context only this agent holds puts it in a window, where every
+    // other agent can then use it without asking: the user decides that first
+    // (`mcp-connections`, the user's decision on review of App#435). The shell
+    // makes that call in the same step that opens the panel; when it needs the
+    // user, ask, then try again with their permission.
+    let shown = match show(&tools, &context, target.clone(), namespaces.clone(), false).await? {
+        Err(NavigateError::NeedsApproval) => {
+            approve(&tools.approvals, ApprovalRequest::show_in_window(&context)).await?;
+            show(&tools, &context, target, namespaces, true).await?
+        }
+        shown => shown,
+    };
+    let shown = shown.map_err(|error| match error {
+        NavigateError::NoWindow => ToolError::UiUnavailable,
+        // Connected, but only a window that isn't a workspace (or none) holds it.
+        NavigateError::ContextNotHeld => ToolError::Disconnected {
+            context: context.clone(),
+        },
+        // Only asked for without permission, which the first attempt handled.
+        NavigateError::NeedsApproval => ToolError::Internal,
+    })?;
+    let (id, created) = shown;
+    Ok(ToolOutput::new(object(json!({
+        "panel_id": panel_id(id),
+        "created": created,
+    }))))
+}
+
+/// One attempt at `shell::open_panel` on the main thread.
+async fn show(
+    tools: &ToolContext,
+    context: &str,
+    target: crate::ui::nav::NavTarget,
+    namespaces: Vec<String>,
+    may_show_agent_only: bool,
+) -> Result<Result<(u64, bool), NavigateError>, ToolError> {
+    let context = context.to_string();
+    tools
         .foreground
         .run(move |cx| {
-            shell::open_panel(context.clone(), target, namespaces, cx).map_err(|error| {
-                match error {
-                    NavigateError::NoWindow => ToolError::UiUnavailable,
-                    // Connected, but only a window that isn't a workspace (or
-                    // none) holds it.
-                    NavigateError::ContextNotHeld => ToolError::Disconnected { context },
-                }
-            })
+            shell::open_panel(context, target, namespaces, may_show_agent_only, cx)
+                .map(|shown| (shown.id.as_u64(), shown.created))
         })
-        .await??;
-    Ok(ToolOutput::new(object(json!({
-        "panel_id": panel_id(shown.id.as_u64()),
-        "created": shown.created,
-    }))))
+        .await
 }
 
 /// A panel's ID as a client sees it. Opaque: stable while the panel stays

@@ -193,6 +193,13 @@ pub const TUNNELS_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
 pub const TUNNELS_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
     gpui_kit::size(gpui_kit::px(560.), gpui_kit::px(440.));
 
+/// The Connections window's starting size (centered on screen) and the smallest it may be
+/// resized to: a few rows of holders and the row's three icon buttons.
+pub const CONNECTIONS_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(720.), gpui_kit::px(480.));
+pub const CONNECTIONS_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
+    gpui_kit::size(gpui_kit::px(520.), gpui_kit::px(320.));
+
 /// The Settings window's starting size (centered on screen) and the smallest it may be
 /// resized to: the sections sidebar beside a list of every command and its key.
 pub const SETTINGS_WINDOW_SIZE: gpui_kit::Size<gpui_kit::Pixels> =
@@ -321,6 +328,17 @@ pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// call is its own connection, and a call awaiting user approval holds one,
 /// so this bounds the work a misbehaving client can queue up.
 pub(crate) const MCP_MAX_CONNECTIONS: usize = 16;
+
+/// `mcp-connections`: how many MCP sessions (one per running `fernrohr mcp`,
+/// so one per MCP client) the app keeps open at once. A session holds its
+/// socket for the client's whole life, so sessions get their own budget rather
+/// than taking request slots.
+pub(crate) const MCP_MAX_SESSIONS: usize = 8;
+
+/// `mcp-connections` design decision 3: how long an ended MCP session's
+/// connections stay open, ownerless, before they're released. Only delays the
+/// disconnect - nothing can claim them meanwhile (Security 2).
+pub(crate) const MCP_SESSION_GRACE: Duration = Duration::from_secs(30);
 
 /// `agent-mcp`: how many objects `list_resources` returns in one page when
 /// the client doesn't say, and the most it may ask for - a page, not a whole

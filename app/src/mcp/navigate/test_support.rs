@@ -12,7 +12,7 @@ use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
 use crate::k8s::test_recorder::Recorder;
-use crate::mcp::read::test_support::{open, tools};
+use crate::mcp::read::test_support::{open_unheld, tools};
 use crate::mcp::tools::ToolContext;
 use crate::ui::nav::NavTarget;
 use crate::util::shell::MainWindow;
@@ -62,7 +62,7 @@ pub(in crate::mcp) fn harness_with(
 /// with it.
 pub(in crate::mcp) fn reopen(cx: &mut TestAppContext, h: &Harness, contexts: &[&str]) {
     for context in contexts {
-        open(
+        open_unheld(
             cx,
             context,
             ConnectionState::Connected(h.client.clone()),

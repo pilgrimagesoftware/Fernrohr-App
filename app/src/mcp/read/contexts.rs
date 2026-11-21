@@ -2,7 +2,9 @@
 //! it asks for anything else.
 
 use super::shape::output;
-use crate::mcp::cluster::{ContextStatus, kubeconfig_contexts, session, status};
+use crate::mcp::cluster::{
+    ContextStatus, accessible, caller_agent, kubeconfig_contexts, session, status,
+};
 use crate::mcp::kinds::kind_json;
 use crate::mcp::tools::{ToolContext, ToolKind, ToolRegistry, ToolResult};
 use schemars::JsonSchema;
@@ -38,17 +40,20 @@ async fn list_contexts(_: ListContextsInput, tools: ToolContext) -> ToolResult {
     let kubeconfig = kubeconfig_contexts(tools.kubeconfig.clone())
         .await
         .unwrap_or_default();
+    let agent = caller_agent(&tools);
     let statuses: Vec<(String, ContextStatus)> = tools
         .foreground
         .run(move |cx| {
-            let names: BTreeSet<String> = kubeconfig
+            // Open contexts beyond the kubeconfig's only when this caller may
+            // use them, so another agent's connection isn't even named.
+            let open = crate::k8s::cluster::session::ClusterRegistry::open_contexts(cx)
                 .into_iter()
-                .chain(crate::k8s::cluster::session::ClusterRegistry::open_contexts(cx))
-                .collect();
+                .filter(|name| accessible(cx, name, agent));
+            let names: BTreeSet<String> = kubeconfig.into_iter().chain(open).collect();
             names
                 .into_iter()
                 .map(|name| {
-                    let status = status(cx, &name);
+                    let status = status(cx, &name, agent);
                     (name, status)
                 })
                 .collect()

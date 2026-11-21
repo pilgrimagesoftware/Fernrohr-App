@@ -19,13 +19,15 @@ The window title names the context the window shows. With two or more contexts i
 
 **Close a window.** Choose Window > Close Window or press <kbd>⌘W</kbd>. Close Window closes the focused panel first, and closes the window only when no panel is on screen. If closing would disconnect a context that no other window uses, stop a tunnel, or discard an unsaved edit, Fernrohr asks first. The window's close button asks the same question. Press <kbd>Enter</kbd> to close, or <kbd>Esc</kbd> to keep the window. When an unsaved edit would be lost, <kbd>Enter</kbd> keeps the window instead, and only the dialog's **Close Window** button or <kbd>⌘⌫</kbd> closes it. On Linux, closing the last window quits Fernrohr after it saves its state. On macOS it keeps running in the menu bar; see [Quiet mode](#quiet-mode).
 
-Fernrohr remembers each window's size and position, the contexts it used, and its panels and their arrangement. On the next launch it reopens the windows the same way and reconnects their contexts. If the saved state file can't be read, Fernrohr starts with one default window and leaves the unreadable file in place.
+Fernrohr remembers each window's size and position, the contexts it used, and its panels and their arrangement. On the next launch it reopens the windows the same way and reconnects their contexts. A window last placed on a display that's no longer connected opens on the main display instead, at its saved size if that fits. If the saved state file can't be read, Fernrohr starts with one default window and leaves the unreadable file in place.
 
 ### Quiet mode
 
-On macOS, closing the last window doesn't quit Fernrohr. It disconnects every cluster, as quitting
-would, and keeps running with its icon in the menu bar. Its tunnels, port-forwards, shells and log
-streams stop, and it saves your windows' state.
+On macOS, closing the last window doesn't quit Fernrohr. It disconnects the clusters your windows
+held and keeps running with its icon in the menu bar. Their tunnels, port-forwards, shells and log
+streams stop, and it saves your windows' state. A cluster an AI agent holds stays connected, with its
+tunnel, while the MCP server keeps running, so the agent can go on reading it. See
+[When no window is open]({{ '/latest/agents/' | relative_url }}#when-no-window-is-open).
 
 The icon's menu brings Fernrohr back:
 
@@ -35,6 +37,7 @@ The icon's menu brings Fernrohr back:
 | Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it, at the size and position of the window you closed last. |
 | Settings… | Opens Settings. |
 | MCP… | Opens Settings at Agent Access, with the MCP server's setting. |
+| Connections… | Opens the Connections window, which lists every open connection and who holds it. |
 | Tunnel Manager… | Opens the Tunnel Manager. |
 | About Fernrohr | Opens the About window. |
 | Fernrohr Documentation | Opens this documentation in your browser. |
@@ -141,7 +144,7 @@ Moving the panel changes only the current window. **Make Resource Panel's Side t
 
 ## The command palette
 
-Press <kbd>⇧⌘P</kbd>, choose View > Command Palette, or run **Command Palette**. Every user-facing action is in the palette, with its key binding shown. Type to filter, move with <kbd>↑</kbd> and <kbd>↓</kbd>, and press <kbd>Enter</kbd> to run the highlighted command. Commands that belong to one panel, such as the pod commands, appear only while that panel has focus.
+Press <kbd>⇧⌘P</kbd>, choose View > Command Palette, or run **Command Palette**. Every user-facing action is in the palette, with its key binding shown. Type to filter, move with <kbd>↑</kbd> and <kbd>↓</kbd>, and press <kbd>Enter</kbd> to run the highlighted command. Commands that belong to one panel, such as the pod commands, appear only while that panel has focus. A command that can't run right now is listed dimmed, with the reason beside it, and the palette skips it: the arrows don't stop on it, and clicking it does nothing.
 
 Hovering over a row with the mouse doesn't move the keyboard selection. You can change any key in `keymap.toml`. See {{ '/latest/settings/' | relative_url }} and {{ '/latest/reference/keybindings/' | relative_url }}.
 
@@ -156,7 +159,7 @@ The menu bar has seven menus, in this order: App, Context, Edit, View, Navigate,
 | Edit | The platform's text-editing items. Fernrohr adds none |
 | View | Command Palette, then theme and text size, then the Resource panel items, then Maximize/Restore Panel, then table columns |
 | Navigate | Focus Next Panel, Focus Previous Panel, Focus Resources, the tab commands, and a Select Tab submenu |
-| Window | One entry per open window, plus New Window, Save Panel Layout…, Saved Layouts…, Open Logs by Label…, Minimize, Zoom and Close Window |
+| Window | One entry per open window, plus New Window, Save Panel Layout…, Saved Layouts…, Connections, Open Logs by Label…, Minimize, Zoom and Close Window |
 | Help | Fernrohr Documentation, Report Issue |
 
 Navigate holds only commands that work whichever panel has focus. A command for one panel type, such as describing the selected pod, stays out of the menu. It remains in the palette, in `keymap.toml` and in that panel's hint row.

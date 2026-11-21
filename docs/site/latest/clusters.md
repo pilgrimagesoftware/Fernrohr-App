@@ -74,6 +74,12 @@ Connection failed or Awaiting confirmation. States other than Connected also sho
 have lasted, and a failure shows its reason. A context that needs your attention is filled in the
 warning color and sorted to the front.
 
+When a coding agent also uses the context, the capsule shows an agent icon beside its state. Point
+at it to see which agents, named as they report themselves, for example "Also used by an agent
+reporting itself as “assistant”". A name is whatever the agent's MCP client says, so treat it as a
+label, not proof of who the agent is. The [Connections window](#see-every-connection) lists every
+agent's connections, including ones no window shows.
+
 A tunnel dropping, or a credential plugin needing a new sign-in, pauses the connection instead
 of ending it. The status bar shows Reconnecting or Refreshing credentials once for the whole
 window. Panels stay open with their last data, and resume when the tunnel returns or the
@@ -90,6 +96,19 @@ opens Report Issue with the error filled in. See
 
 To retry, press <kbd>Enter</kbd> or click Connect again, on the same context or another. Choosing
 a different context needs no reset.
+
+A context already in the window can fail too, for example when a restored workspace opens while
+its cluster is unreachable. Its capsule shows Connection failed, and its panels say they couldn't
+connect. Fix the cause, then try again:
+
+- **Mouse:** open the menu on the context's capsule and choose **Reconnect**. Only a failed
+  context's menu has it.
+- **Keyboard:** run **Reconnect Failed Contexts** from the command palette or the Context menu. It
+  tries every failed context in the window again and leaves the others alone. While none has
+  failed, the palette lists it dimmed with the reason. It has no default key. To give it one, bind
+  `context.reconnect_failed` in `keymap.toml`.
+
+The context's panels stay open and fill in once the connection succeeds.
 
 ### When the connection times out
 
@@ -121,7 +140,9 @@ the kubeconfig for a cluster that needs a proxy.
   which acts on the window's active context. It has no default key.
 
 Fernrohr asks you to confirm. The dialog says how many panels for that context will close, and
-that the context stays connected if other windows still use it. Confirm with <kbd>Enter</kbd> or
+that the context stays connected if other windows or agents still use it, naming each agent as it
+reports itself. Disconnecting from the window leaves an agent's connection open; to end that too,
+use the [Connections window](#see-every-connection). Confirm with <kbd>Enter</kbd> or
 by clicking Disconnect, or cancel with <kbd>Esc</kbd>.
 
 To disconnect several contexts at once, when the window has more than one:
@@ -139,4 +160,50 @@ Connections are shared between windows. Two windows using the same context share
 so disconnecting in one leaves the other receiving live updates. The connection, and any tunnel it
 holds, shuts down when the last window using the context disconnects or closes.
 
-*Summarizes the capability specs: `cluster-connection`, `cluster-picker`.*
+## See every connection
+
+The Connections window lists every connection Fernrohr has open, whichever window or MCP client
+holds it. An agent can hold a connection that no window shows, so this is where you see it. Open
+it with Window > Connections, with Connections… in the menu bar icon's menu, with
+<kbd>⌘⇧C</kbd>, or by running Connections in the command palette. If it is already open, the same
+command brings it forward.
+
+Each row shows:
+
+- The context name, then its tunnel in brackets if it has one, then its state with the same icon and
+  label as the status bar's capsule. Hover the state for how long it has lasted and a failure's
+  reason.
+- Each holder. A window is listed by its title. An agent is listed as it named itself, for example
+  `reports itself as "my-assistant"`, or as `Unnamed agent` if its client gave no name. The name is
+  only what the client reported, so don't treat it as proof of who it is. The agent that opened
+  the connection is marked "connected it", even after a window also uses it.
+
+The list updates as connections open, change state and close. A row disappears when its last
+holder lets go, and the window says "No context is connected" when none is left. A connection that
+only an ended agent session still holds is listed with no holder named, and closes by itself
+shortly after the session ended.
+
+Move the selection with <kbd>↑</kbd> and <kbd>↓</kbd> or by clicking a row. Hovering never moves
+it. Each row has three icon buttons, and the keys below act on the selected row. A hint row at the
+bottom of the window shows the keys.
+
+| Action | Key | What it does |
+| --- | --- | --- |
+| Open in window | <kbd>↵</kbd> | Adds the context to the frontmost window, with its Pods panel, or opens a window for it if none is open. The window uses the connection that is already open, so nothing is asked and nothing reconnects. |
+| Disconnect… | <kbd>D</kbd> | Releases every holder. |
+| End agent's hold | <kbd>E</kbd> | Ends one agent's hold without asking. Each agent on a row has its own button. |
+
+Disconnect asks first. The dialog names each window whose panels for the context will close and
+each agent that will lose it. Confirm with <kbd>Enter</kbd> or cancel with <kbd>Esc</kbd>.
+
+End agent's hold ends one agent's hold and leaves everyone else's. Click the button beside the
+agent you want. With <kbd>E</kbd>, a row with one agent ends that agent's hold at once; when several
+agents use it, a dialog lists them, so you choose one. <kbd>Tab</kbd> moves between them,
+<kbd>Enter</kbd> ends the focused agent's hold, and <kbd>Esc</kbd> ends nothing. The connection
+closes if nothing else holds it, and the agent's next request for that context behaves as if it had never connected it. If
+it asks to connect again, you are asked to approve it, as for a new connection.
+
+When an agent connects a context that no window holds, and you approve it, the Connections window
+opens with that row selected.
+
+*Summarizes the capability specs: `cluster-connection`, `cluster-picker`, `connections-window`.*

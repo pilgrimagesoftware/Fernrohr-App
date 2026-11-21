@@ -111,11 +111,11 @@ async fn open_window_restores_every_context_even_one_with_no_panels(cx: &mut Tes
         );
     });
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "kind-dev")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "kind-dev")),
         1
     );
     assert_eq!(
-        cx.update(|cx| ClusterRegistry::holder_count(cx, "staging")),
+        cx.update(|cx| ClusterRegistry::window_holder_count(cx, "staging")),
         1,
         "the second context is held even though it has no panel open yet"
     );

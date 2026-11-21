@@ -209,6 +209,8 @@ pub struct SshTransport {
     /// process group (not just the direct child) and remove the pidfile that lets a
     /// future app startup sweep this forward if the process crashes first. Section 3.4.
     pidfile: Option<pidfile::PidFile>,
+    /// Where `pidfile`'s pid is recorded for the tunnel that owns this transport.
+    pid_slot: pidfile::PidSlot,
 }
 
 impl SshTransport {
@@ -218,7 +220,14 @@ impl SshTransport {
             config,
             child: None,
             pidfile: None,
+            pid_slot: pidfile::PidSlot::default(),
         }
+    }
+
+    /// Records the pid of each `ssh` this transport spawns in `slot`, while it runs.
+    pub fn with_pid_slot(mut self, slot: pidfile::PidSlot) -> Self {
+        self.pid_slot = slot;
+        self
     }
 
     /// The spawned child's pid, once `connect` has run. Test-only: lets
@@ -275,7 +284,9 @@ impl crate::forward::supervisor::ForwardTransport for SshTransport {
         let local_port = self.config.local_port;
 
         if let Some(pid) = child.id() {
-            self.pidfile = pidfile::PidFile::write(pid).ok();
+            self.pidfile = pidfile::PidFile::write(pid)
+                .ok()
+                .map(|file| file.owned_by(&self.pid_slot));
         }
 
         let deadline = tokio::time::Instant::now() + SSH_READINESS_PROBE_TIMEOUT;

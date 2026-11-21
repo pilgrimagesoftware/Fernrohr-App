@@ -24,12 +24,14 @@ pub(super) struct ClusterSession {
     pub(super) watchers: WatchRegistry<WatchKey>,
     // Kept alive for as long as the session exists; aborts on drop like every other
     // owned background task. `None` for an unbound context, which has no forward to watch.
-    _health: Option<gpui_kit::Task<()>>,
-    /// `window-context-bar` design.md decision 2: which windows currently use this
-    /// context. The session (and so its connection and tunnel forward) lives exactly
-    /// as long as this set is non-empty - see [`ClusterRegistry::hold`]/[`release`](
-    /// ClusterRegistry::release).
-    pub(super) holders: HashSet<WindowId>,
+    pub(super) _health: Option<gpui_kit::Task<()>>,
+    /// `mcp-connections` design decision 2: which windows and agents currently use
+    /// this context. The session (and so its connection and tunnel forward) lives
+    /// exactly as long as this set is non-empty - see [`ClusterRegistry::hold`]/
+    /// [`release`](ClusterRegistry::release).
+    pub(super) holders: HashSet<Holder>,
+    /// The first holder this session had: who connected it.
+    pub(super) connected_by: Option<Holder>,
 }
 
 /// One kind's shared watch on a context: the table its panels render from, and the
@@ -76,40 +78,27 @@ impl ClusterRegistry {
     }
 
     /// [`Self::connection`] for an explicit attempt to connect - the picker's
-    /// Connect - which, after a failure, is a retry (#198): a session whose
-    /// connection failed, and that no window holds, is dropped and connected
-    /// afresh rather than handed back with its old failure. A failed session a
-    /// window holds stays - its panels observe that connection. Readers that
+    /// Connect - which, after a failure, is a retry (#198): a failed connection
+    /// is redialled in place (`ClusterConnection::redial`), whoever holds it, so
+    /// every holder - a window's panels, an agent's session - keeps the very
+    /// entity it observes (`mcp-connections` design decision 6). Readers that
     /// only look at a context's connection keep using [`Self::connection`],
     /// which never re-dials.
     pub fn connection_retrying(cx: &mut App, context_name: &str) -> Entity<ClusterConnection> {
-        let name = context_name.to_string();
-        Self::retry_with(cx, context_name, move |cx| {
-            ClusterConnection::connect(cx, Some(name))
-        })
+        Self::retry_with(cx, context_name, |connection, cx| connection.redial(cx))
     }
 
-    /// [`Self::connection_retrying`] with the connect it starts injected - the
-    /// seam tests use instead of a real kubeconfig and cluster.
+    /// [`Self::connection_retrying`] with the redial injected - the seam tests
+    /// use instead of a real kubeconfig and cluster.
     pub(super) fn retry_with(
         cx: &mut App,
         context_name: &str,
-        connect: impl FnOnce(&mut App) -> Entity<ClusterConnection>,
+        redial: impl FnOnce(&mut ClusterConnection, &mut gpui_kit::Context<ClusterConnection>) -> bool,
     ) -> Entity<ClusterConnection> {
-        let stale = cx
-            .try_global::<Self>()
-            .and_then(|registry| registry.sessions.get(context_name))
-            .is_some_and(|session| {
-                session.holders.is_empty()
-                    && matches!(
-                        session.connection.read(cx).state,
-                        ConnectionState::Failed(_)
-                    )
-            });
-        if stale {
-            cx.global_mut::<Self>().sessions.remove(context_name);
-            let connection = connect(cx);
-            Self::insert_session(cx, context_name, connection.clone());
+        if let Some(connection) = Self::existing_connection(cx, context_name) {
+            if matches!(connection.read(cx).state, ConnectionState::Failed(_)) {
+                Self::reconnect_with(cx, context_name, redial);
+            }
             return connection;
         }
         Self::connection(cx, context_name)
@@ -119,19 +108,7 @@ impl ClusterRegistry {
     /// driving pause/resume off its forward's state when it has one.
     fn insert_session(cx: &mut App, context_name: &str, connection: Entity<ClusterConnection>) {
         let pods = cx.new(|_| PodsTable::default());
-        let health = connection.read(cx).forward_state().map(|state_rx| {
-            let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
-                health::drive(state_rx, tx).await;
-            });
-            let context_name = context_name.to_string();
-            cx.spawn(async move |cx| {
-                crate::runtime::drain(rx, move |edge| {
-                    let context_name = context_name.clone();
-                    cx.update(move |cx| Self::apply_health_transition(cx, &context_name, edge));
-                })
-                .await;
-            })
-        });
+        let health = Self::drive_health(cx, context_name, &connection);
         cx.global_mut::<Self>().sessions.insert(
             context_name.to_string(),
             ClusterSession {
@@ -145,8 +122,32 @@ impl ClusterRegistry {
                 watchers: WatchRegistry::new(),
                 _health: health,
                 holders: HashSet::new(),
+                connected_by: None,
             },
         );
+    }
+
+    /// Pause/resume driven off `connection`'s forward's state, when it has a
+    /// forward - the session keeps the task. A reconnect that acquires a new
+    /// forward drives off that one instead (`session::reconnect`).
+    pub(super) fn drive_health(
+        cx: &mut App,
+        context_name: &str,
+        connection: &Entity<ClusterConnection>,
+    ) -> Option<gpui_kit::Task<()>> {
+        connection.read(cx).forward_state().map(|state_rx| {
+            let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
+                health::drive(state_rx, tx).await;
+            });
+            let context_name = context_name.to_string();
+            cx.spawn(async move |cx| {
+                crate::runtime::drain(rx, move |edge| {
+                    let context_name = context_name.clone();
+                    cx.update(move |cx| Self::apply_health_transition(cx, &context_name, edge));
+                })
+                .await;
+            })
+        })
     }
 
     /// Registers `context_name` with a connection fixed at `state`, so tests never race
@@ -213,6 +214,21 @@ impl ClusterRegistry {
     pub fn open_contexts(cx: &App) -> Vec<String> {
         cx.try_global::<Self>()
             .map(|registry| registry.sessions.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// The pids of the forwards open sessions' connections run now - what quiet
+    /// mode's leftover sweep must spare, since a session still open after the
+    /// last window closed is an agent's, and its tunnel is in use (#367).
+    pub(crate) fn forward_pids_in_use(cx: &App) -> Vec<u32> {
+        cx.try_global::<Self>()
+            .map(|registry| {
+                registry
+                    .sessions
+                    .values()
+                    .filter_map(|session| session.connection.read(cx).forward_pid())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

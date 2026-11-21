@@ -113,6 +113,9 @@ pub(super) struct ToolContext {
     /// How long `connect_context` waits for a connection to settle:
     /// [`MCP_CONNECT_SETTLE`](crate::consts::MCP_CONNECT_SETTLE) but in tests.
     pub(super) connect_settle: std::time::Duration,
+    /// The MCP session the call comes from: set by the endpoint for every
+    /// call, `None` only in tests that call tools directly.
+    pub(super) caller: Option<super::session::Caller>,
 }
 
 type Handler =

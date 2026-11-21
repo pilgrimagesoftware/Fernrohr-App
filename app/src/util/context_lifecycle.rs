@@ -68,6 +68,7 @@ pub(crate) fn disconnect_confirmation_body(
     context_name: &str,
     panel_count: usize,
     other_windows: usize,
+    agents: &[Option<String>],
 ) -> crate::ui::confirm_text::ConfirmText {
     let panels = match panel_count {
         0 => "No open panels".to_string(),
@@ -86,6 +87,18 @@ pub(crate) fn disconnect_confirmation_body(
             .text(" ")
             .name(context_name)
             .text(&format!(" stays connected in {windows}."));
+    }
+    // `mcp-connections`: an agent holding it keeps the connection too. Named as
+    // it reports itself - a label, never an identity.
+    if !agents.is_empty() {
+        let agents: Vec<String> = agents
+            .iter()
+            .map(crate::ui::status_bar::describe_agent)
+            .collect();
+        body = body
+            .text(" ")
+            .name(context_name)
+            .text(&format!(" stays connected for {}.", agents.join(", ")));
     }
     body
 }
@@ -201,15 +214,15 @@ mod tests {
     #[test]
     fn confirmation_names_the_panel_count_with_no_other_window() {
         assert_eq!(
-            disconnect_confirmation_body("northbay", 3, 0).plain(),
+            disconnect_confirmation_body("northbay", 3, 0, &[]).plain(),
             "3 open panels for \u{201c}northbay\u{201d} will close."
         );
         assert_eq!(
-            disconnect_confirmation_body("northbay", 1, 0).plain(),
+            disconnect_confirmation_body("northbay", 1, 0, &[]).plain(),
             "1 open panel for \u{201c}northbay\u{201d} will close."
         );
         assert_eq!(
-            disconnect_confirmation_body("northbay", 0, 0).plain(),
+            disconnect_confirmation_body("northbay", 0, 0, &[]).plain(),
             "No open panels for \u{201c}northbay\u{201d} will close."
         );
     }
@@ -217,7 +230,7 @@ mod tests {
     #[test]
     fn confirmation_names_a_single_other_window() {
         assert_eq!(
-            disconnect_confirmation_body("southbay", 2, 1).plain(),
+            disconnect_confirmation_body("southbay", 2, 1, &[]).plain(),
             "2 open panels for \u{201c}southbay\u{201d} will close. \
              \u{201c}southbay\u{201d} stays connected in 1 other window."
         );
@@ -226,7 +239,7 @@ mod tests {
     #[test]
     fn confirmation_names_several_other_windows() {
         assert_eq!(
-            disconnect_confirmation_body("southbay", 2, 3).plain(),
+            disconnect_confirmation_body("southbay", 2, 3, &[]).plain(),
             "2 open panels for \u{201c}southbay\u{201d} will close. \
              \u{201c}southbay\u{201d} stays connected in 3 other windows."
         );

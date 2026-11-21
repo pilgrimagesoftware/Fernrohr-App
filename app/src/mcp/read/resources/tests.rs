@@ -342,3 +342,49 @@ async fn an_object_larger_than_the_budget_is_refused(cx: &mut TestAppContext) {
         })
     );
 }
+
+/// `mcp-connections` "Read after closing every window": with the user's
+/// window gone, a context the agent holds still answers its reads - no
+/// reconnect, no approval.
+#[gpui_kit::test]
+async fn an_agent_still_reads_after_every_window_closes(cx: &mut TestAppContext) {
+    let tools = crate::mcp::read::test_support::tools(cx, &["dev"]);
+    let (cluster, client) = FakeCluster::start(cx);
+    for (namespace, name) in [("team-a", "api"), ("team-a", "web"), ("team-b", "db")] {
+        cluster.apply("/api/v1", "pods", pod(namespace, name));
+    }
+    crate::mcp::read::test_support::open_unheld(
+        cx,
+        "dev",
+        ConnectionState::Connected(client),
+        Some(kinds()),
+    );
+    let agent = crate::k8s::cluster::session::AgentId::next();
+    let window = crate::mcp::read::test_support::USER_WINDOW();
+    cx.update(|cx| {
+        use crate::k8s::cluster::session::ClusterRegistry;
+        crate::k8s::cluster::session::LiveAgents::open(cx, agent, None);
+        ClusterRegistry::hold(cx, "dev", window);
+        ClusterRegistry::hold(cx, "dev", agent);
+        ClusterRegistry::release_window(cx, window);
+    });
+    let tools = ToolContext {
+        caller: Some(crate::mcp::session::Caller {
+            agent,
+            client_name: Some("assistant".into()),
+        }),
+        ..tools
+    };
+
+    let output = call(
+        cx,
+        &tools,
+        "list_resources",
+        json!({"context": "dev", "kind": "pod"}),
+    )
+    .await
+    .expect("the agent's read answers");
+    let mut listed = names(&output.content);
+    listed.sort();
+    assert_eq!(listed, ["api", "db", "web"]);
+}

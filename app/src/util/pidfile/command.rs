@@ -22,7 +22,11 @@ pub(super) fn write_in(dir: &Path, pid: u32, program: &str) -> std::io::Result<P
     fs::create_dir_all(dir)?;
     let path = dir.join(format!("{pid}.pid"));
     fs::write(&path, format!("{pid}\n{}", basename(program)))?;
-    Ok(PidFile { path })
+    Ok(PidFile {
+        path,
+        pid,
+        slot: None,
+    })
 }
 
 fn basename(program: &str) -> &str {
@@ -35,7 +39,11 @@ fn basename(program: &str) -> &str {
 /// The command-tunnel twin of the `ssh` sweep loop: every `*.pid` file is removed,
 /// and its process group killed only while alive and when `should_kill` agrees for
 /// the recorded program.
-pub(super) fn sweep_dir(dir: &Path, should_kill: impl Fn(u32, &str) -> bool) -> usize {
+pub(super) fn sweep_dir(
+    dir: &Path,
+    spare: &[u32],
+    should_kill: impl Fn(u32, &str) -> bool,
+) -> usize {
     let Ok(entries) = fs::read_dir(dir) else {
         return 0;
     };
@@ -45,7 +53,14 @@ pub(super) fn sweep_dir(dir: &Path, should_kill: impl Fn(u32, &str) -> bool) -> 
         if path.extension().is_none_or(|ext| ext != "pid") {
             continue;
         }
-        if let Some((pid, program)) = read(&path) {
+        let recorded = read(&path);
+        if recorded
+            .as_ref()
+            .is_some_and(|(pid, _)| spare.contains(pid))
+        {
+            continue;
+        }
+        if let Some((pid, program)) = recorded {
             if process_group_alive(pid) && should_kill(pid, &program) {
                 kill_process_group(pid);
             }

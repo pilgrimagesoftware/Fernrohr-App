@@ -72,7 +72,7 @@ impl StatusBarView {
             .sum();
         let staying: Vec<String> = names
             .iter()
-            .filter(|name| ClusterRegistry::holder_count(cx, name) > 1)
+            .filter(|name| ClusterRegistry::window_holder_count(cx, name) > 1)
             .cloned()
             .collect();
         let confirmation = Confirmation {

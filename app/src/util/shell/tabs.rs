@@ -147,7 +147,7 @@ impl MainWindow {
         };
         let holders: Vec<usize> = contexts
             .iter()
-            .map(|context_name| ClusterRegistry::holder_count(cx, context_name))
+            .map(|context_name| ClusterRegistry::window_holder_count(cx, context_name))
             .collect();
         held_here_alone(contexts, &holders)
     }
@@ -175,7 +175,7 @@ impl MainWindow {
         };
         let holders: Vec<usize> = contexts
             .iter()
-            .map(|context_name| ClusterRegistry::holder_count(cx, context_name))
+            .map(|context_name| ClusterRegistry::window_holder_count(cx, context_name))
             .collect();
         losing_a_tunnel(contexts, &holders, |context_name| {
             // The window holds `context_name`, so its session exists;

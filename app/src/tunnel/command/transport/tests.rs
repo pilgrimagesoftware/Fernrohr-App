@@ -49,6 +49,13 @@ fn command_tunnel_helper() {
             println!("Enter passphrase for key:");
             std::thread::sleep(std::time::Duration::from_secs(60));
         }
+        "late-hang" => {
+            // A slow start, as on a loaded machine (#408): the prompt comes
+            // after a 1 s readiness timeout would already have passed.
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            println!("Enter passphrase for key:");
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
         other => panic!("unknown helper mode {other}"),
     }
 }
@@ -92,13 +99,22 @@ fn transport(mode: &str, port: u16, timeout: Duration) -> CommandTransport {
 }
 
 async fn eventually(condition: impl Fn() -> bool) -> bool {
-    for _ in 0..200 {
+    eventually_within(Duration::from_secs(5), condition).await
+}
+
+/// Whether `condition` holds within `limit`, checked every 25 ms - so it
+/// returns as soon as it does, however long `limit` is.
+async fn eventually_within(limit: Duration, condition: impl Fn() -> bool) -> bool {
+    let deadline = tokio::time::Instant::now() + limit;
+    loop {
         if condition() {
             return true;
         }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    false
 }
 
 fn port_is_free(port: u16) -> bool {
@@ -115,6 +131,22 @@ async fn ready_when_the_port_listens() {
     assert!(transport.health_check().await.is_ok());
     transport.stop().await;
     assert!(eventually(|| port_is_free(port)).await);
+}
+
+/// #367: the tunnel's pid slot names the running command while it runs - what
+/// quiet mode's sweep spares - and nothing once it's stopped.
+#[tokio::test]
+async fn the_pid_slot_names_the_running_command() {
+    let _serial = PORT_TESTS.lock().await;
+    let port = free_port();
+    let slot = crate::util::pidfile::PidSlot::default();
+    let mut transport = transport(&format!("listen:{port}"), port, Duration::from_secs(20))
+        .with_pid_slot(slot.clone());
+    transport.connect().await.expect("ready");
+    let pid = transport.pid().expect("running");
+    assert_eq!(slot.get(), Some(pid));
+    transport.stop().await;
+    assert_eq!(slot.get(), None);
 }
 
 /// 2.2: a command that exits first fails with its status and its output.
@@ -134,8 +166,11 @@ async fn exiting_before_ready_fails_with_the_output() {
     );
 }
 
-/// 2.2: a command that never listens is stopped at the timeout, the failure
-/// quoting what it printed (often the prompt it is stuck on).
+/// 2.2: a command that never listens is stopped at the timeout.
+///
+/// What it printed isn't checked here (#408): the stand-in is this whole test
+/// binary run again, and on a loaded machine it can take longer than the
+/// timeout to start and print anything. The next test checks the output.
 #[tokio::test]
 async fn a_command_that_never_listens_times_out_and_is_stopped() {
     let _serial = PORT_TESTS.lock().await;
@@ -143,6 +178,33 @@ async fn a_command_that_never_listens_times_out_and_is_stopped() {
     let mut transport = transport("hang", port, Duration::from_secs(2));
     let reason = transport.connect().await.expect_err("times out");
     assert!(reason.contains("timed out after 2s"), "{reason}");
+    assert!(transport.pid().is_none(), "the command was stopped");
+}
+
+/// 2.2: the timeout's failure quotes what the command printed, often the
+/// prompt it is stuck on. The wait for the port starts only once the
+/// stand-in's prompt is in the output, so a slow start can't leave it out
+/// (#408) - the stand-in here prints later than the timeout on purpose.
+#[tokio::test]
+async fn a_timeout_quotes_what_the_command_printed() {
+    let _serial = PORT_TESTS.lock().await;
+    let port = free_port();
+    let mut transport = transport("late-hang", port, Duration::from_secs(1));
+    let path = transport.login_path().await;
+    transport.running = Some(
+        process::spawn(&transport.argv, &path, &transport.tail, &transport.pid_slot)
+            .expect("started"),
+    );
+    let tail = transport.tail.clone();
+    assert!(
+        eventually_within(Duration::from_secs(60), || tail
+            .text()
+            .contains("Enter passphrase"))
+        .await,
+        "the stand-in printed its prompt"
+    );
+    let reason = transport.wait_until_ready().await.expect_err("times out");
+    assert!(reason.contains("timed out after 1s"), "{reason}");
     assert!(
         reason.contains("Enter passphrase"),
         "the output tail: {reason}"

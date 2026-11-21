@@ -83,7 +83,7 @@ impl Harness {
             });
             ClusterRegistry::insert_test_session_with_connection(cx, "demo", connection);
             let window_id = window.window_handle().window_id();
-            if ClusterRegistry::holder_count(cx, "demo") == 0 {
+            if ClusterRegistry::window_holder_count(cx, "demo") == 0 {
                 ClusterRegistry::hold(cx, "demo", window_id);
             }
         });
@@ -179,7 +179,7 @@ impl Harness {
     fn hold_the_context(&mut self) {
         self.vcx.update(|window, cx| {
             let window_id = window.window_handle().window_id();
-            if ClusterRegistry::holder_count(cx, "demo") == 0 {
+            if ClusterRegistry::window_holder_count(cx, "demo") == 0 {
                 ClusterRegistry::hold(cx, "demo", window_id);
             }
         });

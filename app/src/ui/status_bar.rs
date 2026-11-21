@@ -25,6 +25,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+mod agents;
 mod capsule;
 mod chord;
 mod commands;
@@ -32,10 +33,13 @@ mod disconnect;
 mod theme_switch;
 
 #[cfg(test)]
+pub(crate) use agents::agent_icon_selector;
+pub(crate) use agents::describe as describe_agent;
+#[cfg(test)]
 pub(crate) use capsule::{attention_selector, icon_selector};
 pub(crate) use commands::{
     AddContext, DisconnectActiveContext, DisconnectAllContexts, DisconnectOtherContexts,
-    register_commands,
+    ReconnectFailedContexts, register_commands,
 };
 pub(crate) use disconnect::Disconnecting;
 /// The chord indicator's debug selectors, for tests outside this module.
@@ -72,6 +76,9 @@ pub struct StatusItem {
     pub elapsed: Option<Duration>,
     /// Why a failed connection failed, for the tooltip.
     pub reason: Option<String>,
+    /// The self-reported names of agents also holding the context (`None`: an
+    /// unnamed agent), for the capsule's agent icon. Display only.
+    pub agents: Vec<Option<String>>,
 }
 
 impl StatusItem {
@@ -325,7 +332,9 @@ impl StatusBarView {
         items
     }
 
-    fn item_for(context_name: &str, cx: &App, now: Instant) -> StatusItem {
+    /// `context_name`'s item as its status bar capsule shows it, also read by the
+    /// Connections window so a state looks the same in both.
+    pub(crate) fn item_for(context_name: &str, cx: &App, now: Instant) -> StatusItem {
         let health = ClusterRegistry::health(cx, context_name);
         let (icon, text) = Self::icon_and_text(&health);
         let elapsed = Self::elapsed(&health, now);
@@ -347,6 +356,7 @@ impl StatusBarView {
             text,
             elapsed,
             reason,
+            agents: agents::agent_names(cx, context_name),
         }
     }
 

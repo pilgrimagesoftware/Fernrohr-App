@@ -66,6 +66,8 @@ pub(crate) fn pinned_from_state(
             .as_str()
             .map(|container| vec![container.to_string()])
             .unwrap_or_default(),
+        // One container: no picker to mark a sidecar in.
+        sidecars: Vec::new(),
         context_name: context_name.to_string(),
     })
 }
@@ -115,6 +117,7 @@ impl LogsPanel {
                         namespace: pod.namespace.clone(),
                         name: pod.name.clone(),
                         containers: Vec::new(),
+                        sidecars: Vec::new(),
                         context_name: scope.context_name.clone(),
                     }),
             ),
@@ -192,6 +195,7 @@ impl LogsPanel {
             namespace,
             name,
             containers,
+            sidecars,
             ..
         } = selection;
         let container = containers.first().cloned().unwrap_or_default();
@@ -203,7 +207,7 @@ impl LogsPanel {
         // A newly selected pod starts on its current logs.
         self.previous = false;
         let client = client.clone();
-        self.restart(client, containers, cx);
+        self.restart(client, containers, sidecars, cx);
     }
 
     /// Points a pod's own panel at `selection` again - reopened for its pod,
@@ -329,10 +333,10 @@ impl LogsPanel {
         else {
             return;
         };
-        let containers = self.view.read(cx).containers().to_vec();
+        let (containers, sidecars) = self.containers(cx);
         self.current = Some((namespace, name, container));
         let client = client.clone();
-        self.restart(client, containers, cx);
+        self.restart(client, containers, sidecars, cx);
     }
 
     /// `TogglePreviousLogs`: switches between the container's current logs and
@@ -348,19 +352,31 @@ impl LogsPanel {
             return;
         };
         let client = client.clone();
-        let containers = self.view.read(cx).containers().to_vec();
+        let (containers, sidecars) = self.containers(cx);
         self.previous = !self.previous;
-        self.restart(client, containers, cx);
+        self.restart(client, containers, sidecars, cx);
         cx.notify();
+    }
+
+    /// The view's containers and which of them are sidecars, for a restart.
+    fn containers(&self, cx: &App) -> (Vec<String>, Vec<String>) {
+        let view = self.view.read(cx);
+        (view.containers().to_vec(), view.sidecars().to_vec())
     }
 
     /// (Re)starts the stream for the current pod and container, on the current
     /// or previous instance as `previous` says, onto a fresh view.
-    fn restart(&mut self, client: kube::Client, containers: Vec<String>, cx: &mut Context<Self>) {
+    fn restart(
+        &mut self,
+        client: kube::Client,
+        containers: Vec<String>,
+        sidecars: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
         let Some((namespace, pod_name, container)) = self.current.clone() else {
             return;
         };
-        let mut view_model = LogsView::new(containers);
+        let mut view_model = LogsView::new(containers).with_sidecars(sidecars);
         view_model.select_container(&container);
         let view = cx.new(|_| view_model);
         self.follow(&view, cx);

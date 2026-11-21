@@ -75,6 +75,12 @@ pub(crate) enum Unavailability {
     /// The app speaks a different internal protocol version: the adapter and
     /// the app are different builds.
     Incompatible,
+    /// The request named no live MCP session (`mcp-connections`): the app
+    /// restarted, or this adapter predates sessions. Restarting the MCP client
+    /// starts a new session.
+    NoSession,
+    /// Every session slot the app allows is taken by other MCP clients.
+    TooManySessions,
 }
 
 impl ToolError {
@@ -181,7 +187,22 @@ impl fmt::Display for ToolError {
             } => f.write_str("the running Fernrohr app refused this connection"),
             Self::Unavailable {
                 reason: Unavailability::Incompatible,
-            } => f.write_str("this fernrohr command and the running app are different versions"),
+            } => f.write_str(
+                "this fernrohr command and the running app are different versions; \
+                 restart your MCP client",
+            ),
+            Self::Unavailable {
+                reason: Unavailability::NoSession,
+            } => f.write_str(
+                "this MCP client's session with Fernrohr has ended; restart your MCP client",
+            ),
+            Self::Unavailable {
+                reason: Unavailability::TooManySessions,
+            } => write!(
+                f,
+                "Fernrohr already serves {} MCP clients, its limit; close one and try again",
+                crate::consts::MCP_MAX_SESSIONS
+            ),
             Self::UnknownTool { name } => write!(f, "no tool named {name:?}"),
             Self::InvalidArguments { message } => write!(f, "invalid arguments: {message}"),
             Self::UnknownContext { context } => write!(f, "no context named {context:?}"),

@@ -9,6 +9,7 @@ pub mod background_rows;
 pub(crate) mod bulk;
 pub mod confirm_dialog;
 pub mod confirm_text;
+pub(crate) mod connections;
 pub mod copy;
 pub mod detail;
 pub(crate) mod exec_library;

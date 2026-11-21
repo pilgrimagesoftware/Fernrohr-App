@@ -197,6 +197,10 @@ working while one waits.
 > On macOS, a development build run with `cargo run` has no app bundle, so the system may not show
 > its notifications. The status bar and the picker still ask.
 
+To see which connections are open, and which window or agent holds each one with its tunnel, open
+the Connections window. See
+[See every connection]({{ '/latest/clusters/' | relative_url }}#see-every-connection).
+
 ## Port forwards
 
 A port forward makes a pod's or service's port reachable on `127.0.0.1` on your machine. Fernrohr
@@ -208,7 +212,8 @@ traffic, and reconnects with backoff, keeping the same port, if the connection d
 - **Keyboard:** select a pod and press <kbd>⇧F</kbd> (**Pods: Port-Forward Selected Pod** in the
   Pods panel, **Pod Detail: Port-Forward Pod** in its detail panel, **Services: Port-Forward
   Selected Service** in the Services list, **Service: Port Forward…** in a Service's detail
-  panel). It asks for the port when there are several.
+  panel). It asks for the port when there are several. A pod's ports include its sidecar
+  containers' ports, marked `(sidecar)`.
 - **Mouse:** right-click a pod or service row and choose Port Forward…, or click the forward
   button in a Service's detail panel header. In the pod detail panel's Containers tab, click the
   forward icon next to a declared container port. That forward starts with no port prompt.

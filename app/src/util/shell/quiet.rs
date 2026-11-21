@@ -4,11 +4,14 @@
 //! (`ui::background_mcp`) says to stop it. Quit stays the only way out.
 //!
 //! - [`enter`]: the last window closed. Each window's holds were already
-//!   released as it closed, which drops every session - its connection,
-//!   watches and tunnel - so what's left is the app-wide port-forwards and any
-//!   `ssh`/command forward still alive, both stopped here, and the MCP
-//!   server, stopped only with the setting off. The workspace is saved now,
-//!   not only at quit, so a kill while quiet loses nothing.
+//!   released as it closed, which drops every session no agent holds - its
+//!   connection, watches and tunnel. A session an agent holds stays, with its
+//!   tunnel, so the agent's reads keep answering (`mcp-connections` design
+//!   decision 5). What's left is the app-wide port-forwards, stopped here, any
+//!   other `ssh`/command forward still alive, killed here while the ones open
+//!   sessions use are spared, and the MCP server, stopped only with the setting off -
+//!   which ends the agents' sessions, and so their holds. The workspace is
+//!   saved now, not only at quit, so a kill while quiet loses nothing.
 //! - [`leave`]: a main window is opening. It starts the MCP server again if it
 //!   was stopped, and forgets the closed window's layout: from here the open
 //!   windows are what quit saves.
@@ -53,7 +56,9 @@ pub struct OpenContextWindow {
 pub struct Hooks {
     pub start_mcp: fn(&mut App),
     pub stop_mcp: fn(&mut App),
-    pub kill_forwards: fn(),
+    /// Kills this run's leftover forwards, sparing the pids given: the ones
+    /// open sessions still use.
+    pub kill_forwards: fn(&[u32]),
 }
 
 impl Hooks {
@@ -62,8 +67,8 @@ impl Hooks {
         Self {
             start_mcp: crate::mcp::start,
             stop_mcp: crate::mcp::stop,
-            kill_forwards: || {
-                crate::util::pidfile::kill_live_forwards();
+            kill_forwards: |spare| {
+                crate::util::pidfile::kill_live_forwards_except(spare);
             },
         }
     }
@@ -132,9 +137,11 @@ pub(super) fn enter(cx: &mut App) {
     let Some(hooks) = hooks(cx) else {
         return;
     };
-    // Every session is already gone with its last holder, and its forward with
-    // it; this catches one anything else still held, as quitting does.
-    (hooks.kill_forwards)();
+    // A session still open now is an agent's, and its tunnel is in use (#367),
+    // so its forward is spared. Every other forward went with its session;
+    // this catches one anything else still held, as quitting does.
+    let spare = crate::k8s::cluster::session::ClusterRegistry::forward_pids_in_use(cx);
+    (hooks.kill_forwards)(&spare);
     if let Some(path) = cx.try_global::<WorkspacePath>().map(|path| path.0.clone()) {
         save(cx, &path);
     }

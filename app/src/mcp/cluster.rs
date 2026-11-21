@@ -7,6 +7,10 @@
 //! or one not connected, is an error - [`ToolError::Disconnected`] when the
 //! kubeconfig has it, [`ToolError::UnknownContext`] when it doesn't - and
 //! nothing here ever starts a connection.
+//!
+//! A caller only sees a context it may use ([`accessible`], `mcp-connections`
+//! Security 6): one a user window holds, or one its own session holds. A
+//! context only other agents hold looks, to it, like one that isn't open.
 
 use super::error::ToolError;
 use super::kinds::{KindQuery, resolve};
@@ -16,7 +20,7 @@ use crate::k8s::cluster::context_health::ContextHealth;
 use crate::k8s::cluster::discovery::{DiscoveredKind, discover_kinds};
 use crate::k8s::cluster::discovery_registry::DiscoveryRegistry;
 use crate::k8s::cluster::kubeconfig;
-use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::session::{AgentId, ClusterRegistry, Holder};
 use gpui_kit::App;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -42,7 +46,11 @@ enum Lookup {
 /// `context`'s session, if the user has it open and connected.
 pub(super) async fn session(tools: &ToolContext, context: &str) -> Result<Session, ToolError> {
     let name = context.to_string();
-    let lookup = tools.foreground.run(move |cx| lookup(cx, &name)).await?;
+    let agent = caller_agent(tools);
+    let lookup = tools
+        .foreground
+        .run(move |cx| lookup(cx, &name, agent))
+        .await?;
     match lookup {
         Lookup::Connected { client, kinds } => Ok(Session {
             context: context.to_string(),
@@ -69,7 +77,10 @@ pub(super) async fn session(tools: &ToolContext, context: &str) -> Result<Sessio
     }
 }
 
-fn lookup(cx: &App, context: &str) -> Lookup {
+fn lookup(cx: &App, context: &str, agent: Option<AgentId>) -> Lookup {
+    if !accessible(cx, context, agent) {
+        return Lookup::NoSession;
+    }
     let Some(connection) = ClusterRegistry::existing_connection(cx, context) else {
         return Lookup::NoSession;
     };
@@ -141,8 +152,32 @@ pub(super) enum ContextStatus {
     NotOpen,
 }
 
-/// `context`'s status. Reads app state only, so it needs the main thread.
-pub(super) fn status(cx: &App, context: &str) -> ContextStatus {
+/// The agent a call comes from: `None` only for tests that call tools
+/// directly, which then see only what windows hold.
+pub(super) fn caller_agent(tools: &ToolContext) -> Option<AgentId> {
+    tools.caller.as_ref().map(|caller| caller.agent)
+}
+
+/// Whether `agent` may use `context` (`mcp-connections` Security 6): a user
+/// window holds it, or `agent`'s own session does. Another agent's hold, or a
+/// lingering one, grants nothing.
+pub(super) fn accessible(cx: &App, context: &str, agent: Option<AgentId>) -> bool {
+    ClusterRegistry::holders(cx, context)
+        .iter()
+        .any(|holder| match holder {
+            Holder::Window(_) => true,
+            Holder::Agent(holder) => Some(*holder) == agent,
+            Holder::Lingering(_) => false,
+        })
+}
+
+/// `context`'s status as `agent` sees it: one it may not use is
+/// [`ContextStatus::NotOpen`]. Reads app state only, so it needs the main
+/// thread.
+pub(super) fn status(cx: &App, context: &str, agent: Option<AgentId>) -> ContextStatus {
+    if !accessible(cx, context, agent) {
+        return ContextStatus::NotOpen;
+    }
     let Some(connection) = ClusterRegistry::existing_connection(cx, context) else {
         return ContextStatus::NotOpen;
     };

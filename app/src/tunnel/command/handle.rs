@@ -15,6 +15,7 @@ use tokio::sync::watch;
 pub struct CommandTunnel {
     supervisor: ForwardSupervisor,
     mode: CommandTunnelMode,
+    pid: crate::util::pidfile::PidSlot,
 }
 
 impl CommandTunnel {
@@ -28,11 +29,19 @@ impl CommandTunnel {
         mode: CommandTunnelMode,
         options: SupervisorOptions,
     ) -> Self {
-        let transport = CommandTransport::new(argv, local_addr.port(), startup_timeout);
+        let pid = crate::util::pidfile::PidSlot::default();
+        let transport = CommandTransport::new(argv, local_addr.port(), startup_timeout)
+            .with_pid_slot(pid.clone());
         Self {
             supervisor: ForwardSupervisor::spawn(rt, local_addr, transport, options),
             mode,
+            pid,
         }
+    }
+
+    /// The running command's pid, while there is one.
+    pub fn pid(&self) -> Option<u32> {
+        self.pid.get()
     }
 
     /// What the local port offers: a proxy, or the API server itself.

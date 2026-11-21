@@ -59,6 +59,7 @@ async fn pod_shortcut_dispatches_only_to_the_focused_panel(cx: &mut gpui_kit::Te
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "dev".into(),
         })));
         let first = cx
@@ -152,6 +153,7 @@ async fn typed_pod_shortcuts_reach_the_focused_panel(cx: &mut gpui_kit::TestAppC
             namespace: "default".into(),
             name: "web-1".into(),
             containers: vec!["web".into()],
+            sidecars: Vec::new(),
             context_name: "dev".into(),
         })));
         cx.new(|cx| PodsPanel::with_stubs(PanelScope::new(NavTarget::pods(), "dev".into()), cx))

@@ -30,6 +30,10 @@ pub struct ClusterConnection {
     /// `Drop` (via `RegistryHandle`/the tunnel's), since there is one `ClusterSession`
     /// (and so one `ClusterConnection`) per app today. `None` for an unbound context.
     pub(super) _forward: Option<RegistryHandle<ForwardKey, TunnelForward>>,
+    /// The context this connection was made for (`None`: the kubeconfig's own
+    /// current-context), so a redial reconnects the same one and nothing can
+    /// point it at another (`mcp-connections` design decision 6).
+    pub(super) context_name: Option<String>,
 }
 
 impl ClusterConnection {
@@ -44,6 +48,7 @@ impl ClusterConnection {
             state,
             since: Instant::now(),
             _forward: None,
+            context_name: None,
         }
     }
 
@@ -60,6 +65,7 @@ impl ClusterConnection {
             state,
             since: Instant::now(),
             _forward: Some(forward),
+            context_name: None,
         }
     }
 
@@ -74,6 +80,13 @@ impl ClusterConnection {
         self._forward
             .as_ref()
             .map(|handle| handle.forward().state())
+    }
+
+    /// The pid of the process the bound forward runs now - its `ssh` or its
+    /// command - so quiet mode's leftover sweep spares it (#367). `None` for an
+    /// unbound context, a manual tunnel, or a forward between processes.
+    pub(crate) fn forward_pid(&self) -> Option<u32> {
+        self._forward.as_ref()?.forward().pid()
     }
 
     /// The state receiver, local address and route together, for section 7.3's

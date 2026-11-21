@@ -42,6 +42,7 @@ fn describe(h: &mut Harness, pod: &str) -> (PanelId, FocusHandle) {
         namespace: "default".into(),
         name: pod.into(),
         containers: vec!["web".into()],
+        sidecars: Vec::new(),
         context_name: "kind-dev".into(),
     };
     h.vcx
