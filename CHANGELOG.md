@@ -1,4 +1,54 @@
 
+## 0.17.0 - 2026-11-20
+
+### <!-- 0 -->🚀 Features
+- List unavailable commands disabled, with the reason
+- Retry a failed connection from the status bar and palette
+- Let agents hold a context's connection
+- Give each MCP client one session with the app
+- Connect contexts for the agent's session, not a window
+- Ask before showing an agent-only context in a window
+- Plumbing for the Connections window
+- Add the Connections window
+- Mark contexts an agent also uses
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Offer sidecar containers in Logs, Shell and Port Forward pickers
+- Clamp saved window bounds onto a connected display
+- Check saved bounds against the primary display on macOS
+- Retry a failed connection in place, whoever holds it
+- Dim Reconnect Failed Contexts when nothing failed; name Helm entries
+- Refuse holds for agents whose session has ended
+- An ended session's approval holds nothing; open_panel opens a window
+- Decide open_panel's approval in the same step that shows
+- Keep agent-held connections and their tunnels in quiet mode
+- Spare only the forwards live sessions use in the leftover sweep
+
+
+### <!-- 10 -->💼 Other
+- Bump rmcp from 3.8.0 to 3.10.0
+- Bump jsonpath-rust from 1.0.11 to 1.0.13
+- Bump flate2 from 1.1.10 to 1.1.11
+- Bump notify-rust from 4.18.2 to 4.19.0
+
+
+### <!-- 2 -->🚜 Refactor
+- Read agent names from LiveAgents
+
+
+### <!-- 6 -->🧪 Testing
+- Make the command-timeout output check independent of startup
+- Share the ETXTBSY retry with the exec-plugin and fake gh tests
+- Stopping MCP with the last window ends the agent's hold and tunnel
+- Register test agents as live now that holds require it
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.16.0
+
+
+
 ## 0.16.0 - 2026-11-14
 
 ### <!-- 0 -->🚀 Features

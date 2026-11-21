@@ -47,3 +47,57 @@ jobs:
       tag: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
       ref: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
     secrets: inherit
+
+  # Writes the released version and the DMG's checksum into the Homebrew tap's
+  # `Casks/fernrohr.rb`, rendered from packaging/homebrew/fernrohr.rb.in. Needs
+  # the `pilgrimagesoftware/homebrew-tap` repo and the PSW CI GitHub App
+  # installed on it with contents: write.
+  homebrew:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+
+      - name: Tap token
+        id: token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PSW_CI_APP_ID }}
+          private-key: ${{ secrets.PSW_CI_PRIVATE_KEY }}
+          owner: pilgrimagesoftware
+          repositories: homebrew-tap
+
+      - name: Render the cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS
+          sha=$(awk -v f="Fernrohr_${version}_aarch64.dmg" '$2 == f { print $1 }' SHA256SUMS)
+          [ -n "$sha" ] || { echo "::error::no checksum for Fernrohr_${version}_aarch64.dmg"; exit 1; }
+          mkdir -p tap/Casks
+          sed -e "s/@VERSION@/$version/" -e "s/@SHA256@/$sha/" \
+            packaging/homebrew/fernrohr.rb.in > tap/Casks/fernrohr.rb
+          cat tap/Casks/fernrohr.rb
+
+      - name: Push to the tap
+        env:
+          TOKEN: ${{ steps.token.outputs.token }}
+          TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${TOKEN}@github.com/pilgrimagesoftware/homebrew-tap.git" tap-repo
+          mkdir -p tap-repo/Casks
+          cp tap/Casks/fernrohr.rb tap-repo/Casks/fernrohr.rb
+          cd tap-repo
+          git config user.name "psw-ci[bot]"
+          git config user.email "psw-ci[bot]@users.noreply.github.com"
+          git add Casks/fernrohr.rb
+          git diff --cached --quiet && { echo "cask already current"; exit 0; }
+          git commit -m "chore(fernrohr): update to ${TAG#v}"
+          git push
