@@ -2,13 +2,15 @@
 //! vendor CLI opening an SSH session through an identity-aware proxy, say - rather
 //! than Fernrohr's own `ssh -N -L`. [`argv`] turns the stored command line into the
 //! arguments that run; [`transport`] runs and supervises them, with [`process`]
-//! spawning and stopping the process group and [`output`] keeping its recent output.
+//! spawning and stopping the process group, [`output`] keeping its recent output and
+//! [`prompt`] recognising a prompt in it that no one will answer.
 //! [`CommandTunnel`] is the supervised forward the tunnel registry shares.
 
 pub(crate) mod argv;
 mod handle;
 mod output;
 mod process;
+mod prompt;
 mod transport;
 
 pub use handle::CommandTunnel;
