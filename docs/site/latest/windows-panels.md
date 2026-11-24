@@ -34,7 +34,7 @@ The icon's menu brings Fernrohr back:
 | Menu item | What it does |
 | --- | --- |
 | New Window | Opens a window with the cluster picker. |
-| Contexts | Lists your kubeconfig's contexts. Choose one to open a window connected to it, at the size and position of the window you closed last. |
+| Contexts | Lists your kubeconfig's contexts in alphabetical order, ignoring case. Choose one to open a window connected to it, at the size and position of the window you closed last. |
 | Settings… | Opens Settings. |
 | MCP… | Opens Settings at Agent Access, with the MCP server's setting. |
 | Connections… | Opens the Connections window, which lists every open connection and who holds it. |
