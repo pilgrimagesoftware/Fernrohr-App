@@ -88,15 +88,18 @@ pub fn register_commands(registry: &mut CommandRegistry) {
         action: Box::new(ToggleFollow),
         menu: None,
     });
-    // Global, so it's in the Window menu beside the other ways of opening
-    // something, as well as the palette (`selector-logs`).
+    // Global, so it's in the menu bar as well as the palette
+    // (`selector-logs`). It opens a panel in the current window, so it sits
+    // in the View menu beside Open in New Panel (#245), not under Window.
     registry.register(Command {
         id: "logs.follow_labels",
         title: "Open Logs by Label\u{2026}",
         default_binding: OPEN_LABEL_LOGS_KEY,
         context: None,
         action: Box::new(ShowLabelLogs),
-        menu: Some(crate::command::MenuSlot::Window),
+        menu: Some(crate::command::MenuSlot::View(
+            crate::command::ViewGroup::PanelLayout,
+        )),
     });
     registry.register(Command {
         id: "logs.next_container",

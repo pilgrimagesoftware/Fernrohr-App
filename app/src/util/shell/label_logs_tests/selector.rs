@@ -92,7 +92,7 @@ async fn only_the_cap_streams(cx: &mut TestAppContext) {
     assert_eq!(vcx.update(|_, cx| panel.read(cx).test_matched()), (25, 25));
 }
 
-/// `selector-logs-panel` 2.1: the Window menu's Open Logs by Label… is the
+/// `selector-logs-panel` 2.1: the View menu's Open Logs by Label… (#245) is the
 /// palette's command, and dispatching it - as the menu does - opens the typed
 /// panel empty, its field focused.
 #[gpui_kit::test]
@@ -107,7 +107,12 @@ async fn the_menu_item_opens_the_panel_empty(cx: &mut TestAppContext) {
         .get("logs.follow_labels")
         .expect("Open Logs by Label is registered");
     assert_eq!(command.title, "Open Logs by Label\u{2026}");
-    assert_eq!(command.menu, Some(crate::command::MenuSlot::Window));
+    assert_eq!(
+        command.menu,
+        Some(crate::command::MenuSlot::View(
+            crate::command::ViewGroup::PanelLayout
+        ))
+    );
 
     let action = command.action.boxed_clone();
     vcx.update(|window, cx| {
