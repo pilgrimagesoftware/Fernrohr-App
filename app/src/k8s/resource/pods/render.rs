@@ -71,23 +71,38 @@ impl Render for PodsPanel {
             |this: &mut Self| &mut this.indicators.refreshing,
             cx,
         );
+        // A pane in place of the list still names its context (#252) - not
+        // embedded, where the Node's own header already does.
+        let context = self.node.is_none().then_some(&self.scope);
         let content = match &self.connection.read(cx).state {
-            ConnectionState::Connecting => div()
-                .size_full()
-                .p(space.panel_inset)
-                .child("Connecting..."),
-            ConnectionState::WaitingForTunnel => div()
-                .size_full()
-                .p(space.panel_inset)
-                .child("Waiting for tunnel..."),
-            // Selectable, with Report… beside it (#177).
-            ConnectionState::Failed(reason) => div().size_full().child(panel_title::error_content(
-                // Not the context's name: it's in the panel's title already, and a
-                // report filed from here goes to a public issue (#177).
-                "Couldn't connect to the cluster".to_string(),
-                Some(reason.clone()),
+            ConnectionState::Connecting => list_search::with_context(
+                div()
+                    .size_full()
+                    .p(space.panel_inset)
+                    .child("Connecting..."),
+                context,
                 cx,
-            )),
+            ),
+            ConnectionState::WaitingForTunnel => list_search::with_context(
+                div()
+                    .size_full()
+                    .p(space.panel_inset)
+                    .child("Waiting for tunnel..."),
+                context,
+                cx,
+            ),
+            // Selectable, with Report… beside it (#177).
+            ConnectionState::Failed(reason) => list_search::with_context(
+                div().size_full().child(panel_title::error_content(
+                    // Not the context's name: the context line above names it, outside
+                    // the report, which goes to a public issue (#177).
+                    "Couldn't connect to the cluster".to_string(),
+                    Some(reason.clone()),
+                    cx,
+                )),
+                context,
+                cx,
+            ),
             // `connection-status-bar`: a paused watch used to print its own "Paused
             // (...)" line here. That moved to the window's status bar
             // (`ui/status_bar.rs`), which shows it once per window rather than once per

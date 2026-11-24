@@ -162,18 +162,32 @@ impl EventsPanel {
         let status = |text: String| div().size_full().p(space.panel_inset).child(text);
         match &self.connection.read(cx).state {
             ConnectionState::Connecting => {
-                return status("Connecting...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Connecting...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::WaitingForTunnel => {
-                return status("Waiting for tunnel...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Waiting for tunnel...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             // Selectable, with Report… beside it (#177).
             ConnectionState::Failed(reason) => {
-                return panel_title::error_content(
-                    // Not the context's name: it's in the panel's title already, and a
-                    // report filed from here goes to a public issue (#177).
-                    "Couldn't connect to the cluster".to_string(),
-                    Some(reason.clone()),
+                return crate::ui::list_search::with_context(
+                    panel_title::error_content(
+                        // Not the context's name: the context line above names it, outside
+                        // the report, which goes to a public issue (#177).
+                        "Couldn't connect to the cluster".to_string(),
+                        Some(reason.clone()),
+                        cx,
+                    ),
+                    Some(&self.scope),
                     cx,
                 )
                 .into_any_element();
@@ -181,9 +195,13 @@ impl EventsPanel {
             ConnectionState::Connected(_) => {}
         }
         if let Some(refused) = self.events.read(cx).refused() {
-            return panel_title::error_content(
-                "Can't list events".to_string(),
-                Some(refused.to_string()),
+            return crate::ui::list_search::with_context(
+                panel_title::error_content(
+                    "Can't list events".to_string(),
+                    Some(refused.to_string()),
+                    cx,
+                ),
+                Some(&self.scope),
                 cx,
             )
             .into_any_element();

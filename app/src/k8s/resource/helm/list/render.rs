@@ -74,15 +74,29 @@ impl HelmReleasesPanel {
         let status = |text: String| div().size_full().p(space.panel_inset).child(text);
         match &self.connection.read(cx).state {
             ConnectionState::Connecting => {
-                return status("Connecting...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Connecting...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::WaitingForTunnel => {
-                return status("Waiting for tunnel...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Waiting for tunnel...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::Failed(reason) => {
-                return panel_title::error_content(
-                    "Couldn't connect to the cluster".to_string(),
-                    Some(reason.clone()),
+                return crate::ui::list_search::with_context(
+                    panel_title::error_content(
+                        "Couldn't connect to the cluster".to_string(),
+                        Some(reason.clone()),
+                        cx,
+                    ),
+                    Some(&self.scope),
                     cx,
                 )
                 .into_any_element();
@@ -91,11 +105,15 @@ impl HelmReleasesPanel {
         }
         if let Some((scope, message)) = self.refusal(cx) {
             let (title, detail) = refusal_text(&scope, &message);
-            return div()
-                .debug_selector(|| "helm-releases-refused".into())
-                .size_full()
-                .child(panel_title::error_content(title, Some(detail), cx))
-                .into_any_element();
+            return crate::ui::list_search::with_context(
+                div()
+                    .debug_selector(|| "helm-releases-refused".into())
+                    .size_full()
+                    .child(panel_title::error_content(title, Some(detail), cx)),
+                Some(&self.scope),
+                cx,
+            )
+            .into_any_element();
         }
         let search = self.search_input(window, cx);
         let rows = self.visible_rows(cx);

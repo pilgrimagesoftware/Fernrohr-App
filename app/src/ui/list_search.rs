@@ -169,6 +169,39 @@ pub fn search_row(
         }))
 }
 
+/// `body` - a panel's state in place of its list (connecting, failed,
+/// refused) - under the "Context: <name>" line the search row would carry,
+/// so a panel that can't list still says which context it's about (#252).
+/// `None`, for a panel embedded in another one's content, leaves `body` as it
+/// is. The line is outside `body`, so a failure's Report… never includes it.
+pub fn with_context(
+    body: impl IntoElement,
+    context: Option<&crate::ui::panel_title::PanelScope>,
+    cx: &App,
+) -> Div {
+    use gpui_kit::component::ActiveTheme as _;
+    let space = crate::ui::space::spacing(cx);
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .children(context.map(|scope| {
+            div()
+                .debug_selector(|| CONTEXT_LINE.into())
+                .flex()
+                .px(space.panel_inset)
+                .pt(space.panel_inset)
+                .child(crate::ui::panel_title::context_label(
+                    scope,
+                    cx.theme().muted_foreground,
+                ))
+        }))
+        .child(div().flex_1().min_h_0().child(body))
+}
+
+/// [`with_context`]'s line, for tests.
+pub(crate) const CONTEXT_LINE: &str = "list-context-line";
+
 /// The most of [`search_row`] the context name takes before it truncates, so a
 /// long name never squeezes the search box.
 const CONTEXT_SHARE: f32 = 0.4;
@@ -178,12 +211,25 @@ pub(crate) const SEARCH_ROW: &str = "list-search-row";
 /// [`search_row`]'s context name, for tests.
 pub(crate) const SEARCH_ROW_CONTEXT: &str = "list-search-row-context";
 
-/// Checks a drawn list panel's search row against #252: its context name
-/// (when `context` is expected) sits to the right of the search box on the
-/// same line, takes no more than [`CONTEXT_SHARE`] of the row, and the table
-/// starts one `control_gap` below the row.
+/// What a search row's context name should look like, for
+/// [`assert_search_row_layout`].
 #[cfg(test)]
-pub(crate) fn assert_search_row_layout(vcx: &mut VisualTestContext, context: bool) {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ContextShown {
+    /// No context in the row: a panel embedded in another one's content.
+    Absent,
+    /// The whole name, narrower than the cap - drawn at its own width, not
+    /// collapsed and not truncated.
+    Whole,
+    /// A long name, cut at [`CONTEXT_SHARE`] of the row.
+    Truncated,
+}
+
+/// Checks a drawn list panel's search row against #252: its context name
+/// sits to the right of the search box on the same line, drawn as `context`
+/// says, and the table starts one `control_gap` below the row.
+#[cfg(test)]
+pub(crate) fn assert_search_row_layout(vcx: &mut VisualTestContext, context: ContextShown) {
     use gpui_kit::test::TestWindowExt as _;
     vcx.update(|window, cx| window.render_frame(cx));
     let row = vcx
@@ -199,7 +245,7 @@ pub(crate) fn assert_search_row_layout(vcx: &mut VisualTestContext, context: boo
         "one control gap between the search row and the table"
     );
     let drawn = vcx.debug_bounds(SEARCH_ROW_CONTEXT);
-    if !context {
+    if context == ContextShown::Absent {
         assert!(drawn.is_none(), "no context in this search row");
         return;
     }
@@ -212,10 +258,18 @@ pub(crate) fn assert_search_row_layout(vcx: &mut VisualTestContext, context: boo
         label.left() > row.left() + row.size.width / 2.,
         "the context is right of the search box: {label:?} in {row:?}"
     );
-    assert!(
-        label.size.width <= row.size.width * CONTEXT_SHARE + px(1.),
-        "a long context name truncates rather than squeezing the box: {label:?} in {row:?}"
-    );
+    let cap = row.size.width * CONTEXT_SHARE;
+    match context {
+        ContextShown::Whole => assert!(
+            label.size.width > px(0.) && label.size.width < cap - px(1.),
+            "a short context name shows whole, neither collapsed nor cut: {label:?} in {row:?}"
+        ),
+        ContextShown::Truncated => assert!(
+            (label.size.width - cap).abs() <= px(1.),
+            "a long context name stops at the cap rather than squeezing the box: {label:?} in {row:?}"
+        ),
+        ContextShown::Absent => unreachable!("returned above"),
+    }
 }
 
 /// Whether any of `texts` - a row's visible column text, a panel's own to

@@ -41,18 +41,32 @@ impl ObjectListPanel {
         let status = |text: String| div().size_full().p(space.panel_inset).child(text);
         match &self.connection.read(cx).state {
             ConnectionState::Connecting => {
-                return status("Connecting...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Connecting...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::WaitingForTunnel => {
-                return status("Waiting for tunnel...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Waiting for tunnel...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             // Selectable, with Report… beside it (#177).
             ConnectionState::Failed(reason) => {
-                return panel_title::error_content(
-                    // Not the context's name: it's in the panel's title already, and a
-                    // report filed from here goes to a public issue (#177).
-                    "Couldn't connect to the cluster".to_string(),
-                    Some(reason.clone()),
+                return crate::ui::list_search::with_context(
+                    panel_title::error_content(
+                        // Not the context's name: the context line above names it, outside
+                        // the report, which goes to a public issue (#177).
+                        "Couldn't connect to the cluster".to_string(),
+                        Some(reason.clone()),
+                        cx,
+                    ),
+                    Some(&self.scope),
                     cx,
                 )
                 .into_any_element();
@@ -62,9 +76,13 @@ impl ObjectListPanel {
         // Spec: "A kind the user cannot list" - the server's refusal, not an
         // empty table that looks like there's nothing there.
         if let Some(refused) = self.objects.read(cx).refused() {
-            return panel_title::error_content(
-                format!("Can't list {}", self.scope.target.list_label()),
-                Some(refused.to_string()),
+            return crate::ui::list_search::with_context(
+                panel_title::error_content(
+                    format!("Can't list {}", self.scope.target.list_label()),
+                    Some(refused.to_string()),
+                    cx,
+                ),
+                Some(&self.scope),
                 cx,
             )
             .into_any_element();
@@ -73,9 +91,13 @@ impl ObjectListPanel {
         // to show, so say so rather than drawing an empty table.
         let polled = match self.objects.read(cx).mode() {
             ListMode::Unlistable => {
-                return status("This kind can't be listed".into())
-                    .debug_selector(|| "object-list-unlistable".into())
-                    .into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("This kind can't be listed".into())
+                        .debug_selector(|| "object-list-unlistable".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ListMode::Polled { .. } => true,
             ListMode::Watched => false,
