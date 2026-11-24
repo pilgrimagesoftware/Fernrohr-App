@@ -47,6 +47,18 @@ pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
 /// shortcut waits for the API server to accept a TCP connection before it asks the
 /// user instead.
 pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long a starting command tunnel's command must print nothing more after what
+/// looks like a credentials or yes/no prompt, left without a newline as prompts are,
+/// before it's taken as waiting for input (#423).
+pub(crate) const COMMAND_TUNNEL_PROMPT_QUIET: Duration = Duration::from_secs(1);
+/// The same, for prompt-like text that did end its line. Real prompts rarely do, and
+/// a tool that prints a question, takes its default since no one can answer, then
+/// works quietly a while (generating a key, say) mustn't be stopped for it.
+pub(crate) const COMMAND_TUNNEL_PROMPT_LINE_QUIET: Duration = Duration::from_secs(5);
+/// How many transient startup failures in a row (the command exiting, its port
+/// still held) a command tunnel retries before its first ready, before giving up
+/// and reporting the last one. Retries are spaced by the supervisor's backoff.
+pub(crate) const COMMAND_TUNNEL_STARTUP_ATTEMPTS: u32 = 3;
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long a Helm release action's `helm` run may take before its process

@@ -278,16 +278,39 @@ mod routing {
 #[test]
 fn only_a_failed_manual_connection_lets_its_forward_go() {
     let failed = ConnectionState::Failed("connection refused".into());
-    assert!(releases_forward_on(&failed, Some(TunnelRoute::Direct)));
+    assert!(releases_forward_on(
+        &failed,
+        Some(TunnelRoute::Direct),
+        false
+    ));
     for route in [None, Some(TunnelRoute::Rewrite), Some(TunnelRoute::Proxy)] {
-        assert!(!releases_forward_on(&failed, route), "{route:?}");
+        assert!(!releases_forward_on(&failed, route, false), "{route:?}");
     }
     for state in [
         ConnectionState::Connecting,
         ConnectionState::WaitingForTunnel,
     ] {
-        assert!(!releases_forward_on(&state, Some(TunnelRoute::Direct)));
+        assert!(!releases_forward_on(
+            &state,
+            Some(TunnelRoute::Direct),
+            false
+        ));
     }
+}
+
+/// #423: a forward that gave up - a command tunnel stuck at a prompt - is let go
+/// whatever its route, so a retry starts the command again; still only on failure.
+#[test]
+fn a_failed_connection_lets_a_forward_that_gave_up_go() {
+    let failed = ConnectionState::Failed("waiting for input".into());
+    for route in [Some(TunnelRoute::Rewrite), Some(TunnelRoute::Proxy)] {
+        assert!(releases_forward_on(&failed, route, true), "{route:?}");
+    }
+    assert!(!releases_forward_on(
+        &ConnectionState::WaitingForTunnel,
+        Some(TunnelRoute::Rewrite),
+        true
+    ));
 }
 
 /// `manual-confirmation-tunnels`: a manual tunnel's direct route leaves the
