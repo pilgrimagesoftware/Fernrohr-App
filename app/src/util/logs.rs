@@ -29,7 +29,6 @@ use gpui_kit::component::dock::{
 use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::*;
-use std::rc::Rc;
 
 use line::*;
 use stream::*;

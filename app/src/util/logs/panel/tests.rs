@@ -13,6 +13,7 @@ mod ansi;
 mod ended;
 mod follow;
 mod previous;
+mod render_cost;
 mod restore;
 mod scroll;
 mod selection;
