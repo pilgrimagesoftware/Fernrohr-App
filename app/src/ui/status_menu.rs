@@ -29,8 +29,9 @@ pub const NO_CONTEXTS: &str = "No contexts in your kubeconfig";
 /// One entry of the menu.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Item {
-    /// The Contexts submenu: a [`Choice::Context`] per name, in kubeconfig
-    /// order.
+    /// The Contexts submenu: a [`Choice::Context`] per name, sorted
+    /// alphabetically ignoring case; names equal but for case keep their
+    /// kubeconfig order (#424).
     Contexts(Vec<String>),
     /// An entry dispatching `choice`, titled `title`.
     Command {
@@ -101,7 +102,7 @@ pub fn items(contexts: &[String]) -> Vec<Item> {
             title: "New Window",
             choice: Choice::NewWindow,
         },
-        Item::Contexts(contexts.to_vec()),
+        Item::Contexts(sorted(contexts)),
         Item::Command {
             title: "Settings\u{2026}",
             choice: Choice::Settings,
@@ -137,6 +138,15 @@ pub fn items(contexts: &[String]) -> Vec<Item> {
             choice: Choice::Quit,
         },
     ]
+}
+
+/// `contexts` in the order the Contexts submenu lists them: alphabetical,
+/// ignoring case. The sort is stable, so names that differ only in case keep
+/// their kubeconfig order.
+fn sorted(contexts: &[String]) -> Vec<String> {
+    let mut names = contexts.to_vec();
+    names.sort_by_cached_key(|name| name.to_lowercase());
+    names
 }
 
 /// Does what `choice` stands for, through its command's app-wide handler -
