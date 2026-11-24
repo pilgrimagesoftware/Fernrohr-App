@@ -40,6 +40,23 @@ fn the_menu_lists_windows_contexts_tools_help_then_quit() {
     );
 }
 
+/// #424: the Contexts submenu is alphabetical whatever the kubeconfig's
+/// order, ignoring case; names equal but for case keep their kubeconfig order.
+#[test]
+fn the_contexts_submenu_is_sorted_alphabetically_ignoring_case() {
+    let contexts: Vec<String> = ["staging", "Beta", "alpha", "dev", "Dev", "Alpha-2"]
+        .map(String::from)
+        .to_vec();
+    assert_eq!(
+        items(&contexts)[1],
+        Item::Contexts(
+            ["alpha", "Alpha-2", "Beta", "dev", "Dev", "staging"]
+                .map(String::from)
+                .to_vec()
+        )
+    );
+}
+
 #[test]
 fn no_contexts_still_lists_the_submenu() {
     assert_eq!(items(&[])[1], Item::Contexts(Vec::new()));

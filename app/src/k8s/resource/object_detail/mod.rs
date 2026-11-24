@@ -14,6 +14,7 @@
 //! itself.
 
 mod commands;
+mod controlled;
 mod delete;
 mod edit;
 mod edit_view;
