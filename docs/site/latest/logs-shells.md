@@ -73,7 +73,7 @@ aren't listed.
 
 ## Follow pods by label
 
-Press <kbd>⌘⇧L</kbd>, or choose **Open Logs by Label…** in the Window menu or the command palette,
+Press <kbd>⌘⇧L</kbd>, or choose **Open Logs by Label…** in the View menu or the command palette,
 to open a Logs panel that streams every pod a label selector picks. Type a selector in `kubectl -l`
 form, such as `app=web` or `tier in (front, back)`, and press <kbd>Enter</kbd>. Each line is tagged with its pod, in a colour of
 its own. Pods that start or stop matching join and leave the stream as the cluster changes.

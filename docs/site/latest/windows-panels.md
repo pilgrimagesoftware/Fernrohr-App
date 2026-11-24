@@ -157,9 +157,9 @@ The menu bar has seven menus, in this order: App, Context, Edit, View, Navigate,
 | App | About Fernrohr, Settings…, and the platform items Hide, Hide Others, Show All and Quit |
 | Context | Opening the cluster picker and switching, adding and disconnecting contexts, then every tunnel action after a separator |
 | Edit | The platform's text-editing items. Fernrohr adds none |
-| View | Command Palette, then theme and text size, then the Resource panel items, then Maximize/Restore Panel, then table columns |
+| View | Command Palette, then theme and text size, then the Resource panel items, then Open in New Panel, Open Logs by Label…, Maximize/Restore Panel and Move to New Window, then table columns |
 | Navigate | Focus Next Panel, Focus Previous Panel, Focus Resources, the tab commands, and a Select Tab submenu |
-| Window | One entry per open window, plus New Window, Save Panel Layout…, Saved Layouts…, Connections, Open Logs by Label…, Minimize, Zoom and Close Window |
+| Window | One entry per open window, plus New Window, Save Panel Layout…, Saved Layouts…, Connections, Minimize, Zoom and Close Window |
 | Help | Fernrohr Documentation, Report Issue |
 
 Navigate holds only commands that work whichever panel has focus. A command for one panel type, such as describing the selected pod, stays out of the menu. It remains in the palette, in `keymap.toml` and in that panel's hint row.
