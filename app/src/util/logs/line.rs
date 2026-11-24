@@ -40,16 +40,43 @@ impl LineSource {
 /// A line the panel shows: its text, with any ANSI escapes taken out (#309),
 /// the styled runs of that text, and its source when it came from one of
 /// several streams.
-#[derive(Clone, Debug, PartialEq, Eq)]
+// Tests count clones (`clone_count`), so a test can show that drawing the
+// panel copies no lines (#378); everywhere else `Clone` is derived.
+#[cfg_attr(not(test), derive(Clone))]
+#[derive(Debug, PartialEq, Eq)]
 pub struct LogLine {
     source: Option<LineSource>,
     text: String,
-    /// `None` for a line plain throughout - most of them. An `Arc`, as the
-    /// panel clones its lines for each frame it draws.
+    /// `None` for a line plain throughout - most of them. Shared, so a line's
+    /// copy doesn't copy its styling.
     spans: Option<Arc<[Span]>>,
     /// The panel's own words, not a stream's output - a tagged stream's end
     /// or failure - drawn apart from the log (#360).
     notice: bool,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CLONES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+impl Clone for LogLine {
+    fn clone(&self) -> Self {
+        CLONES.with(|clones| clones.set(clones.get() + 1));
+        Self {
+            source: self.source.clone(),
+            text: self.text.clone(),
+            spans: self.spans.clone(),
+            notice: self.notice,
+        }
+    }
+}
+
+/// How many [`LogLine`]s this thread has cloned so far.
+#[cfg(test)]
+pub fn clone_count() -> usize {
+    CLONES.with(std::cell::Cell::get)
 }
 
 impl LogLine {

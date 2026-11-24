@@ -41,7 +41,7 @@ impl Render for LogsPanel {
                 .child("Click a pod to view its logs.")
                 .into_any_element()
         } else {
-            self.lines_list(view.lines(), view.widest_line(), view.end_marker(), cx)
+            self.lines_list(view, cx)
         };
 
         // A container picker, not a namespace one: this panel streams one
@@ -195,16 +195,15 @@ impl LogsPanel {
     /// follows the newest line while following, then `end_marker` once the
     /// stream has ended - a muted row of the list's own, so scrolling and
     /// following reach it like any line (`completed-pod-logs`).
-    pub(super) fn lines_list(
-        &self,
-        lines: &[LogLine],
-        widest_line: Option<(usize, usize)>,
-        end_marker: Option<&'static str>,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let widest = widest_row(widest_line, lines.len(), end_marker);
-        let lines = Rc::new(lines.to_vec());
-        let line_count = lines.len();
+    ///
+    /// The rows read the lines from `view` as the list draws them, so a frame
+    /// touches only the visible range, never a copy of the whole history
+    /// (#378): the closure holds the view's entity handle, not its lines.
+    pub(super) fn lines_list(&self, view: &LogsView, cx: &Context<Self>) -> AnyElement {
+        let line_count = view.lines().len();
+        let end_marker = view.end_marker();
+        let widest = widest_row(view.widest_line(), line_count, end_marker);
+        let source = self.view.clone();
         let notice = NoticeStyle::new(cx);
         let tag_colours = pod_tag_colours(cx);
         let palette =
@@ -222,16 +221,19 @@ impl LogsPanel {
                 uniform_list(
                     "logs-panel-lines",
                     line_count + usize::from(end_marker.is_some()),
-                    move |range, _window, _cx| {
+                    move |range, _window, cx| {
+                        let lines = source.read(cx).lines();
                         range
-                            .map(|ix| {
-                                if ix == line_count {
-                                    return notice
-                                        .apply(div().children(end_marker))
-                                        .debug_selector(|| END_MARKER.into())
-                                        .into_any_element();
+                            .map(|ix| match lines.get(ix) {
+                                // Within this frame's `line_count`, as the
+                                // view only grows between frames.
+                                Some(line) if ix < line_count => {
+                                    line_row(ix, line, &tag_colours, &palette, &notice)
                                 }
-                                line_row(ix, &lines[ix], &tag_colours, &palette, &notice)
+                                _ => notice
+                                    .apply(div().children(end_marker))
+                                    .debug_selector(|| END_MARKER.into())
+                                    .into_any_element(),
                             })
                             .collect()
                     },
