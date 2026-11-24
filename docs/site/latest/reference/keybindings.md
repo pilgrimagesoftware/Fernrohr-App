@@ -88,7 +88,7 @@ This list matches the commands registered in `app/src/command.rs`.
 | Show Logs (Other Panel Mode) | — | Global | — | `nav.show_logs_flipped` |
 | Show Events | — | Global | — | `nav.show_events` |
 | Helm Releases | — | Global | — | `nav.show_helm_releases` |
-| Open Logs by Label… | <kbd>⌘⇧L</kbd> | Global | Window | `logs.follow_labels` |
+| Open Logs by Label… | <kbd>⌘⇧L</kbd> | Global | View | `logs.follow_labels` |
 | Fit Columns to Contents | — | Global | View | `table.fit_columns` |
 | Focus Resources | <kbd>⌘0</kbd> | Global | Navigate | `resource.focus` |
 | Resources: Refresh | <kbd>⌘R</kbd> | Global | View | `resource.refresh` |
