@@ -49,11 +49,22 @@ fn command_tunnel_helper() {
             println!("Enter passphrase for key:");
             std::thread::sleep(std::time::Duration::from_secs(60));
         }
-        "late-hang" => {
-            // A slow start, as on a loaded machine (#408): the prompt comes
+        "prompt" => {
+            // A prompt as ssh writes one: no newline, then waiting (#423).
+            use std::io::Write as _;
+            eprint!("Enter passphrase for key '/home/user/.ssh/id_ed25519': ");
+            let _ = std::io::stderr().flush();
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
+        "silent" => {
+            // Stuck without a word, as at a prompt written to the terminal.
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
+        "late-chatter" => {
+            // A slow start, as on a loaded machine (#408): the output comes
             // after a 1 s readiness timeout would already have passed.
             std::thread::sleep(std::time::Duration::from_millis(1500));
-            println!("Enter passphrase for key:");
+            println!("Testing if tunnel connection works.");
             std::thread::sleep(std::time::Duration::from_secs(60));
         }
         other => panic!("unknown helper mode {other}"),
@@ -117,6 +128,13 @@ async fn eventually_within(limit: Duration, condition: impl Fn() -> bool) -> boo
     }
 }
 
+/// A failure's reason, retried or not.
+fn reason(failure: ConnectFailure) -> String {
+    match failure {
+        ConnectFailure::Retry(reason) | ConnectFailure::GiveUp(reason) => reason,
+    }
+}
+
 fn port_is_free(port: u16) -> bool {
     std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
@@ -175,21 +193,21 @@ async fn exiting_before_ready_fails_with_the_output() {
 async fn a_command_that_never_listens_times_out_and_is_stopped() {
     let _serial = PORT_TESTS.lock().await;
     let port = free_port();
-    let mut transport = transport("hang", port, Duration::from_secs(2));
+    let mut transport = transport("silent", port, Duration::from_secs(2));
     let reason = transport.connect().await.expect_err("times out");
     assert!(reason.contains("timed out after 2s"), "{reason}");
     assert!(transport.pid().is_none(), "the command was stopped");
 }
 
-/// 2.2: the timeout's failure quotes what the command printed, often the
-/// prompt it is stuck on. The wait for the port starts only once the
-/// stand-in's prompt is in the output, so a slow start can't leave it out
-/// (#408) - the stand-in here prints later than the timeout on purpose.
+/// 2.2: the timeout's failure quotes what the command printed. The wait for the
+/// port starts only once the stand-in's output is in the tail, so a slow start
+/// can't leave it out (#408) - the stand-in here prints later than the timeout
+/// on purpose. (A prompt it's stuck at fails sooner: see [`prompts`].)
 #[tokio::test]
 async fn a_timeout_quotes_what_the_command_printed() {
     let _serial = PORT_TESTS.lock().await;
     let port = free_port();
-    let mut transport = transport("late-hang", port, Duration::from_secs(1));
+    let mut transport = transport("late-chatter", port, Duration::from_secs(1));
     let path = transport.login_path().await;
     transport.running = Some(
         process::spawn(&transport.argv, &path, &transport.tail, &transport.pid_slot)
@@ -199,14 +217,14 @@ async fn a_timeout_quotes_what_the_command_printed() {
     assert!(
         eventually_within(Duration::from_secs(60), || tail
             .text()
-            .contains("Enter passphrase"))
+            .contains("Testing if tunnel"))
         .await,
-        "the stand-in printed its prompt"
+        "the stand-in printed its output"
     );
-    let reason = transport.wait_until_ready().await.expect_err("times out");
+    let reason = reason(transport.wait_until_ready().await.expect_err("times out"));
     assert!(reason.contains("timed out after 1s"), "{reason}");
     assert!(
-        reason.contains("Enter passphrase"),
+        reason.contains("Testing if tunnel connection works."),
         "the output tail: {reason}"
     );
     assert!(transport.pid().is_none(), "the command was stopped");
@@ -382,3 +400,5 @@ async fn a_failing_test_command_reports_the_output() {
     assert!(reason.contains("active account"), "{reason}");
     assert!(!helper_running("fernrohr-helper=exit").await);
 }
+
+mod prompts;
