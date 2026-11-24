@@ -68,37 +68,49 @@ fn an_endless_line_is_cut_at_the_limit() {
     assert_eq!(lines[0].len(), PARTIAL_LIMIT);
 }
 
+const LONG: Duration = Duration::from_secs(60);
+
 /// #423: a prompt counts once the command has been quiet at it a while.
 #[test]
 fn a_prompt_counts_only_once_the_command_is_quiet() {
     let tail = OutputTail::default();
-    assert_eq!(tail.waiting_prompt(Duration::ZERO), None, "nothing printed");
+    assert_eq!(
+        tail.waiting_prompt(Duration::ZERO, Duration::ZERO),
+        None,
+        "nothing printed"
+    );
     tail.take(Pipe::Stderr, b"Enter passphrase for key 'k': ");
     assert_eq!(
-        tail.waiting_prompt(Duration::from_secs(60)),
+        tail.waiting_prompt(LONG, Duration::ZERO),
         None,
         "not quiet yet"
     );
     assert_eq!(
-        tail.waiting_prompt(Duration::ZERO).as_deref(),
-        Some("Enter passphrase for key 'k':")
+        tail.waiting_prompt(Duration::ZERO, LONG).as_deref(),
+        Some("Enter passphrase for key 'k':"),
+        "an unfinished line needs only the short quiet"
     );
 }
 
 /// A prompt the command printed with a newline, as some do, is still one -
-/// but only while it's the last thing printed.
+/// after the longer quiet, and only while it's the last thing printed.
 #[test]
 fn a_finished_last_line_can_be_the_prompt() {
     let tail = OutputTail::default();
     tail.take(Pipe::Stdout, b"Please enter your password:\n");
-    assert!(tail.waiting_prompt(Duration::ZERO).is_some());
+    assert_eq!(
+        tail.waiting_prompt(Duration::ZERO, LONG),
+        None,
+        "a finished line needs the longer quiet"
+    );
+    assert!(tail.waiting_prompt(LONG, Duration::ZERO).is_some());
     tail.take(Pipe::Stdout, b"Authenticated.\n");
-    assert_eq!(tail.waiting_prompt(Duration::ZERO), None);
+    assert_eq!(tail.waiting_prompt(Duration::ZERO, Duration::ZERO), None);
 }
 
 #[test]
 fn ordinary_output_is_no_prompt() {
     let tail = OutputTail::default();
     tail.take(Pipe::Stdout, b"Listening on port [4000].\n");
-    assert_eq!(tail.waiting_prompt(Duration::ZERO), None);
+    assert_eq!(tail.waiting_prompt(Duration::ZERO, Duration::ZERO), None);
 }

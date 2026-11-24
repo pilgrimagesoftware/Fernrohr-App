@@ -7,19 +7,38 @@
 //!   command with the login `PATH`, and polls the port until it accepts a connection,
 //!   the command exits, the startup timeout passes, or the command sits at a prompt
 //!   no one will answer (#423). Each failure carries the command's recent output.
-//!   Until the tunnel has been ready once, a failure gives up rather than retrying:
-//!   running the command again would only stop at the same login or prompt, while
-//!   the connection waiting on it never heard why. Once it has been up, a failure
-//!   is retried with backoff, as a dropped session usually comes back.
+//!   Until the tunnel has been ready once, what happens next depends on whether
+//!   starting again can help ([`Startup`]): a prompt, the full startup timeout or a
+//!   program that won't start gives up at once, so the connection waiting on it
+//!   hears why instead of waiting while the command stops at the same login again.
+//!   An exit or a busy port - the network not up yet, a previous run still letting
+//!   go of the port - is retried, up to [`COMMAND_TUNNEL_STARTUP_ATTEMPTS`] times in
+//!   a row. Once the tunnel has been up, every failure is retried with backoff, as a
+//!   dropped session usually comes back.
 //! - **health** is "still running, and the port still answers".
 //! - **stop** (on reconnect and on drop) ends the whole process group.
 
 use super::output::OutputTail;
 use super::process::{self, Running};
-use crate::consts::{COMMAND_TUNNEL_POLL_INTERVAL, COMMAND_TUNNEL_PROMPT_QUIET};
+use crate::consts::{
+    COMMAND_TUNNEL_POLL_INTERVAL, COMMAND_TUNNEL_PROMPT_LINE_QUIET, COMMAND_TUNNEL_PROMPT_QUIET,
+    COMMAND_TUNNEL_STARTUP_ATTEMPTS,
+};
 use crate::forward::supervisor::{ConnectFailure, ForwardTransport};
 use std::time::Duration;
 use tokio::net::TcpStream;
+
+/// Why a start failed, by whether starting again can help - what decides, before
+/// the tunnel has been ready, between retrying and giving up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Startup {
+    /// Starting again would end the same way: a prompt no one will answer, the full
+    /// startup timeout already waited out, a program that won't start.
+    Settled,
+    /// May pass by itself: the command exited (the network not up yet, a backend
+    /// blip), or the port is still held (a previous run letting go of it).
+    Transient,
+}
 
 pub(crate) struct CommandTransport {
     /// The command's arguments, `{port}` already substituted.
@@ -32,9 +51,12 @@ pub(crate) struct CommandTransport {
     path: Option<String>,
     /// Where the running command's pid is recorded for the owning tunnel.
     pid_slot: crate::util::pidfile::PidSlot,
-    /// Whether the port has answered since this transport was made: a failure
-    /// before then is the command's setup failing, and isn't retried.
+    /// Whether the port has answered since this transport was made: before then, a
+    /// failure is the command's setup failing, and is retried only if it's
+    /// [`Startup::Transient`].
     been_ready: bool,
+    /// Transient failures in a row before the first ready.
+    transient_failures: u32,
 }
 
 impl CommandTransport {
@@ -48,6 +70,7 @@ impl CommandTransport {
             path: None,
             pid_slot: crate::util::pidfile::PidSlot::default(),
             been_ready: false,
+            transient_failures: 0,
         }
     }
 
@@ -86,13 +109,23 @@ impl CommandTransport {
             .is_ok()
     }
 
-    /// A startup failure for `reason`: given up on until the tunnel has been ready
-    /// once, retried after.
-    fn startup_failure(&self, reason: String) -> ConnectFailure {
+    /// What a start failing for `reason` leads to: once the tunnel has been ready, a
+    /// retry; before, giving up - at once if it's [`Startup::Settled`], after
+    /// [`COMMAND_TUNNEL_STARTUP_ATTEMPTS`] in a row if it's transient.
+    fn startup_failure(&mut self, kind: Startup, reason: String) -> ConnectFailure {
         if self.been_ready {
-            ConnectFailure::Retry(reason)
-        } else {
-            ConnectFailure::GiveUp(reason)
+            return ConnectFailure::Retry(reason);
+        }
+        match kind {
+            Startup::Settled => ConnectFailure::GiveUp(reason),
+            Startup::Transient => {
+                self.transient_failures += 1;
+                if self.transient_failures >= COMMAND_TUNNEL_STARTUP_ATTEMPTS {
+                    ConnectFailure::GiveUp(reason)
+                } else {
+                    ConnectFailure::Retry(reason)
+                }
+            }
         }
     }
 
@@ -103,10 +136,12 @@ impl CommandTransport {
         loop {
             if self.port_answers().await {
                 self.been_ready = true;
+                self.transient_failures = 0;
                 return Ok(());
             }
             let Some(running) = self.running.as_mut() else {
-                return Err(self.startup_failure("the command is not running".to_string()));
+                return Err(self
+                    .startup_failure(Startup::Settled, "the command is not running".to_string()));
             };
             match running.child.try_wait() {
                 Ok(None) => {}
@@ -115,16 +150,19 @@ impl CommandTransport {
                     let reason =
                         format!("the command exited before the tunnel was ready ({status})");
                     self.stop().await;
-                    return Err(self.startup_failure(self.tail.with_reason(reason)));
+                    let reason = self.tail.with_reason(reason);
+                    return Err(self.startup_failure(Startup::Transient, reason));
                 }
                 Err(error) => {
                     self.stop().await;
-                    return Err(
-                        self.startup_failure(format!("failed to check the command: {error}"))
-                    );
+                    let reason = format!("failed to check the command: {error}");
+                    return Err(self.startup_failure(Startup::Settled, reason));
                 }
             }
-            if let Some(prompt) = self.tail.waiting_prompt(COMMAND_TUNNEL_PROMPT_QUIET) {
+            if let Some(prompt) = self.tail.waiting_prompt(
+                COMMAND_TUNNEL_PROMPT_QUIET,
+                COMMAND_TUNNEL_PROMPT_LINE_QUIET,
+            ) {
                 self.stop().await;
                 let reason = format!(
                     "the command is waiting for input (\"{prompt}\"), which Fernrohr can't \
@@ -132,7 +170,8 @@ impl CommandTransport {
                      in, accept the host key or add the key to your SSH agent - then connect \
                      again."
                 );
-                return Err(self.startup_failure(self.tail.with_reason(reason)));
+                let reason = self.tail.with_reason(reason);
+                return Err(self.startup_failure(Startup::Settled, reason));
             }
             if tokio::time::Instant::now() >= deadline {
                 self.stop().await;
@@ -142,7 +181,8 @@ impl CommandTransport {
                     self.startup_timeout.as_secs(),
                     self.local_port
                 );
-                return Err(self.startup_failure(self.tail.with_reason(reason)));
+                let reason = self.tail.with_reason(reason);
+                return Err(self.startup_failure(Startup::Settled, reason));
             }
             tokio::time::sleep(COMMAND_TUNNEL_POLL_INTERVAL).await;
         }
@@ -160,12 +200,13 @@ impl CommandTransport {
                 }
                 _ => format!("can't use local port {}: {error}", self.local_port),
             };
-            return Err(self.startup_failure(reason));
+            return Err(self.startup_failure(Startup::Transient, reason));
         }
         let path = self.login_path().await;
-        let running = process::spawn(&self.argv, &path, &self.tail, &self.pid_slot)
-            .map_err(|reason| self.startup_failure(reason))?;
-        self.running = Some(running);
+        match process::spawn(&self.argv, &path, &self.tail, &self.pid_slot) {
+            Ok(running) => self.running = Some(running),
+            Err(reason) => return Err(self.startup_failure(Startup::Settled, reason)),
+        }
         self.wait_until_ready().await
     }
 }

@@ -115,19 +115,21 @@ impl OutputTail {
     }
 
     /// The prompt the command is waiting at, if the last thing it printed looks
-    /// like one ([`looks_like_prompt`]) and it has printed nothing for `quiet`
-    /// since: an unfinished line, or failing that the last finished one.
-    pub(super) fn waiting_prompt(&self, quiet: Duration) -> Option<String> {
+    /// like one ([`looks_like_prompt`]) and it has printed nothing since: for
+    /// `quiet`, when that's an unfinished line, as prompts usually are; for the
+    /// longer `line_quiet`, when it's the last finished line.
+    pub(super) fn waiting_prompt(&self, quiet: Duration, line_quiet: Duration) -> Option<String> {
         let lines = self.0.lock();
-        if lines.last_output?.elapsed() < quiet {
+        let silent_for = lines.last_output?.elapsed();
+        let unfinished: Vec<String> = lines.unfinished().collect();
+        let (last, needed) = if unfinished.is_empty() {
+            (lines.done.back().cloned().into_iter().collect(), line_quiet)
+        } else {
+            (unfinished, quiet)
+        };
+        if silent_for < needed {
             return None;
         }
-        let unfinished: Vec<String> = lines.unfinished().collect();
-        let last = if unfinished.is_empty() {
-            lines.done.back().cloned().into_iter().collect()
-        } else {
-            unfinished
-        };
         last.into_iter()
             .find(|text| looks_like_prompt(text))
             .map(|text| text.trim().to_string())

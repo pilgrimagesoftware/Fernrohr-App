@@ -1,8 +1,10 @@
 //! #423: a command stuck at a prompt no one will answer fails with the prompt as
-//! its reason and is stopped, and a startup failure before the tunnel was ever
-//! ready gives up rather than retrying - so a connection waiting on it hears why.
+//! its reason and is stopped. Before the tunnel was ever ready, a failure starting
+//! again can't help gives up at once, and one that may pass (an exit, a busy port)
+//! is retried a few times first - so a connection waiting on it hears why.
 
 use super::*;
+use crate::consts::COMMAND_TUNNEL_STARTUP_ATTEMPTS;
 
 /// A prompt written without a newline, as ssh writes one, fails as waiting for
 /// input - well before the timeout - and the command's whole group is stopped.
@@ -59,6 +61,49 @@ async fn a_timeout_before_the_tunnel_was_ready_gives_up() {
     assert!(
         matches!(&failure, ConnectFailure::GiveUp(reason) if reason.contains("timed out")),
         "{failure:?}"
+    );
+}
+
+/// A busy port before the first ready - a previous run still letting go of it -
+/// is retried, then given up on after the last attempt, with its reason.
+#[tokio::test]
+async fn a_busy_port_before_ready_is_retried_then_given_up() {
+    let _serial = PORT_TESTS.lock().await;
+    let port = free_port();
+    let _squatter = std::net::TcpListener::bind(("127.0.0.1", port)).expect("bound");
+    let mut transport = transport(&format!("listen:{port}"), port, Duration::from_secs(20));
+    for attempt in 1..COMMAND_TUNNEL_STARTUP_ATTEMPTS {
+        let failure = transport.connect_outcome().await.expect_err("port in use");
+        assert!(
+            matches!(&failure, ConnectFailure::Retry(reason) if reason.contains("already in use")),
+            "attempt {attempt}: {failure:?}"
+        );
+    }
+    let failure = transport.connect_outcome().await.expect_err("port in use");
+    assert!(
+        matches!(&failure, ConnectFailure::GiveUp(reason) if reason.contains("already in use")),
+        "the last attempt: {failure:?}"
+    );
+}
+
+/// A command that exits before ready - not signed in, or the network not up yet
+/// - is retried, then given up on with its output.
+#[tokio::test]
+async fn an_exit_before_ready_is_retried_then_given_up() {
+    let _serial = PORT_TESTS.lock().await;
+    let port = free_port();
+    let mut transport = transport("exit", port, Duration::from_secs(60));
+    for attempt in 1..COMMAND_TUNNEL_STARTUP_ATTEMPTS {
+        let failure = transport.connect_outcome().await.expect_err("exits");
+        assert!(
+            matches!(failure, ConnectFailure::Retry(_)),
+            "attempt {attempt}: {failure:?}"
+        );
+    }
+    let failure = transport.connect_outcome().await.expect_err("exits");
+    assert!(
+        matches!(&failure, ConnectFailure::GiveUp(reason) if reason.contains("active account")),
+        "the last attempt: {failure:?}"
     );
 }
 
