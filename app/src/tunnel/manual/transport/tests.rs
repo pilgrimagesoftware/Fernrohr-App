@@ -25,9 +25,11 @@ fn transport(
 }
 
 /// A port nothing listens on, held for as long as the socket lives: bound but
-/// never listening, so a connect to it is refused at once. Binding and letting
-/// go (#449) freed the port for a test running alongside to take for its own
-/// listener, and the probe then reached that and skipped the prompt.
+/// never listening. Linux refuses a connect to it at once; macOS drops it, so
+/// the probe's timeout decides. Either way it's unreachable, and no one else
+/// can bind it. Binding and letting go (#449) freed the port for a test running
+/// alongside to take for its own listener, and the probe then reached that and
+/// skipped the prompt.
 fn closed_port() -> (tokio::net::TcpSocket, u16) {
     let socket = tokio::net::TcpSocket::new_v4().unwrap();
     socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
@@ -125,7 +127,7 @@ async fn dropping_a_waiting_transport_withdraws_its_confirmation() {
 }
 
 /// The closed port stays this test's: no listener can take it while held, and
-/// the probe finds it refused rather than reachable (#449).
+/// the probe finds it unreachable - refused on Linux, timed out on macOS (#449).
 #[tokio::test]
 async fn a_held_closed_port_cannot_be_taken_and_is_unreachable() {
     let (_held, port) = closed_port();
@@ -133,7 +135,10 @@ async fn a_held_closed_port_cannot_be_taken_and_is_unreachable() {
         std::net::TcpListener::bind(("127.0.0.1", port)).is_err(),
         "another listener can't take the held port"
     );
-    assert!(!reachable(&local(port), FAST).await, "refused, not reached");
+    assert!(
+        !reachable(&local(port), FAST).await,
+        "unreachable: refused (Linux) or timed out (macOS)"
+    );
 }
 
 #[tokio::test]
