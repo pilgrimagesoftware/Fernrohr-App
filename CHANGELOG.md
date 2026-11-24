@@ -1,4 +1,34 @@
 
+## 0.18.0 - 2026-11-24
+
+### <!-- 0 -->🚀 Features
+- List the objects a resource controls
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Put the context beside each list panel's search box
+- Name the context in list panels that can't list
+- Sort the Contexts submenu alphabetically
+- Fail a command tunnel stuck at a prompt instead of hanging
+- Retry transient startup failures before giving up
+- Move Open Logs by Label to the View menu
+
+
+### <!-- 4 -->⚡ Performance
+- Draw lines from the view instead of copying the buffer
+
+
+### <!-- 6 -->🧪 Testing
+- Make the release-watch upgrade test independent of watch batching
+- Hold the unreachable port so no other test can take it
+- Say how each platform treats the held port
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.17.0
+
+
+
 ## 0.17.0 - 2026-11-20
 
 ### <!-- 0 -->🚀 Features
