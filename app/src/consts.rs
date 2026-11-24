@@ -47,6 +47,10 @@ pub(crate) const COMMAND_TUNNEL_STOP_GRACE: Duration = Duration::from_secs(3);
 /// shortcut waits for the API server to accept a TCP connection before it asks the
 /// user instead.
 pub(crate) const MANUAL_TUNNEL_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long a starting command tunnel's command must print nothing more after what
+/// looks like a credentials or yes/no prompt before it's taken as waiting for input
+/// (#423), so a prompt-like line it prints on its way past isn't mistaken for one.
+pub(crate) const COMMAND_TUNNEL_PROMPT_QUIET: Duration = Duration::from_secs(1);
 /// How many of a command tunnel's most recent output lines a failure reason carries.
 pub(crate) const COMMAND_TUNNEL_OUTPUT_LINES: usize = 50;
 /// How long a Helm release action's `helm` run may take before its process

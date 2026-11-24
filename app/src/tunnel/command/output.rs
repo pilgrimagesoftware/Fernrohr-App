@@ -1,39 +1,136 @@
 //! The last lines a command tunnel's command printed, on stdout or stderr - what a
 //! failure reason shows, since a vendor CLI says what went wrong (a missing login, a
 //! host-key prompt) there.
+//!
+//! The pipes are read in chunks, not line by line, so output that doesn't end in a
+//! newline is kept too: a prompt (`Enter passphrase for key '...': `) usually
+//! doesn't, and it's the one thing that explains a command stuck waiting (#423).
+//! Each pipe keeps its own unfinished line, so stdout and stderr don't splice.
 
+use super::prompt::looks_like_prompt;
 use crate::consts::COMMAND_TUNNEL_OUTPUT_LINES;
 use parking_lot::Mutex;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
+use std::time::{Duration, Instant};
+use tokio::io::{AsyncRead, AsyncReadExt as _};
+
+/// Which of the command's pipes output came from.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Pipe {
+    Stdout = 0,
+    Stderr = 1,
+}
+
+/// The longest unfinished line kept before it's taken as a line anyway, so output
+/// that never ends a line (a progress bar redrawn with `\r`) stays bounded.
+const PARTIAL_LIMIT: usize = 1024;
+
+#[derive(Default)]
+struct Lines {
+    /// Finished lines, oldest first, at most [`COMMAND_TUNNEL_OUTPUT_LINES`].
+    done: VecDeque<String>,
+    /// Each pipe's unfinished line, as raw bytes so a UTF-8 character split
+    /// across reads still decodes once whole.
+    partial: [Vec<u8>; 2],
+    /// When the command last printed anything.
+    last_output: Option<Instant>,
+}
+
+impl Lines {
+    fn push(&mut self, line: String) {
+        if self.done.len() == COMMAND_TUNNEL_OUTPUT_LINES {
+            self.done.pop_front();
+        }
+        self.done.push_back(line);
+    }
+
+    /// Ends `pipe`'s unfinished line, if it has one, as a finished line.
+    fn finish(&mut self, pipe: Pipe) {
+        let bytes = std::mem::take(&mut self.partial[pipe as usize]);
+        if !bytes.is_empty() {
+            self.push(decode(&bytes));
+        }
+    }
+
+    fn unfinished(&self) -> impl Iterator<Item = String> + '_ {
+        self.partial
+            .iter()
+            .filter(|bytes| !bytes.is_empty())
+            .map(|bytes| decode(bytes))
+    }
+}
+
+fn decode(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .trim_end_matches('\r')
+        .to_string()
+}
 
 /// A bounded ring of output lines, shared between the readers draining the
 /// command's pipes and the transport that reports them.
 #[derive(Clone, Default)]
-pub(super) struct OutputTail(Arc<Mutex<VecDeque<String>>>);
+pub(super) struct OutputTail(Arc<Mutex<Lines>>);
 
 impl OutputTail {
+    #[cfg(test)]
     pub(super) fn push(&self, line: String) {
         let mut lines = self.0.lock();
-        if lines.len() == COMMAND_TUNNEL_OUTPUT_LINES {
-            lines.pop_front();
-        }
-        lines.push_back(line);
+        lines.push(line);
+        lines.last_output = Some(Instant::now());
     }
 
     pub(super) fn clear(&self) {
-        self.0.lock().clear();
+        *self.0.lock() = Lines::default();
     }
 
-    /// The lines, oldest first, joined; empty when the command printed nothing.
+    /// Takes in `bytes` read from `pipe`: each newline ends a line, and what
+    /// follows the last one stays unfinished until more arrives.
+    fn take(&self, pipe: Pipe, bytes: &[u8]) {
+        let mut lines = self.0.lock();
+        lines.last_output = Some(Instant::now());
+        for &byte in bytes {
+            if byte == b'\n' {
+                lines.finish(pipe);
+                continue;
+            }
+            lines.partial[pipe as usize].push(byte);
+            if lines.partial[pipe as usize].len() >= PARTIAL_LIMIT {
+                lines.finish(pipe);
+            }
+        }
+    }
+
+    /// The lines, oldest first, then any unfinished ones, joined; empty when the
+    /// command printed nothing.
     pub(super) fn text(&self) -> String {
         let lines = self.0.lock();
         lines
+            .done
             .iter()
-            .map(String::as_str)
+            .cloned()
+            .chain(lines.unfinished())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// The prompt the command is waiting at, if the last thing it printed looks
+    /// like one ([`looks_like_prompt`]) and it has printed nothing for `quiet`
+    /// since: an unfinished line, or failing that the last finished one.
+    pub(super) fn waiting_prompt(&self, quiet: Duration) -> Option<String> {
+        let lines = self.0.lock();
+        if lines.last_output?.elapsed() < quiet {
+            return None;
+        }
+        let unfinished: Vec<String> = lines.unfinished().collect();
+        let last = if unfinished.is_empty() {
+            lines.done.back().cloned().into_iter().collect()
+        } else {
+            unfinished
+        };
+        last.into_iter()
+            .find(|text| looks_like_prompt(text))
+            .map(|text| text.trim().to_string())
     }
 
     /// `reason`, followed by the recent output when there is any.
@@ -46,39 +143,16 @@ impl OutputTail {
         }
     }
 
-    /// Reads `pipe` line by line into the tail until it closes.
-    pub(super) async fn drain(self, pipe: impl AsyncRead + Unpin) {
-        let mut lines = BufReader::new(pipe).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            self.push(line);
+    /// Reads `pipe` into the tail until it closes; an unfinished last line is
+    /// kept as a line.
+    pub(super) async fn drain(self, from: Pipe, mut pipe: impl AsyncRead + Unpin) {
+        let mut buffer = [0u8; 4096];
+        while let Ok(read @ 1..) = pipe.read(&mut buffer).await {
+            self.take(from, &buffer[..read]);
         }
+        self.0.lock().finish(from);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn keeps_only_the_most_recent_lines() {
-        let tail = OutputTail::default();
-        for n in 0..COMMAND_TUNNEL_OUTPUT_LINES + 5 {
-            tail.push(format!("line {n}"));
-        }
-        let text = tail.text();
-        assert!(!text.contains("line 4\n"), "the oldest lines dropped");
-        assert!(text.starts_with("line 5\n"));
-        assert!(text.ends_with(&format!("line {}", COMMAND_TUNNEL_OUTPUT_LINES + 4)));
-    }
-
-    #[test]
-    fn a_reason_carries_the_output_only_when_there_is_some() {
-        let tail = OutputTail::default();
-        assert_eq!(tail.with_reason("exited"), "exited");
-        tail.push("ERROR: please log in".into());
-        assert_eq!(
-            tail.with_reason("exited"),
-            "exited\n\nRecent output:\nERROR: please log in"
-        );
-    }
-}
+mod tests;
