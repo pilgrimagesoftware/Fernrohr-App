@@ -246,6 +246,7 @@ fn the_view_menu_is_grouped() {
             "Move Resource Panel to Other Side",
             "---",
             "Open in New Panel",
+            "Open Logs by Label…",
             "Maximize/Restore Panel",
             "Move to New Window",
             "---",
@@ -277,7 +278,8 @@ fn the_navigate_menu_holds_only_global_navigation() {
 /// `saved-panel-layouts` 7.2: `layouts.save` and `layouts.manage` both show
 /// up under the Window menu, alongside `shell.new_window` - the registry's
 /// own `menu` slot, not a hand-kept list that could drift from it. So does
-/// the typed label Logs panel (`selector-logs`) and Connections.
+/// Connections. Open Logs by Label… opens a panel in the current window, so
+/// it's in the View menu instead (#245).
 #[test]
 fn the_window_menu_carries_both_layout_commands() {
     assert_eq!(
@@ -287,7 +289,6 @@ fn the_window_menu_carries_both_layout_commands() {
             "Save Panel Layout…",
             "Saved Layouts…",
             "Connections",
-            "Open Logs by Label…"
         ]
     );
 }
