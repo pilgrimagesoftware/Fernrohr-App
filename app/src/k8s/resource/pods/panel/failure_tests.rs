@@ -63,3 +63,37 @@ async fn a_failed_connections_report_files_it_filled_in(cx: &mut TestAppContext)
     );
     assert!(description.contains(REASON), "{description}");
 }
+
+/// #252: with no list to carry the context beside its search box, a failed
+/// panel still names its context above the failure - outside the error, so
+/// Report… (above) still leaves it out.
+#[gpui_kit::test]
+async fn a_failed_connection_still_names_its_context(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(|window, cx| {
+        let panel = cx.new(|cx| {
+            let connection = cx.new(|_| {
+                ClusterConnection::test_with_state(ConnectionState::Failed(REASON.into()))
+            });
+            let namespaces = cx.new(|_| NamespaceList::empty());
+            PodsPanel::with_connection(
+                PanelScope::new(NavTarget::pods(), "dev".to_string()),
+                connection,
+                namespaces,
+                cx,
+            )
+        });
+        Root::new(panel, window, cx)
+    });
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.run_until_parked();
+    vcx.update(|window, cx| window.render_frame(cx));
+
+    let line = vcx
+        .debug_bounds(crate::ui::list_search::CONTEXT_LINE)
+        .expect("the context is named");
+    assert!(line.size.width > gpui_kit::px(0.), "drawn, not collapsed");
+}

@@ -31,23 +31,42 @@ impl ObjectListPanel {
         KeyHint::for_action(action, Some(PANEL_KEY_CONTEXT), fallback, label, window)
     }
 
-    fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn content(
+        &mut self,
+        refreshing: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let space = crate::ui::space::spacing(cx);
         let status = |text: String| div().size_full().p(space.panel_inset).child(text);
         match &self.connection.read(cx).state {
             ConnectionState::Connecting => {
-                return status("Connecting...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Connecting...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::WaitingForTunnel => {
-                return status("Waiting for tunnel...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Waiting for tunnel...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             // Selectable, with Report… beside it (#177).
             ConnectionState::Failed(reason) => {
-                return panel_title::error_content(
-                    // Not the context's name: it's in the panel's title already, and a
-                    // report filed from here goes to a public issue (#177).
-                    "Couldn't connect to the cluster".to_string(),
-                    Some(reason.clone()),
+                return crate::ui::list_search::with_context(
+                    panel_title::error_content(
+                        // Not the context's name: the context line above names it, outside
+                        // the report, which goes to a public issue (#177).
+                        "Couldn't connect to the cluster".to_string(),
+                        Some(reason.clone()),
+                        cx,
+                    ),
+                    Some(&self.scope),
                     cx,
                 )
                 .into_any_element();
@@ -57,9 +76,13 @@ impl ObjectListPanel {
         // Spec: "A kind the user cannot list" - the server's refusal, not an
         // empty table that looks like there's nothing there.
         if let Some(refused) = self.objects.read(cx).refused() {
-            return panel_title::error_content(
-                format!("Can't list {}", self.scope.target.list_label()),
-                Some(refused.to_string()),
+            return crate::ui::list_search::with_context(
+                panel_title::error_content(
+                    format!("Can't list {}", self.scope.target.list_label()),
+                    Some(refused.to_string()),
+                    cx,
+                ),
+                Some(&self.scope),
                 cx,
             )
             .into_any_element();
@@ -68,9 +91,13 @@ impl ObjectListPanel {
         // to show, so say so rather than drawing an empty table.
         let polled = match self.objects.read(cx).mode() {
             ListMode::Unlistable => {
-                return status("This kind can't be listed".into())
-                    .debug_selector(|| "object-list-unlistable".into())
-                    .into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("This kind can't be listed".into())
+                        .debug_selector(|| "object-list-unlistable".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ListMode::Polled { .. } => true,
             ListMode::Watched => false,
@@ -183,11 +210,15 @@ impl ObjectListPanel {
             .gap(space.control_gap)
             .p(space.panel_inset)
             .children(Self::notes(&self.kind, polled, cx))
-            .child(
+            .child(crate::ui::list_search::search_row(
                 div()
                     .on_action(cx.listener(Self::on_action_clear_filter))
-                    .child(crate::ui::text_field::text_field(&filter, cx)),
-            )
+                    .child(crate::ui::text_field::text_field(&filter, cx))
+                    .into_any_element(),
+                refreshing.then(|| list_state::refreshing(cx)),
+                Some(&self.scope),
+                cx,
+            ))
             .children(self.render_refusal(cx))
             .children(crate::ui::bulk::render_bulk(self, cx))
             .child({
@@ -325,13 +356,13 @@ impl ObjectListPanel {
 impl Render for ObjectListPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
-        let content = self.content(window, cx);
         let refreshing = matches!(self.objects.read(cx).phase(), LoadPhase::Refreshing { .. });
         let refreshing = self.indicators.refreshing.ready(
             refreshing,
             |this: &mut Self| &mut this.indicators.refreshing,
             cx,
         );
+        let content = self.content(refreshing, window, cx);
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names().to_vec();
         // `None` for a cluster-scoped kind: no namespace to pick.
@@ -347,23 +378,21 @@ impl Render for ObjectListPanel {
             window,
             cx,
         );
-        let header = div()
-            .flex()
-            .items_center()
-            .gap(space.control_gap)
-            .px(space.panel_inset)
-            .py(space.control_gap)
-            .bg(crate::ui::style::surface_raised(cx))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(panel_title::context_label(
-                &self.scope,
-                cx.theme().muted_foreground,
-            ))
-            .when(refreshing, |header| {
-                header.child(list_state::refreshing(cx))
-            })
-            .children(namespace_bar);
+        // The namespace picker's row, for a namespaced kind; the context and
+        // refreshing spinner sit in the search row (#252).
+        let header = namespace_bar.map(|bar| {
+            div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(space.control_gap)
+                .px(space.panel_inset)
+                .py(space.control_gap)
+                .bg(crate::ui::style::surface_raised(cx))
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .child(bar)
+        });
         let mut key_context = KeyContext::default();
         key_context.add(PANEL_KEY_CONTEXT);
         key_context.add(crate::ui::list_sort::KEY_CONTEXT);
@@ -401,7 +430,7 @@ impl Render for ObjectListPanel {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .child(header)
+                    .children(header)
                     .child(div().flex_1().min_h_0().child(content)),
             )
             // Tab stays in the panel: see `ui::panel::focus`.

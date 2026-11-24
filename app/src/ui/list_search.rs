@@ -133,6 +133,145 @@ impl ListSearch {
     }
 }
 
+/// The row a list panel's search box sits in (#252): the box, filling what's
+/// left, then `trailing` (a count, a refreshing spinner), then the panel's
+/// "Context: <name>" when `context` is given - truncated with an ellipsis once
+/// it would take more than [`CONTEXT_SHARE`] of the row, its full name in a
+/// tooltip. A panel embedded in another one's content passes `None`: its host
+/// already names the context.
+///
+/// The panel puts its usual `control_gap` between this row and the list, as
+/// it does between every other row.
+pub fn search_row(
+    field: AnyElement,
+    trailing: impl IntoIterator<Item = AnyElement>,
+    context: Option<&crate::ui::panel_title::PanelScope>,
+    cx: &App,
+) -> Div {
+    use gpui_kit::component::ActiveTheme as _;
+    div()
+        .debug_selector(|| SEARCH_ROW.into())
+        .flex()
+        .items_center()
+        .gap(crate::ui::space::spacing(cx).control_gap)
+        .child(div().flex_1().min_w_0().child(field))
+        .children(trailing)
+        .children(context.map(|scope| {
+            div()
+                .debug_selector(|| SEARCH_ROW_CONTEXT.into())
+                .flex()
+                .min_w_0()
+                .max_w(relative(CONTEXT_SHARE))
+                .child(crate::ui::panel_title::context_label(
+                    scope,
+                    cx.theme().muted_foreground,
+                ))
+        }))
+}
+
+/// `body` - a panel's state in place of its list (connecting, failed,
+/// refused) - under the "Context: <name>" line the search row would carry,
+/// so a panel that can't list still says which context it's about (#252).
+/// `None`, for a panel embedded in another one's content, leaves `body` as it
+/// is. The line is outside `body`, so a failure's Report… never includes it.
+pub fn with_context(
+    body: impl IntoElement,
+    context: Option<&crate::ui::panel_title::PanelScope>,
+    cx: &App,
+) -> Div {
+    use gpui_kit::component::ActiveTheme as _;
+    let space = crate::ui::space::spacing(cx);
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .children(context.map(|scope| {
+            div()
+                .debug_selector(|| CONTEXT_LINE.into())
+                .flex()
+                .px(space.panel_inset)
+                .pt(space.panel_inset)
+                .child(crate::ui::panel_title::context_label(
+                    scope,
+                    cx.theme().muted_foreground,
+                ))
+        }))
+        .child(div().flex_1().min_h_0().child(body))
+}
+
+/// [`with_context`]'s line, for tests.
+pub(crate) const CONTEXT_LINE: &str = "list-context-line";
+
+/// The most of [`search_row`] the context name takes before it truncates, so a
+/// long name never squeezes the search box.
+const CONTEXT_SHARE: f32 = 0.4;
+
+/// [`search_row`], for tests.
+pub(crate) const SEARCH_ROW: &str = "list-search-row";
+/// [`search_row`]'s context name, for tests.
+pub(crate) const SEARCH_ROW_CONTEXT: &str = "list-search-row-context";
+
+/// What a search row's context name should look like, for
+/// [`assert_search_row_layout`].
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ContextShown {
+    /// No context in the row: a panel embedded in another one's content.
+    Absent,
+    /// The whole name, narrower than the cap - drawn at its own width, not
+    /// collapsed and not truncated.
+    Whole,
+    /// A long name, cut at [`CONTEXT_SHARE`] of the row.
+    Truncated,
+}
+
+/// Checks a drawn list panel's search row against #252: its context name
+/// sits to the right of the search box on the same line, drawn as `context`
+/// says, and the table starts one `control_gap` below the row.
+#[cfg(test)]
+pub(crate) fn assert_search_row_layout(vcx: &mut VisualTestContext, context: ContextShown) {
+    use gpui_kit::test::TestWindowExt as _;
+    vcx.update(|window, cx| window.render_frame(cx));
+    let row = vcx
+        .debug_bounds(SEARCH_ROW)
+        .expect("the search row is drawn");
+    let table = vcx
+        .debug_bounds(crate::ui::list_state::TABLE_AREA_SELECTOR)
+        .expect("the table is drawn");
+    let gap = vcx.update(|_, cx| crate::ui::space::spacing(cx).control_gap);
+    assert_eq!(
+        table.top() - row.bottom(),
+        gap,
+        "one control gap between the search row and the table"
+    );
+    let drawn = vcx.debug_bounds(SEARCH_ROW_CONTEXT);
+    if context == ContextShown::Absent {
+        assert!(drawn.is_none(), "no context in this search row");
+        return;
+    }
+    let label = drawn.expect("the context is in the search row");
+    assert!(
+        label.top() >= row.top() && label.bottom() <= row.bottom(),
+        "the context is on the search box's line: {label:?} in {row:?}"
+    );
+    assert!(
+        label.left() > row.left() + row.size.width / 2.,
+        "the context is right of the search box: {label:?} in {row:?}"
+    );
+    let cap = row.size.width * CONTEXT_SHARE;
+    match context {
+        ContextShown::Whole => assert!(
+            label.size.width > px(0.) && label.size.width < cap - px(1.),
+            "a short context name shows whole, neither collapsed nor cut: {label:?} in {row:?}"
+        ),
+        ContextShown::Truncated => assert!(
+            (label.size.width - cap).abs() <= px(1.),
+            "a long context name stops at the cap rather than squeezing the box: {label:?} in {row:?}"
+        ),
+        ContextShown::Absent => unreachable!("returned above"),
+    }
+}
+
 /// Whether any of `texts` - a row's visible column text, a panel's own to
 /// gather - contains `query`, case-insensitively. An empty query matches
 /// everything.
