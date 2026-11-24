@@ -221,6 +221,7 @@ its kind, and as plain text otherwise. Plain text does nothing when activated.
 Detail panels link the references that follow.
 
 - Every object: its namespace and each owner, each as its own link.
+- Every object that controls others: each object it controls, under **Controls**.
 - A pod: its node, service account, image pull secrets, and every ConfigMap,
   Secret and PersistentVolumeClaim named by its volumes, `envFrom` or `valueFrom`.
 - Kinds with their own sections, as in the table above: the volumes, backends,
@@ -245,5 +246,23 @@ choice. The panel's shortcut hints show the current key for **Go to Reference…
 
 If the target was deleted or never existed, such as an optional Secret that isn't
 there, its panel opens and says the object doesn't exist.
+
+### Controlled objects
+
+An object's Overview lists what it controls under **Controls**: the objects whose
+owner is this one. The list updates as they're created and deleted, so a
+rollout's new ReplicaSet appears without reopening the panel. Each entry is a
+link, and the panel it opens lists the next level down. For example, open a
+Deployment, follow one of its ReplicaSets, then one of that ReplicaSet's pods.
+
+| Object | Controls |
+| --- | --- |
+| Deployment | ReplicaSets |
+| ReplicaSet, StatefulSet, DaemonSet, Job | Pods |
+| CronJob | Jobs |
+
+Fernrohr watches these kinds for you while the panel is open. Any other kind's
+controlled objects, such as a custom controller's, show while a list of their
+kind is open in a panel.
 
 *Summarizes the capability specs: `object-detail`, `pod-detail`, `resource-links`.*

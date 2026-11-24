@@ -33,6 +33,7 @@ fn row(name: &str, namespace: Option<&str>, age_secs: i64, now: Timestamp) -> Li
             cells: Vec::new(),
             conditions: Default::default(),
             facts: Default::default(),
+            owners: Vec::new(),
         },
         now,
     )
@@ -229,6 +230,7 @@ fn deployment_row(name: &str, available: i64, now: Timestamp) -> ListRow {
             ],
             conditions: Default::default(),
             facts: Default::default(),
+            owners: Vec::new(),
         },
         now,
     )

@@ -1,0 +1,250 @@
+//! #209: the objects a detail panel's object controls - those whose
+//! `ownerReferences` name its uid - shown as the Overview's "Controls" field,
+//! the reverse of its "Controlled By" (`metadata`). One level per panel:
+//! each entry is a link, and the panel it opens lists the next level, so a
+//! Deployment walks to its ReplicaSets and on to their Pods.
+//!
+//! Where the children come from: the context's shared watches, never a list
+//! of its own. A kind with known children ([`CHILD_KINDS`]) subscribes their
+//! watches for as long as the panel is open - the same refcounted watch a
+//! list of that kind reads, so an open Pods list and this panel share one.
+//! Any other kind's children are found in the watches the context already
+//! has open, without starting one: a custom controller's objects show once a
+//! list of their kind is open.
+//!
+//! The match runs when one of those tables or the object changes, not per
+//! frame, and keeps only the references (`Controlled::refs`) for `sections`.
+
+use super::panel::ObjectDetailPanel;
+use crate::k8s::cluster::connection::ConnectionState;
+use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::object_ref::ObjectRef;
+use crate::k8s::resource::object_list::{ObjectRow, ObjectsTable};
+use crate::k8s::resource::pods::PodsTable;
+use gpui_kit::*;
+use k8s_openapi::api::core::v1::Pod;
+
+/// The kinds each controller kind creates, as `(group, kind)` - whose watches
+/// a panel over one of them subscribes. Pods come from the context's Pods
+/// watch, the rest from their kind's.
+/// A kind by API group (empty for core) and name.
+type GroupKind = (&'static str, &'static str);
+
+const CHILD_KINDS: &[(GroupKind, &[GroupKind])] = &[
+    (("apps", "Deployment"), &[("apps", "ReplicaSet")]),
+    (("apps", "ReplicaSet"), &[("", "Pod")]),
+    (("apps", "StatefulSet"), &[("", "Pod")]),
+    (("apps", "DaemonSet"), &[("", "Pod")]),
+    (("batch", "CronJob"), &[("batch", "Job")]),
+    (("batch", "Job"), &[("", "Pod")]),
+];
+
+/// The child kinds `(group, kind)` subscribes, or none for a kind not in
+/// [`CHILD_KINDS`].
+pub(super) fn child_kinds(group: &str, kind: &str) -> &'static [GroupKind] {
+    CHILD_KINDS
+        .iter()
+        .find(|((g, k), _)| *g == group && *k == kind)
+        .map(|(_, children)| *children)
+        .unwrap_or_default()
+}
+
+/// The panel's controlled-objects state: the watches it subscribed and what
+/// the last match found.
+#[derive(Default)]
+pub(super) struct Controlled {
+    /// The context's Pods watch, once subscribed for a kind whose children
+    /// are pods.
+    pods: Option<Entity<PodsTable>>,
+    /// The child kinds' watches it subscribed, each released with the panel.
+    kinds: Vec<(DiscoveredKind, Entity<ObjectsTable>)>,
+    /// The context's other open watches it matched against, observed so a
+    /// change there re-matches too. Only observed, never subscribed: a list
+    /// closing still stops its watch, and its entry goes at the next match.
+    observed: Vec<(DiscoveredKind, Subscription)>,
+    /// What the object controls, sorted by kind then namespace and name.
+    pub(super) refs: Vec<ObjectRef>,
+}
+
+/// Everything in `tables` and `pods` whose owners include `uid`: sorted by
+/// kind, then namespace and name, each once. An empty uid - an object not
+/// loaded yet - controls nothing.
+pub(super) fn controlled_by<'a>(
+    uid: &str,
+    tables: impl IntoIterator<Item = (&'a DiscoveredKind, &'a [ObjectRow])>,
+    pods: &[Pod],
+) -> Vec<ObjectRef> {
+    if uid.is_empty() {
+        return Vec::new();
+    }
+    let mut refs: Vec<ObjectRef> = tables
+        .into_iter()
+        .flat_map(|(kind, rows)| {
+            rows.iter()
+                .filter(|row| row.owners.iter().any(|owner| owner == uid))
+                .map(move |row| object_ref(kind, row))
+        })
+        .chain(pods.iter().filter_map(|pod| {
+            let meta = &pod.metadata;
+            meta.owner_references
+                .iter()
+                .flatten()
+                .any(|owner| owner.uid == uid)
+                .then(|| {
+                    ObjectRef::core(
+                        "Pod",
+                        meta.namespace.as_deref().unwrap_or_default(),
+                        meta.name.as_deref().unwrap_or_default(),
+                    )
+                })
+        }))
+        .collect();
+    refs.sort_by(|a, b| (&a.kind, &a.namespace, &a.name).cmp(&(&b.kind, &b.namespace, &b.name)));
+    refs.dedup();
+    refs
+}
+
+fn object_ref(kind: &DiscoveredKind, row: &ObjectRow) -> ObjectRef {
+    let gvk = &kind.gvk;
+    match &row.namespace {
+        Some(namespace) => {
+            ObjectRef::namespaced(gvk.group.clone(), gvk.kind.clone(), namespace, &row.name)
+        }
+        None => ObjectRef::cluster_scoped(gvk.group.clone(), gvk.kind.clone(), &row.name),
+    }
+}
+
+impl ObjectDetailPanel {
+    /// Subscribes the watches of the object's known child kinds that aren't
+    /// yet, once connected and the kinds are discovered - again on each
+    /// connection or discovery change, so a kind discovered late still gets
+    /// its watch. Then matches.
+    pub(super) fn follow_controlled(&mut self, cx: &mut Context<Self>) {
+        let ConnectionState::Connected(client) = &self.connection.read(cx).state else {
+            return;
+        };
+        let client = client.clone();
+        let gvk = &self.target.kind.gvk;
+        let children = child_kinds(&gvk.group, &gvk.kind);
+        let context_name = self.scope.context_name.clone();
+        for &(group, kind) in children {
+            if group.is_empty() && kind == "Pod" {
+                if self.controlled.pods.is_none() {
+                    let table = ClusterRegistry::subscribe_pods(cx, &context_name, client.clone());
+                    let context = context_name.clone();
+                    cx.on_release(move |_: &mut Self, cx| {
+                        ClusterRegistry::unsubscribe_pods(cx, &context)
+                    })
+                    .detach();
+                    cx.observe(&table, |this, _, cx| this.match_controlled(cx))
+                        .detach();
+                    self.controlled.pods = Some(table);
+                }
+                continue;
+            }
+            let subscribed = self
+                .controlled
+                .kinds
+                .iter()
+                .any(|(watched, _)| watched.gvk.group == group && watched.gvk.kind == kind);
+            let discovered = self.kinds(cx).and_then(|kinds| {
+                kinds
+                    .iter()
+                    .find(|found| found.gvk.group == group && found.gvk.kind == kind)
+                    .cloned()
+            });
+            let (false, Some(child)) = (subscribed, discovered) else {
+                continue;
+            };
+            self.watch_child_kind(child, client.clone(), cx);
+        }
+        self.match_controlled(cx);
+    }
+
+    fn watch_child_kind(
+        &mut self,
+        kind: DiscoveredKind,
+        client: kube::Client,
+        cx: &mut Context<Self>,
+    ) {
+        let context_name = self.scope.context_name.clone();
+        let table = ClusterRegistry::subscribe_kind(cx, &context_name, client, &kind);
+        let released = kind.clone();
+        cx.on_release(move |_: &mut Self, cx| {
+            ClusterRegistry::unsubscribe_kind(cx, &context_name, &released)
+        })
+        .detach();
+        cx.observe(&table, |this, _, cx| this.match_controlled(cx))
+            .detach();
+        self.controlled.kinds.push((kind, table));
+    }
+
+    /// Matches the object against its subscribed child watches and every
+    /// other watch the context has open, and redraws if that changed.
+    pub(super) fn match_controlled(&mut self, cx: &mut Context<Self>) {
+        let uid = self
+            .object()
+            .and_then(|object| object.metadata.uid.clone())
+            .unwrap_or_default();
+        let mut tables = self.controlled.kinds.clone();
+        let open = ClusterRegistry::open_kind_tables(cx, &self.scope.context_name);
+        self.controlled
+            .observed
+            .retain(|(kind, _)| open.iter().any(|(still, _)| still == kind));
+        for (kind, table) in open {
+            if tables.iter().any(|(watched, _)| *watched == kind) {
+                continue;
+            }
+            if !self
+                .controlled
+                .observed
+                .iter()
+                .any(|(seen, _)| *seen == kind)
+            {
+                let subscription = cx.observe(&table, |this, _, cx| this.match_controlled(cx));
+                self.controlled.observed.push((kind.clone(), subscription));
+            }
+            tables.push((kind, table));
+        }
+        let read: Vec<(&DiscoveredKind, &[ObjectRow])> = tables
+            .iter()
+            .map(|(kind, table)| (kind, table.read(cx).rows()))
+            .collect();
+        let pods = self
+            .controlled
+            .pods
+            .as_ref()
+            .map(|table| table.read(cx).pods())
+            .unwrap_or_default();
+        let refs = controlled_by(&uid, read, pods);
+        if refs != self.controlled.refs {
+            self.controlled.refs = refs;
+            cx.notify();
+        }
+    }
+}
+
+#[cfg(test)]
+impl ObjectDetailPanel {
+    /// Follows `pods` and `kinds` as if subscribed, for tests: a stub
+    /// connection never connects.
+    pub(super) fn test_watch_controlled(
+        &mut self,
+        pods: Option<Entity<PodsTable>>,
+        kinds: Vec<(DiscoveredKind, Entity<ObjectsTable>)>,
+        cx: &mut Context<Self>,
+    ) {
+        for (_, table) in &kinds {
+            cx.observe(table, |this, _, cx| this.match_controlled(cx))
+                .detach();
+        }
+        if let Some(table) = &pods {
+            cx.observe(table, |this, _, cx| this.match_controlled(cx))
+                .detach();
+        }
+        self.controlled.pods = pods;
+        self.controlled.kinds = kinds;
+        self.match_controlled(cx);
+    }
+}

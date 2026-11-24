@@ -64,6 +64,8 @@ pub struct ObjectDetailPanel {
     /// for `("", "Node")` alone - `None` for every other kind, which draws no
     /// such region.
     pub(super) node_pods: Option<Entity<PodsPanel>>,
+    /// What the object controls, and the watches that tell (#209).
+    pub(super) controlled: super::controlled::Controlled,
 }
 
 impl ObjectDetailPanel {
@@ -133,7 +135,12 @@ impl ObjectDetailPanel {
     ) -> Self {
         cx.observe(&connection, |this: &mut Self, _, cx| this.sync(cx))
             .detach();
-        cx.observe(&discovery, |_, _, cx| cx.notify()).detach();
+        // A child kind discovered late gets its watch then (#209).
+        cx.observe(&discovery, |this: &mut Self, _, cx| {
+            this.follow_controlled(cx);
+            cx.notify();
+        })
+        .detach();
         let mut this = Self {
             target,
             scope,
@@ -156,6 +163,7 @@ impl ObjectDetailPanel {
             // Set by `new` alone, once the struct exists (see its own
             // comment) - `with_connection`'s stub tests leave this `None`.
             node_pods: None,
+            controlled: Default::default(),
         };
         this.sync(cx);
         this
@@ -171,6 +179,7 @@ impl ObjectDetailPanel {
         };
         let client = client.clone();
         self.follow_kind(client, cx);
+        self.follow_controlled(cx);
         if !self.fetching {
             self.fetch(cx);
         }
@@ -220,6 +229,7 @@ impl ObjectDetailPanel {
                     self.show_absent();
                 } else {
                     self.show_fetched(object, events);
+                    self.match_controlled(cx);
                 }
             }
             Ok(ObjectFetch::NotFound) => {
@@ -241,6 +251,7 @@ impl ObjectDetailPanel {
     pub(crate) fn test_set_loaded(&mut self, mut object: DynamicObject, cx: &mut Context<Self>) {
         super::redact::redact(&self.target.kind, &mut object);
         self.state = ObjectDetailState::Loaded(Box::new(object), Ok(Vec::new()));
+        self.match_controlled(cx);
         cx.notify();
     }
 
@@ -266,7 +277,15 @@ impl ObjectDetailPanel {
         let Some(object) = self.object() else {
             return Vec::new();
         };
-        let mut sections = vec![metadata::overview(object, &self.target, now)];
+        let mut overview = metadata::overview(object, &self.target, now);
+        if !self.controlled.refs.is_empty() {
+            overview.fields.push(super::model::ObjectField::references(
+                "Controls",
+                self.controlled.refs.clone(),
+                true,
+            ));
+        }
+        let mut sections = vec![overview];
         sections.extend(sections::sections_for(&self.target.kind, object));
         sections
     }
