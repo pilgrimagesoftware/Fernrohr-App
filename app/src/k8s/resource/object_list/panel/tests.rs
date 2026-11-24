@@ -25,7 +25,7 @@ pub(super) fn deployments() -> DiscoveredKind {
     }
 }
 
-fn nodes() -> DiscoveredKind {
+pub(super) fn nodes() -> DiscoveredKind {
     DiscoveredKind {
         gvk: GroupVersionKind::gvk("", "v1", "Node"),
         plural: "nodes".into(),
@@ -476,5 +476,6 @@ mod flash;
 mod hints;
 mod poll;
 mod search;
+mod search_row;
 mod sort;
 mod states;

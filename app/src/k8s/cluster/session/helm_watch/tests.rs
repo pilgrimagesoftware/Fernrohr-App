@@ -6,7 +6,7 @@
 // Named imports only: a `use super::*` here would re-glob gpui_kit test macro internals.
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::session::{ClusterRegistry, WatchKey};
-use crate::k8s::resource::helm::{HelmReleasesTable, HelmScope, ReleaseRow, Summary};
+use crate::k8s::resource::helm::{HelmReleasesTable, HelmScope, ReleaseKey, ReleaseRow, Summary};
 use crate::k8s::test_cluster::FakeCluster;
 use base64::Engine as _;
 use gpui_kit::{Entity, TestAppContext};
@@ -103,6 +103,18 @@ fn rows(cx: &mut TestAppContext, table: &Entity<HelmReleasesTable>) -> Vec<Relea
     cx.update(|cx| table.read(cx).rows())
 }
 
+/// Whether the table's only row is `web` at revision `version`, labelled
+/// `status`, with that revision's payload fetched and saying chart `chart`.
+/// A fetch's result lands only on the exact revision write it was made for,
+/// so this holds only once the fetch for the latest write has been served.
+fn web_is(table: &HelmReleasesTable, version: u32, status: &str, chart: &str) -> bool {
+    let rows = table.rows();
+    rows.len() == 1
+        && rows[0].latest.version == version
+        && rows[0].latest.status == status
+        && chart_version(&rows[0]).as_deref() == Some(chart)
+}
+
 fn chart_version(row: &ReleaseRow) -> Option<String> {
     match &row.summary {
         Summary::Ready { chart, .. } => Some(chart.version.clone()),
@@ -131,20 +143,32 @@ async fn install_upgrade_and_uninstall_follow_the_cluster(cx: &mut TestAppContex
 
     let table = subscribe(cx, HelmScope::All);
     wait_for(cx, &table, "showed web 1.0.0", |table| {
-        table.loaded() && table.rows().first().and_then(chart_version).as_deref() == Some("1.0.0")
+        table.loaded() && web_is(table, 1, "deployed", "1.0.0")
     });
     assert_eq!(rows(cx, &table).len(), 1, "only Helm release Secrets");
 
-    // An upgrade, in the order Helm writes it: the new revision pending,
-    // the old one superseded, then the new one deployed.
+    // An upgrade, in the order Helm writes it: the new revision pending, the
+    // old one superseded, then the new one deployed. Each write is seen - and
+    // any fetch it causes served - before the next, so the fetch count below
+    // doesn't depend on how the watch happens to batch the writes (#447).
+    // `table/tests.rs` pins the counting rules for the same writes.
     install(&cluster, "shop", "web", 2, "pending-upgrade", "1.1.0");
+    wait_for(cx, &table, "showed the pending upgrade", |table| {
+        web_is(table, 2, "pending-upgrade", "1.1.0")
+    });
     install(&cluster, "shop", "web", 1, "superseded", "1.0.0");
+    wait_for(cx, &table, "saw v1 superseded", |table| {
+        table
+            .history(&ReleaseKey {
+                namespace: "shop".into(),
+                name: "web".into(),
+            })
+            .iter()
+            .any(|revision| revision.version == 1 && revision.status == "superseded")
+    });
     install(&cluster, "shop", "web", 2, "deployed", "1.1.0");
-    wait_for(cx, &table, "showed the upgrade", |table| {
-        let rows = table.rows();
-        rows.len() == 1
-            && rows[0].latest.version == 2
-            && chart_version(&rows[0]).as_deref() == Some("1.1.0")
+    wait_for(cx, &table, "showed the upgrade deployed", |table| {
+        web_is(table, 2, "deployed", "1.1.0")
     });
 
     let (metadata, full) = cluster.list_requests();

@@ -171,6 +171,47 @@ fn each_new_latest_revision_is_fetched_once() {
     );
 }
 
+/// #447: an upgrade as Helm writes it - the new revision pending, the old one
+/// superseded, the new one deployed - one watch event at a time: each write to
+/// the latest revision fetches it again, and superseding the old one fetches
+/// nothing. (The session test follows the same writes over a watch, where how
+/// they're batched is up to timing; the counting rules are pinned here.)
+#[test]
+fn an_upgrade_in_helms_order_fetches_only_writes_to_the_latest() {
+    let mut table = listed(vec![secret("shop", "web", 1, "deployed", "1")]);
+    let versions = |fetches: Vec<Fetch>| -> Vec<(u32, String)> {
+        fetches
+            .into_iter()
+            .map(|fetch| (fetch.version, fetch.resource_version))
+            .collect()
+    };
+    assert_eq!(versions(table.take_fetches()), [(1, "1".to_string())]);
+
+    table.apply(Event::Apply(secret(
+        "shop",
+        "web",
+        2,
+        "pending-upgrade",
+        "2",
+    )));
+    assert_eq!(
+        versions(table.take_fetches()),
+        [(2, "2".to_string())],
+        "the pending revision is the new latest"
+    );
+    table.apply(Event::Apply(secret("shop", "web", 1, "superseded", "3")));
+    assert!(
+        table.take_fetches().is_empty(),
+        "superseding the old revision fetches nothing"
+    );
+    table.apply(Event::Apply(secret("shop", "web", 2, "deployed", "4")));
+    assert_eq!(
+        versions(table.take_fetches()),
+        [(2, "4".to_string())],
+        "deploying it writes the latest again"
+    );
+}
+
 /// Nothing is fetched while the first list arrives, when each revision is
 /// briefly its release's latest; once it completes, only the latest is.
 #[test]

@@ -170,16 +170,22 @@ fn name_the_proxy(state: ConnectionState, proxy: SocketAddr) -> ConnectionState 
 }
 
 /// Whether a connection reaching `state` through a forward routed `route` lets the
-/// forward go. Only a manual tunnel's, and only on failure: its confirmation then
-/// lasts only while some *connected* context uses it, so a connection that failed
-/// after Proceed - or because Cancel was chosen - prompts again next time
-/// (`manual-confirmation-tunnels`: Confirmation lifetime). SSH and command forwards
-/// stay, to be reused by a retry.
+/// forward go - only ever on failure:
+/// - a manual tunnel's: its confirmation then lasts only while some *connected*
+///   context uses it, so a connection that failed after Proceed - or because Cancel
+///   was chosen - prompts again next time (`manual-confirmation-tunnels`:
+///   Confirmation lifetime);
+/// - any forward that `gave_up`: it will never come up, so a retry has to start a
+///   new one (#423: a command tunnel stuck at a prompt), and while it's held the
+///   Tunnels window would show it running.
+///
+/// Other SSH and command forwards stay, to be reused by a retry.
 pub(in crate::k8s::cluster) fn releases_forward_on(
     state: &ConnectionState,
     route: Option<TunnelRoute>,
+    gave_up: bool,
 ) -> bool {
-    matches!(state, ConnectionState::Failed(_)) && route == Some(TunnelRoute::Direct)
+    matches!(state, ConnectionState::Failed(_)) && (gave_up || route == Some(TunnelRoute::Direct))
 }
 
 /// Points `config.cluster_url` at the tunnel's local forward and pins
@@ -333,6 +339,7 @@ impl ClusterConnection {
         let forward = acquired.and_then(Result::ok).flatten();
         let forward_wait = forward.as_ref().map(ForwardWait::of);
         let route = forward.as_ref().map(|handle| handle.forward().route());
+        let failure = forward.as_ref().map(|handle| handle.forward().failure());
 
         let rx = crate::runtime::spawn_stream(cx, 4, move |tx| async move {
             let config_result = resolve_config(context_name.as_deref()).await;
@@ -341,7 +348,8 @@ impl ClusterConnection {
         cx.spawn(async move |this, cx| {
             crate::runtime::drain(rx, |state| {
                 let _ = this.update(cx, |this, cx| {
-                    if releases_forward_on(&state, route) {
+                    let gave_up = failure.as_ref().is_some_and(|slot| slot.get().is_some());
+                    if releases_forward_on(&state, route, gave_up) {
                         this._forward = None;
                     }
                     this.state = state;

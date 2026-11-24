@@ -115,6 +115,11 @@ double-click it, to read the whole message in the object's detail panel.
   text in any visible column, ignoring case. When nothing matches, the column
   headers stay and the list reads "No rows match the filter". While the box holds
   text, the ✕ at its right clears it.
+  The panel's context name sits to the right of the filter box, on the same
+  line. A long name is shortened; hover it to read it in full. The namespace
+  picker has its own row above, for a kind that has namespaces. While a panel
+  is connecting, or can't list its kind, the context name is shown above the
+  message instead.
 - **Changes flash.** When the cluster adds, changes or deletes an object
   while you watch, its row briefly flashes green, yellow or red and fades. A
   deleted row stays for the flash, then goes. The first list, a reconnect's

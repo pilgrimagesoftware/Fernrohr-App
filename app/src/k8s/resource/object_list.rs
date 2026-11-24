@@ -29,6 +29,7 @@ pub(crate) use commands::LIST_KEY_CONTEXT;
 pub use commands::{EditListedObject, OpenListedObject, register_commands};
 pub use panel::ObjectListPanel;
 pub use restore::register_restore;
+pub use row::ObjectRow;
 #[cfg(test)]
 pub(crate) use store::ListMode;
 pub use store::ObjectsTable;

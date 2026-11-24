@@ -17,7 +17,6 @@ use crate::ui::list_state::{self, TableArea};
 use crate::ui::panel_title;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 /// The action banner's ids (helm-releases section 8).
@@ -65,20 +64,39 @@ impl HelmReleasesPanel {
         KeyHint::for_action(action, Some(PANEL_KEY_CONTEXT), fallback, label, window)
     }
 
-    fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn content(
+        &mut self,
+        refreshing: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let space = crate::ui::space::spacing(cx);
         let status = |text: String| div().size_full().p(space.panel_inset).child(text);
         match &self.connection.read(cx).state {
             ConnectionState::Connecting => {
-                return status("Connecting...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Connecting...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::WaitingForTunnel => {
-                return status("Waiting for tunnel...".into()).into_any_element();
+                return crate::ui::list_search::with_context(
+                    status("Waiting for tunnel...".into()),
+                    Some(&self.scope),
+                    cx,
+                )
+                .into_any_element();
             }
             ConnectionState::Failed(reason) => {
-                return panel_title::error_content(
-                    "Couldn't connect to the cluster".to_string(),
-                    Some(reason.clone()),
+                return crate::ui::list_search::with_context(
+                    panel_title::error_content(
+                        "Couldn't connect to the cluster".to_string(),
+                        Some(reason.clone()),
+                        cx,
+                    ),
+                    Some(&self.scope),
                     cx,
                 )
                 .into_any_element();
@@ -87,11 +105,15 @@ impl HelmReleasesPanel {
         }
         if let Some((scope, message)) = self.refusal(cx) {
             let (title, detail) = refusal_text(&scope, &message);
-            return div()
-                .debug_selector(|| "helm-releases-refused".into())
-                .size_full()
-                .child(panel_title::error_content(title, Some(detail), cx))
-                .into_any_element();
+            return crate::ui::list_search::with_context(
+                div()
+                    .debug_selector(|| "helm-releases-refused".into())
+                    .size_full()
+                    .child(panel_title::error_content(title, Some(detail), cx)),
+                Some(&self.scope),
+                cx,
+            )
+            .into_any_element();
         }
         let search = self.search_input(window, cx);
         let rows = self.visible_rows(cx);
@@ -149,25 +171,23 @@ impl HelmReleasesPanel {
             .flex_col()
             .gap(space.control_gap)
             .p(space.panel_inset)
-            .child(
+            .child(crate::ui::list_search::search_row(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap(space.control_gap)
-                    .child(
-                        div()
-                            .flex_1()
-                            .on_action(cx.listener(Self::on_action_clear_search))
-                            .child(crate::ui::text_field::text_field(&search, cx)),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .debug_selector(|| "helm-releases-count".into())
-                            .child(count),
-                    ),
-            )
+                    .on_action(cx.listener(Self::on_action_clear_search))
+                    .child(crate::ui::text_field::text_field(&search, cx))
+                    .into_any_element(),
+                [div()
+                    .flex_none()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .debug_selector(|| "helm-releases-count".into())
+                    .child(count)
+                    .into_any_element()]
+                .into_iter()
+                .chain(refreshing.then(|| list_state::refreshing(cx))),
+                Some(&self.scope),
+                cx,
+            ))
             .child(
                 div()
                     .flex_1()
@@ -269,13 +289,13 @@ impl HelmReleasesPanel {
 impl Render for HelmReleasesPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
-        let content = self.content(window, cx);
         let refreshing = matches!(self.phase(cx), LoadPhase::Refreshing { .. });
         let refreshing = self.indicators.refreshing.ready(
             refreshing,
             |this: &mut Self| &mut this.indicators.refreshing,
             cx,
         );
+        let content = self.content(refreshing, window, cx);
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names().to_vec();
         let namespace_bar = self.namespace_picker.element(
@@ -289,23 +309,21 @@ impl Render for HelmReleasesPanel {
             window,
             cx,
         );
-        let header = div()
-            .flex()
-            .items_center()
-            .gap(space.control_gap)
-            .px(space.panel_inset)
-            .py(space.control_gap)
-            .bg(crate::ui::style::surface_raised(cx))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(panel_title::context_label(
-                &self.scope,
-                cx.theme().muted_foreground,
-            ))
-            .when(refreshing, |header| {
-                header.child(list_state::refreshing(cx))
-            })
-            .children(namespace_bar);
+        // The namespace picker's row, for a namespaced kind; the context and
+        // refreshing spinner sit in the search row (#252).
+        let header = namespace_bar.map(|bar| {
+            div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(space.control_gap)
+                .px(space.panel_inset)
+                .py(space.control_gap)
+                .bg(crate::ui::style::surface_raised(cx))
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .child(bar)
+        });
         let banner =
             actions::status_banner(&self.actions, cx.weak_entity(), &BANNER, cx).map(|banner| {
                 let space = crate::ui::space::spacing(cx);
@@ -344,7 +362,7 @@ impl Render for HelmReleasesPanel {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .child(header)
+                    .children(header)
                     .children(banner)
                     .child(div().flex_1().min_h_0().child(content)),
             )

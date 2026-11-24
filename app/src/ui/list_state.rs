@@ -24,6 +24,8 @@ pub(crate) const EMPTY_SELECTOR: &str = "list-empty";
 pub(crate) const OVERLAY_SELECTOR: &str = "list-overlay";
 /// The header's refreshing spinner's.
 pub(crate) const REFRESHING_SELECTOR: &str = "list-refreshing";
+/// The table area, under a list panel's search row, for tests.
+pub(crate) const TABLE_AREA_SELECTOR: &str = "list-table-area";
 /// The refreshing spinner's tooltip.
 pub(crate) const REFRESHING_TOOLTIP: &str = "Refreshing";
 /// What the empty state says when rows exist but the filter hides them all.
@@ -162,6 +164,7 @@ pub(crate) fn table_area_element(
         ),
     };
     div()
+        .debug_selector(|| TABLE_AREA_SELECTOR.to_string())
         .relative()
         .size_full()
         .child(table)

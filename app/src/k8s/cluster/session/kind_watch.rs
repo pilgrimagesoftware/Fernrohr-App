@@ -72,6 +72,24 @@ impl ClusterRegistry {
         )
     }
 
+    /// The kinds `context_name` already watches, each with its shared table -
+    /// read only, so a caller looking through them starts no new watch.
+    pub fn open_kind_tables(
+        cx: &App,
+        context_name: &str,
+    ) -> Vec<(DiscoveredKind, Entity<ObjectsTable>)> {
+        cx.try_global::<Self>()
+            .and_then(|registry| registry.sessions.get(context_name))
+            .map(|session| {
+                session
+                    .kinds
+                    .iter()
+                    .map(|(kind, watch)| (kind.clone(), watch.table.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Unsubscribes a panel from `context_name`'s shared watch of `kind`. The last one
     /// out stops the watch and drops the kind's table.
     pub fn unsubscribe_kind(cx: &mut App, context_name: &str, kind: &DiscoveredKind) {

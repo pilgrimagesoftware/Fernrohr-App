@@ -6,7 +6,7 @@
 //! starts `ssh`, which holds the port. Signalling only the pid we spawned would leave
 //! that `ssh` running.
 
-use super::output::OutputTail;
+use super::output::{OutputTail, Pipe};
 use crate::consts::COMMAND_TUNNEL_STOP_GRACE;
 use crate::util::pidfile::{self, PidFile, PidSlot};
 use crate::util::which::find_program;
@@ -54,10 +54,10 @@ pub(super) fn spawn(
     let stdin = child.stdin.take();
     let mut drains = Vec::new();
     if let Some(stdout) = child.stdout.take() {
-        drains.push(tokio::spawn(tail.clone().drain(stdout)));
+        drains.push(tokio::spawn(tail.clone().drain(Pipe::Stdout, stdout)));
     }
     if let Some(stderr) = child.stderr.take() {
-        drains.push(tokio::spawn(tail.clone().drain(stderr)));
+        drains.push(tokio::spawn(tail.clone().drain(Pipe::Stderr, stderr)));
     }
     let pidfile = child
         .id()

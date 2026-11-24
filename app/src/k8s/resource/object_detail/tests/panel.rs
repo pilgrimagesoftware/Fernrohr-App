@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 /// Initializes the app with the registry's real bindings for this panel and
 /// `links.go_to`, and records every `FollowReference` that reaches the app.
-fn init(cx: &mut TestAppContext) -> Rc<RefCell<Vec<FollowReference>>> {
+pub(super) fn init(cx: &mut TestAppContext) -> Rc<RefCell<Vec<FollowReference>>> {
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);

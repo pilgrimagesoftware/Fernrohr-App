@@ -84,6 +84,24 @@ The command runs without a shell, so pipes and `$VARIABLES` don't apply. Fernroh
 on your login shell's `PATH`, even when the app was opened from the Dock. The command must run
 unattended, so run it once in a terminal first to answer any host-key or login prompts.
 
+Fernrohr can't answer a prompt. If the command stops to ask for a password, a key's passphrase, a
+verification code or a yes/no answer, Fernrohr stops it after a few seconds of waiting. The connection
+fails with the prompt and the command's recent output, for example:
+
+```text
+the command is waiting for input ("Enter passphrase for key '/home/you/.ssh/id_ed25519':"),
+which Fernrohr can't answer.
+```
+
+Answer the prompt in a terminal: sign in, accept the host key, or add the key to your SSH agent
+with `ssh-add`. Then connect again. A prompt that a tool writes straight to the terminal doesn't
+show in its output. Fernrohr then reports that the startup timeout passed instead.
+
+Until the tunnel has come up once, Fernrohr reports a prompt, a timeout or a command it can't
+start right away, because running the command again would end the same way. If the command exits
+or its local port is still in use, Fernrohr tries twice more first, since the network may not be
+up yet. Once the tunnel has been up, Fernrohr restarts the command whenever it drops.
+
 All contexts bound to a command tunnel share one running command, whatever their API servers.
 **Test** shows the command's output if it fails.
 
