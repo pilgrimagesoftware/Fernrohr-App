@@ -28,6 +28,9 @@ pub struct ObjectRow {
     pub conditions: ConditionsSeen,
     /// What the kind's own actions read of the object (`resource-specific-actions`).
     pub(crate) facts: crate::k8s::resource::kind_actions::ObjectFacts,
+    /// The uids its `ownerReferences` name - how a detail panel finds the
+    /// objects its own object controls (#209) without the whole object.
+    pub owners: Vec<String>,
 }
 
 impl ObjectRow {
@@ -45,6 +48,12 @@ impl ObjectRow {
                 .unwrap_or_default(),
             conditions: ConditionsSeen::of(object),
             facts: crate::k8s::resource::kind_actions::ObjectFacts::of(object),
+            owners: meta
+                .owner_references
+                .iter()
+                .flatten()
+                .map(|owner| owner.uid.clone())
+                .collect(),
         }
     }
 
