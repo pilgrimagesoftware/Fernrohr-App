@@ -59,6 +59,18 @@ impl Render for PodsPanel {
         use crate::k8s::cluster::connection::ConnectionState;
 
         let space = crate::ui::space::spacing(cx);
+        // Embedded in a Node's detail panel (#186), this table is already
+        // under that panel's own "Context: <name>" header, and shows every
+        // namespace by construction - its own context label and namespace
+        // picker would only repeat the first and offer a filter the feature
+        // doesn't call for, so it draws no header of its own.
+        let refreshing = self.node.is_none()
+            && matches!(self.table.read(cx).phase(), LoadPhase::Refreshing { .. });
+        let refreshing = self.indicators.refreshing.ready(
+            refreshing,
+            |this: &mut Self| &mut this.indicators.refreshing,
+            cx,
+        );
         let content = match &self.connection.read(cx).state {
             ConnectionState::Connecting => div()
                 .size_full()
@@ -189,18 +201,25 @@ impl Render for PodsPanel {
                         table.read(cx).delegate().index_of(target).is_none()
                     });
                     let shortcuts = self.render_hints(shellable, window, cx);
+                    // The same gap between every row, the search row and the
+                    // table included, as the other list panels (#252).
                     div()
                         .size_full()
                         .flex()
                         .flex_col()
+                        .gap(space.control_gap)
                         .p(space.panel_inset)
                         .children(self.render_action_failure(cx))
                         .children(crate::ui::bulk::render_bulk(self, cx))
-                        .child(
+                        .child(list_search::search_row(
                             div()
                                 .on_action(cx.listener(Self::on_action_clear_filter))
-                                .child(crate::ui::text_field::text_field(&filter_input, cx)),
-                        )
+                                .child(crate::ui::text_field::text_field(&filter_input, cx))
+                                .into_any_element(),
+                            refreshing.then(|| list_state::refreshing(cx)),
+                            self.node.is_none().then_some(&self.scope),
+                            cx,
+                        ))
                         .child(
                             div()
                                 .flex_1()
@@ -224,7 +243,6 @@ impl Render for PodsPanel {
                         )
                         .child(
                             div()
-                                .mt(space.control_gap)
                                 .px_2()
                                 .py_1()
                                 .rounded_md()
@@ -235,22 +253,10 @@ impl Render for PodsPanel {
             }
         };
 
-        // Embedded in a Node's detail panel (#186), this table is already
-        // under that panel's own "Context: <name>" header, and shows every
-        // namespace by construction - its own context label and namespace
-        // picker would only repeat the first and offer a filter the feature
-        // doesn't call for, so it draws no header of its own.
-        let refreshing = self.node.is_none()
-            && matches!(self.table.read(cx).phase(), LoadPhase::Refreshing { .. });
-        let refreshing = self.indicators.refreshing.ready(
-            refreshing,
-            |this: &mut Self| &mut this.indicators.refreshing,
-            cx,
-        );
-        let header = if self.node.is_none() {
+        let namespace_bar = if self.node.is_none() {
             let this = cx.weak_entity();
             let namespaces = self.namespaces.read(cx).names().to_vec();
-            let namespace_bar = self.namespace_picker.element(
+            self.namespace_picker.element(
                 &self.scope,
                 &namespaces,
                 move |namespaces, cx| {
@@ -261,31 +267,25 @@ impl Render for PodsPanel {
                 },
                 window,
                 cx,
-            );
-            // "Context: <name>" on the left, the namespace picker (when there is
-            // one) on the right, in one header row.
-            Some(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(space.control_gap)
-                    .px(space.panel_inset)
-                    .py(space.control_gap)
-                    .bg(crate::ui::style::surface_raised(cx))
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(panel_title::context_label(
-                        &self.scope,
-                        cx.theme().muted_foreground,
-                    ))
-                    .when(refreshing, |header| {
-                        header.child(list_state::refreshing(cx))
-                    })
-                    .children(namespace_bar),
             )
         } else {
             None
         };
+        // The namespace picker's row; the context and refreshing spinner sit
+        // in the search row (#252).
+        let header = namespace_bar.map(|bar| {
+            div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(space.control_gap)
+                .px(space.panel_inset)
+                .py(space.control_gap)
+                .bg(crate::ui::style::surface_raised(cx))
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .child(bar)
+        });
 
         // While a quick look is open its own keys (Escape, Enter) apply too.
         let mut key_context = KeyContext::default();

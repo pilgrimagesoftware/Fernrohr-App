@@ -19,7 +19,6 @@ use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 /// The Events panel element's identifiers, for `keymap::conflicts` (#331).
@@ -153,7 +152,12 @@ impl EventsPanel {
             .into_any_element()
     }
 
-    fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn content(
+        &mut self,
+        refreshing: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let space = crate::ui::space::spacing(cx);
         let status = |text: String| div().size_full().p(space.panel_inset).child(text);
         match &self.connection.read(cx).state {
@@ -247,25 +251,23 @@ impl EventsPanel {
             .gap(space.control_gap)
             .p(space.panel_inset)
             .child(self.filter_bar(cx))
-            .child(
+            .child(crate::ui::list_search::search_row(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap(space.control_gap)
-                    .child(
-                        div()
-                            .flex_1()
-                            .on_action(cx.listener(Self::on_action_clear_search))
-                            .child(crate::ui::text_field::text_field(&search, cx)),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .debug_selector(|| "events-count".into())
-                            .child(count),
-                    ),
-            )
+                    .on_action(cx.listener(Self::on_action_clear_search))
+                    .child(crate::ui::text_field::text_field(&search, cx))
+                    .into_any_element(),
+                [div()
+                    .flex_none()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .debug_selector(|| "events-count".into())
+                    .child(count)
+                    .into_any_element()]
+                .into_iter()
+                .chain(refreshing.then(|| list_state::refreshing(cx))),
+                Some(&self.scope),
+                cx,
+            ))
             .child(
                 div()
                     .flex_1()
@@ -294,13 +296,13 @@ impl EventsPanel {
 impl Render for EventsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
-        let content = self.content(window, cx);
         let refreshing = matches!(self.events.read(cx).phase(), LoadPhase::Refreshing { .. });
         let refreshing = self.indicators.refreshing.ready(
             refreshing,
             |this: &mut Self| &mut this.indicators.refreshing,
             cx,
         );
+        let content = self.content(refreshing, window, cx);
         let this = cx.weak_entity();
         let namespaces = self.namespaces.read(cx).names().to_vec();
         let namespace_bar = self.namespace_picker.element(
@@ -316,23 +318,21 @@ impl Render for EventsPanel {
             window,
             cx,
         );
-        let header = div()
-            .flex()
-            .items_center()
-            .gap(space.control_gap)
-            .px(space.panel_inset)
-            .py(space.control_gap)
-            .bg(crate::ui::style::surface_raised(cx))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(panel_title::context_label(
-                &self.scope,
-                cx.theme().muted_foreground,
-            ))
-            .when(refreshing, |header| {
-                header.child(list_state::refreshing(cx))
-            })
-            .children(namespace_bar);
+        // The namespace picker's row, for a namespaced kind; the context and
+        // refreshing spinner sit in the search row (#252).
+        let header = namespace_bar.map(|bar| {
+            div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(space.control_gap)
+                .px(space.panel_inset)
+                .py(space.control_gap)
+                .bg(crate::ui::style::surface_raised(cx))
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .child(bar)
+        });
         let mut key_context = KeyContext::default();
         key_context.add(PANEL_KEY_CONTEXT);
         key_context.add(crate::ui::list_sort::KEY_CONTEXT);
@@ -356,7 +356,7 @@ impl Render for EventsPanel {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .child(header)
+                    .children(header)
                     .child(div().flex_1().min_h_0().child(content)),
             )
             .focus_trap("events-panel-tab-trap", &self.focus_handle)

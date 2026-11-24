@@ -133,6 +133,91 @@ impl ListSearch {
     }
 }
 
+/// The row a list panel's search box sits in (#252): the box, filling what's
+/// left, then `trailing` (a count, a refreshing spinner), then the panel's
+/// "Context: <name>" when `context` is given - truncated with an ellipsis once
+/// it would take more than [`CONTEXT_SHARE`] of the row, its full name in a
+/// tooltip. A panel embedded in another one's content passes `None`: its host
+/// already names the context.
+///
+/// The panel puts its usual `control_gap` between this row and the list, as
+/// it does between every other row.
+pub fn search_row(
+    field: AnyElement,
+    trailing: impl IntoIterator<Item = AnyElement>,
+    context: Option<&crate::ui::panel_title::PanelScope>,
+    cx: &App,
+) -> Div {
+    use gpui_kit::component::ActiveTheme as _;
+    div()
+        .debug_selector(|| SEARCH_ROW.into())
+        .flex()
+        .items_center()
+        .gap(crate::ui::space::spacing(cx).control_gap)
+        .child(div().flex_1().min_w_0().child(field))
+        .children(trailing)
+        .children(context.map(|scope| {
+            div()
+                .debug_selector(|| SEARCH_ROW_CONTEXT.into())
+                .flex()
+                .min_w_0()
+                .max_w(relative(CONTEXT_SHARE))
+                .child(crate::ui::panel_title::context_label(
+                    scope,
+                    cx.theme().muted_foreground,
+                ))
+        }))
+}
+
+/// The most of [`search_row`] the context name takes before it truncates, so a
+/// long name never squeezes the search box.
+const CONTEXT_SHARE: f32 = 0.4;
+
+/// [`search_row`], for tests.
+pub(crate) const SEARCH_ROW: &str = "list-search-row";
+/// [`search_row`]'s context name, for tests.
+pub(crate) const SEARCH_ROW_CONTEXT: &str = "list-search-row-context";
+
+/// Checks a drawn list panel's search row against #252: its context name
+/// (when `context` is expected) sits to the right of the search box on the
+/// same line, takes no more than [`CONTEXT_SHARE`] of the row, and the table
+/// starts one `control_gap` below the row.
+#[cfg(test)]
+pub(crate) fn assert_search_row_layout(vcx: &mut VisualTestContext, context: bool) {
+    use gpui_kit::test::TestWindowExt as _;
+    vcx.update(|window, cx| window.render_frame(cx));
+    let row = vcx
+        .debug_bounds(SEARCH_ROW)
+        .expect("the search row is drawn");
+    let table = vcx
+        .debug_bounds(crate::ui::list_state::TABLE_AREA_SELECTOR)
+        .expect("the table is drawn");
+    let gap = vcx.update(|_, cx| crate::ui::space::spacing(cx).control_gap);
+    assert_eq!(
+        table.top() - row.bottom(),
+        gap,
+        "one control gap between the search row and the table"
+    );
+    let drawn = vcx.debug_bounds(SEARCH_ROW_CONTEXT);
+    if !context {
+        assert!(drawn.is_none(), "no context in this search row");
+        return;
+    }
+    let label = drawn.expect("the context is in the search row");
+    assert!(
+        label.top() >= row.top() && label.bottom() <= row.bottom(),
+        "the context is on the search box's line: {label:?} in {row:?}"
+    );
+    assert!(
+        label.left() > row.left() + row.size.width / 2.,
+        "the context is right of the search box: {label:?} in {row:?}"
+    );
+    assert!(
+        label.size.width <= row.size.width * CONTEXT_SHARE + px(1.),
+        "a long context name truncates rather than squeezing the box: {label:?} in {row:?}"
+    );
+}
+
 /// Whether any of `texts` - a row's visible column text, a panel's own to
 /// gather - contains `query`, case-insensitively. An empty query matches
 /// everything.
