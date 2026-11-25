@@ -97,7 +97,8 @@ impl ChangeDetector {
 ///   was a list, the previous list stays: a transient error must not blank the picker.
 /// - A context in `previous` that `fresh` no longer has stays, after the fresh ones, while it
 ///   is in `open`: its session keeps working, because a connection holds its own config.
-///   It drops out at the first re-read after it disconnects.
+///   It drops out at the first re-read after it disconnects, which
+///   is the next kubeconfig change or a new picker; disconnecting triggers none.
 pub(crate) fn merge_contexts(
     previous: &Result<Vec<String>, String>,
     fresh: Result<Vec<String>, String>,

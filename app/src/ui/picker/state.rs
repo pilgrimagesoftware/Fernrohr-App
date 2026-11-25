@@ -67,6 +67,9 @@ pub struct ClusterPicker {
     _kubeconfig_observation: Subscription,
     /// The contexts [`Self::exclude`] removed, kept out of every later re-read too.
     excluded: Vec<String>,
+    /// Set when a re-read flips the list between empty/unreadable and non-empty, which
+    /// moves where focus belongs ([`Self::initial_focus_handle`]); `render` refocuses once.
+    pub(super) refocus: bool,
     /// Redraws the status line when a manual tunnel's prompt appears or is
     /// answered, which changes no connection's state.
     _confirmations_observation: Option<Subscription>,
@@ -108,6 +111,7 @@ impl ClusterPicker {
             _tunnels_observation: tunnels_observation,
             _kubeconfig_observation: kubeconfig_observation,
             excluded: Vec::new(),
+            refocus: false,
             _confirmations_observation: confirmations_observation,
             #[cfg(test)]
             connection_factory: None,
@@ -151,6 +155,11 @@ impl ClusterPicker {
         }) {
             self.selected_context = None;
         }
+        let had_list = matches!(&self.contexts, Ok(list) if !list.is_empty());
+        let has_list = matches!(&merged, Ok(list) if !list.is_empty());
+        // Focus was chosen for the old state: the list's handle isn't drawn once the list
+        // is gone, and the card's isn't where arrows go once a list appears.
+        self.refocus |= had_list != has_list;
         self.contexts = merged;
         cx.notify();
     }
@@ -289,11 +298,12 @@ impl ClusterPicker {
     /// second contexts source, is what keeps every other rule - tunnel bindings,
     /// search, the connect flow - identical to the picker window's own.
     pub(crate) fn exclude(&mut self, used: &[String]) {
+        // Recorded even when the list is unreadable now, so a later re-read honours it.
+        self.excluded = used.to_vec();
         let Ok(contexts) = &mut self.contexts else {
             return;
         };
         contexts.retain(|name| !used.contains(name));
-        self.excluded = used.to_vec();
         // A selected context that was just filtered out (another window uses it)
         // is no longer selectable here: clear it rather than pick one for the user.
         if !self

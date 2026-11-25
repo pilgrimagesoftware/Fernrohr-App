@@ -24,7 +24,7 @@ The picker lists each context from the kubeconfig.
 The list follows the kubeconfig while Fernrohr runs. When you edit or replace a file it was read
 from, such as after `kubectl config` or a cloud CLI adds a cluster, the picker, the Tunnels window
 and the menu bar menu show the new contexts within a few seconds, with no restart. A connected
-context stays connected if its entry is removed, and stays in the picker until you disconnect it.
+context stays connected if its entry is removed, and stays in the picker after you disconnect it, until the kubeconfig next changes.
 A selected context that is removed is deselected. If the file is unreadable for a moment, such as
 while another tool is writing it, the list stays as it was.
 

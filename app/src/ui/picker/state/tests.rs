@@ -430,3 +430,47 @@ async fn a_failed_reread_keeps_the_list_and_exclusions_hold(cx: &mut gpui_kit::T
         })
         .unwrap();
 }
+
+/// An exclusion made while the kubeconfig was unreadable still holds once it reads again.
+#[gpui_kit::test]
+async fn an_exclusion_made_while_unreadable_holds_after_a_reread(
+    cx: &mut gpui_kit::TestAppContext,
+) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, cx| {
+            picker.contexts = Err("unreadable".to_string());
+            picker.exclude(&["b".to_string()]);
+            picker.apply_contexts(Ok(vec!["a".to_string(), "b".to_string()]), cx);
+            assert_eq!(picker.contexts.as_deref(), Ok(["a".to_string()].as_slice()));
+        })
+        .unwrap();
+}
+
+/// Losing every context, or gaining the first one, asks for a refocus; a change within a
+/// non-empty list does not.
+#[gpui_kit::test]
+async fn emptying_or_filling_the_list_asks_for_a_refocus(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, cx| {
+            picker.contexts = Ok(vec!["a".to_string()]);
+            picker.refocus = false;
+            picker.apply_contexts(Ok(vec!["a".to_string(), "b".to_string()]), cx);
+            assert!(!picker.refocus, "still a list");
+            picker.apply_contexts(Ok(Vec::new()), cx);
+            assert!(picker.refocus, "the list is gone");
+            picker.refocus = false;
+            picker.apply_contexts(Ok(vec!["c".to_string()]), cx);
+            assert!(picker.refocus, "a list appeared");
+        })
+        .unwrap();
+}

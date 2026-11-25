@@ -7,6 +7,9 @@ use super::*;
 
 impl Render for ClusterPicker {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if std::mem::take(&mut self.refocus) {
+            window.focus(&self.initial_focus_handle(cx), cx);
+        }
         let theme = cx.theme().clone();
         // The logo sits outside the card so it reads as app branding rather than
         // as part of the command-palette chrome the card deliberately mimics.
