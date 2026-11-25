@@ -119,6 +119,9 @@ impl SshTunnelConfig {
             args.push("StrictHostKeyChecking=yes".to_string());
         }
 
+        // `--` ends ssh's options: a user or host that starts with `-` stays the
+        // destination rather than being read as one (`-oProxyCommand=...`).
+        args.push("--".to_string());
         args.push(self.bastion_target());
         args
     }
@@ -163,6 +166,7 @@ impl SshTunnelConfig {
             args.push("StrictHostKeyChecking=yes".to_string());
         }
 
+        args.push("--".to_string());
         args.push(self.bastion_target());
         args.push("true".to_string());
         args

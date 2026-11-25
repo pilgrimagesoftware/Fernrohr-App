@@ -99,3 +99,31 @@ fn jump_hosts_produce_a_dash_j_chain() {
     let jump_index = args.iter().position(|a| a == "-J").unwrap();
     assert_eq!(args[jump_index + 1], "bob@hop1,carol@hop2");
 }
+
+/// Security pass: `--` ends ssh's options before the destination, so a user
+/// that starts with `-` can't be read as one (`-oProxyCommand=...`) - in the
+/// tunnel's argv and in the Test button's.
+#[test]
+fn a_dash_user_stays_the_destination() {
+    let config = SshTunnelConfig {
+        bastion_user: "-oProxyCommand=false".to_string(),
+        bastion_host: "bastion.example.com".to_string(),
+        bastion_port: 22,
+        jump_hosts: vec![],
+        remote_host: "10.0.0.5".to_string(),
+        remote_port: 6443,
+        local_port: 40000,
+        identity_file: None,
+        known_hosts_file: None,
+        ssh_config_file: None,
+    };
+    let target = "-oProxyCommand=false@bastion.example.com".to_string();
+
+    let args = config.args();
+    assert_eq!(args[args.len() - 2..], ["--".to_string(), target.clone()]);
+    let test_args = config.test_args();
+    assert_eq!(
+        test_args[test_args.len() - 3..],
+        ["--".to_string(), target, "true".to_string()]
+    );
+}
