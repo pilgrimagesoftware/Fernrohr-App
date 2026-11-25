@@ -1,4 +1,27 @@
 
+## 0.19.0 - 2026-11-25
+
+### <!-- 0 -->🚀 Features
+- Show the pods that mount a PersistentVolumeClaim
+- Restore a window onto the display it was saved on
+- Scope shared kind watches to a namespace
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Make stale-binding Remove an icon button
+- End clipped table cells with an ellipsis and show the full value
+- Leave room for the Helm status icon when clipping
+- Refresh the context list when the kubeconfig changes
+- Keep exclusions and focus correct across a context reload
+- Say Controls can't list pods when the Pods watch is refused
+- Show a refused Pods list and clear the refusal on restart
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Merge master into develop after v0.18.0
+
+
+
 ## 0.18.0 - 2026-11-24
 
 ### <!-- 0 -->🚀 Features
