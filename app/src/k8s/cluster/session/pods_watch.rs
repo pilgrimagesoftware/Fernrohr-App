@@ -43,8 +43,9 @@ impl ClusterRegistry {
     ) -> gpui_kit::Task<()> {
         let table = cx.global::<Self>().sessions[context_name].pods.clone();
         let context_name = context_name.to_string();
-        watch_all_namespaces(
+        watch_pods(
             client,
+            None,
             table,
             move |cx| Self::handle_unauthorized(cx, &context_name),
             cx,

@@ -72,6 +72,9 @@ pub(crate) struct FakeCluster {
     log_requests: Arc<Mutex<Vec<String>>>,
     /// When set, every list and watch is refused with this status and body.
     list_refusal: Arc<Mutex<Option<(&'static str, Value)>>>,
+    /// When set, the only namespaces lists and watches are allowed in: one across every
+    /// namespace, or in any other, is refused with a 403 - namespace-only RBAC (#457).
+    list_namespaces: Arc<Mutex<Option<Vec<String>>>>,
     /// How many lists and watches asked for metadata only.
     metadata_requests: Arc<AtomicUsize>,
     /// How many lists and watches asked for whole objects.
@@ -96,6 +99,7 @@ impl FakeCluster {
             creates: Arc::default(),
             log_requests: Arc::default(),
             list_refusal: Arc::default(),
+            list_namespaces: Arc::default(),
             metadata_requests: Arc::default(),
             full_requests: Arc::default(),
         };
@@ -238,6 +242,12 @@ impl FakeCluster {
     /// and `body`; gets of single objects still answer.
     pub(crate) fn refuse_lists(&self, status: &'static str, body: Value) {
         *self.list_refusal.lock() = Some((status, body));
+    }
+
+    /// Allows lists and watches only in `namespaces` from now on, as an account whose
+    /// RBAC grants list in those namespaces alone: a cluster-wide one is refused.
+    pub(crate) fn allow_lists_only_in(&self, namespaces: &[&str]) {
+        *self.list_namespaces.lock() = Some(namespaces.iter().map(|ns| ns.to_string()).collect());
     }
 
     /// How many lists and watches asked for metadata only, and how many for
@@ -399,6 +409,18 @@ impl FakeCluster {
         }
         if let Some((status, body)) = self.list_refusal.lock().clone() {
             return (status, body.to_string());
+        }
+        if let Some(allowed) = self.list_namespaces.lock().as_ref()
+            && !request
+                .namespace
+                .is_some_and(|namespace| allowed.iter().any(|ns| ns == namespace))
+        {
+            let refused = json!({
+                "kind": "Status", "apiVersion": "v1", "status": "Failure",
+                "reason": "Forbidden", "code": 403,
+                "message": format!("{} is forbidden", request.plural),
+            });
+            return ("403 Forbidden", refused.to_string());
         }
         let selector = Selector::parse(query);
         let metadata_only =

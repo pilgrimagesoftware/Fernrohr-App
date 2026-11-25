@@ -57,10 +57,7 @@ impl PodsPanel {
     /// selected or the pod has no running container.
     pub(super) fn shell_candidates(&self, cx: &App) -> Option<(PodSelection, Vec<String>)> {
         let selection = self.table_selection(cx)?;
-        let pod = self
-            .table
-            .read(cx)
-            .find(&selection.namespace, &selection.name, None)?;
+        let pod = self.find_listed(&selection.namespace, &selection.name, cx)?;
         let running = running_containers(pod);
         (!running.is_empty()).then_some((selection, running))
     }

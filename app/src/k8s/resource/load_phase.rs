@@ -51,6 +51,26 @@ impl LoadPhase {
         *self = Self::Loaded;
     }
 
+    /// Several stores' phases as one list's - a list read from one watch per namespace
+    /// (#457): the first load until every store has loaded, counting the rows they've
+    /// received between them, then refreshing while any relists.
+    pub fn combined(phases: impl IntoIterator<Item = LoadPhase>) -> LoadPhase {
+        let mut first_load = None;
+        let mut refreshing = None;
+        for phase in phases {
+            match phase {
+                Self::FirstLoad { received } => *first_load.get_or_insert(0) += received,
+                Self::Refreshing { received } => *refreshing.get_or_insert(0) += received,
+                Self::Loaded => {}
+            }
+        }
+        match (first_load, refreshing) {
+            (Some(received), _) => Self::FirstLoad { received },
+            (None, Some(received)) => Self::Refreshing { received },
+            (None, None) => Self::Loaded,
+        }
+    }
+
     /// Whether a list has ever completed: an absent row then means gone, not
     /// not listed yet.
     pub fn has_loaded(self) -> bool {
@@ -74,6 +94,25 @@ mod tests {
         phase.done();
         assert_eq!(phase, LoadPhase::Loaded);
         assert!(phase.has_loaded());
+    }
+
+    #[test]
+    fn phases_combine_as_one_list() {
+        use LoadPhase::*;
+        assert_eq!(LoadPhase::combined([Loaded, Loaded]), Loaded);
+        assert_eq!(
+            LoadPhase::combined([FirstLoad { received: 2 }, Loaded, FirstLoad { received: 1 }]),
+            FirstLoad { received: 3 },
+            "loading until every store has listed"
+        );
+        assert_eq!(
+            LoadPhase::combined([Loaded, Refreshing { received: 4 }]),
+            Refreshing { received: 4 }
+        );
+        assert_eq!(
+            LoadPhase::combined([Refreshing { received: 1 }, FirstLoad { received: 0 }]),
+            FirstLoad { received: 0 }
+        );
     }
 
     #[test]

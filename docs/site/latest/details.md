@@ -29,6 +29,12 @@ when, keeps its last known state visible as stale, and stays open until you clos
 it. A pod recreated under the same name, such as `web-0` in a StatefulSet, takes
 over the open panel and the panel notes that it replaced the deleted pod.
 
+A panel follows its object through a list of that kind that is already open, or
+otherwise by watching the object's own namespace. So an account that may list
+pods, or another kind, only in some namespaces still sees the object update. If
+the cluster stops allowing an open list across every namespace, the panel
+switches to watching the object's namespace on its own.
+
 ### Common keys
 
 | Command | Default key |
@@ -255,8 +261,9 @@ the pods in the claim's namespace with a volume that names the claim, or a
 generic ephemeral volume whose claim is created for the pod. The list
 updates as pods start and stop, and a claim no pod mounts has no **Used By** row.
 Each entry is a link to the pod's panel, as for **Controls**. Fernrohr watches
-the context's pods while the panel is open. If your account isn't allowed to list
-pods, **Used By** reads "can't list pods" instead of looking empty.
+the pods in the claim's namespace while the panel is open. If your account isn't
+allowed to list pods there, **Used By** reads "can't list pods" instead of
+looking empty.
 
 ### Controlled objects
 
@@ -276,11 +283,14 @@ Fernrohr watches these kinds for you while the panel is open. Any other kind's
 controlled objects, such as a custom controller's, show while a list of their
 kind is open in a panel.
 
-Child kinds other than pods are watched only in the object's own namespace, or
-read from a list of that kind that is already open. Pods use a cluster-wide
-watch. If your account isn't allowed to list one of these kinds, Controls reads
-"can't list replicasets" (or "can't list pods", or the kind in question)
-instead of staying empty, so a missing entry isn't mistaken for no children. The
-kinds you can list still show.
+Child kinds, pods included, are watched only in the object's own namespace, or
+read from a list of that kind that is already open. So an account that may list
+them only in some namespaces still sees the children in those. If the cluster
+stops allowing an open list across every namespace, for example after your role
+changes, Controls switches to watching the object's namespace on its own. If
+your account isn't allowed to list one of these kinds even in the object's
+namespace, Controls reads "can't list replicasets" (or "can't list pods", or the
+kind in question) instead of staying empty, so a missing entry isn't mistaken
+for no children. The kinds you can list still show.
 
 *Summarizes the capability specs: `object-detail`, `pod-detail`, `resource-links`.*

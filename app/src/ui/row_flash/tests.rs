@@ -149,3 +149,28 @@ fn a_deleted_row_is_drawn_where_it_was() {
     assert_eq!(uids, ["a", "b", "c"]);
     assert!(flashes.is_ghost("b") && !flashes.is_ghost("a"));
 }
+
+#[test]
+fn journals_read_as_one_list_interleave_in_order() {
+    let mut staging = ChangeJournal::default();
+    let mut prod = ChangeJournal::default();
+    let (_, seen) = ChangeJournal::since_all([&staging, &prod], None);
+    staging.record("a".into(), RowChange::Added);
+    prod.record("b".into(), RowChange::Modified);
+    staging.record("c".into(), RowChange::Deleted);
+    let (changes, next) = ChangeJournal::since_all([&staging, &prod], Some(seen));
+    assert_eq!(
+        changes,
+        [
+            ("a".to_string(), RowChange::Added),
+            ("b".to_string(), RowChange::Modified),
+            ("c".to_string(), RowChange::Deleted),
+        ]
+    );
+    assert!(
+        ChangeJournal::since_all([&staging, &prod], Some(next))
+            .0
+            .is_empty(),
+        "a read after the last one has nothing new"
+    );
+}

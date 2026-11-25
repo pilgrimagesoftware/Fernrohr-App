@@ -80,9 +80,7 @@ impl PodsPanel {
             return;
         };
         let pod = self
-            .table
-            .read(cx)
-            .find(&selection.namespace, &selection.name, None)
+            .find_listed(&selection.namespace, &selection.name, cx)
             .cloned();
         forward_pod(selection, pod.as_ref(), window, cx);
     }

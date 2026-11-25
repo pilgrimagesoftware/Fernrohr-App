@@ -24,11 +24,11 @@ impl PodsPanel {
             .unwrap_or_default()
     }
 
-    /// How many pods the shared watch holds, regardless of this table's own
+    /// How many pods the watches hold, regardless of this table's own
     /// namespace/node scope or text filter - for a timed-out test elsewhere
     /// in the crate to tell "the watch never delivered" from "it delivered,
     /// but nothing here matched" in its own panic message.
     pub(crate) fn test_watch_pod_count(&self, cx: &App) -> usize {
-        self.table.read(cx).pods().len()
+        self.listed_pods(cx).count()
     }
 }

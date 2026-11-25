@@ -2,7 +2,7 @@
 //! subscription, its handlers and its dock integration. What it draws is
 //! `render`'s; how its columns behave is `table`'s.
 
-use super::commands::{FocusFilter, OpenListedObject, OpenSelected, WarpNamespace};
+use super::commands::{FocusFilter, OpenListedObject, OpenSelected};
 use super::store::ObjectsTable;
 use super::table::{ColumnLayout, ListRow, ObjectTableDelegate, apply_layout, reselect};
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
@@ -20,7 +20,9 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::component::table::{TableEvent, TableState};
 use gpui_kit::*;
 
+mod fallback;
 mod keys;
+mod namespaces;
 mod rows;
 
 /// The filter box's placeholder - narrows rows by every visible column, not
@@ -33,8 +35,12 @@ pub struct ObjectListPanel {
     pub(super) kind: DiscoveredKind,
     pub(super) scope: PanelScope,
     pub(super) connection: Entity<ClusterConnection>,
-    /// The kind's shared table - this panel's own empty one until it subscribes.
+    /// The kind's shared cluster-wide table - this panel's own empty one until it
+    /// subscribes. Read rows through the `listed_*` methods, which also cover the
+    /// per-namespace fallback.
     pub(super) objects: Entity<ObjectsTable>,
+    /// The per-namespace watches standing in for a refused cluster-wide list (#457).
+    pub(super) fallback: fallback::NamespaceFallback,
     pub(super) namespaces: Entity<NamespaceList>,
     pub(super) subscribed: bool,
     pub(super) focus_handle: FocusHandle,
@@ -88,6 +94,7 @@ impl ObjectListPanel {
         let forwards = crate::k8s::cluster::port_forwards::PortForwards::entity(cx);
         cx.observe(&forwards, |_, _, cx| cx.notify()).detach();
         cx.on_release(|this: &mut Self, cx| {
+            this.fallback.release_all(&this.scope.context_name, cx);
             if this.subscribed {
                 ClusterRegistry::unsubscribe_kind(cx, &this.scope.context_name, &this.kind);
             }
@@ -99,6 +106,7 @@ impl ObjectListPanel {
             namespace_picker: Default::default(),
             connection: connection.clone(),
             objects: cx.new(|_| ObjectsTable::default()),
+            fallback: Default::default(),
             namespaces,
             subscribed: false,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -127,13 +135,18 @@ impl ObjectListPanel {
     ) -> Self {
         let connection =
             cx.new(|_| ClusterConnection::test_with_state(ConnectionState::Connected(client)));
-        cx.observe(&objects, |_, _, cx| cx.notify()).detach();
+        cx.observe(&objects, |this, _, cx| {
+            this.sync_fallback(cx);
+            cx.notify();
+        })
+        .detach();
         Self {
             kind,
             scope,
             namespace_picker: Default::default(),
             connection,
             objects,
+            fallback: Default::default(),
             namespaces: cx.new(|_| NamespaceList::empty()),
             subscribed: true,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -161,7 +174,11 @@ impl ObjectListPanel {
         let client = client.clone();
         self.objects =
             ClusterRegistry::subscribe_kind(cx, &self.scope.context_name, client, &self.kind);
-        cx.observe(&self.objects, |_, _, cx| cx.notify()).detach();
+        cx.observe(&self.objects, |this, _, cx| {
+            this.sync_fallback(cx);
+            cx.notify();
+        })
+        .detach();
         self.subscribed = true;
     }
 
@@ -268,7 +285,7 @@ impl ObjectListPanel {
         let defaults = self.default_columns(cx);
         // #275: the store's live changes since the last draw flash their rows.
         let seen = table.read(cx).delegate().flashes().seen();
-        let changes = self.objects.read(cx).journal().since(seen);
+        let changes = self.listed_changes(seen, cx);
         let at = cx.background_executor().now();
         table.update(cx, |table, cx| {
             if table
@@ -390,59 +407,6 @@ impl ObjectListPanel {
     #[cfg(test)]
     pub(crate) fn filter_focused(&self, window: &Window, cx: &App) -> bool {
         self.filter.is_focused(window, cx)
-    }
-
-    /// Narrows a namespaced kind's list to the selected object's namespace - the
-    /// Pods panel's `w`.
-    pub(super) fn on_action_warp_namespace(
-        &mut self,
-        _: &WarpNamespace,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(namespace) = self
-            .selected_row(cx)
-            .and_then(|row_ix| {
-                self.table
-                    .as_ref()?
-                    .read(cx)
-                    .delegate()
-                    .rows()
-                    .get(row_ix)
-                    .cloned()
-            })
-            .and_then(|row| row.object.namespace)
-        else {
-            return;
-        };
-        self.set_namespaces(vec![namespace], cx);
-    }
-
-    /// `JumpToNamespace` (`alt-<n>`): scopes a namespaced list to the namespace at
-    /// that position in its namespace list, or to all at 0; past the end, nothing.
-    pub(super) fn on_action_jump_namespace(
-        &mut self,
-        action: &crate::ui::namespace_jump::JumpToNamespace,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.kind.namespaced {
-            return;
-        }
-        let names = self.namespaces.read(cx).names().to_vec();
-        if let Some(namespaces) = crate::ui::namespace_jump::scope_for(&names, action.position) {
-            self.set_namespaces(namespaces, cx);
-        }
-    }
-
-    /// Scopes this panel to `namespaces` (empty for all), as its own picker does -
-    /// what Warp All to Namespace applies to every namespaced panel in a context.
-    pub(crate) fn set_namespaces(&mut self, namespaces: Vec<String>, cx: &mut Context<Self>) {
-        self.scope = self.scope.scoped_to(namespaces.clone());
-        cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
-            namespaces,
-        ));
-        cx.notify();
     }
 }
 
