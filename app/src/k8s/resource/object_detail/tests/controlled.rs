@@ -4,7 +4,9 @@
 
 use super::fixtures::{deployments, kind, object, replica_sets, stub_panel, target};
 use crate::k8s::object_ref::ObjectRef;
-use crate::k8s::resource::object_detail::controlled::{child_kinds, controlled_by};
+use crate::k8s::resource::object_detail::controlled::{
+    child_kinds, controlled_by, unlistable_kinds,
+};
 use crate::k8s::resource::object_detail::model::FieldValue;
 use crate::k8s::resource::object_list::{ObjectRow, ObjectsTable};
 use crate::k8s::resource::pods::PodsTable;
@@ -337,4 +339,64 @@ async fn go_to_reaches_a_controlled_object_from_the_keyboard(cx: &mut TestAppCon
         followed.borrow().last().map(|follow| follow.target.clone()),
         Some(web_1())
     );
+}
+
+#[test]
+fn a_refused_kind_is_reported_as_unlistable() {
+    let sets = replica_sets();
+    let jobs = kind("batch", "v1", "Job", true);
+    let mut refused = ObjectsTable::for_kind(&sets);
+    refused.set_refused("forbidden".to_string());
+    let listed = synced_table(&jobs, Vec::new());
+
+    assert_eq!(
+        unlistable_kinds([(&sets, &refused), (&jobs, &listed)]),
+        vec!["replicasets".to_string()],
+        "only the refused kind, by its plural"
+    );
+    assert!(unlistable_kinds([(&jobs, &listed)]).is_empty());
+}
+
+#[gpui_kit::test]
+async fn controls_says_it_cant_list_a_refused_child_kind(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let (window, panel) = stub_panel(
+        cx,
+        target(deployments(), Some("staging"), "web"),
+        vec![deployments(), replica_sets()],
+    );
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    let sets = vcx.update(|_, cx| {
+        cx.new(|_| {
+            let mut table = ObjectsTable::for_kind(&replica_sets());
+            table.set_refused("forbidden".to_string());
+            table
+        })
+    });
+    vcx.update(|_, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.test_set_loaded(
+                object(serde_json::json!({
+                    "apiVersion": "apps/v1",
+                    "kind": "Deployment",
+                    "metadata": { "name": "web", "namespace": "staging", "uid": "deploy-1" },
+                })),
+                cx,
+            );
+            panel.test_watch_controlled(None, vec![(replica_sets(), sets)], cx);
+        })
+    });
+
+    let text = vcx.update(|_, cx| {
+        let sections = panel.read(cx).sections(jiff::Timestamp::now());
+        sections[0]
+            .fields
+            .iter()
+            .find(|field| field.label == "Controls")
+            .map(|field| field.value.text())
+    });
+    assert_eq!(text.as_deref(), Some("can't list replicasets"));
 }

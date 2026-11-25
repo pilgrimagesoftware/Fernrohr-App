@@ -18,8 +18,8 @@ use std::sync::Arc;
 use tokio::sync::{Notify, mpsc};
 
 /// Keeps `table` current with every `kind` object the client can see - across all
-/// namespaces for a namespaced kind, which the panel then narrows to its namespace
-/// selection. A 401 stops it and calls `on_unauthorized` once; a 403 stops it and
+/// namespaces for a namespaced kind (which a list panel then narrows to its namespace
+/// selection), or only those in `namespace` when one is given (#446). A 401 stops it and calls `on_unauthorized` once; a 403 stops it and
 /// records the server's refusal on `table` for the panel to show.
 ///
 /// How depends on the kind's verbs, as discovery reported them:
@@ -37,19 +37,30 @@ use tokio::sync::{Notify, mpsc};
 pub fn watch_kind(
     client: Client,
     kind: &DiscoveredKind,
+    namespace: Option<&str>,
     table: Entity<ObjectsTable>,
     on_unauthorized: impl FnOnce(&mut App) + 'static,
     cx: &mut App,
 ) -> Task<()> {
     let Some(mut printer) = printer_columns(client.clone(), kind, cx) else {
-        return list_kind(client, kind, table, on_unauthorized, cx);
+        return list_kind(client, kind, namespace, table, on_unauthorized, cx);
     };
     let kind = kind.clone();
+    let namespace = namespace.map(str::to_string);
     cx.spawn(async move |cx| {
         if let Some(printer) = printer.recv().await {
             cx.update(|cx| table.update(cx, |table, _| table.set_printer_columns(printer)));
         }
-        let list = cx.update(|cx| list_kind(client, &kind, table, on_unauthorized, cx));
+        let list = cx.update(|cx| {
+            list_kind(
+                client,
+                &kind,
+                namespace.as_deref(),
+                table,
+                on_unauthorized,
+                cx,
+            )
+        });
         list.await;
     })
 }
@@ -86,12 +97,16 @@ fn printer_columns(
 fn list_kind(
     client: Client,
     kind: &DiscoveredKind,
+    namespace: Option<&str>,
     table: Entity<ObjectsTable>,
     on_unauthorized: impl FnOnce(&mut App) + 'static,
     cx: &mut App,
 ) -> Task<()> {
     let resource = ApiResource::from_gvk_with_plural(&kind.gvk, &kind.plural);
-    let api: Api<DynamicObject> = Api::all_with(client, &resource);
+    let api: Api<DynamicObject> = match namespace {
+        Some(namespace) if kind.namespaced => Api::namespaced_with(client, namespace, &resource),
+        _ => Api::all_with(client, &resource),
+    };
     if !kind.verbs.list {
         table.update(cx, |table, cx| {
             table.set_mode(ListMode::Unlistable);
