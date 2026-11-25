@@ -6,7 +6,7 @@ use crate::util::shell::{MainWindow, WindowMode};
 use crate::util::shell::{ToggleCommandPalette, WindowLayout, open_window, register_commands};
 use gpui_kit::component::Root;
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::{AppContext as _, Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 
 #[gpui_kit::test]
 async fn toggle_command_palette_action_opens_a_dialog(cx: &mut TestAppContext) {
@@ -194,17 +194,15 @@ async fn the_palette_opens_from_the_keyboard_in_every_picker_state(cx: &mut Test
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         cx.set_global(registry);
     });
-    let palette_key = Keystroke::parse(crate::util::shell::TOGGLE_PALETTE_DEFAULT_BINDING)
-        .expect("a valid keystroke")
-        .unparse();
+    let palette_key =
+        crate::util::keystroke::parse(crate::util::shell::TOGGLE_PALETTE_DEFAULT_BINDING)
+            .expect("a valid keystroke")
+            .unparse(crate::util::keystroke::HOST_OS);
 
     for (state, contexts) in [
         ("no contexts", Ok(Vec::new())),

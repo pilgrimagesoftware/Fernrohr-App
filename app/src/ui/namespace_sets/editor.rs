@@ -60,8 +60,9 @@ pub fn open(
         EditorMode::Edit { .. } => ("Edit Namespace Set", &EditNamespaceSet, EDIT_KEY),
     };
     // The command's live key, beside the title.
-    let key = Kbd::binding_for_action(action, None, window)
-        .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("a valid default key")));
+    let key = Kbd::binding_for_action(action, None, window).unwrap_or_else(|| {
+        Kbd::new(crate::util::keystroke::parse(fallback).expect("a valid default key"))
+    });
     window.open_dialog(cx, move |dialog, _window, _cx| {
         let editor = editor.clone();
         dialog

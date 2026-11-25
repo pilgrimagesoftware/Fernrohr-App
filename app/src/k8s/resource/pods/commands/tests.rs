@@ -8,7 +8,7 @@ use super::{
 };
 use crate::command::CommandRegistry;
 use crate::keymap::{self, KeymapConfig};
-use gpui_kit::{Action, KeyContext, Keymap, Keystroke};
+use gpui_kit::{Action, KeyContext, Keymap};
 
 fn registry() -> CommandRegistry {
     let mut registry = CommandRegistry::new();
@@ -18,16 +18,14 @@ fn registry() -> CommandRegistry {
 
 /// The keymap the app binds: every registered command, through its override.
 fn app_keymap(registry: &CommandRegistry, config: &KeymapConfig) -> Keymap {
-    Keymap::new(keymap::bindings(
-        registry,
-        config,
-        &gpui_kit::DummyKeyboardMapper,
-    ))
+    Keymap::new(crate::util::test_ui::with_app(|cx| {
+        keymap::bindings(registry, config, cx)
+    }))
 }
 
 /// Which action `key` resolves to with `contexts` on the focus path, if any.
 fn resolve(keymap: &Keymap, key: &str, contexts: &[&str]) -> Vec<Box<dyn Action>> {
-    let keystroke = Keystroke::parse(key).expect("a valid keystroke");
+    let keystroke = crate::util::keystroke::parse(key).expect("a valid keystroke");
     let contexts: Vec<KeyContext> = contexts
         .iter()
         .map(|context| KeyContext::try_from(*context).expect("a valid context name"))

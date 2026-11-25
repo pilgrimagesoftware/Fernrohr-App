@@ -46,11 +46,8 @@ pub(super) fn setup(cx: &mut TestAppContext) {
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         register_handler(cx);
     });

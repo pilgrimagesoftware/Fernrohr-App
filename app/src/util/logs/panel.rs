@@ -263,7 +263,7 @@ impl LogsPanel {
     /// itself first - this only decides whether following continues.
     pub(super) fn on_lines_scrolled(
         &mut self,
-        event: &gpui_kit::ScrollWheelEvent,
+        event: &gpui_kit::ScrollEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {

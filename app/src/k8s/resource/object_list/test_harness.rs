@@ -13,9 +13,7 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::{Root, WindowExt as _};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, TestAppContext, VisualTestContext,
-};
+use gpui_kit::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
 use kube::core::GroupVersionKind;
 use serde_json::{Value, json};
 
@@ -93,7 +91,7 @@ pub(super) fn open_objects(
                 .map(|(id, key)| (id.to_string(), key.to_string()))
                 .collect(),
         };
-        let bindings = keymap::bindings(&registry, &keymap, cx.keyboard_mapper().as_ref());
+        let bindings = keymap::bindings(&registry, &keymap, cx);
         cx.bind_keys(bindings);
         cx.bind_keys(crate::ui::list_keys::bindings(&[
             crate::k8s::resource::object_list::LIST_KEY_CONTEXT,
@@ -134,15 +132,18 @@ pub(super) fn open_objects(
 impl Harness {
     pub(super) fn press(&mut self, keys: &str) {
         for key in keys.split(' ') {
-            self.vcx
-                .simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+            self.vcx.simulate_keystrokes(
+                &crate::util::keystroke::parse(key)
+                    .expect("valid")
+                    .unparse(crate::util::keystroke::HOST_OS),
+            );
         }
         self.vcx.run_until_parked();
     }
 
     /// Space, down and up - how a focused button is pressed from the keyboard.
     pub(super) fn press_space(&mut self) {
-        let space = Keystroke::parse("space").expect("valid");
+        let space = crate::util::keystroke::parse("space").expect("valid");
         self.vcx.simulate_event(gpui_kit::KeyDownEvent {
             keystroke: space.clone(),
             is_held: false,

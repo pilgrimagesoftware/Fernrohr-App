@@ -224,17 +224,20 @@ impl ShortcutsSection {
 /// The recorder takes them straight from the keystroke, not from a binding,
 /// so the hint is the literal key, in the hint rows' `Kbd` style.
 fn prompt_key(key: &str) -> Kbd {
-    Kbd::new(Keystroke::parse(key).expect("valid keystroke"))
+    Kbd::new(crate::util::keystroke::parse(key).expect("valid keystroke"))
 }
 
 fn keys_element(keys: &str) -> impl IntoElement {
-    div().flex().gap_1().children(
-        keys.split_whitespace()
-            .map(|key| match Keystroke::parse(key) {
-                Ok(keystroke) => Kbd::new(keystroke).into_any_element(),
-                Err(_) => div().child(key.to_string()).into_any_element(),
-            }),
-    )
+    div()
+        .flex()
+        .gap_1()
+        .children(
+            keys.split_whitespace()
+                .map(|key| match crate::util::keystroke::parse(key) {
+                    Ok(keystroke) => Kbd::new(keystroke).into_any_element(),
+                    Err(_) => div().child(key.to_string()).into_any_element(),
+                }),
+        )
 }
 
 /// The section's keys, read from the live keymap like every hint row.

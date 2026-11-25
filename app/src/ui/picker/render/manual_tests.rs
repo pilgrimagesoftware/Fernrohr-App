@@ -112,19 +112,16 @@ async fn the_proceed_key_works_from_the_picker(cx: &mut TestAppContext) {
     h.vcx.update(|_, cx| {
         let mut registry = crate::command::CommandRegistry::new();
         crate::ui::manual_tunnel::register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         crate::ui::manual_tunnel::register_handler(cx);
     });
     let focus = h.vcx.update(|_, cx| h.picker.read(cx).focus_handle.clone());
     h.vcx.update(|window, cx| window.focus(&focus, cx));
-    let keys = gpui_kit::Keystroke::parse("secondary-alt-p")
+    let keys = crate::util::keystroke::parse("secondary-alt-p")
         .expect("valid")
-        .unparse();
+        .unparse(crate::util::keystroke::HOST_OS);
     h.vcx.simulate_keystrokes(&keys);
     h.vcx.run_until_parked();
     assert_eq!(h.answer.try_recv(), Ok(Decision::Proceed));

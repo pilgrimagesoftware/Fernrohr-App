@@ -22,8 +22,9 @@ impl ObjectDetailPanel {
         let space = crate::ui::space::spacing(cx);
         let bad = crate::ui::style::status(crate::ui::style::Tone::Bad, cx);
         let key = |action: &dyn Action, literal: &str| {
-            Kbd::binding_for_action(action, Some(EDIT_KEY_CONTEXT), window)
-                .unwrap_or_else(|| Kbd::new(Keystroke::parse(literal).expect("valid keybinding")))
+            Kbd::binding_for_action(action, Some(EDIT_KEY_CONTEXT), window).unwrap_or_else(|| {
+                Kbd::new(crate::util::keystroke::parse(literal).expect("valid keybinding"))
+            })
         };
         let hint = |key: Kbd, label: &'static str| {
             div().flex().items_center().gap_1().child(key).child(label)

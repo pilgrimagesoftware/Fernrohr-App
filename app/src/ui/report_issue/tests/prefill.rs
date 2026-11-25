@@ -114,7 +114,7 @@ async fn tab_and_enter_on_report_open_it_filled_in(cx: &mut TestAppContext) {
     }
     assert!(focused, "Tab reaches Report…");
     // A key down *and* up, as a real press is: the click fires on release.
-    let enter = gpui_kit::Keystroke::parse("enter").unwrap();
+    let enter = crate::util::keystroke::parse("enter").unwrap();
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: enter.clone(),
         is_held: false,

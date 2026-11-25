@@ -172,12 +172,12 @@ fn its_key_collides_with_nothing() {
         .expect("the reset is registered");
     assert_eq!(command.context, Some("TypedLabelLogs"));
     let key = command.default_binding;
-    let parsed = gpui_kit::Keystroke::parse(key).expect("the key parses");
+    let parsed = crate::util::keystroke::parse(key).expect("the key parses");
     let sharing: Vec<&str> = registry
         .iter()
         .filter(|other| other.id != command.id)
         .filter(|other| {
-            gpui_kit::Keystroke::parse(other.default_binding).ok() == Some(parsed.clone())
+            crate::util::keystroke::parse(other.default_binding).ok() == Some(parsed.clone())
         })
         .map(|other| other.id)
         .collect();

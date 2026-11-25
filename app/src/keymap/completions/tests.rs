@@ -5,7 +5,7 @@
 use super::{Completion, completions};
 use crate::command::CommandRegistry;
 use crate::keymap::KeymapConfig;
-use gpui_kit::{DummyKeyboardMapper, KeyContext, Keystroke};
+use gpui_kit::{KeyContext, Keystroke};
 
 fn registry() -> CommandRegistry {
     let mut registry = CommandRegistry::new();
@@ -15,7 +15,7 @@ fn registry() -> CommandRegistry {
 
 fn keys(keys: &str) -> Vec<Keystroke> {
     keys.split_whitespace()
-        .map(|key| Keystroke::parse(key).unwrap())
+        .map(|key| crate::util::keystroke::parse(key).unwrap())
         .collect()
 }
 
@@ -28,16 +28,15 @@ fn contexts(names: &[&str]) -> Vec<KeyContext> {
 
 /// Each completion as its remaining keys (`unparse`d) and command id.
 fn found(config: &KeymapConfig, pending: &str, stack: &[&str]) -> Vec<(String, &'static str)> {
-    completions(
-        &registry(),
-        config,
-        &keys(pending),
-        &contexts(stack),
-        &DummyKeyboardMapper,
-    )
+    crate::util::test_ui::with_app(|cx| {
+        completions(&registry(), config, &keys(pending), &contexts(stack), cx)
+    })
     .into_iter()
     .map(|Completion { remaining, id, .. }| {
-        let remaining: Vec<String> = remaining.iter().map(Keystroke::unparse).collect();
+        let remaining: Vec<String> = remaining
+            .iter()
+            .map(|key| key.unparse(crate::util::keystroke::HOST_OS))
+            .collect();
         (remaining.join(" "), id)
     })
     .collect()
@@ -68,13 +67,15 @@ fn cmd_k_in_a_panel_group_lists_the_arrange_chords_in_palette_order() {
 
 #[test]
 fn a_completion_carries_its_command_title() {
-    let found = completions(
-        &registry(),
-        &KeymapConfig::default(),
-        &keys("cmd-k"),
-        &contexts(&["Dock"]),
-        &DummyKeyboardMapper,
-    );
+    let found = crate::util::test_ui::with_app(|cx| {
+        completions(
+            &registry(),
+            &KeymapConfig::default(),
+            &keys("cmd-k"),
+            &contexts(&["Dock"]),
+            cx,
+        )
+    });
     assert_eq!(found[12].title, "Panels: Close Group");
 }
 

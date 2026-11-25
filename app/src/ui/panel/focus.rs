@@ -46,15 +46,7 @@ pub fn tab_bindings(cx: &App) -> Vec<gpui_kit::KeyBinding> {
                 .build_action(name, None)
                 .inspect_err(|error| log::warn!("no {name} action to bind {keys} to: {error}"))
                 .ok()?;
-            gpui_kit::KeyBinding::load(
-                keys,
-                action,
-                context.clone(),
-                false,
-                None,
-                cx.keyboard_mapper().as_ref(),
-            )
-            .ok()
+            gpui_kit::KeyBinding::load(keys, action, context.clone(), false, None, cx).ok()
         })
         .collect()
 }

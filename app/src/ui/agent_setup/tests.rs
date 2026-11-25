@@ -8,7 +8,7 @@ use crate::mcp::setup::{AgentSetup, HARNESSES};
 use crate::util::shell::{TOGGLE_PALETTE_DEFAULT_BINDING, open_window};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{TestAppContext, VisualTestContext};
 use std::path::{Path, PathBuf};
 
 const EXE: &str = "/opt/Fernrohr/fernrohr";
@@ -32,7 +32,9 @@ fn app(cx: &mut TestAppContext, setup: AgentSetup) -> VisualTestContext {
 }
 
 fn press(vcx: &mut VisualTestContext, keys: &str) {
-    let keys = Keystroke::parse(keys).expect("valid").unparse();
+    let keys = crate::util::keystroke::parse(keys)
+        .expect("valid")
+        .unparse(crate::util::keystroke::HOST_OS);
     vcx.simulate_keystrokes(&keys);
     vcx.run_until_parked();
 }

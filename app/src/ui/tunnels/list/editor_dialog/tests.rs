@@ -85,7 +85,7 @@ impl Harness {
 
     /// Space down and up: a `Button` clicks on the key's release.
     fn press_space(&mut self) {
-        let space = gpui_kit::Keystroke::parse("space").expect("valid");
+        let space = crate::util::keystroke::parse("space").expect("valid");
         self.vcx.simulate_event(gpui_kit::KeyDownEvent {
             keystroke: space.clone(),
             is_held: false,

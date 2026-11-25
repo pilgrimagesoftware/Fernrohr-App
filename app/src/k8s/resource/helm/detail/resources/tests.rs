@@ -135,11 +135,7 @@ async fn the_resources_tab_lists_marks_and_follows(cx: &mut TestAppContext) {
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::helm::detail::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         cx.on_action(move |action: &FollowReference, _cx| {
             sink.borrow_mut().push(action.target.clone())

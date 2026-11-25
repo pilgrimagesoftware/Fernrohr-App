@@ -4,8 +4,8 @@ use crate::ui::typography::recorder::{RecordingTextSystem, with_recorded_text};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{Root, WindowExt as _};
 use gpui_kit::{
-    AppContext as _, Context, FocusHandle, IntoElement, Keystroke, Render, TestAppContext,
-    VisualTestContext, Window, div,
+    AppContext as _, Context, FocusHandle, IntoElement, Render, TestAppContext, VisualTestContext,
+    Window, div,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -38,11 +38,8 @@ fn opened_with(
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
         let mut registry = crate::command::CommandRegistry::new();
         super::register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let window = cx.add_window(|window, cx| {
@@ -82,7 +79,7 @@ fn dialog_open(vcx: &mut VisualTestContext) -> bool {
 }
 
 fn key_label(key: &str) -> String {
-    Kbd::format(&Keystroke::parse(key).expect("valid keystroke"))
+    Kbd::format(&crate::util::keystroke::parse(key).expect("valid keystroke"))
 }
 
 fn drawn(recorded: &RecordingTextSystem, text: &str) -> bool {
@@ -135,7 +132,7 @@ async fn escape_cancels(cx: &mut TestAppContext) {
 
 /// Space down and up: a `Button` clicks on the key's release.
 fn press_space(vcx: &mut VisualTestContext) {
-    let space = Keystroke::parse("space").expect("valid");
+    let space = crate::util::keystroke::parse("space").expect("valid");
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,

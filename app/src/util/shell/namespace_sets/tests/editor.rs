@@ -24,7 +24,7 @@ fn press_button(h: &mut Harness, id: &'static str) {
     };
     for _ in 0..10 {
         if focused(h) {
-            let space = gpui_kit::Keystroke::parse("space").expect("valid");
+            let space = crate::util::keystroke::parse("space").expect("valid");
             h.vcx.simulate_event(gpui_kit::KeyDownEvent {
                 keystroke: space.clone(),
                 is_held: false,

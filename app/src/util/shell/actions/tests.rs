@@ -314,9 +314,9 @@ async fn the_focus_resources_key_focuses_the_resource_panel(cx: &mut TestAppCont
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
     vcx.run_until_parked();
 
-    let key = gpui_kit::Keystroke::parse("cmd-0")
+    let key = crate::util::keystroke::parse("cmd-0")
         .expect("valid")
-        .unparse();
+        .unparse(crate::util::keystroke::HOST_OS);
     vcx.simulate_keystrokes(&key);
     vcx.run_until_parked();
 

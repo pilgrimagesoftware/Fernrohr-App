@@ -86,7 +86,10 @@ fn open_manage_dialog(main_window: WeakEntity<MainWindow>, window: &mut Window, 
     let dir = layouts_dir(cx);
     let picker = cx.new(|cx| SavedLayoutsPicker::new(dir, main_window, window, cx));
     let key = Kbd::binding_for_action(&ManageLayouts, None, window).unwrap_or_else(|| {
-        Kbd::new(Keystroke::parse(MANAGE_LAYOUTS_DEFAULT_BINDING).expect("a valid default key"))
+        Kbd::new(
+            crate::util::keystroke::parse(MANAGE_LAYOUTS_DEFAULT_BINDING)
+                .expect("a valid default key"),
+        )
     });
     let picker_for_focus = picker.clone();
     window.open_dialog(cx, move |built, _window, _cx| {
@@ -176,7 +179,10 @@ fn open_save_dialog(main_window: WeakEntity<MainWindow>, window: &mut Window, cx
     // investigation - see its registration in `util::shell::app` for why), so
     // its binding is global like `ManageLayouts`'s own lookup just above.
     let key = Kbd::binding_for_action(&SaveLayout, None, window).unwrap_or_else(|| {
-        Kbd::new(Keystroke::parse(SAVE_LAYOUT_DEFAULT_BINDING).expect("a valid default key"))
+        Kbd::new(
+            crate::util::keystroke::parse(SAVE_LAYOUT_DEFAULT_BINDING)
+                .expect("a valid default key"),
+        )
     });
     window.open_dialog(cx, move |built, _window, _cx| {
         let dialog = dialog.clone();

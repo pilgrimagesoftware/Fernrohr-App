@@ -46,11 +46,8 @@ fn asked(
         crate::ui::theme::init(crate::config::ui::Theme::Light, cx);
         let mut registry = crate::command::CommandRegistry::new();
         crate::ui::confirm_dialog::register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let window = cx.add_window(|window, cx| {

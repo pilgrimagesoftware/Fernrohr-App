@@ -16,8 +16,7 @@ use gpui_kit::component::Root;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::table::ColumnSort;
 use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, Modifiers, TestAppContext,
-    VisualTestContext,
+    AppContext as _, Entity, Focusable as _, Modifiers, TestAppContext, VisualTestContext,
 };
 use k8s_openapi::api::core::v1::Event as K8sEvent;
 use kube_runtime::watcher;
@@ -131,7 +130,7 @@ fn harness_overriding_keymap(
         for (id, key) in overrides {
             config.bindings.insert(id.to_string(), key.to_string());
         }
-        let bindings = keymap::bindings(&registry, &config, cx.keyboard_mapper().as_ref());
+        let bindings = keymap::bindings(&registry, &config, cx);
         cx.bind_keys(bindings);
         let followed = followed.clone();
         cx.on_action(move |action: &FollowReference, _cx| {
@@ -180,7 +179,9 @@ fn harness_overriding_keymap(
 
 fn press(vcx: &mut VisualTestContext, keys: &str) {
     for key in keys.split(' ') {
-        let key = Keystroke::parse(key).expect("valid").unparse();
+        let key = crate::util::keystroke::parse(key)
+            .expect("valid")
+            .unparse(crate::util::keystroke::HOST_OS);
         vcx.simulate_keystrokes(&key);
     }
     vcx.run_until_parked();

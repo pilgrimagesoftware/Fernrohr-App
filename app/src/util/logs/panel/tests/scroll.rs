@@ -67,11 +67,12 @@ async fn a_long_line_scrolls_sideways(cx: &mut TestAppContext) {
     };
     assert_eq!(offset_x(&mut vcx), px(0.));
 
-    vcx.simulate_event(gpui_kit::ScrollWheelEvent {
+    vcx.simulate_event(gpui_kit::ScrollEvent {
         position: at,
         delta: gpui_kit::ScrollDelta::Pixels(point(px(-300.), px(0.))),
         modifiers: Modifiers::none(),
         touch_phase: gpui_kit::TouchPhase::Moved,
+        source: Default::default(),
     });
     vcx.run_until_parked();
     assert!(

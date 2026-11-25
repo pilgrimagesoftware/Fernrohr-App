@@ -252,9 +252,13 @@ async fn the_hint_row_shows_an_overridden_key_not_the_default(cx: &mut TestAppCo
     let shown_keys: Vec<String> = shown
         .keystrokes()
         .iter()
-        .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
+        .map(|key| {
+            gpui_kit::AsKeystroke::as_keystroke(key).unparse(crate::util::keystroke::HOST_OS)
+        })
         .collect();
-    let overridden = gpui_kit::Keystroke::parse("n").unwrap().unparse();
+    let overridden = crate::util::keystroke::parse("n")
+        .unwrap()
+        .unparse(crate::util::keystroke::HOST_OS);
     assert_eq!(
         shown_keys,
         vec![overridden],

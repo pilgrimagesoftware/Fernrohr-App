@@ -155,7 +155,9 @@ impl ObjectDetailPanel {
         let panel = self.node_pods.clone()?;
         let open_key = Kbd::binding_for_action(&OpenNodePod, Some(node_pods::KEY_CONTEXT), window)
             .unwrap_or_else(|| {
-                Kbd::new(Keystroke::parse(node_pods::OPEN_KEY).expect("valid keybinding"))
+                Kbd::new(
+                    crate::util::keystroke::parse(node_pods::OPEN_KEY).expect("valid keybinding"),
+                )
             });
         Some(
             div()
@@ -305,7 +307,9 @@ impl Render for ObjectDetailPanel {
         let toggle_key =
             Kbd::binding_for_action(&ToggleObjectView, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| {
-                    Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
+                    Kbd::new(
+                        crate::util::keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"),
+                    )
                 });
         let logs_hint = self.logs_hint(window, cx);
         let (kind_buttons, kind_hints) = self.kind_header(window, cx);

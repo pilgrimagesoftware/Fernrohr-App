@@ -10,7 +10,7 @@
 
 use super::{KeymapConfig, load_binding, resolve};
 use crate::command::{Command, CommandRegistry};
-use gpui_kit::{App, Global, PlatformKeyboardMapper, Unbind};
+use gpui_kit::{App, Global, Unbind};
 use std::path::PathBuf;
 
 /// The loaded `keymap.toml` and where it lives, kept for the app's lifetime
@@ -46,17 +46,13 @@ pub enum Edit {
 /// The key `command` is bound to under `config`, as [`super::bindings`]
 /// chooses it: the override, or the default when the override doesn't parse.
 /// `None` for no key.
-fn bound_keys(
-    command: &Command,
-    config: &KeymapConfig,
-    mapper: &dyn PlatformKeyboardMapper,
-) -> Option<String> {
+fn bound_keys(command: &Command, config: &KeymapConfig, cx: &App) -> Option<String> {
     let chosen = resolve(command.id, command.default_binding, config);
     if chosen.is_empty() {
         return None;
     }
     let parses =
-        |keys: &str| load_binding(command, keys, command.action.boxed_clone(), mapper).is_some();
+        |keys: &str| load_binding(command, keys, command.action.boxed_clone(), cx).is_some();
     if parses(&chosen) {
         Some(chosen)
     } else {
@@ -69,7 +65,6 @@ fn bound_keys(
 /// has. Nothing is bound or changed in memory if saving fails. An unknown
 /// `id` is a no-op.
 pub fn apply(cx: &mut App, id: &str, edit: Edit) -> std::io::Result<()> {
-    let mapper = cx.keyboard_mapper().clone();
     let registry = cx.global::<CommandRegistry>();
     let Some(command) = registry.get(id) else {
         return Ok(());
@@ -91,34 +86,24 @@ pub fn apply(cx: &mut App, id: &str, edit: Edit) -> std::io::Result<()> {
     }
     crate::config::save(&live.path, &config)?;
 
-    let old = bound_keys(command, &live.config, mapper.as_ref());
-    let new = bound_keys(command, &config, mapper.as_ref());
+    let old = bound_keys(command, &live.config, cx);
+    let new = bound_keys(command, &config, cx);
     let mut changes = Vec::new();
     if old != new {
         if let Some(old) = &old {
             let unbind = Box::new(Unbind(command.action.name().into()));
-            changes.extend(load_binding(command, old, unbind, mapper.as_ref()));
+            changes.extend(load_binding(command, old, unbind, cx));
         }
         if let Some(new) = &new {
-            changes.extend(load_binding(
-                command,
-                new,
-                command.action.boxed_clone(),
-                mapper.as_ref(),
-            ));
+            changes.extend(load_binding(command, new, command.action.boxed_clone(), cx));
             // Bound after the new key, the chords it starts stay reachable:
             // GPUI keeps a chord pending against a complete shorter binding
             // only when the chord was bound later (see `super::bindings`).
             for other in registry.iter().filter(|other| other.id != command.id) {
-                if let Some(keys) = bound_keys(other, &config, mapper.as_ref())
+                if let Some(keys) = bound_keys(other, &config, cx)
                     && starts(new, &keys)
                 {
-                    changes.extend(load_binding(
-                        other,
-                        &keys,
-                        other.action.boxed_clone(),
-                        mapper.as_ref(),
-                    ));
+                    changes.extend(load_binding(other, &keys, other.action.boxed_clone(), cx));
                 }
             }
         }
@@ -133,7 +118,7 @@ pub fn apply(cx: &mut App, id: &str, edit: Edit) -> std::io::Result<()> {
 fn starts(prefix: &str, keys: &str) -> bool {
     let parse = |keys: &str| -> Option<Vec<gpui_kit::Keystroke>> {
         keys.split_whitespace()
-            .map(|key| gpui_kit::Keystroke::parse(key).ok())
+            .map(|key| crate::util::keystroke::parse(key).ok())
             .collect()
     };
     match (parse(prefix), parse(keys)) {

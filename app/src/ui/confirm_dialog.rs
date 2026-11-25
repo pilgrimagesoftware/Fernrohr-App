@@ -300,8 +300,9 @@ pub(crate) fn deliver_first_frame(vcx: &mut VisualTestContext) {
 /// The key that triggers `action` in a dialog, as the keymap binds it -
 /// `fallback` if it binds none - drawn as the hint rows draw keys.
 fn button_key(action: &dyn Action, fallback: &str, window: &Window) -> Kbd {
-    Kbd::binding_for_action(action, Some(DIALOG_KEY_CONTEXT), window)
-        .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("valid keybinding")))
+    Kbd::binding_for_action(action, Some(DIALOG_KEY_CONTEXT), window).unwrap_or_else(|| {
+        Kbd::new(crate::util::keystroke::parse(fallback).expect("valid keybinding"))
+    })
 }
 
 #[cfg(test)]

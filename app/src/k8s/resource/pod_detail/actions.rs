@@ -186,8 +186,9 @@ impl PodDetailPanel {
             == Some("Running");
         let deletable = self.deletable(cx);
         let hint = |action: &dyn Action, context: &str, fallback: &str, label: &'static str| {
-            let key = Kbd::binding_for_action(action, Some(context), window)
-                .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("valid keybinding")));
+            let key = Kbd::binding_for_action(action, Some(context), window).unwrap_or_else(|| {
+                Kbd::new(crate::util::keystroke::parse(fallback).expect("valid keybinding"))
+            });
             let selector = hint_selector(label);
             crate::ui::key_hint_row::KeyHint::styled(key, label, |body| {
                 body.debug_selector(move || selector)

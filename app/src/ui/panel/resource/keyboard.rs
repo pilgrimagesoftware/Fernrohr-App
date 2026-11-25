@@ -124,7 +124,7 @@ pub(super) fn previous(visible: &[Cursor], current: Option<&Cursor>) -> Option<C
 }
 
 fn keystroke(literal: &str) -> Keystroke {
-    Keystroke::parse(literal).expect("a literal keyboard hint parses")
+    crate::util::keystroke::parse(literal).expect("a literal keyboard hint parses")
 }
 
 /// The panel's shortcut hint row: every action section 1-4 add has a key, and

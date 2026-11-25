@@ -64,13 +64,12 @@ pub fn resolve(command_id: &str, default_binding: &str, keymap: &KeymapConfig) -
 pub fn bindings(
     registry: &CommandRegistry,
     keymap: &KeymapConfig,
-    mapper: &dyn gpui_kit::PlatformKeyboardMapper,
+    cx: &gpui_kit::App,
 ) -> Vec<gpui_kit::KeyBinding> {
     let mut bindings = registry
         .iter()
         .filter_map(|command| {
-            let load =
-                |keys: &str| load_binding(command, keys, command.action.boxed_clone(), mapper);
+            let load = |keys: &str| load_binding(command, keys, command.action.boxed_clone(), cx);
             let chosen = resolve(command.id, command.default_binding, keymap);
             // No key: a palette-only command (About, Zoom) with no override, or
             // one whose key the user removed. Nothing to bind or warn about.
@@ -97,7 +96,7 @@ fn load_binding(
     command: &crate::command::Command,
     keys: &str,
     action: Box<dyn gpui_kit::Action>,
-    mapper: &dyn gpui_kit::PlatformKeyboardMapper,
+    cx: &gpui_kit::App,
 ) -> Option<gpui_kit::KeyBinding> {
     let context = command.context.map(|context| {
         std::rc::Rc::new(
@@ -105,7 +104,7 @@ fn load_binding(
                 .expect("a registered command's context parses"),
         )
     });
-    gpui_kit::KeyBinding::load(keys, action, context, false, None, mapper).ok()
+    gpui_kit::KeyBinding::load(keys, action, context, false, None, cx).ok()
 }
 
 mod completions;

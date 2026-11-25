@@ -68,11 +68,7 @@ fn open(cx: &mut TestAppContext, namespaces: &[&str], seed: impl Fn(&FakeCluster
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         super::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let (cluster, client) = FakeCluster::start(cx);

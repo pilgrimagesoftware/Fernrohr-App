@@ -139,7 +139,11 @@ async fn cmd_k_shows_the_pending_keys_and_every_arrange_completion(cx: &mut Test
         h.chord(),
         // `cmd` is the platform key: it reads back as `super-k` on Linux.
         Some((
-            vec![gpui_kit::Keystroke::parse("cmd-k").unwrap().unparse()],
+            vec![
+                crate::util::keystroke::parse("cmd-k")
+                    .unwrap()
+                    .unparse(crate::util::keystroke::HOST_OS)
+            ],
             ARRANGE_CHORDS.to_vec()
         ))
     );
@@ -307,7 +311,7 @@ fn close_group_by_chord(cx: &mut TestAppContext, with_bar: bool) -> (usize, bool
         cx.bind_keys(crate::keymap::bindings(
             &registry,
             &crate::keymap::KeymapConfig::default(),
-            &gpui_kit::DummyKeyboardMapper,
+            cx,
         ));
         cx.set_global(registry);
         cx.set_global(crate::keymap::LiveKeymap::new(

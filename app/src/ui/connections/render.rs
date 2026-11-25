@@ -298,8 +298,8 @@ impl ConnectionsWindow {
             .text_sm()
             .child(KeyHint::body(
                 vec![
-                    Kbd::new(Keystroke::parse("up").expect("a valid key")),
-                    Kbd::new(Keystroke::parse("down").expect("a valid key")),
+                    Kbd::new(crate::util::keystroke::parse("up").expect("a valid key")),
+                    Kbd::new(crate::util::keystroke::parse("down").expect("a valid key")),
                 ],
                 "Select".into(),
             ))
