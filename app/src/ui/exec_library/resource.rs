@@ -86,7 +86,7 @@ fn cached(
     name: &str,
     cx: &App,
 ) -> Option<crate::k8s::resource::kind_actions::ObjectFacts> {
-    let table = ClusterRegistry::existing_kind(cx, context, kind)?;
+    let table = ClusterRegistry::existing_kind_in(cx, context, kind, namespace)?;
     table
         .read(cx)
         .find(Some(namespace), name, None)

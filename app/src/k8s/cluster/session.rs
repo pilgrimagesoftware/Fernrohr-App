@@ -15,6 +15,7 @@ mod events_watch;
 mod helm_watch;
 mod holder;
 mod holds;
+mod kind_scope;
 mod kind_watch;
 mod live_agents;
 mod pause_resume;
@@ -25,8 +26,27 @@ mod registry;
 mod test_support;
 
 pub use holder::{AgentId, Holder};
+pub(crate) use kind_scope::KindSubscription;
 pub use live_agents::LiveAgents;
 pub use registry::ClusterRegistry;
+
+/// One shared kind watch: the kind, and the namespace it is limited to - `None` for a
+/// cluster-wide watch (`Api::all`), which serves every namespace.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct KindKey {
+    pub(crate) kind: DiscoveredKind,
+    pub(crate) namespace: Option<String>,
+}
+
+impl KindKey {
+    /// `kind` across every namespace.
+    pub(crate) fn all(kind: &DiscoveredKind) -> Self {
+        Self {
+            kind: kind.clone(),
+            namespace: None,
+        }
+    }
+}
 
 /// What a session's [`WatchRegistry`] counts subscriptions by: one entry per
 /// watched kind, so two panels of one kind on one context share a stream and
@@ -36,9 +56,10 @@ pub use registry::ClusterRegistry;
 pub(crate) enum WatchKey {
     /// The typed all-namespaces Pods watch.
     Pods,
-    /// One discovered kind's generic `DynamicObject` watch. The kind's group,
-    /// version, kind and plural pin its `ApiResource`.
-    Kind(DiscoveredKind),
+    /// One discovered kind's generic `DynamicObject` watch, cluster-wide or
+    /// over one namespace (#446). The kind's group, version, kind and plural pin
+    /// its `ApiResource`.
+    Kind(KindKey),
     /// The typed all-namespaces Event watch behind the events browser
     /// (`events-browser` D1), shared by every Event consumer on the context.
     Events,

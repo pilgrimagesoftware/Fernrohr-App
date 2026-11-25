@@ -14,8 +14,8 @@ pub(super) struct ClusterSession {
     /// `ConnectionHealth` can restart it on resume without a panel re-subscribing.
     pub(super) client: Option<Client>,
     /// Every other kind a panel watches on this context: one shared table and task
-    /// per kind, present while at least one panel subscribes to it.
-    pub(super) kinds: HashMap<DiscoveredKind, KindWatch>,
+    /// per kind and namespace scope, present while at least one panel subscribes to it.
+    pub(super) kinds: HashMap<KindKey, KindWatch>,
     /// The Event watch and its table, present while an events browser (or any
     /// other Event consumer) subscribes to it.
     pub(super) events: Option<EventsWatch>,

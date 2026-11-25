@@ -34,11 +34,8 @@ impl ClusterRegistry {
                 if session.watchers.pause(&WatchKey::Pods, reason) {
                     session.pods_watch = None;
                 }
-                for (kind, watch) in &mut session.kinds {
-                    if session
-                        .watchers
-                        .pause(&WatchKey::Kind(kind.clone()), reason)
-                    {
+                for (key, watch) in &mut session.kinds {
+                    if session.watchers.pause(&WatchKey::Kind(key.clone()), reason) {
                         watch.task = None;
                     }
                 }
@@ -68,11 +65,11 @@ impl ClusterRegistry {
                     && session.watchers.resume(&WatchKey::Events)
                     && session.watchers.refcount(&WatchKey::Events) > 0;
                 let client = session.client.clone();
-                let kinds: Vec<DiscoveredKind> = session
+                let kinds: Vec<KindKey> = session
                     .kinds
                     .keys()
-                    .filter(|kind| {
-                        let key = WatchKey::Kind((*kind).clone());
+                    .filter(|key| {
+                        let key = WatchKey::Kind((*key).clone());
                         session.watchers.resume(&key) && session.watchers.refcount(&key) > 0
                     })
                     .cloned()
@@ -122,15 +119,15 @@ impl ClusterRegistry {
                         watch.task = Some(task);
                     }
                 }
-                for kind in kinds {
-                    let task = Self::start_kind_watch(cx, context_name, client.clone(), &kind);
+                for key in kinds {
+                    let task = Self::start_kind_watch(cx, context_name, client.clone(), &key);
                     if let Some(watch) = cx
                         .global_mut::<Self>()
                         .sessions
                         .get_mut(context_name)
                         .unwrap()
                         .kinds
-                        .get_mut(&kind)
+                        .get_mut(&key)
                     {
                         watch.task = Some(task);
                     }
