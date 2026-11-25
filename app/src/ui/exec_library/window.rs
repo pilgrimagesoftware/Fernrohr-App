@@ -221,7 +221,11 @@ impl LibraryWindow {
             },
             move |_window, cx| {
                 let name = name.clone();
-                let _ = ExecLibraryStore::update(cx, move |library| Ok(library.remove(&name)));
+                if let Err(error) =
+                    ExecLibraryStore::update(cx, move |library| Ok(library.remove(&name)))
+                {
+                    log::warn!("couldn't delete the saved command: {error}");
+                }
             },
             window,
             cx,

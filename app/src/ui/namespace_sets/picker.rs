@@ -173,8 +173,10 @@ impl SetPicker {
     }
 
     fn confirm_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(name) = self.confirming.take() {
-            let _ = NamespaceSets::update(cx, |sets| Ok(sets.remove_set(&name)));
+        if let Some(name) = self.confirming.take()
+            && let Err(error) = NamespaceSets::update(cx, |sets| Ok(sets.remove_set(&name)))
+        {
+            log::warn!("couldn't delete namespace set {name:?}: {error}");
         }
         window.close_dialog(cx);
     }

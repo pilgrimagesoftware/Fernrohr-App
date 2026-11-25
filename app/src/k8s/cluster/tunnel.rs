@@ -324,7 +324,15 @@ fn acquire_manual(
     let probe = config
         .manual
         .skip_when_reachable
-        .then(|| kubeconfig::server_for_context(kubeconfig_path, context).ok())
+        .then(|| {
+            kubeconfig::server_for_context(kubeconfig_path, context)
+                .inspect_err(|error| {
+                    log::warn!(
+                        "skip_when_reachable is off for {context}: couldn't read its server ({error})"
+                    );
+                })
+                .ok()
+        })
         .flatten()
         .map(|(host, port)| ProbeTarget { host, port });
     let events = ManualConfirmations::events(cx);

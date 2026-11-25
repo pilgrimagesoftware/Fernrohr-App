@@ -35,7 +35,10 @@ pub(super) fn create_labeled(
     body: &str,
     label: &str,
 ) -> Result<String, String> {
-    create(path, title, body, Some(label)).or_else(|_| create(path, title, body, None))
+    create(path, title, body, Some(label)).or_else(|error| {
+        log::debug!("gh refused the labelled issue ({error}); retrying without the label");
+        create(path, title, body, None)
+    })
 }
 
 /// Files an issue titled `title` with `body` against [`REPO`], labelled

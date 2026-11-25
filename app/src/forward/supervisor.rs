@@ -162,8 +162,9 @@ async fn run<T: ForwardTransport>(
 
         match transport.connect_outcome().await {
             Ok(()) => {}
-            Err(ConnectFailure::Retry(_reason)) => {
+            Err(ConnectFailure::Retry(reason)) => {
                 attempt += 1;
+                log::warn!("forward connect attempt {attempt} failed, retrying: {reason}");
                 tokio::time::sleep(options.backoff.delay(attempt)).await;
                 continue;
             }
@@ -181,7 +182,8 @@ async fn run<T: ForwardTransport>(
 
         loop {
             tokio::time::sleep(options.health_check_interval).await;
-            if transport.health_check().await.is_err() {
+            if let Err(reason) = transport.health_check().await {
+                log::warn!("forward health check failed, reconnecting: {reason}");
                 break;
             }
         }

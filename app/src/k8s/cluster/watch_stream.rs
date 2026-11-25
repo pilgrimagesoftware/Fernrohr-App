@@ -122,11 +122,15 @@ where
 {
     let report_refusal = matches!(on_refused, OnRefused::Report(_));
     let report_no_version = matches!(on_no_resource_version, OnNoResourceVersion::Report(_));
+    let resource = api.resource_url().to_string();
     let rx = crate::runtime::spawn_stream(cx, 64, move |tx| async move {
         let mut stream = Box::pin(watcher::watcher(api, config).default_backoff());
+        // Consecutive failures the backoff is retrying, for the rate-limited log below.
+        let mut failures: u32 = 0;
         while let Some(event) = stream.next().await {
             match event {
                 Ok(event) => {
+                    failures = 0;
                     if tx.send(Outcome::Event(Box::new(event))).await.is_err() {
                         break;
                     }
@@ -144,6 +148,15 @@ where
                         let _ = tx.send(Outcome::Refused(message)).await;
                         return;
                     }
+                    // Retried by the backoff; say so on the first failure and every
+                    // `WATCH_ERROR_LOG_EVERY` after, so a watch failing for good isn't silent.
+                    if failures.is_multiple_of(crate::consts::WATCH_ERROR_LOG_EVERY) {
+                        log::warn!(
+                            "watch of {resource} failing (attempt {}), retrying: {error}",
+                            failures + 1
+                        );
+                    }
+                    failures = failures.saturating_add(1);
                 }
             }
         }

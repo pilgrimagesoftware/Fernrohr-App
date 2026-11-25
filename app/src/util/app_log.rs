@@ -101,7 +101,10 @@ impl Log for FileLogger {
 fn rotate(dir: &Path) {
     let current = dir.join(LOG_FILE_NAME);
     if current.exists() {
-        let _ = fs::rename(&current, dir.join(format!("{LOG_FILE_NAME}.1")));
+        // The logger isn't up yet, so stderr is the only place to say so.
+        if let Err(error) = fs::rename(&current, dir.join(format!("{LOG_FILE_NAME}.1"))) {
+            eprintln!("couldn't rotate {}: {error}", current.display());
+        }
     }
 }
 
