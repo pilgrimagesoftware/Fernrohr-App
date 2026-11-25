@@ -150,7 +150,10 @@ pub(crate) fn with_checkbox(
         .items_center()
         .gap_2()
         .child(checkbox)
-        .child(cell)
+        // The cell takes the room the checkbox leaves, and no more, so a long
+        // value is clipped with an ellipsis rather than pushing past the column
+        // (#390).
+        .child(div().flex_1().min_w_0().overflow_hidden().child(cell))
 }
 
 #[cfg(test)]

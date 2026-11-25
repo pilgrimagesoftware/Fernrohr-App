@@ -91,6 +91,7 @@ async fn quitting_persists_open_window_geometry(cx: &mut TestAppContext) {
                 contexts: Vec::new(),
                 panels: Vec::new(),
                 resource_panel_width: None,
+                display_uuid: None,
             },
         );
     });
@@ -128,6 +129,7 @@ async fn save_persists_geometry_of_a_window_already_closed(cx: &mut TestAppConte
                 contexts: Vec::new(),
                 panels: Vec::new(),
                 resource_panel_width: None,
+                display_uuid: None,
             },
         )])));
         save(cx, &path);

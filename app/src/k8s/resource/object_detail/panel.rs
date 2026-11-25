@@ -285,6 +285,32 @@ impl ObjectDetailPanel {
                 true,
             ));
         }
+        if !self.controlled.unlistable.is_empty() {
+            // Beside the references when some were found, in their place when none were.
+            let label = if self.controlled.refs.is_empty() {
+                "Controls"
+            } else {
+                "Not listed"
+            };
+            overview.fields.push(super::model::ObjectField::status(
+                label,
+                format!("can't list {}", self.controlled.unlistable.join(", ")),
+                crate::ui::style::Tone::Warning,
+            ));
+        }
+        if self.controlled.used_by_refused {
+            overview.fields.push(super::model::ObjectField::status(
+                "Used By",
+                "can't list pods",
+                crate::ui::style::Tone::Warning,
+            ));
+        } else if !self.controlled.used_by.is_empty() {
+            overview.fields.push(super::model::ObjectField::references(
+                "Used By",
+                self.controlled.used_by.clone(),
+                true,
+            ));
+        }
         let mut sections = vec![overview];
         sections.extend(sections::sections_for(&self.target.kind, object));
         sections

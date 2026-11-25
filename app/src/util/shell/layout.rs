@@ -20,20 +20,92 @@ pub fn restorable_panels(layout: &WindowLayout) -> Vec<&PanelDescriptor> {
         .collect()
 }
 
-/// Where a window opened from `layout` goes: its saved frame, brought back onto
-/// a connected display by [`onto_connected_display`] when that display has
-/// since gone (#377), or centred on the main display when no position was saved.
-pub(super) fn window_bounds(layout: &WindowLayout, cx: &mut App) -> Bounds<Pixels> {
+/// Where a window opened from `layout` goes: the display it was saved on if
+/// that display is connected (#429), else its saved frame brought back onto a
+/// connected display by [`onto_connected_display`] when its display has since
+/// gone (#377), or centred on the main display when no position was saved.
+pub(super) fn window_placement(layout: &WindowLayout, cx: &mut App) -> Placement<DisplayId> {
     let size = size(px(layout.width), px(layout.height));
     match (layout.x, layout.y) {
         (Some(x), Some(y)) => {
             let saved = Bounds::new(Point::new(px(x), px(y)), size);
+            let connected = connected_displays(cx);
+            if let Some(placement) =
+                on_saved_display(saved, layout.display_uuid.as_deref(), &connected)
+            {
+                return placement;
+            }
             let displays = placement_displays(cx);
             let main = cx.primary_display().map(|display| display.visible_bounds());
-            onto_connected_display(saved, &displays, main)
+            Placement {
+                bounds: onto_connected_display(saved, &displays, main),
+                display: None,
+            }
         }
-        _ => Bounds::centered(None, size, cx),
+        _ => Placement {
+            bounds: Bounds::centered(None, size, cx),
+            display: None,
+        },
     }
+}
+
+/// Where to open a window: its bounds, and the display to open it on. With no
+/// `display` the platform uses the primary display.
+#[derive(Debug, PartialEq)]
+pub(super) struct Placement<I> {
+    pub(super) bounds: Bounds<Pixels>,
+    pub(super) display: Option<I>,
+}
+
+/// A connected display as placement sees it, with `id` the platform's handle
+/// for it (a `DisplayId`; any `Copy` value in tests). `bounds` and `visible`
+/// are in the coordinates `open_window` places a frame in on that display.
+#[derive(Debug, Clone)]
+pub(super) struct ConnectedDisplay<I> {
+    pub(super) id: I,
+    pub(super) uuid: Option<String>,
+    pub(super) bounds: Bounds<Pixels>,
+    pub(super) visible: Bounds<Pixels>,
+}
+
+fn connected_displays(cx: &App) -> Vec<ConnectedDisplay<DisplayId>> {
+    cx.displays()
+        .iter()
+        .map(|display| ConnectedDisplay {
+            id: display.id(),
+            uuid: display_uuid(display.as_ref()),
+            bounds: display.bounds(),
+            visible: display.visible_bounds(),
+        })
+        .collect()
+}
+
+/// The persistable UUID of `display`, as text; `None` if the platform can't
+/// name it.
+pub(super) fn display_uuid(display: &dyn PlatformDisplay) -> Option<String> {
+    display.uuid().ok().map(|uuid| uuid.to_string())
+}
+
+/// `saved` on the connected display whose UUID is `saved_uuid`, so the window
+/// returns to the monitor it was on (#429). `saved` is display-local on macOS
+/// (see [`placement_displays`]) and global elsewhere; either way it is checked
+/// against that display's own `bounds`, and a frame that no longer lands on it
+/// (the display's resolution changed) is centred in its visible area, with the
+/// size kept where it fits. None - leaving the caller to its own clamp - when
+/// no UUID was saved or no connected display has it.
+pub(super) fn on_saved_display<I: Copy>(
+    saved: Bounds<Pixels>,
+    saved_uuid: Option<&str>,
+    displays: &[ConnectedDisplay<I>],
+) -> Option<Placement<I>> {
+    let saved_uuid = saved_uuid?;
+    let display = displays
+        .iter()
+        .find(|display| display.uuid.as_deref() == Some(saved_uuid))?;
+    Some(Placement {
+        bounds: onto_connected_display(saved, &[display.bounds], Some(display.visible)),
+        display: Some(display.id),
+    })
 }
 
 /// The displays a saved frame is checked against, in the coordinates
@@ -97,7 +169,10 @@ pub(super) fn restorable_bounds(frame: Bounds<Pixels>, content: Size<Pixels>) ->
 /// [`restorable_bounds`] and [`workspace_contexts`].
 pub(super) fn layout_from_window(window: &mut Window, cx: &mut App) -> WindowLayout {
     let bounds = restorable_bounds(window.bounds(), window.viewport_size());
-    let live = workspace_contexts(window, cx);
+    let mut live = workspace_contexts(window, cx);
+    live.display_uuid = window
+        .display(cx)
+        .and_then(|display| display_uuid(display.as_ref()));
     layout_from_bounds(bounds, live)
 }
 
@@ -116,6 +191,7 @@ pub(super) fn layout_from_bounds(bounds: Bounds<Pixels>, live: LiveWorkspace) ->
         contexts: live.contexts,
         panels: Vec::new(),
         resource_panel_width: live.resource_width.map(f32::from),
+        display_uuid: live.display_uuid,
     }
 }
 
@@ -124,6 +200,8 @@ pub(super) fn layout_from_bounds(bounds: Bounds<Pixels>, live: LiveWorkspace) ->
 pub(super) struct LiveWorkspace {
     pub(super) contexts: Vec<String>,
     pub(super) resource_width: Option<Pixels>,
+    /// The UUID of the display the window is on (#429).
+    pub(super) display_uuid: Option<String>,
 }
 
 /// The live contexts a window uses, read back through its `Root` - empty for a
@@ -141,6 +219,7 @@ pub(super) fn workspace_contexts(window: &mut Window, cx: &mut App) -> LiveWorks
     LiveWorkspace {
         contexts: main_window.contexts(),
         resource_width: main_window.resource_width(),
+        display_uuid: None,
     }
 }
 

@@ -44,6 +44,8 @@ mod port_forward;
 pub(super) mod quick_look;
 #[cfg(test)]
 mod real_window_tests;
+#[cfg(test)]
+mod refused_tests;
 mod render;
 #[cfg(test)]
 mod search_row_tests;

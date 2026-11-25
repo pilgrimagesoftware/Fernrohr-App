@@ -222,6 +222,7 @@ Detail panels link the references that follow.
 
 - Every object: its namespace and each owner, each as its own link.
 - Every object that controls others: each object it controls, under **Controls**.
+- A PersistentVolumeClaim: each pod in its namespace that mounts it, under **Used By**.
 - A pod: its node, service account, image pull secrets, and every ConfigMap,
   Secret and PersistentVolumeClaim named by its volumes, `envFrom` or `valueFrom`.
 - Kinds with their own sections, as in the table above: the volumes, backends,
@@ -247,6 +248,16 @@ choice. The panel's shortcut hints show the current key for **Go to Reference…
 If the target was deleted or never existed, such as an optional Secret that isn't
 there, its panel opens and says the object doesn't exist.
 
+### Pods that use a claim
+
+A PersistentVolumeClaim's Overview lists the pods that mount it under **Used By**:
+the pods in the claim's namespace with a volume that names the claim, or a
+generic ephemeral volume whose claim is created for the pod. The list
+updates as pods start and stop, and a claim no pod mounts has no **Used By** row.
+Each entry is a link to the pod's panel, as for **Controls**. Fernrohr watches
+the context's pods while the panel is open. If your account isn't allowed to list
+pods, **Used By** reads "can't list pods" instead of looking empty.
+
 ### Controlled objects
 
 An object's Overview lists what it controls under **Controls**: the objects whose
@@ -264,5 +275,12 @@ Deployment, follow one of its ReplicaSets, then one of that ReplicaSet's pods.
 Fernrohr watches these kinds for you while the panel is open. Any other kind's
 controlled objects, such as a custom controller's, show while a list of their
 kind is open in a panel.
+
+Child kinds other than pods are watched only in the object's own namespace, or
+read from a list of that kind that is already open. Pods use a cluster-wide
+watch. If your account isn't allowed to list one of these kinds, Controls reads
+"can't list replicasets" (or "can't list pods", or the kind in question)
+instead of staying empty, so a missing entry isn't mistaken for no children. The
+kinds you can list still show.
 
 *Summarizes the capability specs: `object-detail`, `pod-detail`, `resource-links`.*

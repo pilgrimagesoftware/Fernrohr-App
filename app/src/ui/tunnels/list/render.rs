@@ -64,6 +64,9 @@ pub(super) fn tunnel_summary(tunnel: &TunnelConfig) -> String {
 /// The Edit icon's tooltip (`.claude/rules/icon-buttons.md`).
 pub(super) const EDIT_TOOLTIP: &str = "Edit tunnel";
 
+/// The stale-binding Remove icon's tooltip (#384).
+pub(super) const REMOVE_STALE_TOOLTIP: &str = "Remove binding";
+
 /// The row's second line: [`tunnel_summary`], then how many contexts use the
 /// tunnel - beside what it describes rather than among the row's controls
 /// (#364).
@@ -197,17 +200,19 @@ impl Render for TunnelsWindow {
                             .text_sm()
                             .child(format!("{context} \u{2192} {tunnel_name}")),
                     )
-                    .child(
+                    .child(crate::ui::icon_tooltip::with_tooltip(
+                        SharedString::from(format!("tunnels-stale-remove-{context}-tooltip")),
+                        REMOVE_STALE_TOOLTIP,
                         Button::new(format!("tunnels-stale-remove-{context}"))
-                            .label("Remove")
-                            .outline()
+                            .icon(IconName::Trash)
+                            .ghost()
                             .xsmall()
                             .on_click(move |_event, _window, cx| {
                                 let _ = weak_remove.update(cx, |this, cx| {
                                     this.remove_stale(context_for_remove.clone(), cx)
                                 });
                             }),
-                    )
+                    ))
             });
             div()
                 .flex()
