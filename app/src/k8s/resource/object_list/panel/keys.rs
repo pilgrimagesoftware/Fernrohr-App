@@ -80,7 +80,7 @@ impl ObjectListPanel {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.objects.read(cx).request_refresh();
+        self.request_listed_refresh(cx);
     }
 
     /// The table's selected row. Test-only.

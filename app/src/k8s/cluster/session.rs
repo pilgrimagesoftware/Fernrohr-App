@@ -6,7 +6,7 @@ use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::resource::events_browser::{EventsTable, watch_events};
 use crate::k8s::resource::helm::{HelmReleasesTable, HelmScope, watch_helm_releases};
 use crate::k8s::resource::object_list::{ObjectsTable, watch_kind};
-use crate::k8s::resource::pods::{PodsTable, watch_all_namespaces};
+use crate::k8s::resource::pods::{PodsTable, watch_pods};
 use gpui_kit::{App, AppContext as _, Entity, Global, WindowId};
 use kube::Client;
 use std::collections::{HashMap, HashSet};
@@ -19,6 +19,7 @@ mod kind_scope;
 mod kind_watch;
 mod live_agents;
 mod pause_resume;
+mod pods_scope;
 mod pods_watch;
 mod reconnect;
 mod registry;
@@ -26,8 +27,9 @@ mod registry;
 mod test_support;
 
 pub use holder::{AgentId, Holder};
-pub(crate) use kind_scope::KindSubscription;
+pub(crate) use kind_scope::{KindSubscription, NamespaceFollow};
 pub use live_agents::LiveAgents;
+pub(crate) use pods_scope::PodsFollow;
 pub use registry::ClusterRegistry;
 
 /// One shared kind watch: the kind, and the namespace it is limited to - `None` for a
@@ -56,6 +58,9 @@ impl KindKey {
 pub(crate) enum WatchKey {
     /// The typed all-namespaces Pods watch.
     Pods,
+    /// The typed Pods watch of one namespace (#457), for a reader that needs only that
+    /// namespace's pods when the all-namespaces watch is refused or not open.
+    PodsIn(String),
     /// One discovered kind's generic `DynamicObject` watch, cluster-wide or
     /// over one namespace (#446). The kind's group, version, kind and plural pin
     /// its `ApiResource`.

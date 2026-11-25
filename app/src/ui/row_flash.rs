@@ -7,7 +7,9 @@
 //! - A store records its live changes in a [`ChangeJournal`]: watch events
 //!   after its list has loaded, never the first list, a relist or a resync, so
 //!   those never flash. Sequence-numbered rather than drained, so every panel
-//!   over a store reads every change.
+//!   over a store reads every change. The numbers come from one process-wide
+//!   sequence, so a panel reading several stores as one list (a list panel's
+//!   per-namespace fallback, #457) or switching stores keeps one cursor.
 //! - A table's delegate keeps a [`RowFlashes`], which reads the journal when the
 //!   panel hands it new rows - while the rows it last drew are still at hand -
 //!   and flashes only what changed what a row shows ([`FlashRow::shows_same`]).
@@ -27,6 +29,7 @@ use crate::consts::{
 use crate::ui::style::{self, Tone};
 use gpui_kit::{App, Context, Hsla, Task};
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// What a watch event did to a row.
@@ -52,10 +55,13 @@ impl RowChange {
 /// next read starts.
 pub(crate) type Changes = (Vec<(String, RowChange)>, u64);
 
+/// The next sequence number any journal hands out. Shared, so the numbers of
+/// two journals interleave in the order their changes happened.
+static NEXT_CHANGE: AtomicU64 = AtomicU64::new(0);
+
 /// A store's live changes, by uid, each with a sequence number.
 #[derive(Debug, Default)]
 pub(crate) struct ChangeJournal {
-    next: u64,
     entries: VecDeque<(u64, String, RowChange)>,
 }
 
@@ -63,8 +69,8 @@ impl ChangeJournal {
     /// Records that a live watch event did `change` to `uid`'s object. Keeps
     /// the last [`ROW_FLASH_JOURNAL`] changes.
     pub(crate) fn record(&mut self, uid: String, change: RowChange) {
-        self.entries.push_back((self.next, uid, change));
-        self.next += 1;
+        let seq = NEXT_CHANGE.fetch_add(1, Ordering::Relaxed);
+        self.entries.push_back((seq, uid, change));
         while self.entries.len() > ROW_FLASH_JOURNAL {
             self.entries.pop_front();
         }
@@ -73,16 +79,33 @@ impl ChangeJournal {
     /// The changes from `seen` on. A table's first read (`seen` `None`) starts
     /// after everything so far, so opening a panel never flashes old news.
     pub(crate) fn since(&self, seen: Option<u64>) -> Changes {
-        let changes = match seen {
-            None => Vec::new(),
-            Some(seen) => self
-                .entries
-                .iter()
-                .filter(|(seq, _, _)| *seq >= seen)
-                .map(|(_, uid, change)| (uid.clone(), *change))
-                .collect(),
+        Self::since_all([self], seen)
+    }
+
+    /// [`Self::since`] over several journals read as one list, in the order
+    /// the changes happened.
+    pub(crate) fn since_all<'a>(
+        journals: impl IntoIterator<Item = &'a ChangeJournal>,
+        seen: Option<u64>,
+    ) -> Changes {
+        // Read the cursor first: a change recorded after it is read again next time
+        // rather than missed.
+        let next = NEXT_CHANGE.load(Ordering::Relaxed);
+        let Some(seen) = seen else {
+            return (Vec::new(), next);
         };
-        (changes, self.next)
+        let mut changes: Vec<(u64, String, RowChange)> = journals
+            .into_iter()
+            .flat_map(|journal| journal.entries.iter())
+            .filter(|(seq, _, _)| (seen..next).contains(seq))
+            .cloned()
+            .collect();
+        changes.sort_by_key(|(seq, _, _)| *seq);
+        let changes = changes
+            .into_iter()
+            .map(|(_, uid, change)| (uid, change))
+            .collect();
+        (changes, next)
     }
 }
 

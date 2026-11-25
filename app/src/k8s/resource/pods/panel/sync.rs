@@ -106,7 +106,7 @@ impl PodsPanel {
         let table = self.pod_table.as_ref().unwrap().clone();
         // #275: the store's live changes since the last draw flash their rows.
         let seen = table.read(cx).delegate().flashes().seen();
-        let changes = self.table.read(cx).journal().since(seen);
+        let changes = self.listed_changes(seen, cx);
         let at = cx.background_executor().now();
         table.update(cx, |table, cx| {
             table.delegate_mut().set_rows_flashing(changes, rows, at);

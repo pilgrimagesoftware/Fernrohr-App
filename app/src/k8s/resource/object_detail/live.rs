@@ -20,9 +20,7 @@
 
 use super::ObjectDetailPanel;
 use super::fetch::{ObjectDetailState, ObjectEvents};
-use crate::k8s::cluster::session::ClusterRegistry;
-use crate::k8s::cluster::session::KindSubscription;
-use crate::k8s::resource::object_list::ObjectsTable;
+use crate::k8s::cluster::session::NamespaceFollow;
 use crate::ui::detail::lifecycle::Lifecycle;
 use gpui_kit::*;
 use kube::api::DynamicObject;
@@ -35,8 +33,9 @@ pub(super) enum LiveSource {
     Off,
     /// Subscribes once the connection is up.
     Pending,
-    /// Subscribed to the kind's shared watch, and released with the panel.
-    Following(Entity<ObjectsTable>),
+    /// Subscribed to the kind's shared watch, and released with the panel. Moves to a
+    /// watch of the object's namespace if a shared cluster-wide one is refused (#457).
+    Following(Box<NamespaceFollow>),
 }
 
 /// The write of the object a table row stands for: its uid and `resourceVersion`.
@@ -57,31 +56,46 @@ impl ObjectDetailPanel {
         let kind = self.target.kind.clone();
         // Only the object's own namespace is needed (#446).
         let namespace = self.target.namespace.clone();
-        let KindSubscription { key, table } = ClusterRegistry::subscribe_kind_in(
-            cx,
-            &context_name,
-            client,
-            &kind,
-            namespace.as_deref(),
-        );
-        cx.on_release(move |_: &mut Self, cx| {
-            ClusterRegistry::unsubscribe_kind_in(cx, &context_name, &key)
+        let follow =
+            NamespaceFollow::subscribe(cx, &context_name, client, &kind, namespace.as_deref());
+        cx.on_release(|this: &mut Self, cx| {
+            if let LiveSource::Following(follow) = &this.live {
+                follow.release(cx);
+            }
         })
         .detach();
-        cx.observe(&table, |this, _, cx| this.read_from_table(cx))
-            .detach();
-        self.live = LiveSource::Following(table);
+        self.observe_followed(follow.table(), cx);
+        self.live = LiveSource::Following(Box::new(follow));
         self.read_from_table(cx);
+    }
+
+    /// Reads `table` again whenever it changes - first moving off it if it's a refused
+    /// cluster-wide watch, then observing the namespace's watch instead.
+    fn observe_followed(
+        &self,
+        table: &Entity<crate::k8s::resource::object_list::ObjectsTable>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.observe(table, |this, _, cx| {
+            if let LiveSource::Following(follow) = &mut this.live
+                && follow.reroute_if_refused(cx)
+            {
+                let table = follow.table().clone();
+                this.observe_followed(&table, cx);
+            }
+            this.read_from_table(cx);
+        })
+        .detach();
     }
 
     /// Acts on what the table says about the object: refetches it when its row
     /// shows a write the panel hasn't fetched, and shows it gone once the row is.
     pub(super) fn read_from_table(&mut self, cx: &mut Context<Self>) {
-        let LiveSource::Following(table) = &self.live else {
+        let LiveSource::Following(follow) = &self.live else {
             return;
         };
         let row = {
-            let table = table.read(cx);
+            let table = follow.table().read(cx);
             if !table.synced() {
                 return;
             }
@@ -123,7 +137,9 @@ impl ObjectDetailPanel {
     /// sent before the delete, so what it found is stale.
     pub(super) fn known_absent(&self, cx: &App) -> bool {
         match &self.live {
-            LiveSource::Following(table) => table.read(cx).synced() && self.followed.is_none(),
+            LiveSource::Following(follow) => {
+                follow.table().read(cx).synced() && self.followed.is_none()
+            }
             #[cfg(test)]
             LiveSource::Off => false,
             LiveSource::Pending => false,
@@ -168,9 +184,11 @@ impl ObjectDetailPanel {
 #[cfg(test)]
 impl ObjectDetailPanel {
     /// The table the panel follows, for tests to drive.
-    pub(super) fn live_table(&self) -> Option<Entity<ObjectsTable>> {
+    pub(super) fn live_table(
+        &self,
+    ) -> Option<Entity<crate::k8s::resource::object_list::ObjectsTable>> {
         match &self.live {
-            LiveSource::Following(table) => Some(table.clone()),
+            LiveSource::Following(follow) => Some(follow.table().clone()),
             LiveSource::Off | LiveSource::Pending => None,
         }
     }
