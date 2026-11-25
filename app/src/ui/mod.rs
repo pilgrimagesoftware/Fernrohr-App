@@ -7,6 +7,7 @@ pub(crate) mod agent_setup;
 pub mod background_mcp;
 pub mod background_rows;
 pub(crate) mod bulk;
+pub mod clipped_cell;
 pub mod confirm_dialog;
 pub mod confirm_text;
 pub(crate) mod connections;

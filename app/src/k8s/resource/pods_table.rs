@@ -357,7 +357,7 @@ impl TableDelegate for PodTableDelegate {
         &mut self,
         row_ix: usize,
         col_ix: usize,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         use crate::ui::style::{self, Tone};
@@ -365,10 +365,12 @@ impl TableDelegate for PodTableDelegate {
         let row = &self.rows[row_ix].row;
         let column = self.columns[col_ix];
         let text = cell_text(row, column);
-        let cell = div()
-            .debug_selector(|| format!("pod-cell-{row_ix}-{col_ix}"))
-            .data_font()
-            .whitespace_nowrap();
+        let full = text.clone();
+        let cell = crate::ui::clipped_cell::ellipsize(
+            div()
+                .debug_selector(|| format!("pod-cell-{row_ix}-{col_ix}"))
+                .data_font(),
+        );
         let cell = match column {
             PodColumn::Status => cell
                 .text_color(style::status(row.status_tone, cx))
@@ -392,6 +394,11 @@ impl TableDelegate for PodTableDelegate {
                 &self.rows[row_ix].forwards,
             )),
             _ => cell.child(text),
+        };
+        let cell = if column == PodColumn::Forwards {
+            cell.into_any_element()
+        } else {
+            crate::ui::clipped_cell::with_full_value(self, row_ix, col_ix, &full, cell, window, cx)
         };
         let cell = self.with_checkbox(row_ix, col_ix, cell, cx);
         // An open quick look hangs below the selected row's first cell, in an

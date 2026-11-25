@@ -144,6 +144,12 @@ impl ObjectsTable {
         self.refused.as_deref()
     }
 
+    /// Whether the kind can't be listed at all: the server refused it, or discovery
+    /// reports no `list` verb.
+    pub fn unlistable(&self) -> bool {
+        self.refused.is_some() || matches!(self.mode, ListMode::Unlistable)
+    }
+
     /// Records the server's refusal to list this kind; the watch has stopped.
     pub fn set_refused(&mut self, message: String) {
         self.refused = Some(message);

@@ -3,7 +3,7 @@ use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::health::HealthTransition;
 use crate::k8s::cluster::session::test_support::test_client;
-use crate::k8s::cluster::session::{ClusterRegistry, WatchKey};
+use crate::k8s::cluster::session::{ClusterRegistry, KindKey, WatchKey};
 use crate::k8s::cluster::watch_registry::PauseReason;
 use crate::k8s::resource::object_list::ObjectsTable;
 use gpui_kit::{Entity, TestAppContext};
@@ -32,7 +32,7 @@ fn refcount(cx: &mut TestAppContext, kind: &DiscoveredKind) -> usize {
     cx.update(|cx| {
         cx.global::<ClusterRegistry>().sessions["kind-dev"]
             .watchers
-            .refcount(&WatchKey::Kind(kind.clone()))
+            .refcount(&WatchKey::Kind(KindKey::all(kind)))
     })
 }
 
@@ -42,7 +42,8 @@ fn session(cx: &mut TestAppContext, client: kube::Client) {
     });
 }
 
-/// Two Deployments in `staging` for the Deployment list; a 403 for the Secret list;
+/// Two Deployments across namespaces for the Deployment list (one in `staging`); a 403 for the
+/// cluster-wide Secret list but a Secret in `staging` for the namespaced one;
 /// an empty, closed response for any watch request.
 async fn serve() -> std::net::SocketAddr {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -64,6 +65,20 @@ async fn serve() -> std::net::SocketAddr {
                 let deployment = |uid: &str, name: &str| json!({ "metadata": { "uid": uid, "name": name, "namespace": "staging" } });
                 let (status, body) = if line.contains("watch=true") {
                     ("200 OK", String::new())
+                } else if line.contains("/apis/apps/v1/namespaces/staging/deployments") {
+                    let list = json!({
+                        "apiVersion": "apps/v1", "kind": "DeploymentList",
+                        "metadata": { "resourceVersion": "1" },
+                        "items": [deployment("d1", "web")],
+                    });
+                    ("200 OK", list.to_string())
+                } else if line.contains("/api/v1/namespaces/staging/secrets") {
+                    let list = json!({
+                        "apiVersion": "v1", "kind": "SecretList",
+                        "metadata": { "resourceVersion": "1" },
+                        "items": [{ "metadata": { "uid": "s1", "name": "token", "namespace": "staging" } }],
+                    });
+                    ("200 OK", list.to_string())
                 } else if line.contains("/apis/apps/v1/deployments") {
                     let list = json!({
                         "apiVersion": "apps/v1", "kind": "DeploymentList",
@@ -246,3 +261,4 @@ async fn a_pause_stops_and_a_resume_restarts_a_kinds_watch(cx: &mut TestAppConte
 }
 
 mod poll;
+mod scope;
