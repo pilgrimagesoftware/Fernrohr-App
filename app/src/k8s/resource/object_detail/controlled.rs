@@ -12,6 +12,13 @@
 //! has open, without starting one: a custom controller's objects show once a
 //! list of their kind is open.
 //!
+//! #237: a PersistentVolumeClaim's panel shows the reverse of a volume
+//! reference the same way: the Pods whose `spec.volumes[]
+//! .persistentVolumeClaim.claimName` names it, in its namespace, as the
+//! Overview's "Used By" field. It reads the context's shared Pods watch -
+//! the one a Pods list or a controller's panel reads - and only re-matches
+//! when that table or the object changes.
+//!
 //! The match runs when one of those tables or the object changes, not per
 //! frame, and keeps only the references (`Controlled::refs`) for `sections`.
 
@@ -68,6 +75,52 @@ pub(super) struct Controlled {
     /// The plural names of child kinds the server won't let this user list, so the
     /// field says so rather than reading as "controls nothing" (#446).
     pub(super) unlistable: Vec<String>,
+    /// For a PersistentVolumeClaim, the Pods that mount it, sorted by name
+    /// (#237). Empty for any other kind.
+    pub(super) used_by: Vec<ObjectRef>,
+    /// Whether a claim's Pods watch was refused, so "Used By" says it can't
+    /// list pods rather than reading as "no pod mounts it".
+    pub(super) used_by_refused: bool,
+}
+
+/// Whether `group`/`kind` is a PersistentVolumeClaim, whose panel lists the
+/// Pods that mount it.
+pub(super) fn is_claim(group: &str, kind: &str) -> bool {
+    group.is_empty() && kind == "PersistentVolumeClaim"
+}
+
+/// The Pods in `namespace` that mount the claim `claim`, sorted by name, each
+/// once: through `spec.volumes[].persistentVolumeClaim.claimName`, or through a
+/// generic ephemeral volume, whose claim Kubernetes names `<pod>-<volume>`.
+pub(super) fn pods_using_claim(namespace: &str, claim: &str, pods: &[Pod]) -> Vec<ObjectRef> {
+    let mut refs: Vec<ObjectRef> = pods
+        .iter()
+        .filter(|pod| pod.metadata.namespace.as_deref().unwrap_or_default() == namespace)
+        .filter(|pod| {
+            let pod_name = pod.metadata.name.as_deref().unwrap_or_default();
+            pod.spec
+                .iter()
+                .flat_map(|spec| spec.volumes.iter().flatten())
+                .any(|volume| {
+                    volume
+                        .persistent_volume_claim
+                        .as_ref()
+                        .is_some_and(|source| source.claim_name == claim)
+                        || (volume.ephemeral.is_some()
+                            && format!("{pod_name}-{}", volume.name) == claim)
+                })
+        })
+        .map(|pod| {
+            ObjectRef::core(
+                "Pod",
+                namespace,
+                pod.metadata.name.as_deref().unwrap_or_default(),
+            )
+        })
+        .collect();
+    refs.sort_by(|a, b| a.name.cmp(&b.name));
+    refs.dedup();
+    refs
 }
 
 /// The plural names of the kinds among `tables` that can't be listed: refused by the server
@@ -145,20 +198,13 @@ impl ObjectDetailPanel {
         let client = client.clone();
         let gvk = &self.target.kind.gvk;
         let children = child_kinds(&gvk.group, &gvk.kind);
-        let context_name = self.scope.context_name.clone();
+        // A claim's panel reads the Pods watch too, for the Pods that mount it.
+        if is_claim(&gvk.group, &gvk.kind) {
+            self.subscribe_pods_once(client.clone(), cx);
+        }
         for &(group, kind) in children {
             if group.is_empty() && kind == "Pod" {
-                if self.controlled.pods.is_none() {
-                    let table = ClusterRegistry::subscribe_pods(cx, &context_name, client.clone());
-                    let context = context_name.clone();
-                    cx.on_release(move |_: &mut Self, cx| {
-                        ClusterRegistry::unsubscribe_pods(cx, &context)
-                    })
-                    .detach();
-                    cx.observe(&table, |this, _, cx| this.match_controlled(cx))
-                        .detach();
-                    self.controlled.pods = Some(table);
-                }
+                self.subscribe_pods_once(client.clone(), cx);
                 continue;
             }
             let subscribed = self
@@ -178,6 +224,21 @@ impl ObjectDetailPanel {
             self.watch_child_kind(child, client.clone(), cx);
         }
         self.match_controlled(cx);
+    }
+
+    /// Subscribes the context's Pods watch for as long as the panel is open,
+    /// unless it already has.
+    fn subscribe_pods_once(&mut self, client: kube::Client, cx: &mut Context<Self>) {
+        if self.controlled.pods.is_some() {
+            return;
+        }
+        let context_name = self.scope.context_name.clone();
+        let table = ClusterRegistry::subscribe_pods(cx, &context_name, client);
+        cx.on_release(move |_: &mut Self, cx| ClusterRegistry::unsubscribe_pods(cx, &context_name))
+            .detach();
+        cx.observe(&table, |this, _, cx| this.match_controlled(cx))
+            .detach();
+        self.controlled.pods = Some(table);
     }
 
     fn watch_child_kind(
@@ -259,13 +320,32 @@ impl ObjectDetailPanel {
             .pods
             .as_ref()
             .is_some_and(|table| table.read(cx).refused().is_some());
-        if pods_refused {
+        let gvk = &self.target.kind.gvk;
+        let claim = is_claim(&gvk.group, &gvk.kind);
+        // A claim controls nothing, so its Pods watch says nothing about Controls.
+        if pods_refused && child_kinds(&gvk.group, &gvk.kind).contains(&("", "Pod")) {
             unlistable.push("pods".to_string());
             unlistable.sort();
         }
-        if refs != self.controlled.refs || unlistable != self.controlled.unlistable {
+        let used_by = if claim {
+            pods_using_claim(
+                self.target.namespace.as_deref().unwrap_or_default(),
+                &self.target.name,
+                pods,
+            )
+        } else {
+            Vec::new()
+        };
+        let used_by_refused = claim && pods_refused;
+        if refs != self.controlled.refs
+            || unlistable != self.controlled.unlistable
+            || used_by != self.controlled.used_by
+            || used_by_refused != self.controlled.used_by_refused
+        {
             self.controlled.refs = refs;
             self.controlled.unlistable = unlistable;
+            self.controlled.used_by = used_by;
+            self.controlled.used_by_refused = used_by_refused;
             cx.notify();
         }
     }
