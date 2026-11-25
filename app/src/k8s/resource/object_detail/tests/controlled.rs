@@ -4,7 +4,9 @@
 
 use super::fixtures::{deployments, kind, object, replica_sets, stub_panel, target};
 use crate::k8s::object_ref::ObjectRef;
-use crate::k8s::resource::object_detail::controlled::{child_kinds, controlled_by};
+use crate::k8s::resource::object_detail::controlled::{
+    child_kinds, controlled_by, is_claim, pods_using_claim,
+};
 use crate::k8s::resource::object_detail::model::FieldValue;
 use crate::k8s::resource::object_list::{ObjectRow, ObjectsTable};
 use crate::k8s::resource::pods::PodsTable;
@@ -337,4 +339,156 @@ async fn go_to_reaches_a_controlled_object_from_the_keyboard(cx: &mut TestAppCon
         followed.borrow().last().map(|follow| follow.target.clone()),
         Some(web_1())
     );
+}
+
+/// A pod in `namespace` mounting the claims `claims` (and an emptyDir).
+fn mounting(namespace: &str, name: &str, claims: &[&str]) -> Pod {
+    let mut volumes = vec![serde_json::json!({ "name": "scratch", "emptyDir": {} })];
+    volumes.extend(claims.iter().map(|claim| {
+        serde_json::json!({
+            "name": format!("vol-{claim}"),
+            "persistentVolumeClaim": { "claimName": claim },
+        })
+    }));
+    serde_json::from_value(serde_json::json!({
+        "metadata": { "name": name, "namespace": namespace, "uid": format!("uid-{name}") },
+        "spec": { "containers": [], "volumes": volumes },
+    }))
+    .expect("a valid pod")
+}
+
+#[test]
+fn only_claims_are_listed_with_their_pods() {
+    assert!(is_claim("", "PersistentVolumeClaim"));
+    assert!(!is_claim("", "PersistentVolume"));
+    assert!(!is_claim("example.com", "PersistentVolumeClaim"));
+}
+
+#[test]
+fn pods_using_a_claim_match_by_claim_name_in_its_namespace() {
+    let pods = [
+        mounting("staging", "db-1", &["data"]),
+        mounting("staging", "db-0", &["data", "backup"]),
+        mounting("staging", "other", &["cache"]),
+        mounting("prod", "db-0", &["data"]),
+        pod("no-volumes", "rs-1"),
+    ];
+    assert_eq!(
+        pods_using_claim("staging", "data", &pods),
+        vec![
+            ObjectRef::core("Pod", "staging", "db-0"),
+            ObjectRef::core("Pod", "staging", "db-1"),
+        ],
+        "sorted by name, the same name in another namespace left out"
+    );
+    assert!(pods_using_claim("staging", "unused", &pods).is_empty());
+}
+
+fn claims() -> crate::k8s::cluster::discovery::DiscoveredKind {
+    kind("", "v1", "PersistentVolumeClaim", true)
+}
+
+#[gpui_kit::test]
+async fn a_claim_lists_the_pods_that_mount_it_live_and_linked(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let (window, panel) = stub_panel(
+        cx,
+        target(claims(), Some("staging"), "data"),
+        vec![claims()],
+    );
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    let pods = vcx.update(|_, cx| {
+        cx.new(|_| {
+            let mut table = PodsTable::new();
+            table.apply(watcher::Event::Init);
+            table.apply(watcher::Event::InitApply(mounting(
+                "staging",
+                "db-0",
+                &["data"],
+            )));
+            table.apply(watcher::Event::InitApply(mounting(
+                "staging",
+                "other",
+                &["cache"],
+            )));
+            table.apply(watcher::Event::InitDone);
+            table
+        })
+    });
+    vcx.update(|_, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.test_set_loaded(
+                object(serde_json::json!({
+                    "apiVersion": "v1",
+                    "kind": "PersistentVolumeClaim",
+                    "metadata": { "name": "data", "namespace": "staging", "uid": "pvc-1" },
+                })),
+                cx,
+            );
+            panel.test_watch_controlled(Some(pods.clone()), Vec::new(), cx);
+        })
+    });
+    let used_by = |vcx: &mut gpui_kit::VisualTestContext| {
+        vcx.update(|_, cx| {
+            let sections = panel.read(cx).sections(jiff::Timestamp::now());
+            sections[0]
+                .fields
+                .iter()
+                .find(|field| field.label == "Used By")
+                .map(|field| match &field.value {
+                    FieldValue::References { targets, .. } => targets.clone(),
+                    other => panic!("Used By is references, not {other:?}"),
+                })
+                .unwrap_or_default()
+        })
+    };
+    assert_eq!(
+        used_by(&mut vcx),
+        vec![ObjectRef::core("Pod", "staging", "db-0")]
+    );
+
+    // A pod that starts mounting the claim shows without reopening the panel.
+    vcx.update(|_, cx| {
+        pods.update(cx, |table, cx| {
+            table.apply(watcher::Event::Apply(mounting(
+                "staging",
+                "db-1",
+                &["data"],
+            )));
+            cx.notify();
+        })
+    });
+    vcx.run_until_parked();
+    assert_eq!(used_by(&mut vcx).len(), 2, "the new pod is listed");
+
+    // Each entry is a link the "Go to..." picker offers.
+    let followable = vcx.update(|_, cx| panel.read(cx).followable(cx));
+    assert!(
+        followable
+            .iter()
+            .any(|entry| format!("{entry:?}").contains("db-1")),
+        "the pod is followable: {followable:?}"
+    );
+
+    // An unused claim has no Used By field at all.
+    vcx.update(|_, cx| {
+        pods.update(cx, |table, cx| {
+            table.apply(watcher::Event::Delete(mounting(
+                "staging",
+                "db-0",
+                &["data"],
+            )));
+            table.apply(watcher::Event::Delete(mounting(
+                "staging",
+                "db-1",
+                &["data"],
+            )));
+            cx.notify();
+        })
+    });
+    vcx.run_until_parked();
+    assert!(used_by(&mut vcx).is_empty());
 }

@@ -285,6 +285,13 @@ impl ObjectDetailPanel {
                 true,
             ));
         }
+        if !self.controlled.used_by.is_empty() {
+            overview.fields.push(super::model::ObjectField::references(
+                "Used By",
+                self.controlled.used_by.clone(),
+                true,
+            ));
+        }
         let mut sections = vec![overview];
         sections.extend(sections::sections_for(&self.target.kind, object));
         sections
