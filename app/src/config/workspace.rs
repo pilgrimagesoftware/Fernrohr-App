@@ -49,6 +49,11 @@ pub struct WindowLayout {
     /// The Resource panel's width in pixels, as last dragged. `None` in older files,
     /// and for a window that was never connected; restore then uses the default.
     pub resource_panel_width: Option<f32>,
+    /// The UUID of the display the window was on when saved (#429), which
+    /// restore uses to put the window back on that monitor if it is connected.
+    /// `None` in older files and when the platform can't name the display;
+    /// restore then falls back to placing the saved frame on a connected display.
+    pub display_uuid: Option<String>,
 }
 
 impl Default for WindowLayout {
@@ -61,6 +66,7 @@ impl Default for WindowLayout {
             contexts: Vec::new(),
             panels: Vec::new(),
             resource_panel_width: None,
+            display_uuid: None,
         }
     }
 }
@@ -206,11 +212,29 @@ mod tests {
                     },
                 }],
                 resource_panel_width: Some(310.0),
+                display_uuid: Some("5E1F2A10-0000-4000-8000-000000000001".into()),
             }],
         };
         let text = toml::to_string(&config).unwrap();
         let parsed: WorkspaceConfig = toml::from_str(&text).unwrap();
         assert_eq!(parsed, config);
+    }
+
+    /// #429: a layout saved before windows recorded their display has no
+    /// `display_uuid` key; it must still load, reading as none.
+    #[test]
+    fn a_layout_saved_before_display_uuid_still_loads() {
+        let toml_text = r#"
+            [[windows]]
+            width = 900.0
+            height = 700.0
+            x = 10.0
+            y = 20.0
+        "#;
+        let parsed: WorkspaceConfig = toml::from_str(toml_text).unwrap();
+        assert_eq!(parsed.windows.len(), 1);
+        assert_eq!(parsed.windows[0].display_uuid, None);
+        assert_eq!(parsed.windows[0].x, Some(10.0));
     }
 
     /// Tasks.md 2.1: a window using two contexts round-trips both, in order.
