@@ -20,6 +20,7 @@ pub mod help;
 pub mod icon;
 pub mod icon_tooltip;
 pub mod key_hint_row;
+pub(crate) mod keyboard_pick;
 pub(crate) mod kind_actions;
 pub mod link;
 pub mod list_keys;

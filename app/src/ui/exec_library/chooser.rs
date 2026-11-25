@@ -110,27 +110,13 @@ impl Render for Chooser {
                         })
                 })
                 .collect();
-        CommandList::new(&self.state)
-            .items(items)
-            .placeholder("Filter…")
-            .on_select({
-                let this = this.clone();
-                move |index_path, window, cx| {
-                    if !window.last_input_was_keyboard() {
-                        return;
-                    }
-                    let _ = this.update(cx, |this, _| this.selected = Some(index_path.row));
-                }
-            })
-            .on_confirm(move |index_path, window, cx| {
-                let _ = this.update(cx, |this, cx| {
-                    let index = if window.last_input_was_keyboard() {
-                        this.selected.unwrap_or(index_path.row)
-                    } else {
-                        index_path.row
-                    };
-                    this.pick(index, window, cx);
-                });
-            })
+        crate::ui::keyboard_pick::follow_keyboard(
+            CommandList::new(&self.state)
+                .items(items)
+                .placeholder("Filter…"),
+            this,
+            |this| &mut this.selected,
+            Self::pick,
+        )
     }
 }
