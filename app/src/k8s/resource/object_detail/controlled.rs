@@ -25,7 +25,7 @@
 use super::panel::ObjectDetailPanel;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
-use crate::k8s::cluster::session::{ClusterRegistry, KindSubscription};
+use crate::k8s::cluster::session::{ClusterRegistry, NamespaceFollow};
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::object_list::{ObjectRow, ObjectsTable};
 use crate::k8s::resource::pods::PodsTable;
@@ -64,8 +64,9 @@ pub(super) struct Controlled {
     /// The context's Pods watch, once subscribed for a kind whose children
     /// are pods.
     pods: Option<Entity<PodsTable>>,
-    /// The child kinds' watches it subscribed, each released with the panel.
-    kinds: Vec<(DiscoveredKind, Entity<ObjectsTable>)>,
+    /// The child kinds' watches it subscribed, each released with the panel. Each moves
+    /// to a watch of the object's namespace if a shared cluster-wide one is refused (#457).
+    kinds: Vec<(DiscoveredKind, NamespaceFollow)>,
     /// The context's other open watches it matched against, observed so a
     /// change there re-matches too. Only observed, never subscribed: a list
     /// closing still stops its watch, and its entry goes at the next match.
@@ -250,20 +251,19 @@ impl ObjectDetailPanel {
         let context_name = self.scope.context_name.clone();
         // Owned children live in the owner's namespace, so that is all the watch needs (#446).
         let namespace = self.target.namespace.clone();
-        let KindSubscription { key, table } = ClusterRegistry::subscribe_kind_in(
-            cx,
-            &context_name,
-            client,
-            &kind,
-            namespace.as_deref(),
-        );
-        cx.on_release(move |_: &mut Self, cx| {
-            ClusterRegistry::unsubscribe_kind_in(cx, &context_name, &key)
-        })
-        .detach();
-        cx.observe(&table, |this, _, cx| this.match_controlled(cx))
+        let follow =
+            NamespaceFollow::subscribe(cx, &context_name, client, &kind, namespace.as_deref());
+        if self.controlled.kinds.is_empty() {
+            cx.on_release(|this: &mut Self, cx| {
+                for (_, follow) in &this.controlled.kinds {
+                    follow.release(cx);
+                }
+            })
             .detach();
-        self.controlled.kinds.push((kind, table));
+        }
+        cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
+            .detach();
+        self.controlled.kinds.push((kind, follow));
     }
 
     /// Matches the object against its subscribed child watches and every
@@ -273,7 +273,20 @@ impl ObjectDetailPanel {
             .object()
             .and_then(|object| object.metadata.uid.clone())
             .unwrap_or_default();
-        let mut tables = self.controlled.kinds.clone();
+        // A child watch whose shared cluster-wide one was refused moves to the object's
+        // namespace first, and the new table is observed from then on.
+        for (_, follow) in &mut self.controlled.kinds {
+            if follow.reroute_if_refused(cx) {
+                cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
+                    .detach();
+            }
+        }
+        let mut tables: Vec<(DiscoveredKind, Entity<ObjectsTable>)> = self
+            .controlled
+            .kinds
+            .iter()
+            .map(|(kind, follow)| (kind.clone(), follow.table().clone()))
+            .collect();
         let open = ClusterRegistry::open_kind_tables(cx, &self.scope.context_name);
         self.controlled
             .observed
@@ -312,7 +325,7 @@ impl ObjectDetailPanel {
             self.controlled
                 .kinds
                 .iter()
-                .map(|(kind, table)| (kind, table.read(cx))),
+                .map(|(kind, follow)| (kind, follow.table().read(cx))),
         );
         // The typed Pods watch is cluster-wide, so a namespace-only user is refused it.
         let pods_refused = self
@@ -370,7 +383,13 @@ impl ObjectDetailPanel {
                 .detach();
         }
         self.controlled.pods = pods;
-        self.controlled.kinds = kinds;
+        self.controlled.kinds = kinds
+            .into_iter()
+            .map(|(kind, table)| {
+                let follow = NamespaceFollow::detached(&kind, table);
+                (kind, follow)
+            })
+            .collect();
         self.match_controlled(cx);
     }
 }

@@ -26,7 +26,7 @@ mod registry;
 mod test_support;
 
 pub use holder::{AgentId, Holder};
-pub(crate) use kind_scope::KindSubscription;
+pub(crate) use kind_scope::{KindSubscription, NamespaceFollow};
 pub use live_agents::LiveAgents;
 pub use registry::ClusterRegistry;
 
