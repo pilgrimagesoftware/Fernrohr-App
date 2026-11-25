@@ -389,3 +389,66 @@ async fn each_row_draws_its_kind_badge(cx: &mut TestAppContext) {
     assert!(vcx.debug_bounds("tunnel-kind-qa-iap").is_some());
     let _ = std::fs::remove_file(&tunnels_path);
 }
+
+/// #384: the stale-binding Remove is an icon button, and hovering it shows its
+/// tooltip, like Edit in the same window.
+#[gpui_kit::test]
+async fn the_stale_remove_icon_has_its_tooltip(cx: &mut TestAppContext) {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::component::Root;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{Modifiers, VisualTestContext, px, size};
+
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let tunnels_path = temp_tunnels_path();
+    let store = TunnelStore::new(tunnels_path.clone());
+    store
+        .create("qa-bastion", sample_tunnel("QA"), None)
+        .unwrap();
+    store.bind("renamed-away", "qa-bastion").unwrap();
+    let kubeconfig_path = std::env::temp_dir().join(format!(
+        "fernrohr-tunnels-window-test-stale-tooltip-kubeconfig-{}.yaml",
+        std::process::id()
+    ));
+    std::fs::write(
+        &kubeconfig_path,
+        "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\n",
+    )
+    .unwrap();
+
+    let window = cx.add_window({
+        let tunnels_path = tunnels_path.clone();
+        let kubeconfig_path = kubeconfig_path.clone();
+        move |window, cx| {
+            let view =
+                cx.new(|cx| TunnelsWindow::new(tunnels_path, Some(kubeconfig_path), window, cx));
+            Root::new(view, window, cx)
+        }
+    });
+    let mut vcx = VisualTestContext::from_window(window.into(), cx);
+    vcx.simulate_resize(size(px(640.), px(600.)));
+    vcx.run_until_parked();
+
+    let at = vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window
+            .find("tunnels-stale-remove-renamed-away")
+            .bounds()
+            .center()
+    });
+    vcx.simulate_mouse_move(at, None, Modifiers::none());
+    vcx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    vcx.run_until_parked();
+    let selector: &'static str =
+        crate::ui::icon_tooltip::selector(crate::ui::tunnels::list::render::REMOVE_STALE_TOOLTIP)
+            .leak();
+    assert!(vcx.debug_bounds(selector).is_some(), "the tooltip shows");
+
+    let _ = std::fs::remove_file(&tunnels_path);
+    let _ = std::fs::remove_file(&kubeconfig_path);
+}

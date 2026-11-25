@@ -214,7 +214,7 @@ impl TableDelegate for EventsTableDelegate {
         &mut self,
         row_ix: usize,
         col_ix: usize,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         use crate::ui::style::{self, Tone};
@@ -228,12 +228,14 @@ impl TableDelegate for EventsTableDelegate {
             .overflow_hidden()
             .text_ellipsis();
         let text = column.text(row, self.now);
-        match column {
+        let full = text.clone();
+        let cell = match column {
             EventColumn::Type if row.type_.as_deref() == Some("Warning") => cell
                 .text_color(style::status(Tone::Warning, cx))
                 .child(text),
             _ => cell.child(text),
-        }
+        };
+        crate::ui::clipped_cell::with_full_value(self, row_ix, col_ix, &full, cell, window, cx)
     }
 
     fn render_th(

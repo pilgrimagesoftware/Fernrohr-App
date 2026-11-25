@@ -5,6 +5,8 @@
 
 mod background;
 mod bulk;
+#[cfg(test)]
+mod clipped_cell_tests;
 mod columns;
 mod commands;
 mod delete;
