@@ -458,6 +458,16 @@ pub(crate) const EXEC_LIBRARY_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> 
 /// as unreadable, so a hostile Secret can't exhaust memory.
 pub(crate) const HELM_RELEASE_MAX_DECODED_BYTES: u64 = 32 * 1024 * 1024;
 
+/// How much of a failed credential plugin's stderr a connection failure or
+/// error panel shows (`k8s::error::credential_plugin_failure`), in characters:
+/// enough for its own explanation ("run `<tool> login`"), not a dump.
+pub(crate) const CREDENTIAL_PLUGIN_STDERR_LIMIT: usize = 1000;
+
+/// How deep `k8s::error::credential_plugin_failure` follows an error's
+/// `source()` chain looking for the auth layer's error. Real chains are a few
+/// links long; the cap stops a cyclic `source()` from looping forever.
+pub(crate) const ERROR_SOURCE_DEPTH_LIMIT: usize = 32;
+
 #[cfg(test)]
 mod tests {
     /// The checked-in desktop entry groups windows by the app id they open with.
