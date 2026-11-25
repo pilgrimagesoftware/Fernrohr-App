@@ -289,8 +289,18 @@ fn owner_selector(pod: &Pod, context: &str, cx: &App) -> Option<Selector> {
     if group == "apps" && owner.kind == "ReplicaSet" {
         let replica_set = cached(context, &replica_sets(), namespace, &owner.name, cx)?;
         return match replica_set.controller {
-            Some((kind, name)) if kind == WorkloadKind::Deployment.as_str() => {
-                cached_selector(context, WorkloadKind::Deployment, namespace, &name, cx)
+            // apps/v1's Deployment, not a custom resource of the same name.
+            Some(controller)
+                if controller.group == "apps"
+                    && controller.kind == WorkloadKind::Deployment.as_str() =>
+            {
+                cached_selector(
+                    context,
+                    WorkloadKind::Deployment,
+                    namespace,
+                    &controller.name,
+                    cx,
+                )
             }
             _ => replica_set.pod_selector,
         };

@@ -29,9 +29,17 @@ pub(crate) struct ObjectFacts {
     /// label selector, or a Service's `spec.selector` label map. `None` for an
     /// object that selects none.
     pub(crate) pod_selector: Option<kube::core::Selector>,
-    /// The kind and name of the object's controlling owner - a ReplicaSet's
-    /// Deployment - from its `ownerReferences`.
-    pub(crate) controller: Option<(String, String)>,
+    /// The object's controlling owner - a ReplicaSet's Deployment - from its
+    /// `ownerReferences`.
+    pub(crate) controller: Option<Controller>,
+}
+
+/// An object's controlling owner: its API group (empty for core), kind and name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Controller {
+    pub(crate) group: String,
+    pub(crate) kind: String,
+    pub(crate) name: String,
 }
 
 impl ObjectFacts {
@@ -63,7 +71,15 @@ impl ObjectFacts {
                 .iter()
                 .flatten()
                 .find(|owner| owner.controller == Some(true))
-                .map(|owner| (owner.kind.clone(), owner.name.clone())),
+                .map(|owner| Controller {
+                    group: owner
+                        .api_version
+                        .rsplit_once('/')
+                        .map_or("", |(group, _)| group)
+                        .to_string(),
+                    kind: owner.kind.clone(),
+                    name: owner.name.clone(),
+                }),
         }
     }
 }
