@@ -24,11 +24,16 @@ fn pod(name: &str, namespace: &str) -> serde_json::Value {
                 "name": "web", "uid": "rs-1", "controller": true }] } })
 }
 
-/// What Controls shows: its references, or the status text standing in for them.
-fn controls(panel: &gpui_kit::Entity<ObjectDetailPanel>, vcx: &mut VisualTestContext) -> String {
+/// What Controls shows: its references, or the status text standing in for them. `None`
+/// until the panel has its object - it has no sections before the first fetch lands.
+fn controls(
+    panel: &gpui_kit::Entity<ObjectDetailPanel>,
+    vcx: &mut VisualTestContext,
+) -> Option<String> {
     vcx.update(|_, cx| {
         let sections = panel.read(cx).sections(jiff::Timestamp::now());
-        sections[0]
+        let overview = sections.first()?;
+        let shown = overview
             .fields
             .iter()
             .find(|field| field.label == "Controls")
@@ -41,8 +46,29 @@ fn controls(panel: &gpui_kit::Entity<ObjectDetailPanel>, vcx: &mut VisualTestCon
                 FieldValue::Status { text, .. } => text.clone(),
                 other => format!("{other:?}"),
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        Some(shown)
     })
+}
+
+/// Runs the app until `done` holds for what Controls shows, panicking with `what` and the
+/// last value seen if it never does.
+fn wait_for_controls(
+    panel: &gpui_kit::Entity<ObjectDetailPanel>,
+    vcx: &mut VisualTestContext,
+    what: &str,
+    done: impl Fn(Option<&str>) -> bool,
+) {
+    let mut last = None;
+    for _ in 0..400 {
+        vcx.run_until_parked();
+        last = controls(panel, vcx);
+        if done(last.as_deref()) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("never {what}: Controls was {last:?}");
 }
 
 #[gpui_kit::test]
@@ -73,16 +99,19 @@ async fn controls_lists_pods_through_the_namespaces_own_watch(cx: &mut TestAppCo
     let panel = window.root(cx).unwrap();
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
 
-    let mut shown = String::new();
-    for _ in 0..400 {
-        vcx.run_until_parked();
-        shown = controls(&panel, &mut vcx);
-        if shown == "web-1" {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-    assert_eq!(shown, "web-1", "the pod, not \"can't list pods\"");
+    // The object's own fetch and the namespaced Pods watch land in either order: wait
+    // for the object first, then for its pod - never read Controls before both.
+    wait_for_controls(&panel, &mut vcx, "loaded the ReplicaSet", |shown| {
+        shown.is_some()
+    });
+    wait_for_controls(&panel, &mut vcx, "listed the pod", |shown| {
+        shown == Some("web-1")
+    });
+    assert_eq!(
+        controls(&panel, &mut vcx).as_deref(),
+        Some("web-1"),
+        "the pod, not \"can't list pods\""
+    );
     let held = |key: &WatchKey, vcx: &mut VisualTestContext| {
         vcx.update(|_, cx| ClusterRegistry::subscribers(cx, CONTEXT, key))
     };
