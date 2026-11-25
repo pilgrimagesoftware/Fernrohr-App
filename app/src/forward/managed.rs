@@ -13,10 +13,6 @@ use tokio::sync::watch;
 /// A `ManagedForward`'s connection lifecycle. `Reconnecting` means the forward was `Up`
 /// at least once and is retrying after a drop - callers should keep waiting, not tear
 /// down whatever they were using the forward for.
-// UNWIRED(#3): SshTunnel (section 3) and K8sPortForward (section 4) are the first
-// implementations; ForwardRegistry (section 2.4) and the connect-path integration
-// (section 6) are the first callers.
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ForwardState {
     Disconnected,
@@ -28,15 +24,11 @@ pub enum ForwardState {
 /// A live reference to a `ManagedForward`, acquired via [`ManagedForward::acquire`].
 /// Dropping the handle releases the reference; what "release" does (stop the forward,
 /// decrement a shared refcount) is up to the callback passed to [`ForwardHandle::new`].
-// UNWIRED(#3): see the note on `ForwardState`.
-#[allow(dead_code)]
 pub struct ForwardHandle {
     release: Option<Box<dyn FnOnce() + Send>>,
 }
 
 impl ForwardHandle {
-    // UNWIRED(#3): see the note on `ForwardState`.
-    #[allow(dead_code)]
     pub fn new(release: impl FnOnce() + Send + 'static) -> Self {
         Self {
             release: Some(Box::new(release)),
@@ -55,8 +47,6 @@ impl Drop for ForwardHandle {
 /// A long-lived local forward with an observable state and reference-counted lifetime.
 /// Implemented by `SshTunnel` and `K8sPortForward`; `ForwardRegistry` acquires and shares
 /// handles across callers keyed by tunnel/forward identity.
-// UNWIRED(#3): see the note on `ForwardState`.
-#[allow(dead_code)]
 pub trait ManagedForward: Send + Sync {
     /// A receiver observing this forward's current state; `changed().await` waits for
     /// the next transition (e.g. `Connecting` -> `Up`).

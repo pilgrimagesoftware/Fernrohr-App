@@ -224,7 +224,7 @@ pub fn acquire_for_context(
     // that case (the identity file's `Drop` removes it immediately).
     // ponytail: a secret briefly touches disk on every acquire, not just the first;
     // add a `ForwardRegistry::contains` peek if that overhead/exposure ever matters.
-    let local_addr = crate::util::port_allocator::allocate()?.addr();
+    let local_addr = crate::util::port_allocator::free_local_addr()?;
     let identity_file = secret
         .as_deref()
         .map(|secret| TransientIdentityFile::write(&tunnel_id, secret))
@@ -284,7 +284,7 @@ fn acquire_command(
     })?;
     let local_addr = match command.local_port {
         Some(port) => std::net::SocketAddr::from(([127, 0, 0, 1], port)),
-        None => crate::util::port_allocator::allocate()?.addr(),
+        None => crate::util::port_allocator::free_local_addr()?,
     };
     let args = argv::substitute_port(&args, local_addr.port());
     let startup_timeout = Duration::from_secs(command.startup_timeout_secs);

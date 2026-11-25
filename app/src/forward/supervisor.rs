@@ -93,8 +93,6 @@ pub struct SupervisorOptions {
 
 /// Owns the spawned supervisor task; aborting it on drop per the project's "owning
 /// spawned work" convention rather than leaking it.
-// UNWIRED(#3): SshTunnel and K8sPortForward (sections 3-4) are the first real callers.
-#[allow(dead_code)]
 pub struct ForwardSupervisor {
     /// A receiver to subscribe from. The task holds the only sender, so the channel
     /// closes when the task ends - which it does only after giving up.

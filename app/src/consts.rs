@@ -24,9 +24,6 @@ pub(crate) const DOCS_URL: &str = "https://pilgrimagesoftware.github.io/Fernrohr
 #[cfg(target_os = "macos")]
 pub(crate) const BUNDLE_IDENTIFIER: &str = "com.pilgrimagesoftware.fernrohr";
 
-// UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
-// 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
-#[allow(dead_code)]
 /// `SshTransport::connect` readiness probe: how long to keep retrying a local TCP
 /// dial to the forwarded port before giving up and reporting a timeout.
 pub(crate) const SSH_READINESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -122,9 +119,6 @@ pub(crate) const OIDC_EXPIRY_MARGIN: Duration = Duration::from_secs(60);
 /// (#188): discovery, then the token refresh.
 pub(crate) const OIDC_ISSUER_TIMEOUT: Duration = Duration::from_secs(15);
 
-// UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
-// the section 5.2 keychain wrapper this backs.
-#[allow(dead_code)]
 /// `keyring` service name for tunnel secrets (`account` is the tunnel id). A distinct
 /// service from `keychain.rs`'s smoke-test constant so a spike credential never
 /// collides with a real tunnel's stored key.

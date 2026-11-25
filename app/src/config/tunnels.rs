@@ -21,9 +21,6 @@
 //! holds a bound context's connection until the user confirms the network path they
 //! bring up by hand (a VPN) is there. Its settings are the `manual` table, kept the
 //! same way.
-// UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller;
-// section 6's context binding UI is the first caller of `TunnelStore` itself.
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

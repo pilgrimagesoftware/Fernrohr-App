@@ -77,9 +77,6 @@ pub(crate) struct HelmReleasesTable {
     refused: Option<String>,
 }
 
-// UNWIRED(#370): the list and detail panels (helm-releases sections 3-4) read
-// rows and history; until then only the watch and its tests use the table.
-#[allow(dead_code)]
 impl HelmReleasesTable {
     /// Applies one watch event.
     pub(crate) fn apply(&mut self, event: watcher::Event<PartialObjectMeta<Secret>>) {

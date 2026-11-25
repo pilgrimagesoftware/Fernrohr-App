@@ -11,8 +11,6 @@ const SSH_EXE_NAME: &str = "ssh.exe";
 const SSH_EXE_NAME: &str = "ssh";
 
 /// Returns the path to `ssh` on `PATH`, or an error message telling the user to install it.
-// UNWIRED(#3): called by SshTunnel's spawn path once section 3 lands.
-#[allow(dead_code)]
 pub fn require_ssh_on_path() -> Result<PathBuf, String> {
     find_on_path(&env::var("PATH").unwrap_or_default()).ok_or_else(|| {
         "`ssh` was not found on PATH. Fernrohr's tunnel subsystem shells out to the system \
