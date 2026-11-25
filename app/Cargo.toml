@@ -82,6 +82,9 @@ jsonpath-rust = "=1.0.13"
 # version. Unix only: the app posts none on Windows.
 [target.'cfg(unix)'.dependencies]
 notify-rust = "=4.19.0"
+# A safe `kill(pid, 0)` liveness check (`helm_cli::kubeconfig`) without forking `kill`
+# per pid. Already in the build through other crates; pinned to that version.
+rustix = { version = "=1.1.5", features = ["process"] }
 
 # The user's accent colour for the focused-panel mark (`ui::accent`), and the
 # menu bar status item quiet mode runs in (`ui::status_menu::macos`, #236;

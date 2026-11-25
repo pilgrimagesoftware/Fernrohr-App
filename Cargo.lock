@@ -2098,6 +2098,7 @@ dependencies = [
  "rcgen",
  "rmcp",
  "rust-i18n",
+ "rustix",
  "rustls",
  "schemars",
  "serde",
