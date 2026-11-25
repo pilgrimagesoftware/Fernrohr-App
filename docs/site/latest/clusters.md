@@ -96,8 +96,11 @@ menu, or with the Proceed with Manual Tunnel and Cancel Manual Tunnel commands.
 ## Errors and retrying
 
 A failed attempt leaves the picker on screen with the reason, such as the unreachable API server's
-name, the error output of a credential plugin that exited with an error, or the reason a bound
-tunnel didn't come up. You can select the text and copy it. The **Report…** button below a failure
+name, what a credential plugin that exited with an error printed as its error, or the reason a
+bound tunnel didn't come up. For a credential plugin, the reason is its exit status and its error
+output only, with anything that looks like a token or password replaced by `[redacted]`. Its
+regular output, where a credential would be, and the settings your kubeconfig passes it are never
+shown. You can select the text and copy it. The **Report…** button below a failure
 opens Report Issue with the error filled in. See
 [Report an error from where it happened]({{ '/latest/settings/' | relative_url }}#report-an-error-from-where-it-happened).
 

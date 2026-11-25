@@ -239,8 +239,9 @@ async fn read_container_logs(
                 break;
             }
             Some(Err(error)) => {
-                let message = error.to_string();
-                let detail = format!("{error:?}");
+                // An `io::Error` from the body stream; it can wrap a kube error.
+                let message = crate::k8s::error::describe_any(&error);
+                let detail = crate::k8s::error::detail_any(&error);
                 let _ = tx.send(LogEvent::RequestFailed { message, detail }).await;
                 break;
             }

@@ -20,8 +20,8 @@ gpui-kit = "=0.7.0"
 # feature is off, since the session is a remote kube exec, not a local process.
 gpui-terminal = { git = "https://github.com/pilgrimagesoftware/gpui-terminal", tag = "v0.2.2", default-features = false }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "process", "time", "signal"] }
-kube = { version = "=5.0.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws", "http-proxy"] }
-kube-runtime = "=5.0.0"
+kube = { version = "=5.2.0", features = ["client", "config", "runtime", "aws-lc-rs", "ws", "http-proxy"] }
+kube-runtime = "=5.2.0"
 k8s-openapi = { version = "=0.29.0", features = ["v1_36"] }
 dirs = "=7.0.0"
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -30,7 +30,7 @@ serde_yaml_ng = "=0.10.0"
 toml = "=1.1.6"
 rust-i18n = "=4.2.4"
 log = "=0.4.35"
-jiff = "=0.2.38"
+jiff = "=0.2.46"
 futures-util = "=0.3.34"
 keyring = "=4.2.0"
 parking_lot = "=0.13.0"
@@ -49,7 +49,7 @@ image = { version = "=0.25.10", default-features = false, features = ["png", "we
 http = "=1.5.0"
 # Open Host builds and checks its https URL with it (`resource-specific-actions`);
 # already in the tree through kube and reqwest.
-url = "=2.5.8"
+url = "=2.5.9"
 base64 = "=0.23.1"
 # Gunzipping a Helm release's stored payload (`k8s::resource::helm::decode`,
 # helm-releases D2). Already in the build through a transitive dependency;
@@ -59,7 +59,7 @@ flate2 = "=1.1.11"
 # MCP SDK, for protocol negotiation and JSON-RPC framing. Only its server role
 # and stdio transport; its schemars, uuid, chrono and tracing are already in the
 # build, so it adds itself, its macros crate and their proc-macro helpers.
-rmcp = { version = "=3.10.0", default-features = false, features = ["server", "transport-io"] }
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-io"] }
 # The MCP endpoint's per-launch token (`mcp::endpoint`). Already in the build
 # through ahash and rand_core; pinned to that same version.
 getrandom = "=0.4.3"
@@ -103,7 +103,7 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 # the version those share - not the 0.59 only `alacritty_terminal` still uses -
 # so it stays one crate as they move.
 [target.'cfg(target_os = "linux")'.dependencies]
-ashpd = { version = "=0.13.13", default-features = false, features = ["async-io", "settings"] }
+ashpd = { version = "=0.14.3", default-features = false, features = ["async-io", "settings"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Graphics_Dwm"] }

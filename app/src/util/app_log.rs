@@ -112,11 +112,13 @@ fn rotate(dir: &Path) {
 fn open_in(dir: &Path) -> Option<File> {
     fs::create_dir_all(dir).ok()?;
     rotate(dir);
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join(LOG_FILE_NAME))
-        .ok()
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    // Owner-only (0600 on unix): the log names hosts, contexts and users, and
+    // holds the cluster errors Report Issue attaches.
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(dir.join(LOG_FILE_NAME)).ok()
 }
 
 /// `RUST_LOG` exactly one of the five level names (any case); anything else,

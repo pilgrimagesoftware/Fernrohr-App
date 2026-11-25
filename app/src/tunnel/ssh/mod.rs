@@ -113,6 +113,9 @@ impl SshTunnelConfig {
             args.push("StrictHostKeyChecking=yes".to_string());
         }
 
+        // `--` ends ssh's options: a user or host that starts with `-` stays the
+        // destination rather than being read as one (`-oProxyCommand=...`).
+        args.push("--".to_string());
         args.push(self.bastion_target());
         args
     }
@@ -157,9 +160,36 @@ impl SshTunnelConfig {
             args.push("StrictHostKeyChecking=yes".to_string());
         }
 
+        args.push("--".to_string());
         args.push(self.bastion_target());
         args.push("true".to_string());
         args
+    }
+}
+
+/// Whether a `-J` hop (`[user@]host[:port]`) has a user or host starting with
+/// `-`, which ssh, or the nested ssh it runs for the hop, could read as an
+/// option. The tunnel editor refuses one, and nothing spawns `ssh` with one.
+pub(crate) fn is_option_like_jump_host(hop: &str) -> bool {
+    let hop = hop.trim();
+    let host = hop.rsplit_once('@').map_or(hop, |(_, host)| host);
+    hop.starts_with('-') || host.starts_with('-')
+}
+
+impl SshTunnelConfig {
+    /// Refuses a config whose `-J` chain has an option-like hop - for a tunnel
+    /// saved before the editor checked, or edited by hand.
+    fn check_jump_hosts(&self) -> Result<(), String> {
+        match self
+            .jump_hosts
+            .iter()
+            .find(|hop| is_option_like_jump_host(hop))
+        {
+            Some(hop) => Err(format!(
+                "jump host {hop:?} starts with '-', which ssh would read as an option"
+            )),
+            None => Ok(()),
+        }
     }
 }
 
@@ -168,6 +198,7 @@ impl SshTunnelConfig {
 /// way a real tunnel's `connect` does. Never spawns through `ForwardRegistry` and
 /// never supervises or retries: one `ssh` process, one outcome.
 pub async fn test_connection(config: &SshTunnelConfig) -> Result<(), String> {
+    config.check_jump_hosts()?;
     let ssh_path = require_ssh_on_path()?;
 
     let output = Command::new(ssh_path)
@@ -251,6 +282,7 @@ impl crate::forward::supervisor::ForwardTransport for SshTransport {
     /// callers can tell an auth failure from a bind failure - see
     /// `classify_exit_failure`.
     async fn connect(&mut self) -> Result<(), String> {
+        self.config.check_jump_hosts()?;
         let ssh_path = require_ssh_on_path()?;
 
         let mut command = Command::new(ssh_path);

@@ -329,8 +329,8 @@ pub(crate) const MCP_MAX_REQUEST_BYTES: usize = 1024 * 1024;
 pub(crate) const MCP_MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
 
 /// `agent-mcp`: how long a new endpoint connection has to complete its
-/// handshake before the app drops it, so a client that connects and says
-/// nothing doesn't hold a connection slot.
+/// handshake, and then to send its request, before the app drops it, so a
+/// client that connects and says nothing doesn't hold a connection slot.
 pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `agent-mcp`: how many endpoint connections are served at once. Each tool
@@ -454,6 +454,16 @@ pub(crate) const EXEC_LIBRARY_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> 
 /// real release is a few hundred KiB at most; past this the payload is refused
 /// as unreadable, so a hostile Secret can't exhaust memory.
 pub(crate) const HELM_RELEASE_MAX_DECODED_BYTES: u64 = 32 * 1024 * 1024;
+
+/// How much of a failed credential plugin's stderr a connection failure or
+/// error panel shows (`k8s::error::credential_plugin_failure`), in characters:
+/// enough for its own explanation ("run `<tool> login`"), not a dump.
+pub(crate) const CREDENTIAL_PLUGIN_STDERR_LIMIT: usize = 1000;
+
+/// How deep `k8s::error::credential_plugin_failure` follows an error's
+/// `source()` chain looking for the auth layer's error. Real chains are a few
+/// links long; the cap stops a cyclic `source()` from looping forever.
+pub(crate) const ERROR_SOURCE_DEPTH_LIMIT: usize = 32;
 
 #[cfg(test)]
 mod tests {

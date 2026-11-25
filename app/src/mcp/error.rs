@@ -6,7 +6,7 @@
 //! proxy, I/O, any of which can carry a credential or a kubeconfig path - keeps
 //! nothing but which context it was.
 
-use super::redact::redact;
+use crate::util::redact::redact;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fmt;
