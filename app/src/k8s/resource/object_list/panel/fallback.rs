@@ -194,7 +194,7 @@ impl ObjectListPanel {
     /// Where the listed tables are in their lists, as one: still loading while any is on
     /// its first list, refreshing while any relists, else loaded.
     pub(in crate::k8s::resource::object_list) fn listed_phase(&self, cx: &App) -> LoadPhase {
-        combined_phase(
+        LoadPhase::combined(
             self.listed_tables()
                 .into_iter()
                 .map(|table| table.read(cx).phase()),
@@ -235,29 +235,6 @@ impl ObjectListPanel {
                 .map(|table| table.read(cx).journal()),
             seen,
         )
-    }
-}
-
-/// Several tables' phases as one list's: the first load until every table has loaded
-/// (counting the rows they've received between them), then refreshing while any relists.
-fn combined_phase(phases: impl IntoIterator<Item = LoadPhase>) -> LoadPhase {
-    let mut first_load = None;
-    let mut refreshing = None;
-    for phase in phases {
-        match phase {
-            LoadPhase::FirstLoad { received } => {
-                *first_load.get_or_insert(0) += received;
-            }
-            LoadPhase::Refreshing { received } => {
-                *refreshing.get_or_insert(0) += received;
-            }
-            LoadPhase::Loaded => {}
-        }
-    }
-    match (first_load, refreshing) {
-        (Some(received), _) => LoadPhase::FirstLoad { received },
-        (None, Some(received)) => LoadPhase::Refreshing { received },
-        (None, None) => LoadPhase::Loaded,
     }
 }
 

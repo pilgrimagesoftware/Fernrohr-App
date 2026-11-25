@@ -2,11 +2,9 @@
 //! scoped to one by one, as one list, against a cluster that only allows lists in some
 //! namespaces.
 
-use super::combined_phase;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
 use crate::k8s::cluster::session::{ClusterRegistry, KindKey, WatchKey};
-use crate::k8s::resource::load_phase::LoadPhase;
 use crate::k8s::resource::object_list::ObjectListPanel;
 use crate::k8s::test_cluster::FakeCluster;
 use crate::ui::nav::NavTarget;
@@ -186,23 +184,4 @@ async fn scoped_to_every_namespace_it_says_to_choose_some(cx: &mut TestAppContex
 
     f.set_namespaces(&["prod"]);
     f.wait_for("listed prod", |f| f.names() == ["api"]);
-}
-
-#[test]
-fn phases_combine_as_one_list() {
-    use LoadPhase::*;
-    assert_eq!(combined_phase([Loaded, Loaded]), Loaded);
-    assert_eq!(
-        combined_phase([FirstLoad { received: 2 }, Loaded, FirstLoad { received: 1 }]),
-        FirstLoad { received: 3 },
-        "loading until every namespace has listed"
-    );
-    assert_eq!(
-        combined_phase([Loaded, Refreshing { received: 4 }]),
-        Refreshing { received: 4 }
-    );
-    assert_eq!(
-        combined_phase([Refreshing { received: 1 }, FirstLoad { received: 0 }]),
-        FirstLoad { received: 0 }
-    );
 }

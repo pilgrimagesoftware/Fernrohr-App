@@ -23,6 +23,7 @@ mod bulk;
 mod commands;
 mod edit;
 mod exec_library;
+mod fallback;
 mod filter;
 mod hints;
 #[cfg(test)]

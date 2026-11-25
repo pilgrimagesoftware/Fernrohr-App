@@ -29,6 +29,12 @@ when, keeps its last known state visible as stale, and stays open until you clos
 it. A pod recreated under the same name, such as `web-0` in a StatefulSet, takes
 over the open panel and the panel notes that it replaced the deleted pod.
 
+A panel follows its object through a list of that kind that is already open, or
+otherwise by watching the object's own namespace. So an account that may list
+pods, or another kind, only in some namespaces still sees the object update. If
+the cluster stops allowing an open list across every namespace, the panel
+switches to watching the object's namespace on its own.
+
 ### Common keys
 
 | Command | Default key |

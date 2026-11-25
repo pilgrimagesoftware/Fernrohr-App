@@ -327,12 +327,16 @@ cluster. When the cluster refuses to list a kind in every namespace, a list
 scoped to particular namespaces lists each of them on its own and shows the
 results as one list. Rows from a namespace your account can't read are left
 out, and the namespaces you can read still show. If every chosen namespace is
-refused, the list shows the cluster's refusal.
+refused, the list shows the cluster's refusal. This works the same in the Pods
+list and in the list of any other kind.
 
 A list scoped to "All namespaces" can't do this, because it doesn't know which
-namespaces you may read. It says "Can't list deployments in every namespace"
-(or the kind in question) and asks you to choose namespaces in the picker.
-Choosing one or more, or a [namespace set](#namespace-sets), lists them.
+namespaces you may read. It says "Can't list pods in every namespace" (or the
+kind in question) and asks you to choose namespaces in the picker. Choosing one
+or more, or a [namespace set](#namespace-sets), lists them.
+
+A Node's pod table always spans every namespace, so it shows the cluster's
+refusal instead.
 
 ### Namespace sets
 

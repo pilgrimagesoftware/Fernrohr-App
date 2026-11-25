@@ -84,9 +84,21 @@ impl QuickLookPopover {
     /// Moves the popover to `target`. The fields follow at once; the event
     /// watch restarts once the selection has rested, so scanning down a list
     /// doesn't start and drop a watch per row.
-    pub(super) fn retarget(&mut self, target: PodSelection, cx: &mut Context<Self>) {
+    ///
+    /// `pods` is the table the new pod is read from: another namespace's while the panel
+    /// lists namespace by namespace (#457).
+    pub(super) fn retarget(
+        &mut self,
+        target: PodSelection,
+        pods: Entity<PodsTable>,
+        cx: &mut Context<Self>,
+    ) {
         if self.target == target {
             return;
+        }
+        if pods != self.pods {
+            cx.observe(&pods, |this, _, cx| this.follow(cx)).detach();
+            self.pods = pods;
         }
         self.target = target;
         self.last = None;
@@ -242,7 +254,7 @@ impl PodsPanel {
             }
             _ => None,
         };
-        let pods = self.table.clone();
+        let pods = self.table_for(&target.namespace).clone();
         let popover = cx.new(|cx| QuickLookPopover::new(pods, target, client, cx));
         self.quick_look = Some(popover.clone());
         self.show_quick_look_in_table(Some(popover), cx);
@@ -292,7 +304,8 @@ impl PodsPanel {
     /// Follows the table's selection with an open popover.
     pub(super) fn retarget_quick_look(&mut self, target: &PodSelection, cx: &mut Context<Self>) {
         if let Some(popover) = &self.quick_look {
-            popover.update(cx, |popover, cx| popover.retarget(target.clone(), cx));
+            let pods = self.table_for(&target.namespace).clone();
+            popover.update(cx, |popover, cx| popover.retarget(target.clone(), pods, cx));
         }
     }
 
