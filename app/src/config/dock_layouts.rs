@@ -67,4 +67,17 @@ mod tests {
         assert_eq!(loaded.get("prod").and_then(|state| state.version), Some(2));
         let _ = std::fs::remove_file(path);
     }
+
+    /// Tier 1 #3: a corrupt or foreign `dock-layouts.json` loads as no saved
+    /// layouts, so the window opens on its default dock instead of failing.
+    #[test]
+    fn a_corrupt_file_loads_as_no_layouts() {
+        let path =
+            crate::util::test_paths::temp_path("dock-layouts-corrupt").with_extension("json");
+        for contents in ["{ not json", r#"{"layouts": {"dev": 7}}"#, "[]"] {
+            std::fs::write(&path, contents).unwrap();
+            assert!(load(&path).get("dev").is_none(), "{contents}");
+        }
+        let _ = std::fs::remove_file(path);
+    }
 }
