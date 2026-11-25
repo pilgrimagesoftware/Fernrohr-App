@@ -151,10 +151,7 @@ where
                     // Retried by the backoff; say so on the first failure and every
                     // `WATCH_ERROR_LOG_EVERY` after, so a watch failing for good isn't silent.
                     if failures.is_multiple_of(crate::consts::WATCH_ERROR_LOG_EVERY) {
-                        log::warn!(
-                            "watch of {resource} failing (attempt {}), retrying: {error}",
-                            failures + 1
-                        );
+                        log::warn!("{}", retry_note(&resource, failures + 1, &error));
                     }
                     failures = failures.saturating_add(1);
                 }
@@ -190,6 +187,16 @@ where
         })
         .await;
     })
+}
+
+/// The log line for a watch that failed and will be retried. The error goes
+/// through `describe_any`: a `watcher::Error` holds the `kube::Error`, whose
+/// own text for a failed credential plugin carries its output and env.
+fn retry_note(resource: &str, attempt: u32, error: &watcher::Error) -> String {
+    format!(
+        "watch of {resource} failing (attempt {attempt}), retrying: {}",
+        crate::k8s::error::describe_any(error)
+    )
 }
 
 #[cfg(test)]
