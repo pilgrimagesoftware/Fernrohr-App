@@ -122,6 +122,8 @@ impl PodsTable {
                 self.index.apply_deleted(&id);
             }
             watcher::Event::Init => {
+                // A restarted watch is a fresh attempt: an earlier refusal no longer stands.
+                self.refused = None;
                 self.relisting = Some(std::collections::HashSet::new());
                 self.phase.init();
             }
