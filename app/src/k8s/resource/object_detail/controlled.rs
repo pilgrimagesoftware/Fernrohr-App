@@ -25,10 +25,9 @@
 use super::panel::ObjectDetailPanel;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
-use crate::k8s::cluster::session::{ClusterRegistry, NamespaceFollow};
+use crate::k8s::cluster::session::{ClusterRegistry, NamespaceFollow, PodsFollow};
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::object_list::{ObjectRow, ObjectsTable};
-use crate::k8s::resource::pods::PodsTable;
 use gpui_kit::*;
 use k8s_openapi::api::core::v1::Pod;
 
@@ -61,9 +60,10 @@ pub(super) fn child_kinds(group: &str, kind: &str) -> &'static [GroupKind] {
 /// the last match found.
 #[derive(Default)]
 pub(super) struct Controlled {
-    /// The context's Pods watch, once subscribed for a kind whose children
-    /// are pods.
-    pods: Option<Entity<PodsTable>>,
+    /// The Pods watch serving the object's namespace, once subscribed for a kind whose
+    /// children are pods (or a claim's users): the context's all-namespaces watch while it
+    /// serves, else the namespace's own (#457).
+    pods: Option<PodsFollow>,
     /// The child kinds' watches it subscribed, each released with the panel. Each moves
     /// to a watch of the object's namespace if a shared cluster-wide one is refused (#457).
     kinds: Vec<(DiscoveredKind, NamespaceFollow)>,
@@ -227,19 +227,28 @@ impl ObjectDetailPanel {
         self.match_controlled(cx);
     }
 
-    /// Subscribes the context's Pods watch for as long as the panel is open,
-    /// unless it already has.
+    /// Subscribes the Pods watch serving the object's namespace - pods it owns or that
+    /// mount it are in its own namespace - for as long as the panel is open, unless it
+    /// already has.
     fn subscribe_pods_once(&mut self, client: kube::Client, cx: &mut Context<Self>) {
         if self.controlled.pods.is_some() {
             return;
         }
-        let context_name = self.scope.context_name.clone();
-        let table = ClusterRegistry::subscribe_pods(cx, &context_name, client);
-        cx.on_release(move |_: &mut Self, cx| ClusterRegistry::unsubscribe_pods(cx, &context_name))
+        let follow = PodsFollow::subscribe(
+            cx,
+            &self.scope.context_name,
+            client,
+            self.target.namespace.as_deref(),
+        );
+        cx.on_release(|this: &mut Self, cx| {
+            if let Some(follow) = &this.controlled.pods {
+                follow.release(cx);
+            }
+        })
+        .detach();
+        cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
             .detach();
-        cx.observe(&table, |this, _, cx| this.match_controlled(cx))
-            .detach();
-        self.controlled.pods = Some(table);
+        self.controlled.pods = Some(follow);
     }
 
     fn watch_child_kind(
@@ -281,6 +290,12 @@ impl ObjectDetailPanel {
                     .detach();
             }
         }
+        if let Some(follow) = &mut self.controlled.pods
+            && follow.reroute_if_refused(cx)
+        {
+            cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
+                .detach();
+        }
         let mut tables: Vec<(DiscoveredKind, Entity<ObjectsTable>)> = self
             .controlled
             .kinds
@@ -316,7 +331,7 @@ impl ObjectDetailPanel {
             .controlled
             .pods
             .as_ref()
-            .map(|table| table.read(cx).pods())
+            .map(|follow| follow.table().read(cx).pods())
             .unwrap_or_default();
         let refs = controlled_by(&uid, read, pods);
         // Only the child kinds this panel subscribed: a refusal of an unrelated open
@@ -327,12 +342,12 @@ impl ObjectDetailPanel {
                 .iter()
                 .map(|(kind, follow)| (kind, follow.table().read(cx))),
         );
-        // The typed Pods watch is cluster-wide, so a namespace-only user is refused it.
+        // Refused even in the object's own namespace: this account can't list its pods.
         let pods_refused = self
             .controlled
             .pods
             .as_ref()
-            .is_some_and(|table| table.read(cx).refused().is_some());
+            .is_some_and(|follow| follow.table().read(cx).refused().is_some());
         let gvk = &self.target.kind.gvk;
         let claim = is_claim(&gvk.group, &gvk.kind);
         // A claim controls nothing, so its Pods watch says nothing about Controls.
@@ -370,7 +385,7 @@ impl ObjectDetailPanel {
     /// connection never connects.
     pub(super) fn test_watch_controlled(
         &mut self,
-        pods: Option<Entity<PodsTable>>,
+        pods: Option<Entity<crate::k8s::resource::pods::PodsTable>>,
         kinds: Vec<(DiscoveredKind, Entity<ObjectsTable>)>,
         cx: &mut Context<Self>,
     ) {
@@ -382,7 +397,7 @@ impl ObjectDetailPanel {
             cx.observe(table, |this, _, cx| this.match_controlled(cx))
                 .detach();
         }
-        self.controlled.pods = pods;
+        self.controlled.pods = pods.map(PodsFollow::detached);
         self.controlled.kinds = kinds
             .into_iter()
             .map(|(kind, table)| {
