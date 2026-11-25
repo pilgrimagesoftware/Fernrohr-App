@@ -3525,8 +3525,8 @@ checksum = "f0de0aaa67d6974e0983f6d4ded918b73547db6cb82b61ac2de88576a45b0e81"
 
 [[package]]
 name = "gpui-terminal"
-version = "0.2.2"
-source = "git+https://github.com/pilgrimagesoftware/gpui-terminal?rev=45d8fd8ebf18964d9aa5705bf96b3fd5b15376ab#45d8fd8ebf18964d9aa5705bf96b3fd5b15376ab"
+version = "0.3.0"
+source = "git+https://github.com/pilgrimagesoftware/gpui-terminal?tag=v0.3.0#5e35f74683d636ba23c1ea958d0e17a262367386"
 dependencies = [
  "alacritty_terminal",
  "async-channel",
