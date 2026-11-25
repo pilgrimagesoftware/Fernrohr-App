@@ -344,9 +344,11 @@ fn set_suspended<T: KindHost>(
     cx: &mut App,
 ) {
     let verb = if suspend { "Suspend" } else { "Resume" };
-    let effect = match (suspend, target.kind.gvk.kind.as_str()) {
-        (true, "CronJob") => " It starts no new Jobs until resumed.",
-        (true, _) => " Its running pods are stopped until it is resumed.",
+    let cron_job =
+        crate::k8s::cluster::discovery::is_group_kind(&target.kind.gvk, "batch", "CronJob");
+    let effect = match (suspend, cron_job) {
+        (true, true) => " It starts no new Jobs until resumed.",
+        (true, false) => " Its running pods are stopped until it is resumed.",
         (false, _) => "",
     };
     let body = ConfirmText::new()
