@@ -62,17 +62,13 @@ impl MainWindow {
         let connection_count = contexts.len();
         let (dock_area, dock_skin, scope, (first_id, first)) =
             build_workspace(context_name.clone(), connection_count, window, cx);
-        let restored = saved_layout.is_some();
         let restored_keys = saved_layout
             .as_ref()
             .map(|state| restored_panel_keys(&state.center))
             .unwrap_or_default();
-        if let Some(state) = saved_layout {
-            dock_area.update(cx, |area, cx| {
-                area.load(state, window, cx)
-                    .expect("saved dock layout must load");
-            });
-        }
+        // A layout that won't load leaves the default Pods panel in place.
+        let restored = saved_layout
+            .is_some_and(|state| load_saved_dock(&dock_area, state, "saved window", window, cx));
         let open_panels = if restored {
             let ids = dock_area
                 .read(cx)
@@ -299,3 +295,19 @@ impl MainWindow {
 
 #[cfg(test)]
 mod tests;
+
+/// Rebuilds `dock_area` from a saved `state`, logging instead of panicking if
+/// it won't load: a saved file from another version must not crash a window
+/// on open. `what` names the layout in the log. Returns whether it loaded.
+pub(super) fn load_saved_dock(
+    dock_area: &Entity<DockArea>,
+    state: gpui_kit::component::dock::DockAreaState,
+    what: &str,
+    window: &mut Window,
+    cx: &mut App,
+) -> bool {
+    dock_area
+        .update(cx, |area, cx| area.load(state, window, cx))
+        .inspect_err(|error| log::warn!("couldn't restore the {what}'s dock layout: {error}"))
+        .is_ok()
+}

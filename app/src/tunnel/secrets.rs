@@ -7,7 +7,8 @@
 //! than a hard failure - every operation falls back to an in-memory map guarded by a
 //! `parking_lot::Mutex`. That map is per-process: it does not survive a restart, so a
 //! machine with no keychain re-prompts for tunnel secrets each session rather than
-//! silently persisting them to disk.
+//! silently persisting them to disk. It is one map for the whole process, shared by
+//! every [`TunnelSecretStore`].
 // UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller;
 // section 6's context binding/connect-path work is the first caller of `TunnelStore`
 // itself, at which point this module is reachable outside tests.
@@ -17,6 +18,7 @@ use crate::consts::TUNNEL_KEYCHAIN_SERVICE;
 use keyring::Entry;
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 /// True for the keyring errors that mean "no backend available", not "this specific
 /// operation failed" - the same set section 1.1's smoke test already treats as a
@@ -30,8 +32,16 @@ fn is_backend_unavailable(err: &keyring::Error) -> bool {
     )
 }
 
+/// The in-memory fallback, shared by every [`TunnelSecretStore`] in the process:
+/// callers build a store per operation (each `TunnelStore` does), so a per-store map
+/// would lose a secret saved by one before the next could read it.
+static FALLBACK: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Mutex::default);
+
+fn fallback() -> &'static Mutex<HashMap<String, String>> {
+    &FALLBACK
+}
+
 pub struct TunnelSecretStore {
-    fallback: Mutex<HashMap<String, String>>,
     /// When `true`, every operation below takes the same in-memory fallback path
     /// production code already takes when no keychain backend is available, and never
     /// constructs a real `keyring::Entry` at all. Only reachable via
@@ -49,7 +59,6 @@ impl Default for TunnelSecretStore {
 impl TunnelSecretStore {
     pub fn new() -> Self {
         Self {
-            fallback: Mutex::new(HashMap::new()),
             force_fallback_only: false,
         }
     }
@@ -62,7 +71,6 @@ impl TunnelSecretStore {
     #[cfg(test)]
     pub(crate) fn new_in_memory_only() -> Self {
         Self {
-            fallback: Mutex::new(HashMap::new()),
             force_fallback_only: true,
         }
     }
@@ -75,7 +83,7 @@ impl TunnelSecretStore {
     /// in-memory fallback.
     pub fn save(&self, tunnel_id: &str, secret: &str) -> keyring::Result<()> {
         if self.force_fallback_only {
-            self.fallback
+            fallback()
                 .lock()
                 .insert(tunnel_id.to_string(), secret.to_string());
             return Ok(());
@@ -84,7 +92,7 @@ impl TunnelSecretStore {
         let entry = match Self::entry(tunnel_id) {
             Ok(entry) => entry,
             Err(err) if is_backend_unavailable(&err) => {
-                self.fallback
+                fallback()
                     .lock()
                     .insert(tunnel_id.to_string(), secret.to_string());
                 return Ok(());
@@ -95,11 +103,11 @@ impl TunnelSecretStore {
         match entry.set_password(secret) {
             Ok(()) => {
                 // A prior fallback save must not shadow the now-available keychain entry.
-                self.fallback.lock().remove(tunnel_id);
+                fallback().lock().remove(tunnel_id);
                 Ok(())
             }
             Err(err) if is_backend_unavailable(&err) => {
-                self.fallback
+                fallback()
                     .lock()
                     .insert(tunnel_id.to_string(), secret.to_string());
                 Ok(())
@@ -112,22 +120,22 @@ impl TunnelSecretStore {
     /// backend has one); this is not an error.
     pub fn read(&self, tunnel_id: &str) -> keyring::Result<Option<String>> {
         if self.force_fallback_only {
-            return Ok(self.fallback.lock().get(tunnel_id).cloned());
+            return Ok(fallback().lock().get(tunnel_id).cloned());
         }
 
         let entry = match Self::entry(tunnel_id) {
             Ok(entry) => entry,
             Err(err) if is_backend_unavailable(&err) => {
-                return Ok(self.fallback.lock().get(tunnel_id).cloned());
+                return Ok(fallback().lock().get(tunnel_id).cloned());
             }
             Err(err) => return Err(err),
         };
 
         match entry.get_password() {
             Ok(secret) => Ok(Some(secret)),
-            Err(keyring::Error::NoEntry) => Ok(self.fallback.lock().get(tunnel_id).cloned()),
+            Err(keyring::Error::NoEntry) => Ok(fallback().lock().get(tunnel_id).cloned()),
             Err(err) if is_backend_unavailable(&err) => {
-                Ok(self.fallback.lock().get(tunnel_id).cloned())
+                Ok(fallback().lock().get(tunnel_id).cloned())
             }
             Err(err) => Err(err),
         }
@@ -136,7 +144,7 @@ impl TunnelSecretStore {
     /// Deletes the secret for `tunnel_id` from whichever backend holds it. Deleting an
     /// absent secret is not an error.
     pub fn delete(&self, tunnel_id: &str) -> keyring::Result<()> {
-        self.fallback.lock().remove(tunnel_id);
+        fallback().lock().remove(tunnel_id);
 
         if self.force_fallback_only {
             return Ok(());
@@ -224,13 +232,24 @@ mod tests {
         let store = TunnelSecretStore::new_in_memory_only();
         let id = unique_tunnel_id("fallback");
 
-        store
-            .fallback
-            .lock()
-            .insert(id.clone(), "from-memory".into());
+        fallback().lock().insert(id.clone(), "from-memory".into());
         assert_eq!(store.read(&id).unwrap(), Some("from-memory".to_string()));
 
         store.delete(&id).unwrap();
-        assert!(!store.fallback.lock().contains_key(&id));
+        assert!(!fallback().lock().contains_key(&id));
+    }
+
+    /// Tier 1 #6: with no keychain, a secret saved through one store is found by
+    /// the next one - callers build a store per operation.
+    #[test]
+    fn a_fallback_secret_is_seen_by_every_store() {
+        let id = unique_tunnel_id("shared-fallback");
+        TunnelSecretStore::new_in_memory_only()
+            .save(&id, "kept")
+            .unwrap();
+
+        let later = TunnelSecretStore::new_in_memory_only();
+        assert_eq!(later.read(&id).unwrap(), Some("kept".to_string()));
+        later.delete(&id).unwrap();
     }
 }
