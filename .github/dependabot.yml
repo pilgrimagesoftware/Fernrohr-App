@@ -5,3 +5,8 @@ updates:
     schedule:
       interval: weekly
     target-branch: develop
+    ignore:
+      # k8s-openapi 0.29 exposes jiff 0.2 types (meta::v1::Time); a jiff 1.x
+      # bump can't compile until k8s-openapi moves to jiff 1.
+      - dependency-name: jiff
+        update-types: ["version-update:semver-major"]
