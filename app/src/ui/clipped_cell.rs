@@ -4,7 +4,7 @@
 //! The ellipsis is a style ([`ellipsize`]); the tooltip is added only to a cell
 //! that really is clipped ([`with_full_value`]), found by measuring the text in
 //! the data font as `table_fit` does, so a short value carries no tooltip. The
-//! keyboard route to a full value is each list's detail panel (Enter), which
+//! keyboard route to a full value is each list's detail panel (`D`, or Enter where bound), which
 //! shows every value in full.
 
 use crate::ui::table_fit::{FitColumns, table_size};
