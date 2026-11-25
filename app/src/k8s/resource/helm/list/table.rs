@@ -193,12 +193,11 @@ impl TableDelegate for HelmTableDelegate {
         &mut self,
         row_ix: usize,
         col_ix: usize,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         use crate::ui::style::{self, Tone};
         use crate::ui::typography::TypeRole as _;
-        use gpui_kit::assets::IconName;
         use gpui_kit::component::{Icon, Sizable as _};
         let row = &self.rows[row_ix];
         let column = self.columns[col_ix];
@@ -212,14 +211,11 @@ impl TableDelegate for HelmTableDelegate {
             .overflow_hidden()
             .text_ellipsis();
         let text = column.text(row, self.now);
-        match column {
+        let full = text.clone();
+        let cell = match column {
             HelmColumn::Status => {
                 let tone = status_tone(&row.status);
-                let icon = match tone {
-                    Tone::Bad => Some(IconName::CircleAlert),
-                    Tone::Warning => Some(IconName::RefreshCw),
-                    _ => None,
-                };
+                let icon = status_icon(&row.status);
                 cell.text_color(style::status(tone, cx))
                     .children(icon.map(|icon| Icon::new(icon).xsmall()))
                     .child(text)
@@ -228,7 +224,8 @@ impl TableDelegate for HelmTableDelegate {
                 cell.text_color(style::status(Tone::Bad, cx)).child(text)
             }
             _ => cell.child(text),
-        }
+        };
+        crate::ui::clipped_cell::with_full_value(self, row_ix, col_ix, &full, cell, window, cx)
     }
 
     fn render_th(
@@ -325,6 +322,34 @@ impl FitColumns for HelmTableDelegate {
         if let Some(column) = self.columns.get(col_ix).copied() {
             self.set_width(column, width);
         }
+    }
+
+    /// The Status cell's alert or refresh icon, drawn before the text for a
+    /// Bad or Warning release (#390).
+    fn cell_adornment(&self, row_ix: usize, col_ix: usize, rem: Pixels, _cx: &App) -> Pixels {
+        let has_icon = self
+            .rows
+            .get(row_ix)
+            .zip(self.columns.get(col_ix))
+            .is_some_and(|(row, column)| {
+                *column == HelmColumn::Status && status_icon(&row.status).is_some()
+            });
+        if has_icon {
+            crate::ui::table_fit::status_icon_adornment(rem)
+        } else {
+            Pixels::ZERO
+        }
+    }
+}
+
+/// The icon a Status cell draws before its text, by the status's tone.
+pub(super) fn status_icon(status: &str) -> Option<gpui_kit::assets::IconName> {
+    use crate::ui::style::Tone;
+    use gpui_kit::assets::IconName;
+    match status_tone(status) {
+        Tone::Bad => Some(IconName::CircleAlert),
+        Tone::Warning => Some(IconName::RefreshCw),
+        _ => None,
     }
 }
 

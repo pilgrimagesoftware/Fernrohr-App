@@ -63,6 +63,13 @@ pub struct ClusterPicker {
     pub(super) tunnel_bindings: BTreeMap<String, String>,
     /// Reloads the two caches above whenever any view writes `tunnels.toml`.
     _tunnels_observation: Subscription,
+    /// Re-reads the context list when the kubeconfig files change (#320).
+    _kubeconfig_observation: Subscription,
+    /// The contexts [`Self::exclude`] removed, kept out of every later re-read too.
+    excluded: Vec<String>,
+    /// Set when a re-read flips the list between empty/unreadable and non-empty, which
+    /// moves where focus belongs ([`Self::initial_focus_handle`]); `render` refocuses once.
+    pub(super) refocus: bool,
     /// Redraws the status line when a manual tunnel's prompt appears or is
     /// answered, which changes no connection's state.
     _confirmations_observation: Option<Subscription>,
@@ -84,6 +91,8 @@ impl ClusterPicker {
             this.tunnel_bindings = bindings;
             cx.notify();
         });
+        let kubeconfig_observation =
+            cx.observe_global::<KubeconfigRevision>(|this, cx| this.reload_contexts(cx));
         let confirmations_observation = crate::tunnel::manual::ManualConfirmations::entity(cx)
             .map(|entity| cx.observe(&entity, |_this: &mut Self, _, cx| cx.notify()));
         let contexts = kubeconfig::list_context_names(None).map_err(|error| error.to_string());
@@ -100,10 +109,59 @@ impl ClusterPicker {
             tunnel_choices,
             tunnel_bindings,
             _tunnels_observation: tunnels_observation,
+            _kubeconfig_observation: kubeconfig_observation,
+            excluded: Vec::new(),
+            refocus: false,
             _confirmations_observation: confirmations_observation,
             #[cfg(test)]
             connection_factory: None,
         }
+    }
+
+    /// Re-reads the kubeconfig's contexts off the main thread, then applies them with
+    /// [`Self::apply_contexts`]. Run when [`KubeconfigRevision`] moves (#320).
+    fn reload_contexts(&mut self, cx: &mut Context<Self>) {
+        let read = cx.background_executor().spawn(async {
+            kubeconfig::list_context_names(None).map_err(|error| error.to_string())
+        });
+        cx.spawn(async move |this, cx| {
+            let fresh = read.await;
+            let _ = this.update(cx, |this, cx| this.apply_contexts(fresh, cx));
+        })
+        .detach();
+    }
+
+    /// Shows `fresh` as the context list, through [`merge_contexts`]: a context that
+    /// vanished from the kubeconfig stays while its session is open. The selection and a
+    /// connection attempt in flight survive; a selection whose context is gone is cleared
+    /// rather than moved to another row.
+    pub(super) fn apply_contexts(
+        &mut self,
+        fresh: Result<Vec<String>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        let open = ClusterRegistry::open_contexts(cx);
+        let mut merged = merge_contexts(&self.contexts, fresh, &open);
+        if let Ok(contexts) = &mut merged {
+            contexts.retain(|name| !self.excluded.contains(name));
+        }
+        if merged == self.contexts {
+            return;
+        }
+        if !self.selected_context.as_ref().is_some_and(|selected| {
+            merged
+                .as_ref()
+                .is_ok_and(|contexts| contexts.contains(selected))
+        }) {
+            self.selected_context = None;
+        }
+        let had_list = matches!(&self.contexts, Ok(list) if !list.is_empty());
+        let has_list = matches!(&merged, Ok(list) if !list.is_empty());
+        // Focus was chosen for the old state: the list's handle isn't drawn once the list
+        // is gone, and the card's isn't where arrows go once a list appears.
+        self.refocus |= had_list != has_list;
+        self.contexts = merged;
+        cx.notify();
     }
 
     /// Section 3.1: binds (or, for `None`, unbinds) `context_name` and refreshes the
@@ -240,6 +298,8 @@ impl ClusterPicker {
     /// second contexts source, is what keeps every other rule - tunnel bindings,
     /// search, the connect flow - identical to the picker window's own.
     pub(crate) fn exclude(&mut self, used: &[String]) {
+        // Recorded even when the list is unreadable now, so a later re-read honours it.
+        self.excluded = used.to_vec();
         let Ok(contexts) = &mut self.contexts else {
             return;
         };

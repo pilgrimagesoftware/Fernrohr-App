@@ -71,7 +71,7 @@ pub(super) enum WindowMode {
 pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
     // A main window opening ends quiet mode (#236), if the app was quiet.
     super::quiet::leave(cx);
-    let bounds = window_bounds(&layout, cx);
+    let Placement { bounds, display } = window_placement(&layout, cx);
     let contexts = restored_contexts(&layout);
     let resource_width = restored_resource_width(&layout);
     // Fully qualified: `util::shell` re-exports this function as `open_window`.
@@ -79,6 +79,8 @@ pub fn open_window(cx: &mut App, layout: WindowLayout) -> AnyWindowHandle {
         WindowOptions {
             app_id: Some(crate::consts::APP_ID.into()),
             window_bounds: Some(WindowBounds::Windowed(bounds)),
+            // The monitor the window was saved on, when it is still connected (#429).
+            display_id: display,
             // A restored layout can carry a window smaller than the picker needs
             // - it is whatever size the user last left it, from before the logo
             // grew. Without a floor the picker's centred column overflows and the

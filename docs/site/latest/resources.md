@@ -104,8 +104,12 @@ columns once one of its objects reports `status.conditions`:
   red for False and amber for anything else. Without a `Ready` condition, it
   shows the most recently changed condition's message, uncoloured.
 
-A long message is cut off in its cell. Select the row and press <kbd>D</kbd>, or
-double-click it, to read the whole message in the object's detail panel.
+A value wider than its column, such as a long name, label set or message, is cut
+off with an ellipsis (…). Hover the cell to read the whole value in a tooltip.
+From the keyboard, select the row and press <kbd>D</kbd>, or double-click it, to
+read every value in the object's detail panel. Widening the column, or
+double-clicking its divider to fit it, shows more. The Pods list, the Helm
+releases list and the events browser cut off long values the same way.
 
 - **Sort.** Click a column header to sort ascending, again for descending, and a
   third time to return to the default sort, which is the first column of the

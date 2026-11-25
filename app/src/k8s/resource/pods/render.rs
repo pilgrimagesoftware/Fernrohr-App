@@ -103,6 +103,20 @@ impl Render for PodsPanel {
                 context,
                 cx,
             ),
+            // The server's refusal, not a table that loads forever or, on a node, a false
+            // "no pods are scheduled" (#446); as the other list panels show it.
+            ConnectionState::Connected(_) if self.table.read(cx).refused().is_some() => {
+                let refused = self.table.read(cx).refused().map(str::to_string);
+                list_search::with_context(
+                    div().size_full().child(panel_title::error_content(
+                        "Can't list pods".to_string(),
+                        refused,
+                        cx,
+                    )),
+                    context,
+                    cx,
+                )
+            }
             // `connection-status-bar`: a paused watch used to print its own "Paused
             // (...)" line here. That moved to the window's status bar
             // (`ui/status_bar.rs`), which shows it once per window rather than once per

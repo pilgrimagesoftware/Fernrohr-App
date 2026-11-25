@@ -7,7 +7,7 @@ use super::fixtures::{deployments, kind, target};
 use super::sections::field;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::{DiscoveredKind, KindVerbs};
-use crate::k8s::cluster::session::{ClusterRegistry, WatchKey};
+use crate::k8s::cluster::session::{ClusterRegistry, KindKey, WatchKey};
 use crate::k8s::resource::object_detail::ObjectDetailPanel;
 use crate::k8s::resource::pod_detail::DetailView;
 use crate::k8s::test_cluster::FakeCluster;
@@ -121,7 +121,11 @@ async fn a_deployments_replica_counts_follow_its_rollout(cx: &mut TestAppContext
     let view = harness.vcx.update(|_, cx| harness.panel.read(cx).view());
     assert_eq!(view, DetailView::Yaml, "the view stayed on the YAML");
 
-    let key = WatchKey::Kind(deployments());
+    // The panel watches only its object's namespace, since no list holds the cluster-wide watch.
+    let key = WatchKey::Kind(KindKey {
+        kind: deployments(),
+        namespace: Some("staging".to_string()),
+    });
     let subscribers = harness
         .vcx
         .update(|_, cx| ClusterRegistry::subscribers(cx, CONTEXT, &key));

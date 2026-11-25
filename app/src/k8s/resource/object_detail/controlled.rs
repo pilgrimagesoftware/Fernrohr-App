@@ -25,7 +25,7 @@
 use super::panel::ObjectDetailPanel;
 use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::cluster::discovery::DiscoveredKind;
-use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::session::{ClusterRegistry, KindSubscription};
 use crate::k8s::object_ref::ObjectRef;
 use crate::k8s::resource::object_list::{ObjectRow, ObjectsTable};
 use crate::k8s::resource::pods::PodsTable;
@@ -69,12 +69,18 @@ pub(super) struct Controlled {
     /// The context's other open watches it matched against, observed so a
     /// change there re-matches too. Only observed, never subscribed: a list
     /// closing still stops its watch, and its entry goes at the next match.
-    observed: Vec<(DiscoveredKind, Subscription)>,
+    observed: Vec<(Entity<ObjectsTable>, Subscription)>,
     /// What the object controls, sorted by kind then namespace and name.
     pub(super) refs: Vec<ObjectRef>,
+    /// The plural names of child kinds the server won't let this user list, so the
+    /// field says so rather than reading as "controls nothing" (#446).
+    pub(super) unlistable: Vec<String>,
     /// For a PersistentVolumeClaim, the Pods that mount it, sorted by name
     /// (#237). Empty for any other kind.
     pub(super) used_by: Vec<ObjectRef>,
+    /// Whether a claim's Pods watch was refused, so "Used By" says it can't
+    /// list pods rather than reading as "no pod mounts it".
+    pub(super) used_by_refused: bool,
 }
 
 /// Whether `group`/`kind` is a PersistentVolumeClaim, whose panel lists the
@@ -83,13 +89,15 @@ pub(super) fn is_claim(group: &str, kind: &str) -> bool {
     group.is_empty() && kind == "PersistentVolumeClaim"
 }
 
-/// The Pods in `namespace` that mount the claim `claim` through
-/// `spec.volumes[].persistentVolumeClaim.claimName`, sorted by name, each once.
+/// The Pods in `namespace` that mount the claim `claim`, sorted by name, each
+/// once: through `spec.volumes[].persistentVolumeClaim.claimName`, or through a
+/// generic ephemeral volume, whose claim Kubernetes names `<pod>-<volume>`.
 pub(super) fn pods_using_claim(namespace: &str, claim: &str, pods: &[Pod]) -> Vec<ObjectRef> {
     let mut refs: Vec<ObjectRef> = pods
         .iter()
         .filter(|pod| pod.metadata.namespace.as_deref().unwrap_or_default() == namespace)
         .filter(|pod| {
+            let pod_name = pod.metadata.name.as_deref().unwrap_or_default();
             pod.spec
                 .iter()
                 .flat_map(|spec| spec.volumes.iter().flatten())
@@ -98,6 +106,8 @@ pub(super) fn pods_using_claim(namespace: &str, claim: &str, pods: &[Pod]) -> Ve
                         .persistent_volume_claim
                         .as_ref()
                         .is_some_and(|source| source.claim_name == claim)
+                        || (volume.ephemeral.is_some()
+                            && format!("{pod_name}-{}", volume.name) == claim)
                 })
         })
         .map(|pod| {
@@ -111,6 +121,21 @@ pub(super) fn pods_using_claim(namespace: &str, claim: &str, pods: &[Pod]) -> Ve
     refs.sort_by(|a, b| a.name.cmp(&b.name));
     refs.dedup();
     refs
+}
+
+/// The plural names of the kinds among `tables` that can't be listed: refused by the server
+/// (a 403) or reported by discovery as having no `list` verb. Sorted, each once.
+pub(super) fn unlistable_kinds<'a>(
+    tables: impl IntoIterator<Item = (&'a DiscoveredKind, &'a ObjectsTable)>,
+) -> Vec<String> {
+    let mut names: Vec<String> = tables
+        .into_iter()
+        .filter(|(_, table)| table.unlistable())
+        .map(|(kind, _)| kind.plural.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 /// Everything in `tables` and `pods` whose owners include `uid`: sorted by
@@ -223,10 +248,17 @@ impl ObjectDetailPanel {
         cx: &mut Context<Self>,
     ) {
         let context_name = self.scope.context_name.clone();
-        let table = ClusterRegistry::subscribe_kind(cx, &context_name, client, &kind);
-        let released = kind.clone();
+        // Owned children live in the owner's namespace, so that is all the watch needs (#446).
+        let namespace = self.target.namespace.clone();
+        let KindSubscription { key, table } = ClusterRegistry::subscribe_kind_in(
+            cx,
+            &context_name,
+            client,
+            &kind,
+            namespace.as_deref(),
+        );
         cx.on_release(move |_: &mut Self, cx| {
-            ClusterRegistry::unsubscribe_kind(cx, &context_name, &released)
+            ClusterRegistry::unsubscribe_kind_in(cx, &context_name, &key)
         })
         .detach();
         cx.observe(&table, |this, _, cx| this.match_controlled(cx))
@@ -245,19 +277,21 @@ impl ObjectDetailPanel {
         let open = ClusterRegistry::open_kind_tables(cx, &self.scope.context_name);
         self.controlled
             .observed
-            .retain(|(kind, _)| open.iter().any(|(still, _)| still == kind));
+            .retain(|(seen, _)| open.iter().any(|(_, still)| still == seen));
+        // By table, not by kind: a kind can be open as a cluster-wide watch and as one
+        // per namespace (#446), and each holds different rows.
         for (kind, table) in open {
-            if tables.iter().any(|(watched, _)| *watched == kind) {
+            if tables.iter().any(|(_, watched)| *watched == table) {
                 continue;
             }
             if !self
                 .controlled
                 .observed
                 .iter()
-                .any(|(seen, _)| *seen == kind)
+                .any(|(seen, _)| *seen == table)
             {
                 let subscription = cx.observe(&table, |this, _, cx| this.match_controlled(cx));
-                self.controlled.observed.push((kind.clone(), subscription));
+                self.controlled.observed.push((table.clone(), subscription));
             }
             tables.push((kind, table));
         }
@@ -272,8 +306,28 @@ impl ObjectDetailPanel {
             .map(|table| table.read(cx).pods())
             .unwrap_or_default();
         let refs = controlled_by(&uid, read, pods);
+        // Only the child kinds this panel subscribed: a refusal of an unrelated open
+        // list says nothing about what this object controls.
+        let mut unlistable = unlistable_kinds(
+            self.controlled
+                .kinds
+                .iter()
+                .map(|(kind, table)| (kind, table.read(cx))),
+        );
+        // The typed Pods watch is cluster-wide, so a namespace-only user is refused it.
+        let pods_refused = self
+            .controlled
+            .pods
+            .as_ref()
+            .is_some_and(|table| table.read(cx).refused().is_some());
         let gvk = &self.target.kind.gvk;
-        let used_by = if is_claim(&gvk.group, &gvk.kind) {
+        let claim = is_claim(&gvk.group, &gvk.kind);
+        // A claim controls nothing, so its Pods watch says nothing about Controls.
+        if pods_refused && child_kinds(&gvk.group, &gvk.kind).contains(&("", "Pod")) {
+            unlistable.push("pods".to_string());
+            unlistable.sort();
+        }
+        let used_by = if claim {
             pods_using_claim(
                 self.target.namespace.as_deref().unwrap_or_default(),
                 &self.target.name,
@@ -282,9 +336,16 @@ impl ObjectDetailPanel {
         } else {
             Vec::new()
         };
-        if refs != self.controlled.refs || used_by != self.controlled.used_by {
+        let used_by_refused = claim && pods_refused;
+        if refs != self.controlled.refs
+            || unlistable != self.controlled.unlistable
+            || used_by != self.controlled.used_by
+            || used_by_refused != self.controlled.used_by_refused
+        {
             self.controlled.refs = refs;
+            self.controlled.unlistable = unlistable;
             self.controlled.used_by = used_by;
+            self.controlled.used_by_refused = used_by_refused;
             cx.notify();
         }
     }

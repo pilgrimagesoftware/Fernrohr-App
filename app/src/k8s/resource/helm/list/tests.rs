@@ -303,3 +303,19 @@ async fn a_rescope_keeps_no_observer_behind(cx: &mut TestAppContext) {
         "scoped to shop, the panel no longer observes the All table"
     );
 }
+
+/// #390: a Status that draws an icon (failed, pending) leaves room for it when
+/// deciding whether the text is clipped or fitting the column; a plain one
+/// leaves none.
+#[test]
+fn only_alerting_statuses_draw_an_icon_and_the_room_is_its_width_and_gap() {
+    use super::table::status_icon;
+    assert!(status_icon("failed").is_some());
+    assert!(status_icon("pending-rollback").is_some());
+    assert!(status_icon("deployed").is_none());
+    let rem = gpui_kit::px(16.);
+    assert_eq!(
+        crate::ui::table_fit::status_icon_adornment(rem),
+        gpui_kit::px(16.)
+    );
+}

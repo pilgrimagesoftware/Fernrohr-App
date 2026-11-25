@@ -321,6 +321,119 @@ fn with_no_main_display_the_saved_frame_is_kept() {
     assert_eq!(super::onto_connected_display(saved, &[], None), saved);
 }
 
+/// #429: a connected display as `on_saved_display` sees it, a 1920x1080 one
+/// with a 25px menu bar, in macOS's display-local coordinates.
+fn display(id: u32, uuid: Option<&str>) -> super::ConnectedDisplay<u32> {
+    use gpui_kit::{Bounds, point, px, size};
+    super::ConnectedDisplay {
+        id,
+        uuid: uuid.map(str::to_string),
+        bounds: Bounds::new(point(px(0.), px(0.)), size(px(1920.), px(1080.))),
+        visible: Bounds::new(point(px(0.), px(25.)), size(px(1920.), px(1055.))),
+    }
+}
+
+/// #429: a window saved on the external monitor reopens on it, at its saved
+/// frame, though the primary is first in the list - the id comes from the
+/// display whose UUID matches, not from the primary.
+#[test]
+fn a_window_returns_to_its_saved_display_when_connected() {
+    use gpui_kit::{Bounds, point, px, size};
+    let displays = [display(1, Some("primary")), display(2, Some("external"))];
+    let saved = Bounds::new(point(px(300.), px(200.)), size(px(1000.), px(700.)));
+    assert_eq!(
+        super::on_saved_display(saved, Some("external"), &displays),
+        Some(super::Placement {
+            bounds: saved,
+            display: Some(2)
+        })
+    );
+}
+
+/// #429: when the saved display's resolution shrank so the frame no longer
+/// lands on it, the window is centred on that same display, not the primary.
+#[test]
+fn a_frame_off_its_saved_displays_new_size_is_centred_on_that_display() {
+    use gpui_kit::{Bounds, point, px, size};
+    let displays = [display(1, Some("primary")), display(2, Some("external"))];
+    let saved = Bounds::new(point(px(3000.), px(200.)), size(px(1000.), px(700.)));
+    assert_eq!(
+        super::on_saved_display(saved, Some("external"), &displays),
+        Some(super::Placement {
+            bounds: Bounds::new(point(px(460.), px(202.5)), size(px(1000.), px(700.))),
+            display: Some(2)
+        })
+    );
+}
+
+/// #429: with the saved display gone, an unknown UUID, or none saved (a layout
+/// from before the field existed), there's no placement here, so the caller
+/// falls back to the #377 clamp.
+#[test]
+fn without_a_connected_saved_display_the_clamp_is_left_to_the_caller() {
+    use gpui_kit::{Bounds, point, px, size};
+    let displays = [display(1, Some("primary")), display(2, None)];
+    let saved = Bounds::new(point(px(300.), px(200.)), size(px(1000.), px(700.)));
+    assert_eq!(
+        super::on_saved_display(saved, Some("gone"), &displays),
+        None
+    );
+    assert_eq!(super::on_saved_display(saved, None, &displays), None);
+    assert_eq!(
+        super::on_saved_display::<u32>(saved, Some("gone"), &[]),
+        None
+    );
+}
+
+/// #429: a save records the display's UUID with the bounds.
+#[test]
+fn a_save_records_the_display_with_the_bounds() {
+    use gpui_kit::{Bounds, point, px, size};
+    let bounds = Bounds::new(point(px(10.), px(20.)), size(px(900.), px(700.)));
+    let layout = super::layout_from_bounds(
+        bounds,
+        super::LiveWorkspace {
+            display_uuid: Some("external".into()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(layout.display_uuid.as_deref(), Some("external"));
+}
+
+/// #429 end to end: a live window's save names the display it is on. The test
+/// platform's one display has a UUID, which `open_window` then restores onto.
+#[gpui_kit::test]
+async fn a_live_windows_layout_names_its_display(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let path = temp_workspace_path();
+    let keymap_path = temp_workspace_path();
+    let handle = cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+        init(cx, path.clone(), &keymap_path);
+        open_window(cx, WindowLayout::default())
+    });
+    cx.run_until_parked();
+    let layout = handle
+        .update(cx, |_, window, cx| super::layout_from_window(window, cx))
+        .expect("the window is live");
+    let uuid = layout.display_uuid.expect("the display has a UUID");
+    cx.update(|cx| {
+        let placement = super::window_placement(
+            &WindowLayout {
+                x: Some(10.),
+                y: Some(20.),
+                display_uuid: Some(uuid),
+                ..WindowLayout::default()
+            },
+            cx,
+        );
+        assert!(placement.display.is_some(), "restored onto its display");
+    });
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&keymap_path);
+}
+
 /// #377 end to end: `open_window` with a layout saved on a display that isn't
 /// connected (the test platform has one 1920x1080 display at the origin) opens
 /// the window on that display, at its saved size.

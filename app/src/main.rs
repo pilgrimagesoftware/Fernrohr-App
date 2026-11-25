@@ -99,6 +99,7 @@ fn main() {
         util::shell::init(cx, workspace_path.clone(), &keymap_path);
         util::shell::open_saved_or_default(cx, &workspace_path);
         mcp::start(cx);
+        k8s::cluster::kubeconfig_watch::start(cx);
         util::shell::init_quiet(util::shell::QuietHooks::app(), cx);
         // Shown from launch: quiet mode's way back once the windows are gone.
         #[cfg(target_os = "macos")]
