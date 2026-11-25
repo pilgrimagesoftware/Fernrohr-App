@@ -127,3 +127,33 @@ fn a_dash_user_stays_the_destination() {
         ["--".to_string(), target, "true".to_string()]
     );
 }
+
+/// Review follow-up: an option-like `-J` hop saved before the editor checked
+/// (or edited by hand) never reaches `ssh`. A dash inside a name is fine.
+#[test]
+fn an_option_like_jump_host_is_refused_before_spawning() {
+    assert!(is_option_like_jump_host("-oProxyCommand=false"));
+    assert!(is_option_like_jump_host(" ops@-hop:22"));
+    assert!(!is_option_like_jump_host("ops@hop-1.example.com:2222"));
+    assert!(!is_option_like_jump_host("my-user@hop"));
+
+    let config = SshTunnelConfig {
+        bastion_user: "ops".to_string(),
+        bastion_host: "bastion.example.com".to_string(),
+        bastion_port: 22,
+        jump_hosts: vec!["-oProxyCommand=false".to_string()],
+        remote_host: "10.0.0.5".to_string(),
+        remote_port: 6443,
+        local_port: 40000,
+        identity_file: None,
+        known_hosts_file: None,
+        ssh_config_file: None,
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let error = runtime
+        .block_on(test_connection(&config))
+        .expect_err("refused");
+    assert!(error.contains("jump host"), "{error}");
+}
