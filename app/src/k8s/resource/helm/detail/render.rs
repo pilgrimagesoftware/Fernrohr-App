@@ -161,7 +161,8 @@ impl HelmReleasePanel {
                 .detail(revision.version)
                 .and_then(|detail| detail.info.last_deployed.clone())
                 .unwrap_or_default();
-            let deployed = revision.status == "deployed";
+            let deployed =
+                revision.helm_status() == crate::k8s::resource::helm::HelmStatus::Deployed;
             let version = revision.version;
             let this = cx.weak_entity();
             let id = format!("helm-release-revision-{version}");
