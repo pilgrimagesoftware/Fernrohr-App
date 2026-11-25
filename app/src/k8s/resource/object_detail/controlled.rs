@@ -247,12 +247,22 @@ impl ObjectDetailPanel {
         let refs = controlled_by(&uid, read, pods);
         // Only the child kinds this panel subscribed: a refusal of an unrelated open
         // list says nothing about what this object controls.
-        let unlistable = unlistable_kinds(
+        let mut unlistable = unlistable_kinds(
             self.controlled
                 .kinds
                 .iter()
                 .map(|(kind, table)| (kind, table.read(cx))),
         );
+        // The typed Pods watch is cluster-wide, so a namespace-only user is refused it.
+        let pods_refused = self
+            .controlled
+            .pods
+            .as_ref()
+            .is_some_and(|table| table.read(cx).refused().is_some());
+        if pods_refused {
+            unlistable.push("pods".to_string());
+            unlistable.sort();
+        }
         if refs != self.controlled.refs || unlistable != self.controlled.unlistable {
             self.controlled.refs = refs;
             self.controlled.unlistable = unlistable;

@@ -400,3 +400,47 @@ async fn controls_says_it_cant_list_a_refused_child_kind(cx: &mut TestAppContext
     });
     assert_eq!(text.as_deref(), Some("can't list replicasets"));
 }
+
+#[gpui_kit::test]
+async fn controls_says_it_cant_list_pods_when_the_pods_watch_is_refused(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let (window, panel) = stub_panel(
+        cx,
+        target(replica_sets(), Some("staging"), "web-1"),
+        vec![replica_sets()],
+    );
+    let mut vcx = gpui_kit::VisualTestContext::from_window(window.into(), cx);
+    let pods = vcx.update(|_, cx| {
+        cx.new(|_| {
+            let mut table = PodsTable::new();
+            table.set_refused("forbidden".to_string());
+            table
+        })
+    });
+    vcx.update(|_, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.test_set_loaded(
+                object(serde_json::json!({
+                    "apiVersion": "apps/v1",
+                    "kind": "ReplicaSet",
+                    "metadata": { "name": "web-1", "namespace": "staging", "uid": "rs-1" },
+                })),
+                cx,
+            );
+            panel.test_watch_controlled(Some(pods), Vec::new(), cx);
+        })
+    });
+
+    let text = vcx.update(|_, cx| {
+        let sections = panel.read(cx).sections(jiff::Timestamp::now());
+        sections[0]
+            .fields
+            .iter()
+            .find(|field| field.label == "Controls")
+            .map(|field| field.value.text())
+    });
+    assert_eq!(text.as_deref(), Some("can't list pods"));
+}

@@ -19,8 +19,9 @@ use tokio::sync::{Notify, mpsc};
 
 /// Keeps `table` current with every `kind` object the client can see - across all
 /// namespaces for a namespaced kind (which a list panel then narrows to its namespace
-/// selection), or only those in `namespace` when one is given (#446). A 401 stops it and calls `on_unauthorized` once; a 403 stops it and
-/// records the server's refusal on `table` for the panel to show.
+/// selection), or only those in `namespace` when one is given (#446). A 401 stops it and calls
+/// `on_unauthorized` once; a 403 stops it and records the server's refusal on `table` for
+/// the panel to show.
 ///
 /// How depends on the kind's verbs, as discovery reported them:
 /// - no `list`: nothing to fetch, so `table` is marked [`ListMode::Unlistable`];

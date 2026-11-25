@@ -6,7 +6,8 @@ use super::*;
 /// `client` and applies its events to `table` as they arrive. The stream,
 /// reconnect and 401 handling are [`crate::k8s::cluster::watch_stream::run`]'s,
 /// shared with every other kind's watch; a 401 stops the watch and calls
-/// `on_unauthorized` once.
+/// `on_unauthorized` once, and a 403 stops it and records the server's refusal on
+/// `table` (#446), so a reader can say pods can't be listed.
 pub fn watch_all_namespaces(
     client: kube::Client,
     table: gpui_kit::Entity<PodsTable>,
@@ -14,6 +15,7 @@ pub fn watch_all_namespaces(
     cx: &mut gpui_kit::App,
 ) -> gpui_kit::Task<()> {
     let api: kube::Api<Pod> = kube::Api::all(client);
+    let refused = table.clone();
     crate::k8s::cluster::watch_stream::run(
         api,
         move |event, cx| {
@@ -23,7 +25,12 @@ pub fn watch_all_namespaces(
             });
         },
         on_unauthorized,
-        crate::k8s::cluster::watch_stream::OnRefused::Retry,
+        crate::k8s::cluster::watch_stream::OnRefused::Report(Box::new(move |message, cx| {
+            refused.update(cx, |table, cx| {
+                table.set_refused(message);
+                cx.notify();
+            });
+        })),
         // A Pod list always carries a `resourceVersion`.
         crate::k8s::cluster::watch_stream::OnNoResourceVersion::Retry,
         cx,

@@ -265,10 +265,11 @@ Fernrohr watches these kinds for you while the panel is open. Any other kind's
 controlled objects, such as a custom controller's, show while a list of their
 kind is open in a panel.
 
-The watches cover only the object's own namespace, or reuse a list of that kind
-that is already open. If your account isn't allowed to list one of those kinds,
-Controls reads "can't list replicasets" (or the kind in question) instead of
-staying empty, so a missing entry isn't mistaken for no children. The kinds you
-can list still show.
+Child kinds other than pods are watched only in the object's own namespace, or
+read from a list of that kind that is already open. Pods use a cluster-wide
+watch. If your account isn't allowed to list one of these kinds, Controls reads
+"can't list replicasets" (or "can't list pods", or the kind in question)
+instead of staying empty, so a missing entry isn't mistaken for no children. The
+kinds you can list still show.
 
 *Summarizes the capability specs: `object-detail`, `pod-detail`, `resource-links`.*

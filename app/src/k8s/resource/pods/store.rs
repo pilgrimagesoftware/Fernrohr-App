@@ -23,6 +23,8 @@ pub struct PodsTable {
     phase: LoadPhase,
     /// The live changes the Pods tables flash (#275).
     journal: crate::ui::row_flash::ChangeJournal,
+    /// The API server's refusal, when it won't let this user list pods (a 403).
+    refused: Option<String>,
 }
 
 impl PodsTable {
@@ -35,6 +37,16 @@ impl PodsTable {
 
     pub fn pods(&self) -> &[Pod] {
         self.index.items()
+    }
+
+    /// Why pods can't be listed, if the server refused it.
+    pub fn refused(&self) -> Option<&str> {
+        self.refused.as_deref()
+    }
+
+    /// Records the server's refusal to list pods; the watch has stopped.
+    pub fn set_refused(&mut self, message: String) {
+        self.refused = Some(message);
     }
 
     /// Whether the table has finished its first list.
