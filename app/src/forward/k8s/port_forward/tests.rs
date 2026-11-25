@@ -360,3 +360,18 @@ async fn a_failing_accept_is_retried_at_a_pause() {
     let attempts = attempts.load(std::sync::atomic::Ordering::SeqCst);
     assert!((1..=5).contains(&attempts), "{attempts} accept attempts");
 }
+
+/// Review follow-up: reaping reports a connection task that panicked instead
+/// of dropping it silently. A clean finish or an abort isn't a panic.
+#[tokio::test]
+async fn reaping_counts_a_panicked_connection() {
+    let mut connections = JoinSet::new();
+    connections.spawn(async { panic!("bridge bug") });
+    connections.spawn(async {});
+    connections.spawn(std::future::pending::<()>()).abort();
+    // Let all three finish (the panic, the clean exit, the abort).
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    assert_eq!(reap(&mut connections), 1);
+    assert!(connections.is_empty());
+}

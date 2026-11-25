@@ -144,9 +144,23 @@ where
                 tokio::time::sleep(PORT_FORWARD_ACCEPT_ERROR_PAUSE).await;
             }
         }
-        // Reap finished connections so the set holds only live ones.
-        while connections.try_join_next().is_some() {}
+        reap(&mut connections);
     }
+}
+
+/// Takes finished connections out of `connections`, so it holds only live ones,
+/// logging any that panicked. Returns how many did.
+fn reap(connections: &mut JoinSet<()>) -> usize {
+    let mut panicked = 0;
+    while let Some(finished) = connections.try_join_next() {
+        if let Err(error) = finished
+            && error.is_panic()
+        {
+            log::error!("k8s port-forward connection task panicked: {error}");
+            panicked += 1;
+        }
+    }
+    panicked
 }
 
 #[cfg(test)]
