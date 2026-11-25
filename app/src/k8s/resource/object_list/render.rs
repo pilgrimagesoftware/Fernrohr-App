@@ -286,7 +286,7 @@ impl ObjectListPanel {
     ) -> Option<AnyElement> {
         use gpui_kit::component::Sizable as _;
         use gpui_kit::component::button::{Button, ButtonVariants as _};
-        let deprecated = kind.gvk.group.is_empty() && kind.gvk.kind == "ComponentStatus";
+        let deprecated = kind.is_core("ComponentStatus");
         if !polled && !deprecated {
             return None;
         }

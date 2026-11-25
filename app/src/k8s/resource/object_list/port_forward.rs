@@ -17,7 +17,7 @@ pub const SERVICES_KEY_CONTEXT: &str = "ServicesList";
 impl ObjectListPanel {
     /// Whether this panel lists core Services.
     pub(super) fn lists_services(&self) -> bool {
-        self.kind.gvk.group.is_empty() && self.kind.gvk.kind == "Service"
+        self.kind.is_core("Service")
     }
 
     /// The selected Service's forwards; none in any other list.

@@ -460,3 +460,23 @@ async fn listing_groups_retried_past_the_limit_fails_promptly() {
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
     assert!(failure.message.contains("within"), "{}", failure.message);
 }
+
+#[test]
+fn a_kind_is_its_group_and_name_not_its_name_alone() {
+    use super::is_group_kind;
+    let apps = GroupVersionKind::gvk("apps", "v1", "Deployment");
+    let custom = GroupVersionKind::gvk("example.com", "v1", "Deployment");
+    assert!(is_group_kind(&apps, "apps", "Deployment"));
+    assert!(
+        !is_group_kind(&custom, "apps", "Deployment"),
+        "a CRD reusing the name"
+    );
+    let service = DiscoveredKind {
+        gvk: GroupVersionKind::gvk("", "v1", "Service"),
+        plural: "services".into(),
+        namespaced: true,
+        verbs: Default::default(),
+    };
+    assert!(service.is_core("Service"));
+    assert!(!service.is_core("Secret"));
+}

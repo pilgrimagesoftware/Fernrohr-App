@@ -11,7 +11,7 @@
 //!   with a conflict rather than rolling back from a state nobody saw.
 
 use super::{ActionError, api_for, patch_params};
-use crate::k8s::cluster::discovery::DiscoveredKind;
+use crate::k8s::cluster::discovery::{DiscoveredKind, is_group_kind};
 use k8s_openapi::api::apps::v1::{ControllerRevision, ReplicaSet};
 use kube::Api;
 use kube::api::{ListParams, Patch};
@@ -44,12 +44,15 @@ pub(crate) async fn plan_rollback(
         .await?;
     let uid = workload.metadata.uid.clone().unwrap_or_default();
     let resource_version = workload.metadata.resource_version.clone();
-    let revisions = if kind.gvk.kind == "Deployment" {
+    // An apps/v1 Deployment keeps its history in ReplicaSets; a CRD that reuses the name
+    // doesn't, so only the group-checked kind takes this path.
+    let deployment = is_group_kind(&kind.gvk, "apps", "Deployment");
+    let revisions = if deployment {
         deployment_revisions(client, namespace, &uid).await?
     } else {
         controller_revisions(client, namespace, &uid).await?
     };
-    let current_revision = if kind.gvk.kind == "Deployment" {
+    let current_revision = if deployment {
         workload
             .metadata
             .annotations
