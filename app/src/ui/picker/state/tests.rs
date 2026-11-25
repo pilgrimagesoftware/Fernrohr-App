@@ -363,3 +363,70 @@ async fn excluding_from_a_failed_picker_leaves_the_error_alone(cx: &mut gpui_kit
         })
         .unwrap();
 }
+
+/// #320: a kubeconfig edit adds contexts to an open picker, drops the ones that went away,
+/// keeps one whose session is still open, and clears a selection that no longer exists.
+#[gpui_kit::test]
+async fn a_kubeconfig_change_updates_an_open_picker(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+        crate::k8s::cluster::session::ClusterRegistry::insert_test_session(
+            cx,
+            "connected",
+            crate::k8s::cluster::connection::ConnectionState::Connecting,
+        );
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, cx| {
+            picker.contexts = Ok(vec![
+                "gone".to_string(),
+                "connected".to_string(),
+                "kept".to_string(),
+            ]);
+            picker.selected_context = Some("gone".to_string());
+            picker.apply_contexts(Ok(vec!["kept".to_string(), "new".to_string()]), cx);
+            assert_eq!(
+                picker.contexts.as_deref(),
+                Ok([
+                    "kept".to_string(),
+                    "new".to_string(),
+                    "connected".to_string()
+                ]
+                .as_slice()),
+            );
+            assert_eq!(
+                picker.selected_context, None,
+                "the selected context vanished"
+            );
+        })
+        .unwrap();
+}
+
+/// An unreadable kubeconfig mid-edit keeps the list on screen, and a context another
+/// window uses stays excluded across a re-read.
+#[gpui_kit::test]
+async fn a_failed_reread_keeps_the_list_and_exclusions_hold(cx: &mut gpui_kit::TestAppContext) {
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let window = cx.add_window(ClusterPicker::new);
+    window
+        .update(cx, |picker, _window, cx| {
+            picker.contexts = Ok(vec!["a".to_string(), "b".to_string()]);
+            picker.exclude(&["b".to_string()]);
+            picker.apply_contexts(Err("half written".to_string()), cx);
+            assert_eq!(picker.contexts.as_deref(), Ok(["a".to_string()].as_slice()));
+            picker.apply_contexts(
+                Ok(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+                cx,
+            );
+            assert_eq!(
+                picker.contexts.as_deref(),
+                Ok(["a".to_string(), "c".to_string()].as_slice())
+            );
+        })
+        .unwrap();
+}

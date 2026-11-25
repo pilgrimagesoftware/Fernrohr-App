@@ -21,6 +21,13 @@ The picker lists each context from the kubeconfig.
 2. Press <kbd>Enter</kbd> to connect to the highlighted context. With the mouse, click the context
    and then click Connect.
 
+The list follows the kubeconfig while Fernrohr runs. When you edit or replace a file it was read
+from, such as after `kubectl config` or a cloud CLI adds a cluster, the picker, the Tunnels window
+and the menu bar menu show the new contexts within a few seconds, with no restart. A connected
+context stays connected if its entry is removed, and stays in the picker until you disconnect it.
+A selected context that is removed is deselected. If the file is unreadable for a moment, such as
+while another tool is writing it, the list stays as it was.
+
 Hovering a row doesn't move the selection. Only a click, or the arrow keys and typing, does.
 
 When the connection succeeds, the picker gives way to the panel workspace, which opens on a

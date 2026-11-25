@@ -22,6 +22,7 @@
 
 use crate::k8s::cluster::connection::{ClusterConnection, ConnectionState};
 use crate::k8s::cluster::kubeconfig;
+use crate::k8s::cluster::kubeconfig_watch::{KubeconfigRevision, merge_contexts};
 use crate::k8s::cluster::session::ClusterRegistry;
 use crate::tunnel::store::TunnelStore;
 use crate::ui::picker_tunnel::{self, TunnelChoice};
