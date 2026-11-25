@@ -210,8 +210,9 @@ async fn read_container_logs(
         context_name,
         previous,
         ..
-    } = target.clone();
-    let stream = match api.log_stream(&pod_name, &log_params(&target)).await {
+    } = &target;
+    let previous = *previous;
+    let stream = match api.log_stream(pod_name, &log_params(&target)).await {
         Ok(stream) => stream,
         // The API's answer for a container that never restarted.
         Err(kube::Error::Api(status)) if previous && status.code == 400 => {
@@ -219,7 +220,7 @@ async fn read_container_logs(
             return;
         }
         Err(error) => {
-            let message = describe_log_stream_error(&error, &pod_name, &namespace, &context_name);
+            let message = describe_log_stream_error(&error, pod_name, namespace, context_name);
             let detail = crate::k8s::error::detail(&error);
             let _ = tx.send(LogEvent::RequestFailed { message, detail }).await;
             return;

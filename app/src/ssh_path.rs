@@ -12,7 +12,7 @@ const SSH_EXE_NAME: &str = "ssh";
 
 /// Returns the path to `ssh` on `PATH`, or an error message telling the user to install it.
 pub fn require_ssh_on_path() -> Result<PathBuf, String> {
-    find_on_path(&env::var("PATH").unwrap_or_default()).ok_or_else(|| {
+    find_on_path(&env::var_os("PATH").unwrap_or_default()).ok_or_else(|| {
         "`ssh` was not found on PATH. Fernrohr's tunnel subsystem shells out to the system \
          `ssh` client for SSH-tunneled clusters; install OpenSSH and ensure `ssh` is on PATH \
          to use a bound context."
@@ -20,7 +20,7 @@ pub fn require_ssh_on_path() -> Result<PathBuf, String> {
     })
 }
 
-fn find_on_path(path_env: &str) -> Option<PathBuf> {
+fn find_on_path(path_env: &std::ffi::OsStr) -> Option<PathBuf> {
     env::split_paths(path_env).find_map(|dir| {
         let candidate = dir.join(SSH_EXE_NAME);
         candidate.is_file().then_some(candidate)
@@ -57,14 +57,17 @@ mod tests {
         fs::write(&ssh_path, b"").unwrap();
 
         let path_env = dir.0.to_string_lossy().into_owned();
-        assert_eq!(find_on_path(&path_env), Some(ssh_path));
+        assert_eq!(
+            find_on_path(std::ffi::OsStr::new(&path_env)),
+            Some(ssh_path)
+        );
     }
 
     #[test]
     fn reports_none_when_no_path_entry_has_it() {
         let dir = ScratchDir::new("missing");
         let path_env = dir.0.to_string_lossy().into_owned();
-        assert_eq!(find_on_path(&path_env), None);
+        assert_eq!(find_on_path(std::ffi::OsStr::new(&path_env)), None);
     }
 
     #[test]

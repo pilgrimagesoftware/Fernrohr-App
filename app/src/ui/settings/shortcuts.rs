@@ -230,7 +230,7 @@ impl ShortcutsSection {
         cx.notify();
     }
 
-    fn on_recorded(&mut self, recorded: Recorded, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_recorded(&mut self, recorded: Recorded, _window: &mut Window, cx: &mut Context<Self>) {
         match (&self.mode, recorded) {
             (_, Recorded::Cancelled) => self.stop(cx),
             (Mode::Recording { id, .. }, Recorded::Keys(keys)) => {
@@ -265,7 +265,6 @@ impl ShortcutsSection {
             }
             _ => {}
         }
-        let _ = window;
     }
 
     /// Applies the key waiting on the conflict prompt.
