@@ -380,16 +380,17 @@ impl TableDelegate for ObjectTableDelegate {
         &mut self,
         row_ix: usize,
         col_ix: usize,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         use crate::ui::style;
         use crate::ui::typography::TypeRole as _;
         let (row, column) = (&self.rows[row_ix], &self.columns[col_ix]);
-        let cell = div()
-            .debug_selector(|| format!("object-cell-{row_ix}-{col_ix}"))
-            .data_font()
-            .whitespace_nowrap();
+        let cell = crate::ui::clipped_cell::ellipsize(
+            div()
+                .debug_selector(|| format!("object-cell-{row_ix}-{col_ix}"))
+                .data_font(),
+        );
         if column.id.as_ref() == FORWARDS {
             let cell = cell.children(crate::ui::forward_indicator::indicator(
                 &row.object.name,
@@ -398,6 +399,7 @@ impl TableDelegate for ObjectTableDelegate {
             return self.with_checkbox(row_ix, col_ix, cell, cx);
         }
         let text = cell_text(row, column);
+        let full = text.clone();
         // A status cell's text takes its tone's colour; a readiness ratio or
         // a Ready condition keeps plain text beside a dot in its tone, as the
         // Pods table's Ready.
@@ -417,6 +419,8 @@ impl TableDelegate for ObjectTableDelegate {
             (_, Some(tone)) => cell.text_color(style::status(tone, cx)).child(text),
             (_, None) => cell.child(text),
         };
+        let cell =
+            crate::ui::clipped_cell::with_full_value(self, row_ix, col_ix, &full, cell, window, cx);
         self.with_checkbox(row_ix, col_ix, cell, cx)
     }
 
