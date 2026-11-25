@@ -306,3 +306,46 @@ fn an_ingresss_hosts_open_over_their_scheme_and_a_wildcard_does_not() {
         ])
     );
 }
+
+/// Security pass: the Ingress's author mustn't be able to steer a click away
+/// from the host it shows. A host that isn't a plain DNS name - with a port,
+/// a path, a fragment, userinfo, a backslash, or an IP literal - gets no link,
+/// and a path's `?` or `#` stays in the path, percent-encoded (a `\` reads
+/// as `/`, as a browser reads it in an http path - still on the same host).
+#[test]
+fn an_ingress_link_opens_only_its_own_host() {
+    let paths = |paths: &[&str]| {
+        json!({ "paths": paths.iter().map(|path| json!({
+            "path": path, "pathType": "Prefix",
+            "backend": { "service": { "name": "web", "port": { "number": 80 } } },
+        })).collect::<Vec<_>>() })
+    };
+    let ingress = object(json!({
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "Ingress",
+        "metadata": { "name": "web", "namespace": "staging" },
+        "spec": {
+            "rules": [
+                { "host": "evil.example#.good.example.com" },
+                { "host": "good.example.com@evil.example" },
+                { "host": "evil.example\\@good.example.com" },
+                { "host": "localhost:8080" },
+                { "host": "evil.example/x" },
+                { "host": "Good.Example.com" },
+                { "host": "good.example.com",
+                  "http": paths(&["/a?next=//evil.example", "/b#frag", "/c\\@evil.example"]) },
+            ],
+        },
+    }));
+
+    let sections = sections_for(&kind("networking.k8s.io", "v1", "Ingress", true), &ingress);
+
+    assert_eq!(
+        field(&sections, "Open").value,
+        FieldValue::Urls(vec![
+            "http://good.example.com/a%3Fnext=//evil.example".into(),
+            "http://good.example.com/b%23frag".into(),
+            "http://good.example.com/c/@evil.example".into(),
+        ])
+    );
+}
