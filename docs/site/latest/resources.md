@@ -320,6 +320,20 @@ context and makes it the context's default, so panels opened later start there.
 Cluster-scoped panels such as Nodes are never changed. Other lists bind <kbd>W</kbd>
 (**List: Filter to Selected Object's Namespace**).
 
+### Accounts limited to some namespaces
+
+Some accounts may list a kind only in certain namespaces, not across the whole
+cluster. When the cluster refuses to list a kind in every namespace, a list
+scoped to particular namespaces lists each of them on its own and shows the
+results as one list. Rows from a namespace your account can't read are left
+out, and the namespaces you can read still show. If every chosen namespace is
+refused, the list shows the cluster's refusal.
+
+A list scoped to "All namespaces" can't do this, because it doesn't know which
+namespaces you may read. It says "Can't list deployments in every namespace"
+(or the kind in question) and asks you to choose namespaces in the picker.
+Choosing one or more, or a [namespace set](#namespace-sets), lists them.
+
 ### Namespace sets
 
 A namespace set is a named group of namespaces that you keep across launches.

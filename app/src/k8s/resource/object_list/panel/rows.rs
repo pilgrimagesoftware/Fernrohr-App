@@ -16,11 +16,10 @@ impl ObjectListPanel {
         &self,
         cx: &App,
     ) -> Vec<ListColumn> {
-        let objects = self.objects.read(cx);
         ListColumn::for_kind(
             &self.kind,
-            objects.conditions_seen(),
-            objects.printer_columns(),
+            self.listed_conditions(cx),
+            self.listed_printer_columns(cx),
         )
     }
 
@@ -33,10 +32,7 @@ impl ObjectListPanel {
         let namespaces = &self.scope.namespaces;
         let query = self.filter.query(cx);
         let columns = self.default_columns(cx);
-        self.objects
-            .read(cx)
-            .rows()
-            .iter()
+        self.listed_rows(cx)
             .filter(|row| {
                 namespaces.is_empty()
                     || row
