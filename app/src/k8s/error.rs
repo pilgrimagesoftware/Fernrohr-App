@@ -156,11 +156,11 @@ mod tests {
     fn failed_plugin() -> kube::client::AuthError {
         use std::os::unix::process::ExitStatusExt as _;
         kube::client::AuthError::AuthExecRun {
-            cmd: r#"PLUGIN_SECRET="env-secret" "cred-plugin" "get-token""#.to_string(),
+            cmd: r#"PLUGIN_ENV="env-marker" "cred-plugin" "get-token""#.to_string(),
             out: Box::new(std::process::Output {
                 status: std::process::ExitStatus::from_raw(1 << 8),
-                stdout: br#"{"status":{"token":"stdout-token"}}"#.to_vec(),
-                stderr: b"login expired; token=stderr-token\n".to_vec(),
+                stdout: br#"{"status":{"token":"stdout-marker"}}"#.to_vec(),
+                stderr: b"login expired; token=stderr-marker\n".to_vec(),
             }),
         }
     }
@@ -179,8 +179,8 @@ mod tests {
         for error in &shapes {
             let chain = crate::k8s::cluster::connection::error_chain(error);
             for text in [describe(error), detail(error), chain] {
-                for secret in ["stdout-token", "env-secret", "stderr-token"] {
-                    assert!(!text.contains(secret), "{secret} in {text:?}");
+                for marker in ["stdout-marker", "env-marker", "stderr-marker"] {
+                    assert!(!text.contains(marker), "{marker} in {text:?}");
                 }
                 assert!(text.contains("login expired"), "{text:?}");
                 assert!(text.contains("exit status: 1"), "{text:?}");
@@ -233,8 +233,8 @@ mod tests {
     fn a_wrapped_credential_plugin_failure_is_scrubbed_too() {
         let error = std::io::Error::other(kube::Error::Auth(failed_plugin()));
         for text in [describe_any(&error), detail_any(&error)] {
-            for secret in ["stdout-token", "env-secret", "stderr-token"] {
-                assert!(!text.contains(secret), "{secret} in {text:?}");
+            for marker in ["stdout-marker", "env-marker", "stderr-marker"] {
+                assert!(!text.contains(marker), "{marker} in {text:?}");
             }
             assert!(text.contains("login expired"), "{text:?}");
         }
