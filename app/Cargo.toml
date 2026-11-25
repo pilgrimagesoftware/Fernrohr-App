@@ -100,7 +100,7 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 # the version those share - not the 0.59 only `alacritty_terminal` still uses -
 # so it stays one crate as they move.
 [target.'cfg(target_os = "linux")'.dependencies]
-ashpd = { version = "=0.13.13", default-features = false, features = ["async-io", "settings"] }
+ashpd = { version = "=0.14.3", default-features = false, features = ["async-io", "settings"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Graphics_Dwm"] }
