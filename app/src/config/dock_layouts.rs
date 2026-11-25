@@ -32,9 +32,8 @@ pub fn save(path: &Path, layouts: &DockLayouts) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let contents =
-        serde_json::to_string_pretty(layouts).expect("dock layout state must serialize to JSON");
-    fs::write(path, contents)
+    let contents = serde_json::to_string_pretty(layouts).map_err(std::io::Error::other)?;
+    super::write_atomic(path, &contents)
 }
 
 #[cfg(test)]
