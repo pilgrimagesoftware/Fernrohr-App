@@ -270,33 +270,14 @@ pub fn add_panel(
     window: &mut Window,
     cx: &mut Context<DockArea>,
 ) -> (PanelId, OpenedPanel) {
-    // Three concrete panel types, so the match cannot collapse into one
-    // generic call - but every arm does the same two things in the same order,
-    // and the id is taken from the entity before `add_panel` consumes it.
     match &scope.target {
         NavTarget::Logs | NavTarget::PodLogs(_) | NavTarget::LabelLogs(_) => {
             let panel = cx.new(|cx| crate::util::logs::LogsPanel::new(scope.clone(), cx));
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::Logs(panel))
+            open_in_center(area, panel, OpenedPanel::Logs, window, cx)
         }
         NavTarget::Kind(kind) if kind.is_core_pod() => {
             let panel = cx.new(|cx| crate::k8s::resource::pods::PodsPanel::new(scope.clone(), cx));
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::Pods(panel))
+            open_in_center(area, panel, OpenedPanel::Pods, window, cx)
         }
         // The core Event kind: the events browser rather than the generic list
         // (`events-browser` D4).
@@ -304,29 +285,13 @@ pub fn add_panel(
             let panel = cx.new(|cx| {
                 crate::k8s::resource::events_browser::EventsPanel::new(scope.clone(), cx)
             });
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::Events(panel))
+            open_in_center(area, panel, OpenedPanel::Events, window, cx)
         }
         NavTarget::HelmReleases => {
             let panel = cx.new(|cx| {
                 crate::k8s::resource::helm::list::HelmReleasesPanel::new(scope.clone(), cx)
             });
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::HelmReleases(panel))
+            open_in_center(area, panel, OpenedPanel::HelmReleases, window, cx)
         }
         NavTarget::HelmRelease(key) => {
             let panel = cx.new(|cx| {
@@ -336,15 +301,7 @@ pub fn add_panel(
                     cx,
                 )
             });
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::HelmRelease(panel))
+            open_in_center(area, panel, OpenedPanel::HelmRelease, window, cx)
         }
         // Every other kind, built-in or CRD: the generic live list.
         NavTarget::Kind(kind) => {
@@ -355,15 +312,7 @@ pub fn add_panel(
                     cx,
                 )
             });
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::ObjectList(panel))
+            open_in_center(area, panel, OpenedPanel::ObjectList, window, cx)
         }
         // A pod's detail panel. Reads one pod through the cluster's existing
         // session, so it fetches that pod itself rather than joining a watch.
@@ -377,15 +326,7 @@ pub fn add_panel(
                     cx,
                 )
             });
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::PodDetail(panel))
+            open_in_center(area, panel, OpenedPanel::PodDetail, window, cx)
         }
         // One object of any other discovered kind, read the same way.
         NavTarget::Object(object) => {
@@ -400,32 +341,36 @@ pub fn add_panel(
             if let Some(view) = initial_view {
                 panel.update(cx, |panel, cx| panel.set_view(view, cx));
             }
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::ObjectDetail(panel))
+            open_in_center(area, panel, OpenedPanel::ObjectDetail, window, cx)
         }
         // A shell in one container; its session starts as the panel opens.
         NavTarget::Exec(exec) => {
             let panel = cx.new(|cx| {
                 crate::k8s::resource::exec::ExecPanel::new(exec.clone(), scope.clone(), window, cx)
             });
-            let id = PanelId::from(panel.entity_id());
-            area.add_panel_view(
-                panel_handle(panel.clone()),
-                DockPlacement::Center,
-                None,
-                window,
-                cx,
-            );
-            (id, OpenedPanel::Exec(panel))
+            open_in_center(area, panel, OpenedPanel::Exec, window, cx)
         }
     }
+}
+
+/// Adds `panel` to `area`'s center and returns its id with `opened(panel)`. The id is
+/// taken from the entity before the dock takes its handle.
+fn open_in_center<P: gpui_kit::component::dock::Panel>(
+    area: &mut DockArea,
+    panel: Entity<P>,
+    opened: fn(Entity<P>) -> OpenedPanel,
+    window: &mut Window,
+    cx: &mut Context<DockArea>,
+) -> (PanelId, OpenedPanel) {
+    let id = PanelId::from(panel.entity_id());
+    area.add_panel_view(
+        panel_handle(panel.clone()),
+        DockPlacement::Center,
+        None,
+        window,
+        cx,
+    );
+    (id, opened(panel))
 }
 
 #[cfg(test)]
