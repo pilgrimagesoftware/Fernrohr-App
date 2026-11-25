@@ -48,10 +48,10 @@ pub(crate) fn refusal(error: &watcher::Error) -> Option<String> {
 /// Called once with the API server's message when it refuses a watch.
 pub(crate) type ReportRefusal = Box<dyn FnOnce(String, &mut App)>;
 
-/// What to do with a refused (403) watch: keep retrying it - the Pods watch's long-
-/// standing behaviour - or stop and report the server's message once.
+/// What to do with a refused (403) watch: stop and report the server's message once.
+/// (The Pods watch used to retry instead; it reports too since #446, so Controls can
+/// say pods can't be listed. No watch retries a refusal now.)
 pub(crate) enum OnRefused {
-    Retry,
     Report(ReportRefusal),
 }
 
@@ -152,7 +152,6 @@ where
         let mut on_unauthorized = Some(on_unauthorized);
         let mut on_refused = match on_refused {
             OnRefused::Report(report) => Some(report),
-            OnRefused::Retry => None,
         };
         let mut on_no_resource_version = match on_no_resource_version {
             OnNoResourceVersion::Report(report) => Some(report),

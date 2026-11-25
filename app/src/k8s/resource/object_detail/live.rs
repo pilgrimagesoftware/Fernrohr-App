@@ -21,6 +21,7 @@
 use super::ObjectDetailPanel;
 use super::fetch::{ObjectDetailState, ObjectEvents};
 use crate::k8s::cluster::session::ClusterRegistry;
+use crate::k8s::cluster::session::KindSubscription;
 use crate::k8s::resource::object_list::ObjectsTable;
 use crate::ui::detail::lifecycle::Lifecycle;
 use gpui_kit::*;
@@ -54,9 +55,17 @@ impl ObjectDetailPanel {
         }
         let context_name = self.scope.context_name.clone();
         let kind = self.target.kind.clone();
-        let table = ClusterRegistry::subscribe_kind(cx, &context_name, client, &kind);
+        // Only the object's own namespace is needed (#446).
+        let namespace = self.target.namespace.clone();
+        let KindSubscription { key, table } = ClusterRegistry::subscribe_kind_in(
+            cx,
+            &context_name,
+            client,
+            &kind,
+            namespace.as_deref(),
+        );
         cx.on_release(move |_: &mut Self, cx| {
-            ClusterRegistry::unsubscribe_kind(cx, &context_name, &kind)
+            ClusterRegistry::unsubscribe_kind_in(cx, &context_name, &key)
         })
         .detach();
         cx.observe(&table, |this, _, cx| this.read_from_table(cx))

@@ -285,6 +285,19 @@ impl ObjectDetailPanel {
                 true,
             ));
         }
+        if !self.controlled.unlistable.is_empty() {
+            // Beside the references when some were found, in their place when none were.
+            let label = if self.controlled.refs.is_empty() {
+                "Controls"
+            } else {
+                "Not listed"
+            };
+            overview.fields.push(super::model::ObjectField::status(
+                label,
+                format!("can't list {}", self.controlled.unlistable.join(", ")),
+                crate::ui::style::Tone::Warning,
+            ));
+        }
         let mut sections = vec![overview];
         sections.extend(sections::sections_for(&self.target.kind, object));
         sections
