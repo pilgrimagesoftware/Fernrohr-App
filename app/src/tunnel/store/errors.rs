@@ -24,6 +24,8 @@ pub enum TunnelFieldError {
     EmptyHost,
     EmptyUser,
     InvalidPort,
+    /// A jump host's user or host starts with `-`, which ssh could read as an option.
+    OptionLikeJumpHost,
     /// A command tunnel's command line is empty.
     EmptyCommand,
     /// A command tunnel's command line has an unclosed quote.
@@ -80,6 +82,13 @@ fn validate_ssh(tunnel: &TunnelConfig) -> Vec<TunnelFieldError> {
     }
     if tunnel.bastion_port == 0 {
         errors.push(TunnelFieldError::InvalidPort);
+    }
+    if tunnel
+        .jump_hosts
+        .iter()
+        .any(|hop| crate::tunnel::ssh::is_option_like_jump_host(hop))
+    {
+        errors.push(TunnelFieldError::OptionLikeJumpHost);
     }
     errors
 }

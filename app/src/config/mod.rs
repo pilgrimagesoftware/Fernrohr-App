@@ -1,5 +1,6 @@
 use serde::{Serialize, de::DeserializeOwned};
 use std::fs;
+use std::io::Write as _;
 use std::path::Path;
 
 pub mod dock_layouts;
@@ -37,7 +38,7 @@ pub fn load<T: Default + Serialize + DeserializeOwned>(path: &Path) -> T {
         .and_then(|text| toml::from_str(text).map_err(|error| error.to_string()));
     parsed.unwrap_or_else(|error| {
         let backup = backup_path(path);
-        match fs::write(&backup, &bytes) {
+        match write_backup(&backup, &bytes) {
             Ok(()) => log::warn!(
                 "couldn't parse {}, using defaults; kept a copy at {}: {error}",
                 path.display(),
@@ -50,6 +51,18 @@ pub fn load<T: Default + Serialize + DeserializeOwned>(path: &Path) -> T {
         }
         T::default()
     })
+}
+
+/// Writes [`load`]'s copy of an unparsable file, owner-only like the config it
+/// copies: an older `.bak` is replaced rather than truncated, so it can't keep a
+/// wider mode.
+fn write_backup(backup: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    match fs::remove_file(backup) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    create_private(backup)?.write_all(bytes)
 }
 
 /// Where [`load`] keeps a copy of a file it couldn't parse: `<file>.bak` beside it.
@@ -68,6 +81,18 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
     write_atomic(path, &contents)
 }
 
+/// Creates `path`, refusing one that exists, owner-only (0600 on unix): config
+/// such as `tunnels.toml` names bastions and tunnel commands, which other local
+/// users have no business reading, and the file is private from the moment it
+/// exists rather than after a later chmod.
+fn create_private(path: &Path) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
+}
+
 static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Writes `contents` to `path` atomically: a temp file in the same directory,
@@ -75,9 +100,10 @@ static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64:
 /// and Linux, so an interruption leaves `path`'s previous content or its new
 /// content, never a partial file. The directory must exist.
 ///
-/// A symlinked `path` is written through: the rename lands on the link's
-/// target, so a config file kept in a dotfiles repo stays a link. An existing
-/// file keeps its permissions.
+/// The temp file is created owner-only. A symlinked `path` is written through:
+/// the rename lands on the link's target, so a config file kept in a dotfiles
+/// repo stays a link. An existing file keeps its permissions - the user's to
+/// choose - and a new one stays owner-only, as [`create_private`] made it.
 pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::sync::atomic::Ordering;
     let resolved;
@@ -98,10 +124,12 @@ pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
         TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
     let tmp_path = dir.join(tmp_name);
-    let written = fs::write(&tmp_path, contents).and_then(|()| match fs::metadata(path) {
-        Ok(existing) => fs::set_permissions(&tmp_path, existing.permissions()),
-        Err(_) => Ok(()),
-    });
+    let written = create_private(&tmp_path)
+        .and_then(|mut file| file.write_all(contents.as_bytes()))
+        .and_then(|()| match fs::metadata(path) {
+            Ok(existing) => fs::set_permissions(&tmp_path, existing.permissions()),
+            Err(_) => Ok(()),
+        });
     let renamed = written.and_then(|()| fs::rename(&tmp_path, path));
     if renamed.is_err() {
         let _ = fs::remove_file(&tmp_path);
@@ -268,5 +296,54 @@ mod tests {
         let mode = fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o640);
         let _ = fs::remove_file(&path);
+    }
+
+    /// Security pass: a config file [`save`] or [`write_atomic`] creates is
+    /// owner-only; one that already exists keeps the mode the user gave it.
+    #[cfg(unix)]
+    #[test]
+    fn new_config_files_are_owner_only_and_existing_ones_keep_their_mode() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+
+        let saved = temp_path("private-save");
+        save(&saved, &Sample::default()).unwrap();
+        assert_eq!(mode(&saved), 0o600);
+
+        let atomic = temp_path("private-atomic");
+        write_atomic(&atomic, "a = 1\n").unwrap();
+        assert_eq!(mode(&atomic), 0o600);
+
+        let shared = temp_path("existing-mode");
+        fs::write(&shared, "").unwrap();
+        fs::set_permissions(&shared, fs::Permissions::from_mode(0o644)).unwrap();
+        save(&shared, &Sample::default()).unwrap();
+        assert_eq!(mode(&shared), 0o644);
+
+        for path in [saved, atomic, shared] {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    /// Review follow-up: the `.bak` kept for an unparsable file is owner-only,
+    /// even when the file and an older `.bak` were readable by others.
+    #[cfg(unix)]
+    #[test]
+    fn the_backup_of_an_unparsable_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let path = temp_path("private-backup");
+        let backup = backup_path(&path);
+        fs::write(&path, "count = oops\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        fs::write(&backup, "older").unwrap();
+        fs::set_permissions(&backup, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let _: Sample = load(&path);
+
+        let mode = fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "count = oops\n");
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&backup);
     }
 }

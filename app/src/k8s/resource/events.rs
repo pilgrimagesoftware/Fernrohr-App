@@ -68,7 +68,7 @@ pub async fn list(
     api.list(&ListParams::default().fields(&selector(object)))
         .await
         .map(|list| list.items)
-        .map_err(|error| error.to_string())
+        .map_err(|error| crate::k8s::error::describe(&error))
 }
 
 /// Watches `object`'s events - the field selector [`list`] uses - applying each

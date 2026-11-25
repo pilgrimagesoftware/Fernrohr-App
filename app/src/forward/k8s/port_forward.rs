@@ -59,10 +59,12 @@ impl ForwardTransport for PodPortForwardTransport {
 }
 
 async fn check_pod_running(pods: &Api<Pod>, pod_name: &str) -> Result<(), String> {
-    let pod = pods
-        .get(pod_name)
-        .await
-        .map_err(|err| format!("failed to get pod {pod_name}: {err}"))?;
+    let pod = pods.get(pod_name).await.map_err(|err| {
+        format!(
+            "failed to get pod {pod_name}: {}",
+            crate::k8s::error::describe(&err)
+        )
+    })?;
     match pod.status.as_ref().and_then(|s| s.phase.as_deref()) {
         Some("Running") => Ok(()),
         Some(other) => Err(format!("pod {pod_name} is {other}, not Running")),
@@ -86,8 +88,9 @@ async fn bridge_connection(
         .await
         .map_err(|err| {
             format!(
-                "failed to open port-forward to {}:{remote_port}: {err}",
-                config.pod_name
+                "failed to open port-forward to {}:{remote_port}: {}",
+                config.pod_name,
+                crate::k8s::error::describe(&err)
             )
         })?;
     let mut remote = forwarder

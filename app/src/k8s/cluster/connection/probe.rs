@@ -16,9 +16,14 @@ use super::*;
 ///
 /// Cyclic chains are tolerated: a `HashSet` of the pointers already rendered
 /// stops a self-referential `source()` from looping forever.
-pub(crate) fn error_chain(error: &dyn std::error::Error) -> String {
+pub(crate) fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
     use std::collections::HashSet;
 
+    // A failed credential plugin's own text carries its output and env: say
+    // only what `credential_plugin_failure` keeps of it.
+    if let Some(failure) = crate::k8s::error::credential_plugin_failure(error) {
+        return failure;
+    }
     let mut parts = vec![error.to_string()];
     let mut seen: HashSet<*const ()> = HashSet::new();
     seen.insert(error as *const dyn std::error::Error as *const ());

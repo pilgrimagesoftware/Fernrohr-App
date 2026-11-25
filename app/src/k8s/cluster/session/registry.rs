@@ -10,6 +10,8 @@ pub(super) struct ClusterSession {
     pub(super) connection: Entity<ClusterConnection>,
     pub(super) pods: Entity<PodsTable>,
     pub(super) pods_watch: Option<gpui_kit::Task<()>>,
+    /// The one-namespace Pods watches (#457), present while a reader subscribes to one.
+    pub(super) pods_in: HashMap<String, PodsWatch>,
     /// The client last used to start the Pods watch - kept so section 7.2's
     /// `ConnectionHealth` can restart it on resume without a panel re-subscribing.
     pub(super) client: Option<Client>,
@@ -38,6 +40,13 @@ pub(super) struct ClusterSession {
 /// task consuming the stream - `None` while the watch is paused.
 pub(super) struct KindWatch {
     pub(super) table: Entity<ObjectsTable>,
+    pub(super) task: Option<gpui_kit::Task<()>>,
+}
+
+/// One namespace's shared Pods watch: the table its readers use, and the task consuming
+/// the stream - `None` while the watch is paused.
+pub(super) struct PodsWatch {
+    pub(super) table: Entity<PodsTable>,
     pub(super) task: Option<gpui_kit::Task<()>>,
 }
 
@@ -115,6 +124,7 @@ impl ClusterRegistry {
                 connection,
                 pods,
                 pods_watch: None,
+                pods_in: HashMap::new(),
                 client: None,
                 kinds: HashMap::new(),
                 events: None,

@@ -64,8 +64,8 @@ impl Render for PodsPanel {
         // namespace by construction - its own context label and namespace
         // picker would only repeat the first and offer a filter the feature
         // doesn't call for, so it draws no header of its own.
-        let refreshing = self.node.is_none()
-            && matches!(self.table.read(cx).phase(), LoadPhase::Refreshing { .. });
+        let refreshing =
+            self.node.is_none() && matches!(self.listed_phase(cx), LoadPhase::Refreshing { .. });
         let refreshing = self.indicators.refreshing.ready(
             refreshing,
             |this: &mut Self| &mut this.indicators.refreshing,
@@ -105,11 +105,11 @@ impl Render for PodsPanel {
             ),
             // The server's refusal, not a table that loads forever or, on a node, a false
             // "no pods are scheduled" (#446); as the other list panels show it.
-            ConnectionState::Connected(_) if self.table.read(cx).refused().is_some() => {
-                let refused = self.table.read(cx).refused().map(str::to_string);
+            ConnectionState::Connected(_) if self.listed_refusal(cx).is_some() => {
+                let refused = self.listed_refusal(cx);
                 list_search::with_context(
                     div().size_full().child(panel_title::error_content(
-                        "Can't list pods".to_string(),
+                        self.refusal_message(),
                         refused,
                         cx,
                     )),
@@ -138,10 +138,7 @@ impl Render for PodsPanel {
                 // a non-empty node to nothing still shows the (empty) table
                 // rather than "no pods on this node" (#186).
                 let scoped = self
-                    .table
-                    .read(cx)
-                    .pods()
-                    .iter()
+                    .listed_pods(cx)
                     .filter(|pod| {
                         matches_namespaces(pod, namespaces)
                             && matches_node(pod, self.node.as_deref())
@@ -156,10 +153,7 @@ impl Render for PodsPanel {
                         .child("No pods are scheduled on this node.")
                 } else {
                     let items: Vec<PodTableRow> = self
-                        .table
-                        .read(cx)
-                        .pods()
-                        .iter()
+                        .listed_pods(cx)
                         .filter(|pod| {
                             matches_namespaces(pod, namespaces)
                                 && matches_node(pod, self.node.as_deref())
@@ -202,7 +196,7 @@ impl Render for PodsPanel {
                         }
                     } else {
                         list_state::table_area(
-                            self.table.read(cx).phase(),
+                            self.listed_phase(cx),
                             scoped,
                             items.len(),
                             KIND_LABEL,
@@ -290,8 +284,7 @@ impl Render for PodsPanel {
                 &namespaces,
                 move |namespaces, cx| {
                     let _ = this.update(cx, |this: &mut Self, cx| {
-                        this.scope = this.scope.scoped_to(namespaces.clone());
-                        cx.emit(ScopeEvent::NamespacesChanged(namespaces));
+                        this.set_namespaces(namespaces, cx)
                     });
                 },
                 window,

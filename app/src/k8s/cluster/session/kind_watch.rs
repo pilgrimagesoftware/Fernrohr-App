@@ -48,6 +48,15 @@ impl ClusterRegistry {
         Self::unsubscribe_key(cx, context_name, key);
     }
 
+    /// The client `context_name`'s watches were last started with, if any has been.
+    pub(super) fn session_client(cx: &App, context_name: &str) -> Option<Client> {
+        cx.try_global::<Self>()?
+            .sessions
+            .get(context_name)?
+            .client
+            .clone()
+    }
+
     /// How `kind`'s cluster-wide watch on `context_name` stands, for [`scope_for`].
     fn cluster_wide_state(cx: &App, context_name: &str, kind: &DiscoveredKind) -> ClusterWide {
         let Some(session) = cx

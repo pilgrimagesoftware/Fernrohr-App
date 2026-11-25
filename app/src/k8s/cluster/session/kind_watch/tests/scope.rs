@@ -138,3 +138,66 @@ async fn a_namespaced_watch_pauses_and_resumes_with_the_session(cx: &mut TestApp
     assert!(running(cx), "restarted against its own namespace");
     cx.update(|cx| ClusterRegistry::unsubscribe_kind_in(cx, "kind-dev", &sub.key));
 }
+
+/// #457: a follow that shared a serving cluster-wide watch moves to its namespace once that
+/// watch is refused, and releases its hold on the cluster-wide one.
+#[gpui_kit::test]
+async fn a_follow_moves_off_a_refused_cluster_wide_watch(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::session::NamespaceFollow;
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let client = fixture_client(cx);
+    session(cx, client.clone());
+    let kind = deployments();
+    let all =
+        cx.update(|cx| ClusterRegistry::subscribe_kind(cx, "kind-dev", client.clone(), &kind));
+    wait_for(cx, &all, |table| table.rows().len() == 2);
+    let mut follow =
+        cx.update(|cx| NamespaceFollow::subscribe(cx, "kind-dev", client, &kind, Some("staging")));
+    assert_eq!(
+        follow.table().entity_id(),
+        all.entity_id(),
+        "shared at first"
+    );
+    assert!(
+        !cx.update(|cx| follow.reroute_if_refused(cx)),
+        "a serving watch keeps it"
+    );
+
+    cx.update(|cx| all.update(cx, |table, _| table.set_refused("forbidden".to_string())));
+    assert!(cx.update(|cx| follow.reroute_if_refused(cx)), "moved");
+
+    assert_eq!(refcount(cx, &namespaced(&kind)), 1);
+    assert_eq!(
+        refcount(cx, &KindKey::all(&kind)),
+        1,
+        "only the list's hold"
+    );
+    wait_for(cx, follow.table(), |table| table.rows().len() == 1);
+    assert!(
+        !cx.update(|cx| follow.reroute_if_refused(cx)),
+        "a namespaced watch never moves"
+    );
+
+    cx.update(|cx| follow.release(cx));
+    assert_eq!(refcount(cx, &namespaced(&kind)), 0);
+    cx.update(|cx| ClusterRegistry::unsubscribe_kind(cx, "kind-dev", &kind));
+}
+
+/// A follow that needs every namespace has nothing narrower to move to.
+#[gpui_kit::test]
+async fn a_follow_of_every_namespace_stays_put(cx: &mut TestAppContext) {
+    use crate::k8s::cluster::session::NamespaceFollow;
+    cx.executor().allow_parking();
+    cx.update(crate::runtime::init);
+    let client = fixture_client(cx);
+    session(cx, client.clone());
+    let kind = secrets();
+    let mut follow =
+        cx.update(|cx| NamespaceFollow::subscribe(cx, "kind-dev", client, &kind, None));
+    wait_for(cx, follow.table(), |table| table.refused().is_some());
+
+    assert!(!cx.update(|cx| follow.reroute_if_refused(cx)));
+    assert_eq!(refcount(cx, &KindKey::all(&kind)), 1);
+    cx.update(|cx| follow.release(cx));
+}

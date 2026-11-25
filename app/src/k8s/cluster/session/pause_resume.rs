@@ -34,6 +34,14 @@ impl ClusterRegistry {
                 if session.watchers.pause(&WatchKey::Pods, reason) {
                     session.pods_watch = None;
                 }
+                for (namespace, watch) in &mut session.pods_in {
+                    if session
+                        .watchers
+                        .pause(&WatchKey::PodsIn(namespace.clone()), reason)
+                    {
+                        watch.task = None;
+                    }
+                }
                 for (key, watch) in &mut session.kinds {
                     if session.watchers.pause(&WatchKey::Kind(key.clone()), reason) {
                         watch.task = None;
@@ -74,6 +82,15 @@ impl ClusterRegistry {
                     })
                     .cloned()
                     .collect();
+                let pods_in: Vec<String> = session
+                    .pods_in
+                    .keys()
+                    .filter(|namespace| {
+                        let key = WatchKey::PodsIn((*namespace).clone());
+                        session.watchers.resume(&key) && session.watchers.refcount(&key) > 0
+                    })
+                    .cloned()
+                    .collect();
                 let helm_scopes: Vec<HelmScope> = session
                     .helm
                     .keys()
@@ -93,6 +110,20 @@ impl ClusterRegistry {
                         .get_mut(context_name)
                         .unwrap()
                         .pods_watch = Some(watch);
+                }
+                for namespace in pods_in {
+                    let task =
+                        Self::start_pods_in_watch(cx, context_name, client.clone(), &namespace);
+                    if let Some(watch) = cx
+                        .global_mut::<Self>()
+                        .sessions
+                        .get_mut(context_name)
+                        .unwrap()
+                        .pods_in
+                        .get_mut(&namespace)
+                    {
+                        watch.task = Some(task);
+                    }
                 }
                 if restart_events {
                     let task = Self::start_events_watch(cx, context_name, client.clone());

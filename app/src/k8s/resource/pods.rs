@@ -23,6 +23,7 @@ mod bulk;
 mod commands;
 mod edit;
 mod exec_library;
+mod fallback;
 mod filter;
 mod hints;
 #[cfg(test)]
@@ -73,7 +74,7 @@ pub(crate) use shell::{running_containers, shell_into};
 pub(crate) use sidecars::tests::pod as sidecar_fixture;
 pub(crate) use sidecars::{container_label, is_sidecar, long_running, long_running_names};
 pub use store::PodsTable;
-pub use watch::watch_all_namespaces;
+pub use watch::watch_pods;
 
 // Everything else, for the submodules' `use super::*` and the tests.
 use rows::*;
