@@ -135,6 +135,22 @@ async fn a_refused_handshake_gets_no_request_served() {
     ));
 }
 
+/// Security pass: a connection past the handshake that never sends its
+/// request is dropped once the handshake timeout passes, rather than holding
+/// one of the [`MCP_MAX_CONNECTIONS`] slots for as long as it likes.
+#[tokio::test]
+async fn a_connection_that_sends_no_request_is_dropped() {
+    let server = TestServer::start(temp_endpoint_paths(), echo_tool_registry());
+    let mut stream = request_stream(&server).await;
+    let read = tokio::time::timeout(
+        MCP_HANDSHAKE_TIMEOUT + Duration::from_secs(5),
+        frame::read::<Reply>(&mut stream, MCP_MAX_REPLY_BYTES),
+    )
+    .await
+    .expect("the app drops the silent connection within the timeout");
+    assert!(matches!(read, Err(FrameError::Closed | FrameError::Io(_))));
+}
+
 #[tokio::test]
 async fn hanging_up_cancels_a_running_call() {
     let (dropped_tx, dropped_rx) = oneshot::channel::<()>();

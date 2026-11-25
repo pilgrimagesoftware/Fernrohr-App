@@ -47,7 +47,8 @@ A tunnel that isn't valid doesn't save, and the field at fault says why.
 An SSH tunnel has a host (a hostname or an alias from your SSH config), a port, a login user, an
 authentication method, an optional list of jump hosts and keepalive settings. Authentication is
 either your SSH config and agent, or a private key kept in the operating system keychain. Saving
-needs a host, a user and a port from 1 to 65535.
+needs a host, a user and a port from 1 to 65535. Jump hosts are written `user@host:port`, with the
+user and port optional, and neither a jump host's user nor its host can start with `-`.
 
 ### Command tunnel settings
 

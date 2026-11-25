@@ -1,6 +1,7 @@
 //! Scrubbing credentials out of text that came from upstream - a Kubernetes
-//! API `Status` message, chiefly - before it reaches an MCP client or a log
-//! line (`agent-mcp`: Credential and error safety).
+//! API `Status` message, or what a kubeconfig's credential plugin printed -
+//! before it reaches an MCP client, a log line or the UI (`agent-mcp`:
+//! Credential and error safety; `crate::k8s::error` for plugin failures).
 //!
 //! It is a backstop, not the main defence: `error::ToolError` already passes
 //! on nothing from an error but an API `Status`'s code, reason and message.
@@ -37,7 +38,7 @@ const SECRET_KEYS: &[&str] = &[
 
 /// `text` with every credential-looking value replaced by [`REDACTED`].
 /// Whitespace between words is kept as it was.
-pub(super) fn redact(text: &str) -> String {
+pub(crate) fn redact(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut redact_next = false;
     let mut rest = text;

@@ -49,8 +49,6 @@ mod protocol;
 #[cfg(unix)]
 mod read;
 #[cfg(unix)]
-mod redact;
-#[cfg(unix)]
 mod server;
 #[cfg(unix)]
 mod session;
