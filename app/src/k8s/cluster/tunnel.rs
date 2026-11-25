@@ -220,7 +220,7 @@ pub fn acquire_for_context(
     // before `acquire` is called, and its result is moved into the closure. `acquire`
     // doesn't expose an "already live" peek, so this work happens even when a second
     // context shares an already-running tunnel and the factory never runs; the
-    // resulting `AllocatedPort`/`TransientIdentityFile` are simply dropped unused in
+    // resulting local address and `TransientIdentityFile` are simply dropped unused in
     // that case (the identity file's `Drop` removes it immediately).
     // ponytail: a secret briefly touches disk on every acquire, not just the first;
     // add a `ForwardRegistry::contains` peek if that overhead/exposure ever matters.
