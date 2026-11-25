@@ -136,6 +136,10 @@ fn an_option_like_jump_host_is_refused_before_spawning() {
     assert!(is_option_like_jump_host(" ops@-hop:22"));
     assert!(!is_option_like_jump_host("ops@hop-1.example.com:2222"));
     assert!(!is_option_like_jump_host("my-user@hop"));
+    // One entry holding several hops, as a hand edit can: each is checked.
+    assert!(is_option_like_jump_host("ops@hop1,-oProxyCommand=false"));
+    assert!(is_option_like_jump_host("ops@hop1, ops@-hop2"));
+    assert!(!is_option_like_jump_host("ops@hop1,ops@hop-2.example.com"));
 
     let config = SshTunnelConfig {
         bastion_user: "ops".to_string(),

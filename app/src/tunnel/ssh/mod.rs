@@ -167,13 +167,18 @@ impl SshTunnelConfig {
     }
 }
 
-/// Whether a `-J` hop (`[user@]host[:port]`) has a user or host starting with
-/// `-`, which ssh, or the nested ssh it runs for the hop, could read as an
-/// option. The tunnel editor refuses one, and nothing spawns `ssh` with one.
-pub(crate) fn is_option_like_jump_host(hop: &str) -> bool {
-    let hop = hop.trim();
-    let host = hop.rsplit_once('@').map_or(hop, |(_, host)| host);
-    hop.starts_with('-') || host.starts_with('-')
+/// Whether a `-J` entry has a hop (`[user@]host[:port]`) whose user or host
+/// starts with `-`, which ssh, or the nested ssh it runs for the hop, could
+/// read as an option. An entry is split on `,` first: the entries are joined
+/// into one `-J` value that ssh splits the same way, so a hand-edited
+/// `ops@hop,-oX` is two hops. The tunnel editor refuses one, and nothing
+/// spawns `ssh` with one.
+pub(crate) fn is_option_like_jump_host(entry: &str) -> bool {
+    entry.split(',').any(|hop| {
+        let hop = hop.trim();
+        let host = hop.rsplit_once('@').map_or(hop, |(_, host)| host);
+        hop.starts_with('-') || host.starts_with('-')
+    })
 }
 
 impl SshTunnelConfig {

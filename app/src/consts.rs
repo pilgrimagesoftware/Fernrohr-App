@@ -303,6 +303,11 @@ pub(crate) const PORT_FORWARD_BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// every this-many after, so a watch failing forever says so without flooding the log.
 pub(crate) const WATCH_ERROR_LOG_EVERY: u32 = 20;
 
+/// How long a port-forward's accept loop waits after the listener fails to
+/// accept (out of file descriptors, say) before trying again, so a lasting
+/// failure doesn't spin and flood the log.
+pub(crate) const PORT_FORWARD_ACCEPT_ERROR_PAUSE: Duration = Duration::from_millis(100);
+
 /// `config::saved_layouts::slugify`'s filename stem for a display name that
 /// slugifies to nothing (all punctuation, or non-ASCII with no ASCII
 /// fallback) - `saved-panel-layouts` design.md D2.

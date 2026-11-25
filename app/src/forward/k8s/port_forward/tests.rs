@@ -296,3 +296,82 @@ async fn pod_disappears_and_reappears_drives_the_supervisor_through_reconnecting
     *phase.lock() = PodPhase::Running;
     wait_for(&mut state, ForwardState::Up).await;
 }
+
+/// Tier 1 #4: stopping a forward (aborting its accept loop) ends the
+/// connections it bridged, instead of leaving them running detached.
+#[tokio::test]
+async fn aborting_the_loop_ends_its_bridged_connections() {
+    let listener = Arc::new(StdTcpListener::bind("127.0.0.1:0").await.unwrap());
+    let addr = listener.local_addr().unwrap();
+    let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel::<()>();
+    let dropped_tx = Arc::new(Mutex::new(Some(dropped_tx)));
+    let serving = tokio::spawn(serve_connections(
+        move || {
+            let listener = listener.clone();
+            async move { listener.accept().await.map(|(local, _)| local) }
+        },
+        move |_local| {
+            // Holds the connection open until dropped, then reports it.
+            let notify = DropNotify(dropped_tx.lock().take());
+            async move {
+                let _notify = notify;
+                std::future::pending::<Result<(), String>>().await
+            }
+        },
+    ));
+    let _client = tokio::net::TcpStream::connect(addr).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    serving.abort();
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), dropped_rx)
+        .await
+        .expect("the bridged connection ends when the loop is aborted")
+        .unwrap();
+}
+
+/// Sends on drop: tells a test its connection task has ended.
+struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
+
+impl Drop for DropNotify {
+    fn drop(&mut self) {
+        if let Some(tx) = self.0.take() {
+            let _ = tx.send(());
+        }
+    }
+}
+
+/// Tier 1 #4: a listener that keeps failing is retried at a pause, not in a
+/// hot loop.
+#[tokio::test]
+async fn a_failing_accept_is_retried_at_a_pause() {
+    let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = attempts.clone();
+    let serving = tokio::spawn(serve_connections(
+        move || {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async { Err(std::io::Error::other("too many open files")) }
+        },
+        |_local| async { Ok(()) },
+    ));
+    tokio::time::sleep(crate::consts::PORT_FORWARD_ACCEPT_ERROR_PAUSE * 3).await;
+    serving.abort();
+
+    let attempts = attempts.load(std::sync::atomic::Ordering::SeqCst);
+    assert!((1..=5).contains(&attempts), "{attempts} accept attempts");
+}
+
+/// Review follow-up: reaping reports a connection task that panicked instead
+/// of dropping it silently. A clean finish or an abort isn't a panic.
+#[tokio::test]
+async fn reaping_counts_a_panicked_connection() {
+    let mut connections = JoinSet::new();
+    connections.spawn(async { panic!("bridge bug") });
+    connections.spawn(async {});
+    connections.spawn(std::future::pending::<()>()).abort();
+    // Let all three finish (the panic, the clean exit, the abort).
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    assert_eq!(reap(&mut connections), 1);
+    assert!(connections.is_empty());
+}

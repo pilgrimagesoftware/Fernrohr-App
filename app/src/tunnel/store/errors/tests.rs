@@ -111,6 +111,7 @@ fn an_option_like_jump_host_is_refused() {
         "-oProxyCommand=false",
         "-oProxyCommand=false@hop",
         "ops@-hop",
+        "ops@hop2,-oProxyCommand=false",
     ] {
         let tunnel = TunnelConfig {
             name: "Prod".into(),
