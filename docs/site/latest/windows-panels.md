@@ -114,7 +114,7 @@ Closing the last panel does not return the window to the cluster picker. Disconn
 
 ### The tab menu
 
-Right-click a tab, or press <kbd>⌘K</kbd> then <kbd>M</kbd> (**Open Tab Menu**) for the focused tab, to open its menu. Move through it with <kbd>↑</kbd> and <kbd>↓</kbd>, press <kbd>Enter</kbd> to run an item, or <kbd>Esc</kbd> to close it. The menu acts on the tab it was opened for, even if that isn't the focused one.
+Right-click a tab, or press <kbd>⌘K</kbd> then <kbd>M</kbd> (**Open Tab Menu**) for the focused tab, to open its menu. Move through it with <kbd>↑</kbd> and <kbd>↓</kbd>, press <kbd>Enter</kbd> to run an item, or <kbd>Esc</kbd> to close it. Pointing at an item highlights it but doesn't change which item <kbd>Enter</kbd> runs, in this menu or any other, such as a row's or a context's menu. The menu acts on the tab it was opened for, even if that isn't the focused one.
 
 | Item | What it does |
 | --- | --- |
