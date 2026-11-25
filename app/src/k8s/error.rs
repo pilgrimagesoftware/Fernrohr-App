@@ -53,6 +53,19 @@ pub(crate) fn detail(error: &kube::Error) -> String {
     }
 }
 
+/// [`describe`] and [`detail`] for an error that isn't a `kube::Error` but may
+/// carry one in its `source()` chain - an `io::Error` from a kube response
+/// stream, say: its text, or what [`credential_plugin_failure`] keeps of a
+/// failed plugin's.
+pub(crate) fn describe_any(error: &(dyn std::error::Error + 'static)) -> String {
+    credential_plugin_failure(error).unwrap_or_else(|| error.to_string())
+}
+
+/// [`describe_any`]'s technical half, as [`detail`] is [`describe`]'s.
+pub(crate) fn detail_any(error: &(dyn std::error::Error + 'static)) -> String {
+    credential_plugin_failure(error).unwrap_or_else(|| format!("{error:?}"))
+}
+
 /// What may be shown of a kubeconfig credential plugin's failure, when
 /// `error` or anything in its `source()` chain is one - `None` otherwise.
 ///
@@ -99,7 +112,7 @@ fn plugin_failure(error: &AuthError) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{describe, detail};
+    use super::{describe, describe_any, detail, detail_any};
     use kube::core::response::Status;
 
     fn api_error(reason: &str, message: &str, code: u16) -> kube::Error {
@@ -211,5 +224,21 @@ mod tests {
             }
         }
         assert_eq!(super::credential_plugin_failure(&Cyclic), None);
+    }
+
+    /// Review follow-up: an error that only wraps a failed plugin (an
+    /// `io::Error` from a kube stream) gets the same treatment.
+    #[cfg(unix)]
+    #[test]
+    fn a_wrapped_credential_plugin_failure_is_scrubbed_too() {
+        let error = std::io::Error::other(kube::Error::Auth(failed_plugin()));
+        for text in [describe_any(&error), detail_any(&error)] {
+            for secret in ["stdout-token", "env-secret", "stderr-token"] {
+                assert!(!text.contains(secret), "{secret} in {text:?}");
+            }
+            assert!(text.contains("login expired"), "{text:?}");
+        }
+        let plain = std::io::Error::other("connection reset");
+        assert_eq!(describe_any(&plain), "connection reset");
     }
 }
