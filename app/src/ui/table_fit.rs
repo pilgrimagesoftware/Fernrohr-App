@@ -163,6 +163,12 @@ pub fn status_dot_adornment(rem: Pixels) -> Pixels {
     px(7.) + rem * 0.25
 }
 
+/// What a status icon puts before its cell's text: the 0.75rem extra-small
+/// icon and the 0.25rem gap after it (the Helm list's Status cell).
+pub fn status_icon_adornment(rem: Pixels) -> Pixels {
+    rem * 0.75 + rem * 0.25
+}
+
 /// Fits column `col_ix` of `table` to its widest cell: the header label (in
 /// the UI font, with room for the sort icon) or any measured row's text (in
 /// the data font the cells draw in) and whatever it draws beside the text,
