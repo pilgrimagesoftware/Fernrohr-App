@@ -116,6 +116,11 @@ impl TunnelsWindow {
         // usage counts, so re-read on every write, not only this window's own.
         cx.observe_global::<TunnelsRevision>(|this, cx| this.refresh(cx))
             .detach();
+        // A kubeconfig edit adds or removes contexts, which changes which bindings are stale.
+        cx.observe_global::<crate::k8s::cluster::kubeconfig_watch::KubeconfigRevision>(
+            |this, cx| this.refresh(cx),
+        )
+        .detach();
         let _ = window;
         this
     }

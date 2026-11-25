@@ -6,6 +6,7 @@ pub mod discovery_registry;
 pub(crate) mod exec_path;
 pub mod health;
 pub mod kubeconfig;
+pub mod kubeconfig_watch;
 #[cfg(test)]
 pub(crate) mod mock_api;
 pub mod namespaces;
