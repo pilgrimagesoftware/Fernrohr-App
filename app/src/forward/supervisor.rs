@@ -103,7 +103,6 @@ pub struct ForwardSupervisor {
 }
 
 impl ForwardSupervisor {
-    #[allow(dead_code)]
     pub fn spawn<T: ForwardTransport>(
         rt: &Handle,
         local_addr: SocketAddr,
@@ -121,7 +120,6 @@ impl ForwardSupervisor {
         }
     }
 
-    #[allow(dead_code)]
     pub fn state(&self) -> watch::Receiver<ForwardState> {
         self.state_rx.clone()
     }
@@ -131,7 +129,6 @@ impl ForwardSupervisor {
         self.failure.clone()
     }
 
-    #[allow(dead_code)]
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
     }

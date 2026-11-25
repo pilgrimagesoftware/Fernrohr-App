@@ -28,7 +28,6 @@ pub(crate) const BUNDLE_IDENTIFIER: &str = "com.pilgrimagesoftware.fernrohr";
 /// dial to the forwarded port before giving up and reporting a timeout.
 pub(crate) const SSH_READINESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[allow(dead_code)]
 /// `SshTransport::connect` readiness probe: delay between failed dial attempts.
 pub(crate) const SSH_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 

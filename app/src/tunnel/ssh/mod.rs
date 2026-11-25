@@ -205,7 +205,6 @@ pub struct SshTransport {
 }
 
 impl SshTransport {
-    #[allow(dead_code)]
     pub fn new(config: SshTunnelConfig) -> Self {
         Self {
             config,
