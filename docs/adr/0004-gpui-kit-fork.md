@@ -37,9 +37,11 @@ tells whether a release does: it fails against unpatched gpui-kit.
 - Keyboard users get the row they chose, wherever the pointer rests.
 - Every gpui-kit upgrade now has a fork step: branch from the new tag, port the patch, tag,
   repoint the five entries. The hover handler moves between releases, so the port is by hand.
-- The App's crates resolve gpui-kit from git, not crates.io: `cargo audit` and Dependabot see
-  the fork, and a build needs GitHub access to the fork.
-- `gpui-terminal`, our other fork, must use the same gpui-kit release; the patch covers its
+- The five gpui-kit crates resolve from git, not crates.io, so `cargo audit` and Dependabot
+  lose sight of them: no RustSec advisory is matched against them, and no update PR opens for
+  a new gpui-kit release. Watching upstream releases and advisories for gpui-kit becomes a
+  manual job, done as part of each fork step. A build also needs GitHub access to the fork.
+- `gpui-terminal`, our own crate, must use the same gpui-kit release; the patch covers its
   dependency too, since `[patch.crates-io]` applies to the whole build.
 
 ## Alternatives Considered
