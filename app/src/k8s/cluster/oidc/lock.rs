@@ -67,6 +67,6 @@ async fn lock_file(kubeconfig: PathBuf) -> Result<std::fs::File, String> {
         Ok::<_, std::io::Error>(file)
     })
     .await
-    .map_err(|error| format!("the kubeconfig lock couldn't be taken ({error})"))?
+    .map_err(|error| format!("taking the kubeconfig lock stopped unexpectedly ({error})"))?
     .map_err(|error| format!("the kubeconfig lock couldn't be taken ({error})"))
 }
