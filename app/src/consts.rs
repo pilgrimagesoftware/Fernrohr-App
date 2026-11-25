@@ -332,8 +332,8 @@ pub(crate) const MCP_MAX_REQUEST_BYTES: usize = 1024 * 1024;
 pub(crate) const MCP_MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
 
 /// `agent-mcp`: how long a new endpoint connection has to complete its
-/// handshake before the app drops it, so a client that connects and says
-/// nothing doesn't hold a connection slot.
+/// handshake, and then to send its request, before the app drops it, so a
+/// client that connects and says nothing doesn't hold a connection slot.
 pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `agent-mcp`: how many endpoint connections are served at once. Each tool

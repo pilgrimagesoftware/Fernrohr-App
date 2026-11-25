@@ -19,7 +19,7 @@ use super::frame::{self, FrameError};
 use super::protocol::{
     EndpointToken, Hello, HelloReply, PROTOCOL_VERSION, Rejection, Reply, Request,
 };
-use super::session::Sessions;
+use super::session::{SessionId, Sessions};
 use super::tools::{ToolContext, ToolRegistry};
 use crate::consts::{
     MCP_HANDSHAKE_TIMEOUT, MCP_MAX_CONNECTIONS, MCP_MAX_REPLY_BYTES, MCP_MAX_REQUEST_BYTES,
@@ -238,10 +238,61 @@ async fn serve_connection(stream: UnixStream, state: &ServerState, slot: OwnedSe
         return;
     }
     let (mut reader, mut writer) = stream.into_split();
+    if !handshake(&mut reader, &mut writer, state).await {
+        return;
+    }
 
+    // A client sends its request straight after the handshake: one that holds
+    // the connection open without it is dropped, as a silent hello is, so it
+    // can't keep a connection slot.
+    let request = match tokio::time::timeout(
+        MCP_HANDSHAKE_TIMEOUT,
+        frame::read::<Request>(&mut reader, MCP_MAX_REQUEST_BYTES),
+    )
+    .await
+    {
+        Ok(Ok(request)) => request,
+        Ok(Err(error)) => {
+            log::warn!(target: LOG_TARGET, "unreadable request: {error}");
+            return;
+        }
+        Err(_) => {
+            log::warn!(target: LOG_TARGET, "no request within the handshake timeout");
+            return;
+        }
+    };
+    let started = Instant::now();
+    let (label, reply) = match request {
+        Request::OpenSession { client_name } => {
+            return serve_session(client_name, reader, writer, state, slot).await;
+        }
+        Request::ListTools { session } => ("tools/list".to_string(), list_tools(state, &session)),
+        Request::CallTool {
+            session,
+            name,
+            arguments,
+        } => {
+            let Some(reply) = call_tool(state, &session, &name, arguments, &mut reader).await
+            else {
+                log_request(&name, "cancelled", started);
+                return;
+            };
+            (name, reply)
+        }
+    };
+    reply_and_log(&mut writer, &label, &reply, started).await;
+}
+
+/// Reads the client's hello within [`MCP_HANDSHAKE_TIMEOUT`] and answers it;
+/// whether the connection may go on to its request.
+async fn handshake(
+    reader: &mut OwnedReadHalf,
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    state: &ServerState,
+) -> bool {
     let hello = tokio::time::timeout(
         MCP_HANDSHAKE_TIMEOUT,
-        frame::read::<Hello>(&mut reader, HELLO_LIMIT),
+        frame::read::<Hello>(reader, HELLO_LIMIT),
     )
     .await;
     let verdict = match hello {
@@ -253,83 +304,80 @@ async fn serve_connection(stream: UnixStream, state: &ServerState, slot: OwnedSe
         Ok(Ok(_) | Err(FrameError::Malformed)) => HelloReply::Rejected {
             reason: Rejection::Token,
         },
-        Ok(Err(_)) | Err(_) => return,
+        Ok(Err(_)) | Err(_) => return false,
     };
-    if frame::write(&mut writer, &verdict, HELLO_LIMIT)
-        .await
-        .is_err()
-    {
-        return;
+    if frame::write(writer, &verdict, HELLO_LIMIT).await.is_err() {
+        return false;
     }
     if let HelloReply::Rejected { reason } = verdict {
         log::warn!(target: LOG_TARGET, "refused a handshake: {reason:?}");
-        return;
+        return false;
     }
+    true
+}
 
-    let request = match frame::read::<Request>(&mut reader, MCP_MAX_REQUEST_BYTES).await {
-        Ok(request) => request,
-        Err(error) => {
-            log::warn!(target: LOG_TARGET, "unreadable request: {error}");
-            return;
-        }
-    };
-    let started = Instant::now();
-    let (label, reply) = match request {
-        Request::OpenSession { client_name } => {
-            return serve_session(client_name, reader, writer, state, slot).await;
-        }
-        Request::ListTools { session } => (
-            "tools/list".to_string(),
-            match state.sessions.caller(&session) {
-                Some(_) => Reply::Tools {
-                    tools: state.registry.specs(),
-                },
-                None => no_session(),
-            },
-        ),
-        Request::CallTool {
-            session,
-            name,
-            arguments,
-        } => {
-            let Some(caller) = state.sessions.caller(&session) else {
-                let reply = no_session();
-                log_request(&name, outcome(&reply), started);
-                let _ = frame::write(&mut writer, &reply, MCP_MAX_REPLY_BYTES).await;
-                return;
-            };
-            let mut context = state.context.clone();
-            context.caller = Some(caller);
-            let call = state.registry.call(&name, arguments, context);
-            let result = tokio::select! {
-                result = call => result,
-                () = hang_up(&mut reader) => {
-                    log_request(&name, "cancelled", started);
-                    return;
-                }
-            };
-            (name, Reply::Called { result })
-        }
-    };
+/// `tools/list`: the tools, for a live session.
+fn list_tools(state: &ServerState, session: &SessionId) -> Reply {
+    match state.sessions.caller(session) {
+        Some(_) => Reply::Tools {
+            tools: state.registry.specs(),
+        },
+        None => no_session(),
+    }
+}
 
-    let sent = match frame::write(&mut writer, &reply, MCP_MAX_REPLY_BYTES).await {
+/// A tool call, for a live session - or `None` when the client hung up first,
+/// which cancels the call.
+async fn call_tool(
+    state: &ServerState,
+    session: &SessionId,
+    name: &str,
+    arguments: serde_json::Map<String, serde_json::Value>,
+    reader: &mut OwnedReadHalf,
+) -> Option<Reply> {
+    let Some(caller) = state.sessions.caller(session) else {
+        return Some(no_session());
+    };
+    let mut context = state.context.clone();
+    context.caller = Some(caller);
+    let call = state.registry.call(name, arguments, context);
+    tokio::select! {
+        result = call => Some(Reply::Called { result }),
+        () = hang_up(reader) => None,
+    }
+}
+
+/// Sends `reply` - or, when it's past [`MCP_MAX_REPLY_BYTES`], a too-large
+/// error in its place - and logs the request `label` with its outcome.
+async fn reply_and_log(
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    label: &str,
+    reply: &Reply,
+    started: Instant,
+) {
+    let sent = match frame::write(writer, reply, MCP_MAX_REPLY_BYTES).await {
         Err(FrameError::TooLarge) => {
             let too_large = Reply::Called {
                 result: Err(ToolError::ResultTooLarge {
                     limit: MCP_MAX_REPLY_BYTES,
                 }),
             };
-            log_request(&label, "result_too_large", started);
-            frame::write(&mut writer, &too_large, MCP_MAX_REPLY_BYTES).await
+            log_request(label, "result_too_large", started);
+            frame::write(writer, &too_large, MCP_MAX_REPLY_BYTES).await
         }
         sent => {
-            log_request(&label, outcome(&reply), started);
+            log_request(label, outcome(reply), started);
             sent
         }
     };
     if let Err(error) = sent {
         log::warn!(target: LOG_TARGET, "could not send a reply: {error}");
     }
+}
+
+/// Refuses a session with `error`, best effort: the connection ends either way.
+async fn refuse_session(writer: &mut tokio::net::unix::OwnedWriteHalf, error: ToolError) {
+    let _ = frame::write(writer, &Reply::Refused { error }, MCP_MAX_REPLY_BYTES).await;
 }
 
 /// A session's connection (`mcp-connections` design decision 3): opens the
@@ -344,16 +392,10 @@ async fn serve_session(
 ) {
     let Ok(session_slot) = Arc::clone(&state.session_slots).try_acquire_owned() else {
         log::warn!(target: LOG_TARGET, "refused a session: all session slots busy");
-        let _ = frame::write(
-            &mut writer,
-            &Reply::Refused {
-                error: ToolError::Unavailable {
-                    reason: Unavailability::TooManySessions,
-                },
-            },
-            MCP_MAX_REPLY_BYTES,
-        )
-        .await;
+        let error = ToolError::Unavailable {
+            reason: Unavailability::TooManySessions,
+        };
+        refuse_session(&mut writer, error).await;
         return;
     };
     // A session lasts the client's lifetime; it mustn't keep a request slot.
@@ -362,14 +404,7 @@ async fn serve_session(
         Ok(opened) => opened,
         Err(error) => {
             log::warn!(target: LOG_TARGET, "could not open a session: {error}");
-            let _ = frame::write(
-                &mut writer,
-                &Reply::Refused {
-                    error: ToolError::Internal,
-                },
-                MCP_MAX_REPLY_BYTES,
-            )
-            .await;
+            refuse_session(&mut writer, ToolError::Internal).await;
             return;
         }
     };
