@@ -1,4 +1,83 @@
 
+## 0.20.0 - 2026-11-26
+
+### <!-- 0 -->🚀 Features
+- List refused kinds namespace by namespace
+- Watch one namespace's pods for Controls and Used By
+- Namespace fallback for the Pods list and pod detail
+- Upgrade gpui-kit to 0.11.0 through the Fernrohr fork **[BREAKING]**
+
+
+### <!-- 1 -->🐛 Bug Fixes
+- Move namespace subscribers off a refused cluster-wide watch
+- Leave release bookkeeping out of the notes
+- Resolve the RustSec vulnerabilities cargo audit reports
+- Log errors that were silently dropped
+- Replace a moved follow's observer instead of leaking it
+- Require rustix 1.1.6 (RUSTSEC-2026-0486)
+- Follow a ReplicaSet only to an apps Deployment
+- Open an Ingress link only on the host it shows
+- Create the ssh identity file private in one step
+- End ssh's options before the bastion destination
+- Keep a credential plugin's output out of error text
+- Create config files and the app log owner-only
+- Drop a connection that sends no request after its hello
+- Route the remaining kube error text through describe
+- Refuse a jump host whose user or host starts with '-'
+- Keep a credential plugin's output out of the watch retry log
+- Keep a settings file that fails to parse, and save atomically
+- Log a saved dock layout that won't load instead of panicking
+- End a k8s port-forward's connections when it stops; pause on accept errors
+- Read ssh's flags when deciding a pid is our forward
+- Share the in-memory secret fallback across the process
+- Log a k8s port-forward connection task that panicked
+- Check every hop in a comma-joined jump host entry
+
+
+### <!-- 10 -->💼 Other
+- Ignore jiff major updates until k8s-openapi moves to jiff 1
+- Pin gpui-terminal to its v0.3.0 release
+- Bump minor, not major, on breaking changes before 1.0
+
+
+### <!-- 2 -->🚜 Refactor
+- One group-and-kind check instead of hand-rolled ones
+- Parse revision status once; one current-revision helper
+- Identify owner and action kinds by group and kind
+- Share the keyboard-follow, key lookup and picker wiring
+- One helper opens every panel kind in the center
+- One stream state instead of three fields
+- Parse the pod phase once into PodPhase
+- A typed renewal error, and distinct lock failures
+- Small idiom fixes from the smell review
+
+
+### <!-- 3 -->📚 Documentation
+- ADR-0004 for the gpui-kit fork; menu hover behaviour
+- State that cargo audit and Dependabot lose sight of gpui-kit
+- Stop naming the removed AllocatedPort in a comment
+
+
+### <!-- 4 -->⚡ Performance
+- Write the library off the UI thread
+- Check a pid's liveness without forking kill
+
+
+### <!-- 6 -->🧪 Testing
+- Wait for the object before reading Controls
+- Name credential-plugin test markers as markers
+- Compare round-tripped keystrokes, not strings
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+- Limit the CI workflow's token to read-only contents
+- Run cargo audit on pull requests, develop, master and weekly
+- Drop stale UNWIRED markers and dead-code allows
+- Drop allow(dead_code) from items that are used
+- Drop a duplicate cfg(unix) on mod server
+
+
+
 ## 0.19.0 - 2026-11-25
 
 ### <!-- 0 -->🚀 Features
