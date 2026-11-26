@@ -331,10 +331,15 @@ pub fn title_element(
         // - a new or restored tab took focus only after switching away and back.
         // Focusing here covers the label and icon. Once gpui-kit focuses on that
         // path itself, this can come out. Not stopping propagation: the tab still
-        // selects, and a drag still starts, as before.
+        // selects, and a drag still starts, as before. Since gpui-kit 0.11 the
+        // tab is itself focusable and takes focus on mouse-down unless a nested
+        // control already did - `prevent_default` is how this one says so.
         .on_mouse_down(MouseButton::Left, {
             let focus_handle = focus_handle.clone();
-            move |_, window, cx| window.focus(&focus_handle, cx)
+            move |_, window, cx| {
+                window.focus(&focus_handle, cx);
+                window.prevent_default();
+            }
         })
         // The tab's menu (`panel-tab-menu`), for this panel - not the focused
         // one - at the pointer.

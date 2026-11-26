@@ -273,7 +273,7 @@ async fn disconnect_on_a_waiting_capsule_closes_only_its_context(cx: &mut TestAp
     assert!(dialog_open(&mut h), "Disconnect asks first");
     // Tab past Cancel to Disconnect, then Space.
     keys(&mut h, "tab tab");
-    let space = gpui_kit::Keystroke::parse("space").expect("valid");
+    let space = crate::util::keystroke::parse("space").expect("valid");
     h.vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,
@@ -292,11 +292,14 @@ async fn disconnect_on_a_waiting_capsule_closes_only_its_context(cx: &mut TestAp
     assert!(still_waiting(&mut h), "qa still waits on the tunnel");
 }
 
-/// A capsule not waiting on anything offers only Disconnect: Enter picks it.
+/// A capsule not waiting on anything offers only Disconnect: Down selects it and Enter
+/// picks it. The pointer resting on the menu selects nothing (Fernrohr#118), so the
+/// keyboard chooses the row.
 #[gpui_kit::test]
 async fn a_capsule_not_waiting_offers_only_disconnect(cx: &mut TestAppContext) {
     let mut h = harness(cx, &[("dev", ConnectionState::Connecting)]);
     click(&mut h, "context-chip-menu-dev");
+    keys(&mut h, "down");
     keys(&mut h, "enter");
     assert!(dialog_open(&mut h), "the first row is Disconnect");
 }
@@ -311,7 +314,7 @@ fn the_menu_rows_show_the_commands_keys() {
         h.vcx.update(|window, cx| window.render_frame(cx));
         for key in ["secondary-alt-p", "secondary-alt-c"] {
             let label = gpui_kit::component::kbd::Kbd::format(
-                &gpui_kit::Keystroke::parse(key).expect("valid"),
+                &crate::util::keystroke::parse(key).expect("valid"),
             );
             assert!(
                 recorded.families_of(&label).is_some(),
@@ -320,4 +323,52 @@ fn the_menu_rows_show_the_commands_keys() {
         }
         keys(&mut h, "escape");
     });
+}
+
+/// Fernrohr#118: the pointer resting on a menu row doesn't change what Enter activates.
+/// With Proceed chosen by the keyboard and the pointer over Cancel, Enter proceeds.
+#[gpui_kit::test]
+async fn a_hovered_row_does_not_change_what_enter_activates(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestQueryExt as _;
+    let (mut h, mut answer) = two_waiting(cx);
+    click(&mut h, "context-chip-menu-dev");
+    keys(&mut h, "down");
+    // The rows top to bottom: Proceed, Cancel, Disconnect.
+    let cancel = h.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        let rows = window.find_all_by_role(gpui_kit::Role::MenuItem);
+        assert!(
+            rows.len() >= 2,
+            "the menu lists Proceed and Cancel: {rows:?}"
+        );
+        rows[1].bounds().center()
+    });
+    h.vcx.simulate_mouse_move(cancel, None, Modifiers::none());
+    h.vcx.run_until_parked();
+
+    keys(&mut h, "enter");
+    assert_eq!(
+        answer.try_recv(),
+        Ok(Decision::Proceed),
+        "the keyboard's row, not the hovered one"
+    );
+}
+
+/// With the keyboard on Proceed, a click on Cancel still chooses Cancel: the pointer
+/// acts by clicking, not by resting.
+#[gpui_kit::test]
+async fn a_clicked_row_is_what_activates(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestQueryExt as _;
+    let (mut h, mut answer) = two_waiting(cx);
+    click(&mut h, "context-chip-menu-dev");
+    keys(&mut h, "down");
+    let cancel = h.vcx.update(|window, cx| {
+        window.render_frame(cx);
+        window.find_all_by_role(gpui_kit::Role::MenuItem)[1]
+            .bounds()
+            .center()
+    });
+    h.vcx.simulate_click(cancel, Modifiers::none());
+    h.vcx.run_until_parked();
+    assert_eq!(answer.try_recv(), Ok(Decision::Cancel));
 }

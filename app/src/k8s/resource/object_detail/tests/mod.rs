@@ -9,6 +9,7 @@ mod autoscaling;
 mod cluster;
 mod conditions;
 mod controlled;
+mod controlled_namespace;
 mod copy;
 mod delete;
 mod edit;

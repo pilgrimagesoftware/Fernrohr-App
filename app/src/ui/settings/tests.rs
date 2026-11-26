@@ -7,9 +7,7 @@ use crate::keymap::LiveKeymap;
 use crate::ui::panel::focus::FocusNextPanel;
 use crate::util::shell::MainWindow;
 use gpui_kit::component::Root;
-use gpui_kit::{
-    Action, App, Entity, KeyContext, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
-};
+use gpui_kit::{Action, App, Entity, KeyContext, TestAppContext, VisualTestContext, WindowHandle};
 
 mod agent_access;
 mod layout;
@@ -39,7 +37,9 @@ fn app(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
 }
 
 fn press(cx: &mut VisualTestContext, keys: &str) {
-    let keys = Keystroke::parse(keys).expect("valid").unparse();
+    let keys = crate::util::keystroke::parse(keys)
+        .expect("valid")
+        .unparse(crate::util::keystroke::HOST_OS);
     cx.simulate_keystrokes(&keys);
     cx.run_until_parked();
 }
@@ -68,7 +68,7 @@ fn open(
 }
 
 fn resolves(cx: &App, key: &str, action: &dyn Action) -> bool {
-    let keystroke = Keystroke::parse(key).expect("a valid keystroke");
+    let keystroke = crate::util::keystroke::parse(key).expect("a valid keystroke");
     let (matched, _) = cx
         .key_bindings()
         .borrow()
@@ -81,7 +81,9 @@ fn resolves(cx: &App, key: &str, action: &dyn Action) -> bool {
 /// `keys` as a recording stores them on this platform - `cmd` reads `super`
 /// off macOS.
 fn spelled(keys: &str) -> String {
-    Keystroke::parse(keys).expect("a valid keystroke").unparse()
+    crate::util::keystroke::parse(keys)
+        .expect("a valid keystroke")
+        .unparse(crate::util::keystroke::HOST_OS)
 }
 
 /// Close Window's key: `cmd-w` on macOS, `ctrl-w` elsewhere.

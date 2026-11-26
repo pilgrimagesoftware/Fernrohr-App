@@ -238,7 +238,7 @@ impl LogsPanel {
         )
         .unwrap_or_else(|| {
             Kbd::new(
-                Keystroke::parse(super::super::commands::RESET_LABELS_KEY)
+                crate::util::keystroke::parse(super::super::commands::RESET_LABELS_KEY)
                     .expect("valid keybinding"),
             )
         });
@@ -281,7 +281,7 @@ impl LogsPanel {
         let key = Kbd::binding_for_action(&NextLabelContainer, Some(PANEL_KEY_CONTEXT), window)
             .unwrap_or_else(|| {
                 Kbd::new(
-                    Keystroke::parse(super::super::commands::CONTAINER_FILTER_KEY)
+                    crate::util::keystroke::parse(super::super::commands::CONTAINER_FILTER_KEY)
                         .expect("valid keybinding"),
                 )
             });

@@ -117,11 +117,7 @@ pub(super) fn harness(cx: &mut TestAppContext) -> Harness {
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
         crate::ui::link::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let config_reads = Arc::new(AtomicUsize::new(0));
@@ -217,7 +213,7 @@ pub(super) fn press_key_by_keyboard(
         if focused == Some(true) {
             // A key down *and* up, as a real press is: `Button` fires its
             // keyboard click on the release.
-            let keystroke = gpui_kit::Keystroke::parse(key).unwrap();
+            let keystroke = crate::util::keystroke::parse(key).unwrap();
             vcx.simulate_event(gpui_kit::KeyDownEvent {
                 keystroke: keystroke.clone(),
                 is_held: false,

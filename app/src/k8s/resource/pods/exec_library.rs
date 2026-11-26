@@ -12,9 +12,7 @@ impl PodsPanel {
     fn library_pod(&self, cx: &App) -> Option<(Resource, String)> {
         let selection = self.table_selection(cx)?;
         let pod = self
-            .table
-            .read(cx)
-            .find(&selection.namespace, &selection.name, None)?
+            .find_listed(&selection.namespace, &selection.name, cx)?
             .clone();
         Some((
             Resource::Pod(Box::new(pod)),

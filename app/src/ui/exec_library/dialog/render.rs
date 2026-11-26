@@ -38,7 +38,7 @@ pub(crate) fn workload_kind_id(kind: WorkloadKind) -> SharedString {
 /// Save and Run's key, from the live keymap.
 fn save_and_run_key(window: &Window) -> Kbd {
     Kbd::binding_for_action(&SaveAndRun, Some(ENTRY_CONTEXT), window).unwrap_or_else(|| {
-        Kbd::new(Keystroke::parse(SAVE_AND_RUN_KEY).expect("a valid default key"))
+        Kbd::new(crate::util::keystroke::parse(SAVE_AND_RUN_KEY).expect("a valid default key"))
     })
 }
 

@@ -8,19 +8,19 @@ use crate::config::ui::{ShortcutTimeout, Theme as ThemePreference, UiConfig};
 use crate::ui::shortcut_timeout::current;
 use crate::util::shell::MainWindow;
 use gpui_kit::component::Root;
-use gpui_kit::{
-    KeyDownEvent, KeyUpEvent, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
-};
+use gpui_kit::{KeyDownEvent, KeyUpEvent, TestAppContext, VisualTestContext, WindowHandle};
 
 fn press(cx: &mut VisualTestContext, keys: &str) {
-    let keys = Keystroke::parse(keys).expect("valid").unparse();
+    let keys = crate::util::keystroke::parse(keys)
+        .expect("valid")
+        .unparse(crate::util::keystroke::HOST_OS);
     cx.simulate_keystrokes(&keys);
     cx.run_until_parked();
 }
 
 /// A button clicks on the key's release, so Space needs both events.
 fn press_space(cx: &mut VisualTestContext) {
-    let keystroke = Keystroke::parse("space").expect("valid");
+    let keystroke = crate::util::keystroke::parse("space").expect("valid");
     cx.simulate_event(KeyDownEvent {
         keystroke: keystroke.clone(),
         is_held: false,

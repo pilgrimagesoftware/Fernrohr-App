@@ -23,7 +23,7 @@ pub(super) fn registered_bindings(
 ) -> Vec<gpui_kit::KeyBinding> {
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
-    crate::keymap::bindings(&registry, keymap, cx.keyboard_mapper().as_ref())
+    crate::keymap::bindings(&registry, keymap, cx)
 }
 
 pub(super) fn stub_panel(

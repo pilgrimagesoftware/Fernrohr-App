@@ -17,9 +17,7 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::{Root, WindowExt as _};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, TestAppContext, VisualTestContext,
-};
+use gpui_kit::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
 use kube::core::GroupVersionKind;
 use serde_json::json;
 
@@ -59,11 +57,7 @@ fn open(cx: &mut TestAppContext, delete: bool) -> Harness {
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_list::register_commands(&mut registry);
         crate::ui::confirm_dialog::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         cx.bind_keys(crate::ui::list_keys::bindings(&[
             crate::k8s::resource::object_list::LIST_KEY_CONTEXT,
@@ -113,8 +107,11 @@ impl Harness {
 
     fn press(&mut self, keys: &str) {
         for key in keys.split(' ') {
-            self.vcx
-                .simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+            self.vcx.simulate_keystrokes(
+                &crate::util::keystroke::parse(key)
+                    .expect("valid")
+                    .unparse(crate::util::keystroke::HOST_OS),
+            );
         }
         self.vcx.run_until_parked();
     }

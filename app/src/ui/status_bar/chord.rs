@@ -81,13 +81,9 @@ impl StatusBarView {
                 cx.try_global::<CommandRegistry>(),
                 cx.try_global::<LiveKeymap>(),
             ) {
-                (Some(registry), Some(live)) => keymap::completions(
-                    registry,
-                    live.config(),
-                    &keys,
-                    &window.context_stack(),
-                    cx.keyboard_mapper().as_ref(),
-                ),
+                (Some(registry), Some(live)) => {
+                    keymap::completions(registry, live.config(), &keys, &window.context_stack(), cx)
+                }
                 _ => Vec::new(),
             };
             PendingChord { keys, completions }
@@ -126,7 +122,11 @@ impl StatusBarView {
     pub(crate) fn pending_chord(&self) -> Option<(Vec<String>, Vec<&'static str>)> {
         self.chord.as_ref().map(|chord| {
             (
-                chord.keys.iter().map(Keystroke::unparse).collect(),
+                chord
+                    .keys
+                    .iter()
+                    .map(|key| key.unparse(crate::util::keystroke::HOST_OS))
+                    .collect(),
                 chord.completions.iter().map(|c| c.id).collect(),
             )
         })

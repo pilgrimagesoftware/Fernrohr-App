@@ -44,7 +44,9 @@ async fn resolve_with_fresh_tokens(
     context: Option<&str>,
     files: &[std::path::PathBuf],
 ) -> Result<Config, String> {
-    oidc::refresh_expired(&mut kubeconfig, context, files).await?;
+    oidc::refresh_expired(&mut kubeconfig, context, files)
+        .await
+        .map_err(|error| error.to_string())?;
     let own_proxy = super::proxy_env::kubeconfig_proxy(&kubeconfig, context).is_some();
     let mut config = Config::from_custom_kubeconfig(
         kubeconfig,

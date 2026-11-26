@@ -45,6 +45,10 @@ impl Render for TunnelEditor {
             .field_errors
             .contains(&TunnelFieldError::InvalidPort)
             .then_some("Port must be between 1 and 65535.");
+        let jump_error = self
+            .field_errors
+            .contains(&TunnelFieldError::OptionLikeJumpHost)
+            .then_some("A jump host's user or host can't start with \"-\".");
 
         let auth_label = match self.auth {
             TunnelAuth::SshConfig => "SSH config/agent",
@@ -128,7 +132,7 @@ impl Render for TunnelEditor {
                 field(
                     "Jump hosts (comma-separated, optional)",
                     &self.jump_hosts,
-                    None,
+                    jump_error,
                 )
                 .into_any_element(),
             );

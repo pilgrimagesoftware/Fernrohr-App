@@ -11,9 +11,7 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, TestAppContext, VisualTestContext,
-};
+use gpui_kit::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
 use serde_json::{Value, json};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -168,8 +166,11 @@ pub(in crate::k8s::resource::pods) fn open_with(
 
 impl Harness {
     pub(in crate::k8s::resource::pods) fn press(&mut self, key: &str) {
-        self.vcx
-            .simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+        self.vcx.simulate_keystrokes(
+            &crate::util::keystroke::parse(key)
+                .expect("valid")
+                .unparse(crate::util::keystroke::HOST_OS),
+        );
         self.vcx.run_until_parked();
     }
 

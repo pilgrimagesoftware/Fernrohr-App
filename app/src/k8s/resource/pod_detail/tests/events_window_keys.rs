@@ -10,8 +10,7 @@ use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, Modifiers, TestAppContext,
-    VisualTestContext,
+    AppContext as _, Entity, Focusable as _, Modifiers, TestAppContext, VisualTestContext,
 };
 
 fn temp_path() -> std::path::PathBuf {
@@ -53,7 +52,11 @@ fn panel_window(
 }
 
 fn press(vcx: &mut VisualTestContext, key: &str) {
-    vcx.simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+    vcx.simulate_keystrokes(
+        &crate::util::keystroke::parse(key)
+            .expect("valid")
+            .unparse(crate::util::keystroke::HOST_OS),
+    );
     vcx.run_until_parked();
 }
 

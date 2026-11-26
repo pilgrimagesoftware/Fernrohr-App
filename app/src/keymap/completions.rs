@@ -10,7 +10,7 @@
 
 use super::{KeymapConfig, load_binding, resolve};
 use crate::command::CommandRegistry;
-use gpui_kit::{KeyContext, Keystroke, PlatformKeyboardMapper};
+use gpui_kit::{KeyContext, Keystroke};
 
 /// One way to finish the pending chord.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,7 +30,7 @@ pub fn completions(
     config: &KeymapConfig,
     pending: &[Keystroke],
     contexts: &[KeyContext],
-    mapper: &dyn PlatformKeyboardMapper,
+    cx: &gpui_kit::App,
 ) -> Vec<Completion> {
     if pending.is_empty() {
         return Vec::new();
@@ -43,8 +43,8 @@ pub fn completions(
                 return None;
             }
             let action = || command.action.boxed_clone();
-            let binding = load_binding(command, &chosen, action(), mapper)
-                .or_else(|| load_binding(command, command.default_binding, action(), mapper))?;
+            let binding = load_binding(command, &chosen, action(), cx)
+                .or_else(|| load_binding(command, command.default_binding, action(), cx))?;
             let keys = binding.keystrokes();
             let extends = keys.len() > pending.len()
                 && pending

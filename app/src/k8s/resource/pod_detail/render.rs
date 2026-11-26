@@ -211,17 +211,22 @@ impl Render for PodDetailPanel {
         let toggle_key =
             Kbd::binding_for_action(&ToggleDetailView, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| {
-                    Kbd::new(Keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"))
+                    Kbd::new(
+                        crate::util::keystroke::parse(TOGGLE_VIEW_KEY).expect("valid keybinding"),
+                    )
                 });
         let logs_key = Kbd::binding_for_action(&ViewLogs, Some(PANEL_KEY_CONTEXT), window)
             .unwrap_or_else(|| {
-                Kbd::new(Keystroke::parse(VIEW_LOGS_KEY).expect("valid keybinding"))
+                Kbd::new(crate::util::keystroke::parse(VIEW_LOGS_KEY).expect("valid keybinding"))
             });
         let logs_hint = KeyHint::new(logs_key, "Logs");
         let logs_flipped_key =
             Kbd::binding_for_action(&ViewLogsFlipped, Some(PANEL_KEY_CONTEXT), window)
                 .unwrap_or_else(|| {
-                    Kbd::new(Keystroke::parse(VIEW_LOGS_FLIPPED_KEY).expect("valid keybinding"))
+                    Kbd::new(
+                        crate::util::keystroke::parse(VIEW_LOGS_FLIPPED_KEY)
+                            .expect("valid keybinding"),
+                    )
                 });
         let logs_flipped_hint =
             KeyHint::new(logs_flipped_key, crate::ui::logs_panels::flipped_label(cx));
@@ -261,8 +266,9 @@ impl Render for PodDetailPanel {
                     MANAGED_FIELDS_TAB_KEY,
                 ),
             };
-            Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
-                .unwrap_or_else(|| Kbd::new(Keystroke::parse(literal).expect("valid keybinding")))
+            Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window).unwrap_or_else(|| {
+                Kbd::new(crate::util::keystroke::parse(literal).expect("valid keybinding"))
+            })
         };
         // The pod's name (and, in a multi-context window, its context) on the left;
         // the tab and view-toggle hints on the right.

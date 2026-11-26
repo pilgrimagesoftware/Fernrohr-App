@@ -22,13 +22,13 @@
 use super::super::approval::{ApprovalRequest, approve};
 use super::super::cluster::{ContextStatus, caller_agent, kubeconfig_contexts, status};
 use super::super::error::{ToolError, Unavailability};
-use super::super::redact::redact;
 use super::super::tools::{ToolContext, ToolKind, ToolOutput, ToolRegistry, ToolResult};
 use crate::config::tunnels::TunnelKind;
 use crate::consts::MCP_CONNECT_POLL;
 use crate::k8s::cluster::context_health::ContextHealth;
 use crate::k8s::cluster::session::{AgentId, ClusterRegistry, Holder};
 use crate::tunnel::store::TunnelStore;
+use crate::util::redact::redact;
 use crate::util::shell;
 use schemars::JsonSchema;
 use serde::Deserialize;

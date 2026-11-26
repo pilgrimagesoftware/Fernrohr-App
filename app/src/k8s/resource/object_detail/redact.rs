@@ -17,7 +17,7 @@ pub(super) const LAST_APPLIED_ANNOTATION: &str = "kubectl.kubernetes.io/last-app
 /// Redacts `object` in place when it is a core Secret; any other kind is left
 /// as it is. `agent-mcp`'s read tools apply it to every object they return.
 pub(crate) fn redact(kind: &DiscoveredKind, object: &mut DynamicObject) {
-    if !(kind.gvk.group.is_empty() && kind.gvk.kind == "Secret") {
+    if !kind.is_core("Secret") {
         return;
     }
     redact_values(&mut object.data);

@@ -24,14 +24,10 @@ pub(crate) const DOCS_URL: &str = "https://pilgrimagesoftware.github.io/Fernrohr
 #[cfg(target_os = "macos")]
 pub(crate) const BUNDLE_IDENTIFIER: &str = "com.pilgrimagesoftware.fernrohr";
 
-// UNWIRED(#3): `SshTransport` (tunnel-subsystem section 3) has no caller until section
-// 6.2's connect-path integration, so dead_code analysis can't see these are reachable.
-#[allow(dead_code)]
 /// `SshTransport::connect` readiness probe: how long to keep retrying a local TCP
 /// dial to the forwarded port before giving up and reporting a timeout.
 pub(crate) const SSH_READINESS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[allow(dead_code)]
 /// `SshTransport::connect` readiness probe: delay between failed dial attempts.
 pub(crate) const SSH_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -122,9 +118,6 @@ pub(crate) const OIDC_EXPIRY_MARGIN: Duration = Duration::from_secs(60);
 /// (#188): discovery, then the token refresh.
 pub(crate) const OIDC_ISSUER_TIMEOUT: Duration = Duration::from_secs(15);
 
-// UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller of
-// the section 5.2 keychain wrapper this backs.
-#[allow(dead_code)]
 /// `keyring` service name for tunnel secrets (`account` is the tunnel id). A distinct
 /// service from `keychain.rs`'s smoke-test constant so a spike credential never
 /// collides with a real tunnel's stored key.
@@ -306,6 +299,15 @@ pub(crate) const PORT_FORWARD_HEALTH_CHECK_INTERVAL: Duration = Duration::from_s
 pub(crate) const PORT_FORWARD_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
 pub(crate) const PORT_FORWARD_BACKOFF_MAX: Duration = Duration::from_secs(30);
 
+/// A watch whose stream keeps failing (network, a 5xx) logs its first failure and then
+/// every this-many after, so a watch failing forever says so without flooding the log.
+pub(crate) const WATCH_ERROR_LOG_EVERY: u32 = 20;
+
+/// How long a port-forward's accept loop waits after the listener fails to
+/// accept (out of file descriptors, say) before trying again, so a lasting
+/// failure doesn't spin and flood the log.
+pub(crate) const PORT_FORWARD_ACCEPT_ERROR_PAUSE: Duration = Duration::from_millis(100);
+
 /// `config::saved_layouts::slugify`'s filename stem for a display name that
 /// slugifies to nothing (all punctuation, or non-ASCII with no ASCII
 /// fallback) - `saved-panel-layouts` design.md D2.
@@ -332,8 +334,8 @@ pub(crate) const MCP_MAX_REQUEST_BYTES: usize = 1024 * 1024;
 pub(crate) const MCP_MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
 
 /// `agent-mcp`: how long a new endpoint connection has to complete its
-/// handshake before the app drops it, so a client that connects and says
-/// nothing doesn't hold a connection slot.
+/// handshake, and then to send its request, before the app drops it, so a
+/// client that connects and says nothing doesn't hold a connection slot.
 pub(crate) const MCP_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `agent-mcp`: how many endpoint connections are served at once. Each tool
@@ -457,6 +459,16 @@ pub(crate) const EXEC_LIBRARY_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> 
 /// real release is a few hundred KiB at most; past this the payload is refused
 /// as unreadable, so a hostile Secret can't exhaust memory.
 pub(crate) const HELM_RELEASE_MAX_DECODED_BYTES: u64 = 32 * 1024 * 1024;
+
+/// How much of a failed credential plugin's stderr a connection failure or
+/// error panel shows (`k8s::error::credential_plugin_failure`), in characters:
+/// enough for its own explanation ("run `<tool> login`"), not a dump.
+pub(crate) const CREDENTIAL_PLUGIN_STDERR_LIMIT: usize = 1000;
+
+/// How deep `k8s::error::credential_plugin_failure` follows an error's
+/// `source()` chain looking for the auth layer's error. Real chains are a few
+/// links long; the cap stops a cyclic `source()` from looping forever.
+pub(crate) const ERROR_SOURCE_DEPTH_LIMIT: usize = 32;
 
 #[cfg(test)]
 mod tests {

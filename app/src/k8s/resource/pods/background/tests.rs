@@ -99,7 +99,7 @@ async fn a_cmd_click_opens_that_pod_and_keeps_the_selection(cx: &mut TestAppCont
         &mut harness,
         "web-2",
         MouseButton::Left,
-        Modifiers::secondary_key(),
+        crate::util::keystroke::secondary_modifiers(),
     );
 
     assert_eq!(*opened.borrow(), ["web-2"]);

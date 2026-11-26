@@ -148,10 +148,10 @@ impl MainWindow {
         // `restored_panel_keys` decoder `enter_workspace`'s own restored
         // branch reads off a saved dock's `center` (design.md D3).
         let restored_keys = restored_panel_keys(&dock.center);
-        dock_area.update(cx, |area, cx| {
-            area.load(dock, window, cx)
-                .expect("a saved layout's own dock dump must load");
-        });
+        if !super::super::main_window::load_saved_dock(&dock_area, dock, "saved layout", window, cx)
+        {
+            return;
+        }
         let ids = dock_area
             .read(cx)
             .layout(DockPlacement::Center)

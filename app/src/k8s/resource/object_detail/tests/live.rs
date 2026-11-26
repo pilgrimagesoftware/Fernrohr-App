@@ -253,3 +253,89 @@ async fn a_fetch_landing_after_the_delete_keeps_the_object_deleted(cx: &mut Test
         );
     });
 }
+
+/// #457: a panel that shared a list's cluster-wide watch moves to its object's namespace
+/// when the server starts refusing the cluster-wide list - say a role narrowed to that
+/// namespace - instead of showing "can't list".
+#[gpui_kit::test]
+async fn a_refused_shared_watch_moves_the_panel_to_its_namespace(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    cx.update(|cx| {
+        crate::util::test_ui::init(cx);
+        crate::runtime::init(cx);
+    });
+    let (cluster, client) = FakeCluster::start(cx);
+    cluster.apply(APPS, "deployments", deployment("uid-1", 2, 2));
+    cx.update(|cx| {
+        ClusterRegistry::insert_test_session(
+            cx,
+            CONTEXT,
+            ConnectionState::Connected(client.clone()),
+        );
+    });
+    // A list holds the cluster-wide watch, so the panel shares it.
+    let list = cx.update(|cx| ClusterRegistry::subscribe_kind(cx, CONTEXT, client, &deployments()));
+    let target = target(deployments(), Some("staging"), "web");
+    let window = cx.add_window(|_, cx| {
+        let scope = PanelScope::new(NavTarget::Object(target.clone()), CONTEXT.into());
+        ObjectDetailPanel::new(target, scope, cx)
+    });
+    let panel = window.root(cx).unwrap();
+    let mut harness = Harness {
+        cluster,
+        panel,
+        vcx: VisualTestContext::from_window(window.into(), cx),
+    };
+    harness.wait_for("showed the replicas", |panel| replicas(panel).is_some());
+    let all = WatchKey::Kind(KindKey::all(&deployments()));
+    let staging = WatchKey::Kind(KindKey {
+        kind: deployments(),
+        namespace: Some("staging".to_string()),
+    });
+    let count = |harness: &mut Harness, key: &WatchKey| {
+        harness
+            .vcx
+            .update(|_, cx| ClusterRegistry::subscribers(cx, CONTEXT, key))
+    };
+    assert_eq!(count(&mut harness, &all), 2, "the list and the panel");
+
+    // The cluster-wide list is refused from now on; a reconnect relists it.
+    harness.cluster.allow_lists_only_in(&["staging"]);
+    harness.vcx.update(|_, cx| {
+        use crate::k8s::cluster::health::HealthTransition;
+        use crate::k8s::cluster::watch_registry::PauseReason;
+        ClusterRegistry::apply_health_transition(
+            cx,
+            CONTEXT,
+            HealthTransition::Pause(PauseReason::Reconnecting),
+        );
+        ClusterRegistry::apply_health_transition(cx, CONTEXT, HealthTransition::Resume);
+    });
+    let mut refused = false;
+    for _ in 0..400 {
+        harness.vcx.run_until_parked();
+        refused = harness
+            .vcx
+            .update(|_, cx| list.read(cx).refused().is_some());
+        if refused && count(&mut harness, &staging) == 1 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(refused, "the cluster-wide list was refused");
+    assert_eq!(
+        count(&mut harness, &staging),
+        1,
+        "the panel moved to staging"
+    );
+    assert_eq!(count(&mut harness, &all), 1, "only the list holds it now");
+
+    // Still live, through the namespace's watch.
+    harness
+        .cluster
+        .apply(APPS, "deployments", deployment("uid-1", 3, 3));
+    harness.wait_for("followed the next write", |panel| {
+        replicas(panel).as_deref() == Some("desired 3 · updated 3 · ready 3 · available 3")
+    });
+    cx.update(|cx| ClusterRegistry::unsubscribe_kind(cx, CONTEXT, &deployments()));
+}

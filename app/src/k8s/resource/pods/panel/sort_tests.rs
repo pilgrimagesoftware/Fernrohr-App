@@ -13,9 +13,7 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use crate::util::shell::SortDefaults;
 use gpui_kit::component::Root;
-use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, TestAppContext, VisualTestContext,
-};
+use gpui_kit::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
 use kube_runtime::watcher;
 
 const CONTEXT: &str = "sort-pods";
@@ -87,8 +85,11 @@ fn pods(cx: &mut TestAppContext, setup: impl FnOnce(&mut PodsPanel)) -> Harness 
 
 fn press(h: &mut Harness, keys: &str) {
     for key in keys.split(' ') {
-        h.vcx
-            .simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+        h.vcx.simulate_keystrokes(
+            &crate::util::keystroke::parse(key)
+                .expect("valid")
+                .unparse(crate::util::keystroke::HOST_OS),
+        );
     }
     h.vcx.run_until_parked();
 }

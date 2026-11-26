@@ -10,7 +10,7 @@ use crate::ui::yaml_view::{YamlLines, fold_toggle_id, line_selector};
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AppContext as _, Entity, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, TouchPhase,
+    AppContext as _, Entity, Modifiers, ScrollDelta, ScrollEvent, TestAppContext, TouchPhase,
     VisualTestContext, WindowHandle, point, px,
 };
 use serde_json::json;
@@ -48,11 +48,7 @@ pub(super) fn yaml_panel(
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let config_maps = kind("", "v1", "ConfigMap", true);
@@ -118,11 +114,12 @@ async fn the_yaml_view_scrolls(cx: &mut TestAppContext) {
     let first = drawn(window, &mut vcx, 0);
     assert!(first, "the first line is drawn");
     let over = vcx.debug_bounds("yaml-line-0").expect("drawn").center();
-    vcx.simulate_event(ScrollWheelEvent {
+    vcx.simulate_event(ScrollEvent {
         position: over,
         delta: ScrollDelta::Pixels(point(px(0.), px(-600.))),
         modifiers: Modifiers::none(),
         touch_phase: TouchPhase::Moved,
+        source: Default::default(),
     });
     vcx.run_until_parked();
     let offset = vcx.update(|_, cx| panel.read(cx).yaml_view.scroll.offset());
@@ -220,7 +217,7 @@ async fn the_keyboard_folds_and_unfolds(cx: &mut TestAppContext) {
     assert!(focused, "Tab reaches the metadata toggle");
     // A key down *and* up, as a real press is: `Button` fires its keyboard
     // click on the release.
-    let space = gpui_kit::Keystroke::parse("space").unwrap();
+    let space = crate::util::keystroke::parse("space").unwrap();
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,

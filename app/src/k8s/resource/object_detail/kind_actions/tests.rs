@@ -49,11 +49,7 @@ fn open(cx: &mut TestAppContext, kind: DiscoveredKind, object: Value) -> Harness
         crate::k8s::resource::object_detail::register_commands(&mut registry);
         crate::ui::confirm_dialog::register_commands(&mut registry);
         crate::ui::kind_actions::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let (cluster, client) = FakeCluster::start(cx);

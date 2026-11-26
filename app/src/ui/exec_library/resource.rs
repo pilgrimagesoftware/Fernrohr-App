@@ -281,27 +281,35 @@ fn owner_selector(pod: &Pod, context: &str, cx: &App) -> Option<Selector> {
         .iter()
         .flatten()
         .find(|owner| owner.controller == Some(true))?;
-    match owner.kind.as_str() {
-        "ReplicaSet" => {
-            let replica_set = cached(context, &replica_sets(), namespace, &owner.name, cx)?;
-            match replica_set.controller {
-                Some((kind, name)) if kind == "Deployment" => {
-                    cached_selector(context, WorkloadKind::Deployment, namespace, &name, cx)
-                }
-                _ => replica_set.pod_selector,
+    // An owner reference's `apiVersion` is `<group>/<version>`, or just `v1` for core.
+    let group = owner
+        .api_version
+        .rsplit_once('/')
+        .map_or("", |(group, _)| group);
+    if group == "apps" && owner.kind == "ReplicaSet" {
+        let replica_set = cached(context, &replica_sets(), namespace, &owner.name, cx)?;
+        return match replica_set.controller {
+            // apps/v1's Deployment, not a custom resource of the same name.
+            Some(controller)
+                if controller.group == "apps"
+                    && controller.kind == WorkloadKind::Deployment.as_str() =>
+            {
+                cached_selector(
+                    context,
+                    WorkloadKind::Deployment,
+                    namespace,
+                    &controller.name,
+                    cx,
+                )
             }
+            _ => replica_set.pod_selector,
+        };
+    }
+    match WorkloadKind::of(group, &owner.kind)? {
+        workload @ (WorkloadKind::StatefulSet | WorkloadKind::DaemonSet) => {
+            cached_selector(context, workload, namespace, &owner.name, cx)
         }
-        "StatefulSet" => cached_selector(
-            context,
-            WorkloadKind::StatefulSet,
-            namespace,
-            &owner.name,
-            cx,
-        ),
-        "DaemonSet" => {
-            cached_selector(context, WorkloadKind::DaemonSet, namespace, &owner.name, cx)
-        }
-        _ => None,
+        WorkloadKind::Deployment | WorkloadKind::Service => None,
     }
 }
 

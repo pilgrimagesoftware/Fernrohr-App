@@ -103,7 +103,7 @@ impl Render for LogsPanel {
         )
         .unwrap_or_else(|| {
             gpui_kit::component::kbd::Kbd::new(
-                Keystroke::parse(PREVIOUS_KEY).expect("valid keybinding"),
+                crate::util::keystroke::parse(PREVIOUS_KEY).expect("valid keybinding"),
             )
         });
         let control_bar = self.current.is_some().then(|| {
@@ -210,7 +210,7 @@ impl LogsPanel {
             super::line_style::AnsiPalette::new(cx.theme().background, cx.theme().mode.is_dark());
         div()
             .debug_selector(|| LINES.into())
-            .on_scroll_wheel(cx.listener(Self::on_lines_scrolled))
+            .on_scroll(cx.listener(Self::on_lines_scrolled))
             .size_full()
             .p(crate::ui::space::spacing(cx).panel_inset)
             .code_font(cx)
@@ -415,7 +415,9 @@ pub(super) fn stream_controls(
         window,
     )
     .unwrap_or_else(|| {
-        gpui_kit::component::kbd::Kbd::new(Keystroke::parse(FOLLOW_KEY).expect("valid keybinding"))
+        gpui_kit::component::kbd::Kbd::new(
+            crate::util::keystroke::parse(FOLLOW_KEY).expect("valid keybinding"),
+        )
     });
     let this_top = cx.weak_entity();
     let this_bottom = cx.weak_entity();

@@ -228,7 +228,7 @@ fn keymap_overrides_rebind_both_commands() {
     use super::{FocusNextPanel, FocusPreviousPanel, register_commands};
     use crate::command::CommandRegistry;
     use crate::keymap::{self, KeymapConfig};
-    use gpui_kit::{Action, Keymap, Keystroke};
+    use gpui_kit::{Action, Keymap};
 
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
@@ -239,13 +239,11 @@ fn keymap_overrides_rebind_both_commands() {
     config
         .bindings
         .insert("panel.focus_previous".into(), "ctrl-k".into());
-    let keymap = Keymap::new(keymap::bindings(
-        &registry,
-        &config,
-        &gpui_kit::DummyKeyboardMapper,
-    ));
+    let keymap = Keymap::new(crate::util::test_ui::with_app(|cx| {
+        keymap::bindings(&registry, &config, cx)
+    }));
     let bound = |key: &str, action: &dyn Action| {
-        let keystroke = Keystroke::parse(key).expect("a valid keystroke");
+        let keystroke = crate::util::keystroke::parse(key).expect("a valid keystroke");
         let (matched, _) = keymap.bindings_for_input(std::slice::from_ref(&keystroke), &[]);
         matched
             .iter()

@@ -15,7 +15,7 @@ use crate::k8s::cluster::connection::ConnectionState;
 use crate::k8s::resource::load_phase::LoadPhase;
 use crate::ui::key_hint_row::{KeyHint, KeyHintRow};
 use crate::ui::list_state::{self, TableArea};
-use crate::ui::panel_title::{self, ScopeEvent};
+use crate::ui::panel_title;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -75,13 +75,9 @@ impl ObjectListPanel {
         }
         // Spec: "A kind the user cannot list" - the server's refusal, not an
         // empty table that looks like there's nothing there.
-        if let Some(refused) = self.objects.read(cx).refused() {
+        if let Some(refused) = self.listed_refusal(cx) {
             return crate::ui::list_search::with_context(
-                panel_title::error_content(
-                    format!("Can't list {}", self.scope.target.list_label()),
-                    Some(refused.to_string()),
-                    cx,
-                ),
+                panel_title::error_content(self.refusal_message(), Some(refused), cx),
                 Some(&self.scope),
                 cx,
             )
@@ -89,7 +85,7 @@ impl ObjectListPanel {
         }
         // `unwatchable-kinds`: a kind discovery offers no `list` for has no rows
         // to show, so say so rather than drawing an empty table.
-        let polled = match self.objects.read(cx).mode() {
+        let polled = match self.listed_mode(cx) {
             ListMode::Unlistable => {
                 return crate::ui::list_search::with_context(
                     status("This kind can't be listed".into())
@@ -112,7 +108,7 @@ impl ObjectListPanel {
         // else what is loading or why it is empty.
         let kind_label = self.kind.plural_name();
         let area = list_state::table_area(
-            self.objects.read(cx).phase(),
+            self.listed_phase(cx),
             self.scoped_count(cx),
             rows.len(),
             &kind_label,
@@ -290,7 +286,7 @@ impl ObjectListPanel {
     ) -> Option<AnyElement> {
         use gpui_kit::component::Sizable as _;
         use gpui_kit::component::button::{Button, ButtonVariants as _};
-        let deprecated = kind.gvk.group.is_empty() && kind.gvk.kind == "ComponentStatus";
+        let deprecated = kind.is_core("ComponentStatus");
         if !polled && !deprecated {
             return None;
         }
@@ -338,10 +334,7 @@ impl ObjectListPanel {
     /// How many rows are in this panel's namespace scope, before its filter.
     fn scoped_count(&self, cx: &App) -> usize {
         let namespaces = &self.scope.namespaces;
-        self.objects
-            .read(cx)
-            .rows()
-            .iter()
+        self.listed_rows(cx)
             .filter(|row| {
                 namespaces.is_empty()
                     || row
@@ -356,7 +349,7 @@ impl ObjectListPanel {
 impl Render for ObjectListPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let space = crate::ui::space::spacing(cx);
-        let refreshing = matches!(self.objects.read(cx).phase(), LoadPhase::Refreshing { .. });
+        let refreshing = matches!(self.listed_phase(cx), LoadPhase::Refreshing { .. });
         let refreshing = self.indicators.refreshing.ready(
             refreshing,
             |this: &mut Self| &mut this.indicators.refreshing,
@@ -371,8 +364,7 @@ impl Render for ObjectListPanel {
             &namespaces,
             move |namespaces, cx| {
                 let _ = this.update(cx, |this: &mut Self, cx| {
-                    this.scope = this.scope.scoped_to(namespaces.clone());
-                    cx.emit(ScopeEvent::NamespacesChanged(namespaces));
+                    this.set_namespaces(namespaces, cx)
                 });
             },
             window,

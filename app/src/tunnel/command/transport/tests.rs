@@ -97,9 +97,8 @@ fn helper_argv(mode: &str) -> Vec<String> {
 static PORT_TESTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn free_port() -> u16 {
-    crate::util::port_allocator::allocate()
+    crate::util::port_allocator::free_local_addr()
         .unwrap()
-        .addr()
         .port()
 }
 

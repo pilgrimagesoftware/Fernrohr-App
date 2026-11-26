@@ -232,16 +232,15 @@ pub(super) fn sweep(dir: &Path, now: SystemTime, alive: impl Fn(u32) -> bool) ->
         .count()
 }
 
-/// Whether process `pid` exists (`kill -0`), the way `util::pidfile` checks
-/// its groups.
+/// Whether process `pid` exists and may be signalled (`kill -0`), as `kill -0` reports
+/// it: a pid of another user's process reads as not alive, as before.
 #[cfg(unix)]
 fn process_alive(pid: u32) -> bool {
     pid == std::process::id()
-        || std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
+        || i32::try_from(pid)
+            .ok()
+            .and_then(rustix::process::Pid::from_raw)
+            .is_some_and(|pid| rustix::process::test_kill_process(pid).is_ok())
 }
 
 #[cfg(not(unix))]

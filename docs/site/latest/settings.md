@@ -75,6 +75,8 @@ text_size = 110
 
 The theme is `"system"`, `"light"` or `"dark"`. The text size is a percentage. A hand-edited value between steps, or out of range, loads as the nearest step.
 
+If a hand edit leaves a file that isn't valid TOML, Fernrohr starts with the defaults for that file and keeps a copy of what you wrote beside it as `<name>.bak` (for example `ui.toml.bak`), so your next change in the app can't lose it. Fix the copy and move it back while Fernrohr is closed. A settings file that is a symlink stays one: Fernrohr writes to the file it points to.
+
 `helm_path` is the Tools section's **helm path**, absent when it's empty.
 
 On macOS, `background_mcp` is `"keep_running"` (the default) or `"stop_with_last_window"`. It is the

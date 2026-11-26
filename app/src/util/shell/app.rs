@@ -204,7 +204,7 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
 
     // Every registered command, from the registry itself - not a hand-kept list,
     // which is how `tunnels.manage` ended up with a menu item but no key.
-    let bindings = keymap::bindings(&registry, &keymap, cx.keyboard_mapper().as_ref());
+    let bindings = keymap::bindings(&registry, &keymap, cx);
     cx.bind_keys(bindings);
     // Kept for the keybindings editor, which edits it live (`keymap::apply`).
     cx.set_global(keymap::LiveKeymap::new(keymap_path.to_path_buf(), keymap));
@@ -271,8 +271,13 @@ pub fn init(cx: &mut App, workspace_path: PathBuf, keymap_path: &Path) {
     cx.set_global(WorkspacePath(workspace_path.clone()));
     cx.on_app_quit(move |cx| {
         save(cx, &workspace_path);
-        if let Some(layouts) = cx.try_global::<SavedDockLayouts>() {
-            let _ = crate::config::dock_layouts::save(&dock_layouts_path, &layouts.0);
+        if let Some(layouts) = cx.try_global::<SavedDockLayouts>()
+            && let Err(error) = crate::config::dock_layouts::save(&dock_layouts_path, &layouts.0)
+        {
+            log::warn!(
+                "couldn't save dock layouts to {}: {error}",
+                dock_layouts_path.display()
+            );
         }
         // GPUI's quit path tears down windows but never runs the `Drop` glue on
         // app-scoped globals - `ClusterRegistry`, and so every live `RegistryHandle`/

@@ -65,10 +65,13 @@ fn update_of_missing_id_fails() {
 /// other tunnels untouched.
 #[test]
 fn delete_unbinds_every_context_pointing_at_the_tunnel() {
+    // Unique: the secret fallback is process-wide, and other tests use
+    // "prod-bastion" without expecting a secret.
+    let prod = format!("prod-bastion-{}", next_id());
     let path = temp_config_path();
     let store = TunnelStore::new(path.clone());
     store
-        .create("prod-bastion", sample_tunnel("Prod"), Some("s3cr3t"))
+        .create(&prod, sample_tunnel("Prod"), Some("s3cr3t"))
         .unwrap();
     store
         .create("staging-bastion", sample_tunnel("Staging"), None)
@@ -77,16 +80,16 @@ fn delete_unbinds_every_context_pointing_at_the_tunnel() {
     let mut config: TunnelsConfig = config::load(&path);
     config
         .context_bindings
-        .insert("prod-east".to_string(), "prod-bastion".to_string());
+        .insert("prod-east".to_string(), prod.clone());
     config
         .context_bindings
-        .insert("prod-west".to_string(), "prod-bastion".to_string());
+        .insert("prod-west".to_string(), prod.clone());
     config
         .context_bindings
         .insert("staging".to_string(), "staging-bastion".to_string());
     config::save(&path, &config).unwrap();
 
-    let mut unbound = store.delete("prod-bastion").unwrap();
+    let mut unbound = store.delete(&prod).unwrap();
     unbound.sort();
     assert_eq!(
         unbound,
@@ -106,7 +109,7 @@ fn delete_unbinds_every_context_pointing_at_the_tunnel() {
     assert!(!after_config.context_bindings.contains_key("prod-east"));
     assert!(!after_config.context_bindings.contains_key("prod-west"));
 
-    assert_eq!(store.secrets.read("prod-bastion").unwrap(), None);
+    assert_eq!(store.secrets.read(&prod).unwrap(), None);
 }
 
 #[test]

@@ -9,9 +9,7 @@ use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
 use gpui_kit::component::table::ColumnSort;
-use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, TestAppContext, VisualTestContext,
-};
+use gpui_kit::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
 use kube::api::{DynamicObject, ObjectMeta};
 use kube::core::GroupVersionKind;
 use kube_runtime::watcher;
@@ -107,7 +105,7 @@ pub(super) fn harness_full(
         for (id, key) in overrides {
             config.bindings.insert(id.to_string(), key.to_string());
         }
-        let bindings = keymap::bindings(&registry, &config, cx.keyboard_mapper().as_ref());
+        let bindings = keymap::bindings(&registry, &config, cx);
         cx.bind_keys(bindings);
     });
     let client = {
@@ -151,7 +149,9 @@ pub(super) fn harness_full(
 
 pub(super) fn press(vcx: &mut VisualTestContext, keys: &str) {
     for key in keys.split(' ') {
-        let key = Keystroke::parse(key).expect("valid").unparse();
+        let key = crate::util::keystroke::parse(key)
+            .expect("valid")
+            .unparse(crate::util::keystroke::HOST_OS);
         vcx.simulate_keystrokes(&key);
     }
     vcx.run_until_parked();

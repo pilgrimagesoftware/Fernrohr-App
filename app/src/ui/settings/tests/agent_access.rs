@@ -115,7 +115,7 @@ async fn every_copy_button_names_what_it_copies(cx: &mut TestAppContext) {
             if at.y < height {
                 break;
             }
-            vcx.simulate_event(gpui_kit::ScrollWheelEvent {
+            vcx.simulate_event(gpui_kit::ScrollEvent {
                 position: gpui_kit::point(gpui_kit::px(300.), height / 2.),
                 delta: gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
                     gpui_kit::px(0.),
@@ -123,6 +123,7 @@ async fn every_copy_button_names_what_it_copies(cx: &mut TestAppContext) {
                 )),
                 modifiers: Modifiers::none(),
                 touch_phase: gpui_kit::TouchPhase::Moved,
+                source: Default::default(),
             });
             vcx.run_until_parked();
             (at, height) = locate(&mut vcx);

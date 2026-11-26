@@ -27,9 +27,8 @@ pub async fn test_command(config: &CommandTunnelConfig) -> Result<(), String> {
         .map_err(|error| format!("the command can't be run: {error:?}"))?;
     let port = match config.local_port {
         Some(port) => port,
-        None => crate::util::port_allocator::allocate()
+        None => crate::util::port_allocator::free_local_addr()
             .map_err(|error| format!("couldn't allocate a local port: {error}"))?
-            .addr()
             .port(),
     };
     let args = argv::substitute_port(&args, port);

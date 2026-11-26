@@ -7,16 +7,16 @@ use crate::config::ui::Theme as ThemePreference;
 use crate::ui::text_size::current;
 use crate::util::shell::MainWindow;
 use gpui_kit::component::Root;
-use gpui_kit::{
-    KeyDownEvent, KeyUpEvent, Keystroke, TestAppContext, VisualTestContext, WindowHandle,
-};
+use gpui_kit::{KeyDownEvent, KeyUpEvent, TestAppContext, VisualTestContext, WindowHandle};
 
 fn temp_path(name: &str) -> std::path::PathBuf {
     crate::util::test_paths::temp_path(&format!("settings-text-size-{name}"))
 }
 
 fn press(cx: &mut VisualTestContext, keys: &str) {
-    let keys = Keystroke::parse(keys).expect("valid").unparse();
+    let keys = crate::util::keystroke::parse(keys)
+        .expect("valid")
+        .unparse(crate::util::keystroke::HOST_OS);
     cx.simulate_keystrokes(&keys);
     cx.run_until_parked();
 }
@@ -24,7 +24,7 @@ fn press(cx: &mut VisualTestContext, keys: &str) {
 /// Presses and releases `key`. A button clicks on the release, and
 /// `simulate_keystrokes` only sends the press, so Enter and Space need this.
 fn press_and_release(cx: &mut VisualTestContext, key: &str) {
-    let keystroke = Keystroke::parse(key).expect("valid");
+    let keystroke = crate::util::keystroke::parse(key).expect("valid");
     cx.simulate_event(KeyDownEvent {
         keystroke: keystroke.clone(),
         is_held: false,

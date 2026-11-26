@@ -67,10 +67,7 @@ impl HelmReleasesPanel {
         };
         let deployed = self.tables.iter().find_map(|watched| {
             let history = watched.table.read(cx).history(&key);
-            history
-                .iter()
-                .find(|revision| revision.status == "deployed")
-                .or(history.first())
+            crate::k8s::resource::helm::current_revision(&history)
                 .map(|revision| revision.secret.clone())
         });
         let client = match &self.connection.read(cx).state {

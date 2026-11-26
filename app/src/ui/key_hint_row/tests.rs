@@ -9,7 +9,7 @@ use gpui_kit::InteractiveElement as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    Bounds, Context, Entity, IntoElement, Keystroke, Modifiers, ParentElement as _, Pixels, Render,
+    Bounds, Context, Entity, IntoElement, Modifiers, ParentElement as _, Pixels, Render,
     SharedString, Styled as _, TestAppContext, VisualTestContext, Window, div, point, px, size,
 };
 
@@ -175,10 +175,11 @@ fn label(n: usize) -> String {
 impl Render for Row {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let hints = (0..HINTS).map(|n| {
-            let hint =
-                KeyHint::styled(Kbd::new(Keystroke::parse("x").unwrap()), label(n), |body| {
-                    body.debug_selector(move || label(n)).w(px(90.)).h(px(16.))
-                });
+            let hint = KeyHint::styled(
+                Kbd::new(crate::util::keystroke::parse("x").unwrap()),
+                label(n),
+                |body| body.debug_selector(move || label(n)).w(px(90.)).h(px(16.)),
+            );
             if n == 2 || n == 7 {
                 hint.essential()
             } else {

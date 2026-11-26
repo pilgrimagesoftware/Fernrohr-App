@@ -147,7 +147,7 @@ async fn typed_pod_shortcuts_reach_the_focused_panel(cx: &mut gpui_kit::TestAppC
         cx.bind_keys(crate::keymap::bindings(
             &registry,
             &crate::keymap::KeymapConfig::default(),
-            &gpui_kit::DummyKeyboardMapper,
+            cx,
         ));
         cx.set_global(SelectedPod(Some(PodSelection {
             namespace: "default".into(),
@@ -332,7 +332,7 @@ async fn n_opens_the_namespace_picker(cx: &mut gpui_kit::TestAppContext) {
         cx.bind_keys(crate::keymap::bindings(
             &registry,
             &crate::keymap::KeymapConfig::default(),
-            &gpui_kit::DummyKeyboardMapper,
+            cx,
         ));
     });
     let mut built = None;

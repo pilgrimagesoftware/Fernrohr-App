@@ -44,24 +44,34 @@ struct Harness {
 /// The panel open on `shop/web-1`, which the fake cluster holds as `initial`,
 /// with the panel's keys bound and focus in it.
 fn open(cx: &mut TestAppContext, initial: Value) -> Harness {
+    open_with(cx, initial, |_, _, _| {})
+}
+
+/// [`open`], running `setup` against the cluster and session before the panel opens.
+fn open_with(
+    cx: &mut TestAppContext,
+    initial: Value,
+    setup: impl FnOnce(&FakeCluster, kube::Client, &mut TestAppContext),
+) -> Harness {
     cx.executor().allow_parking();
     cx.update(|cx| {
         crate::util::test_ui::init(cx);
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = crate::keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let (cluster, client) = FakeCluster::start(cx);
     cluster.apply("/api/v1", "pods", initial);
     cx.update(|cx| {
-        ClusterRegistry::insert_test_session(cx, CONTEXT, ConnectionState::Connected(client));
+        ClusterRegistry::insert_test_session(
+            cx,
+            CONTEXT,
+            ConnectionState::Connected(client.clone()),
+        );
     });
+    setup(&cluster, client, cx);
     let window = cx.add_window(|_, cx| {
         let pod = PodRef {
             namespace: "shop".into(),
@@ -105,6 +115,11 @@ fn shown(panel: &PodDetailPanel) -> Option<(String, i32)> {
     Some((status.phase.clone()?, restarts))
 }
 
+/// The Pods watch of the test pod's namespace.
+fn shop() -> WatchKey {
+    WatchKey::PodsIn("shop".to_string())
+}
+
 fn shown_uid(panel: &PodDetailPanel) -> Option<String> {
     panel.pod()?.metadata.uid.clone()
 }
@@ -118,10 +133,11 @@ async fn a_pending_pod_turns_running_in_the_open_panel(cx: &mut TestAppContext) 
     harness.wait_for("showed the pod Pending", |panel, cx| {
         panel.live_synced(cx) && shown(panel) == Some(("Pending".into(), 0))
     });
+    // No Pods list holds the all-namespaces watch, so the panel watches its namespace (#457).
     let subscribers = harness
         .vcx
-        .update(|_, cx| ClusterRegistry::subscribers(cx, CONTEXT, &WatchKey::Pods));
-    assert_eq!(subscribers, 1, "the panel shares the context's Pods watch");
+        .update(|_, cx| ClusterRegistry::subscribers(cx, CONTEXT, &shop()));
+    assert_eq!(subscribers, 1, "the panel holds its namespace's Pods watch");
 
     harness
         .cluster
@@ -139,7 +155,7 @@ async fn a_pending_pod_turns_running_in_the_open_panel(cx: &mut TestAppContext) 
     drop(panel);
     vcx.update(|window, _| window.remove_window());
     cx.run_until_parked();
-    let subscribers = cx.update(|cx| ClusterRegistry::subscribers(cx, CONTEXT, &WatchKey::Pods));
+    let subscribers = cx.update(|cx| ClusterRegistry::subscribers(cx, CONTEXT, &shop()));
     assert_eq!(subscribers, 0, "closing the panel released the watch");
 }
 
@@ -316,4 +332,40 @@ async fn a_recreated_pod_replaces_the_deleted_one_with_a_notice(cx: &mut TestApp
     harness.wait_for("followed the new pod", |panel, _| {
         shown(panel) == Some(("Running".into(), 0))
     });
+}
+
+/// #457: with a Pods list open whose all-namespaces list the server refuses - an account
+/// that may list pods only in the pod's namespace - the panel follows its pod through
+/// that namespace's own watch.
+#[gpui_kit::test]
+async fn a_namespace_only_account_follows_its_pod(cx: &mut TestAppContext) {
+    let mut harness = open_with(cx, pod("u1", "Pending", 0), |cluster, client, cx| {
+        cluster.allow_lists_only_in(&["shop"]);
+        let all = cx.update(|cx| ClusterRegistry::subscribe_pods(cx, CONTEXT, client));
+        for _ in 0..400 {
+            cx.run_until_parked();
+            if cx.update(|cx| all.read(cx).refused().is_some()) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("the all-namespaces list was never refused");
+    });
+    harness.wait_for("showed the pod Pending", |panel, cx| {
+        panel.live_synced(cx) && shown(panel) == Some(("Pending".into(), 0))
+    });
+    let held = harness
+        .vcx
+        .update(|_, cx| ClusterRegistry::subscribers(cx, CONTEXT, &shop()));
+    assert_eq!(held, 1, "its namespace's watch, not the refused one");
+
+    harness
+        .cluster
+        .apply("/api/v1", "pods", pod("u1", "Running", 0));
+    harness.wait_for("showed the pod Running", |panel, _| {
+        shown(panel) == Some(("Running".into(), 0))
+    });
+    harness
+        .vcx
+        .update(|_, cx| ClusterRegistry::unsubscribe_pods(cx, CONTEXT));
 }

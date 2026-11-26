@@ -14,15 +14,13 @@ use super::store::NamespaceSets;
 use super::{CREATE_KEY, CreateNamespaceSet, EDIT_KEY, EditNamespaceSet};
 use crate::config::namespaces::SetError;
 use crate::k8s::cluster::namespaces::NamespaceList;
-use crate::ui::namespace_filter::{NamespaceFilter, OnPick, OnQuery};
+use crate::ui::namespace_filter::{NamespaceFilter, host_callbacks};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::Root;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Enter, InputEvent, InputState};
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::*;
-use std::rc::Rc;
 
 /// Whether the editor makes a set or changes one.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,8 +58,7 @@ pub fn open(
         EditorMode::Edit { .. } => ("Edit Namespace Set", &EditNamespaceSet, EDIT_KEY),
     };
     // The command's live key, beside the title.
-    let key = Kbd::binding_for_action(action, None, window)
-        .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("a valid default key")));
+    let key = crate::ui::key_hint_row::live_key(action, None, fallback, window);
     window.open_dialog(cx, move |dialog, _window, _cx| {
         let editor = editor.clone();
         dialog
@@ -217,18 +214,7 @@ impl Render for SetEditor {
         shown.extend(members.iter().cloned());
         shown.sort_unstable();
         shown.dedup();
-        let on_pick: OnPick = Rc::new({
-            let this = this.clone();
-            move |next, _window, cx| {
-                let _ = this.update(cx, |editor, cx| editor.pick(next, cx));
-            }
-        });
-        let on_query: OnQuery = Rc::new({
-            let this = this.clone();
-            move |_window, cx| {
-                let _ = this.update(cx, |_, cx| cx.notify());
-            }
-        });
+        let (on_pick, on_query) = host_callbacks(this.clone(), Self::pick);
         let save_label = match self.mode {
             EditorMode::Create => "Create",
             EditorMode::Edit { .. } => "Save",

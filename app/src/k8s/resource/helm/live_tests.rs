@@ -112,11 +112,7 @@ async fn helm_live_releases_round_trip(cx: &mut TestAppContext) {
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::helm::list::register_commands(&mut registry);
         crate::k8s::resource::helm::detail::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         ClusterRegistry::insert_test_session(cx, &context, ConnectionState::Connected(client));
         DiscoveryRegistry::insert_test(cx, &context, kinds());

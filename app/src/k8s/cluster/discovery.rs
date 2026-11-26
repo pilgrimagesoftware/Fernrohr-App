@@ -169,11 +169,17 @@ impl DiscoveredKind {
         }
     }
 
+    /// Whether this is the built-in core-group kind named `kind` (`Service`, `Secret`,
+    /// ...). A CRD of the same name in its own group is not.
+    pub fn is_core(&self, kind: &str) -> bool {
+        is_group_kind(&self.gvk, "", kind)
+    }
+
     /// Whether this is the built-in core `Pod` kind - the one kind that keeps its
     /// own typed list (the Pods panel) rather than the generic one. A CRD named
     /// `Pod` in its own group is not.
     pub fn is_core_pod(&self) -> bool {
-        self.gvk.group.is_empty() && self.gvk.kind == "Pod"
+        self.is_core("Pod")
     }
 
     /// The core `v1` `Pod` kind, for the callers that mean "Pods" without
@@ -216,8 +222,14 @@ impl DiscoveredKind {
     /// `Event` in its own group is not, and nor is `events.k8s.io`'s, which
     /// keeps the generic list.
     pub fn is_core_event(&self) -> bool {
-        self.gvk.group.is_empty() && self.gvk.kind == "Event"
+        self.is_core("Event")
     }
+}
+
+/// Whether `gvk` is `kind` in API group `group` (`""` for the core group), whatever its
+/// version: a kind's name alone doesn't say which API it is, since a CRD may reuse it.
+pub fn is_group_kind(gvk: &GroupVersionKind, group: &str, kind: &str) -> bool {
+    gvk.group == group && gvk.kind == kind
 }
 
 /// What discovery found: every kind from the API groups that answered, and the

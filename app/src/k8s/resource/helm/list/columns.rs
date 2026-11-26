@@ -111,13 +111,7 @@ impl HelmColumn {
 /// How a release status reads (helm-releases D3): its tone, and whether it
 /// also carries an icon, so it is told apart without color.
 pub(crate) fn status_tone(status: &str) -> Tone {
-    match status {
-        "deployed" => Tone::Good,
-        "failed" => Tone::Bad,
-        "uninstalling" => Tone::Warning,
-        status if status.starts_with("pending-") => Tone::Warning,
-        _ => Tone::Neutral,
-    }
+    crate::k8s::resource::helm::HelmStatus::parse(status).tone()
 }
 
 #[cfg(test)]

@@ -151,8 +151,9 @@ impl PodDetailPanel {
 
 /// `action`'s key from the live keymap, falling back to its default.
 fn key(action: &dyn Action, default: &str, window: &Window) -> Kbd {
-    Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window)
-        .unwrap_or_else(|| Kbd::new(Keystroke::parse(default).expect("valid keybinding")))
+    Kbd::binding_for_action(action, Some(PANEL_KEY_CONTEXT), window).unwrap_or_else(|| {
+        Kbd::new(crate::util::keystroke::parse(default).expect("valid keybinding"))
+    })
 }
 
 /// What an empty Events tab says for `window`.

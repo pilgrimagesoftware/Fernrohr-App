@@ -10,7 +10,7 @@ use crate::ui::panel_title::PanelScope;
 use crate::util::logs::FollowState;
 use gpui_kit::component::Root;
 use gpui_kit::{
-    AppContext as _, Entity, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext,
+    AppContext as _, Entity, Modifiers, ScrollDelta, ScrollEvent, TestAppContext,
     VisualTestContext, point,
 };
 
@@ -70,7 +70,7 @@ impl Harness {
             .debug_bounds(super::super::super::render::LINES)
             .expect("the lines are drawn")
             .center();
-        self.vcx.simulate_event(ScrollWheelEvent {
+        self.vcx.simulate_event(ScrollEvent {
             position: over,
             delta: ScrollDelta::Lines(point(0., lines)),
             modifiers: Modifiers::none(),
@@ -258,11 +258,8 @@ async fn s_toggles_follow_from_the_keyboard(cx: &mut TestAppContext) {
     h.vcx.update(|window, cx| {
         let mut registry = crate::command::CommandRegistry::new();
         crate::util::logs::register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         window.activate_window();
         gpui_kit::Focusable::focus_handle(panel.read(cx), cx).focus(window, cx);

@@ -2,13 +2,17 @@ pub(crate) mod app_log;
 pub(crate) mod context_lifecycle;
 pub(crate) mod exec_busy;
 pub(crate) mod key_hints;
+// The section 1.1 keyring spike; only its own (ignored) tests run it.
+#[cfg(test)]
 pub(crate) mod keychain;
+pub(crate) mod keystroke;
 pub(crate) mod login_env;
 pub(crate) mod logs;
 pub(crate) mod palette;
 pub(crate) mod paths;
 pub(crate) mod pidfile;
 pub(crate) mod port_allocator;
+pub(crate) mod redact;
 pub(crate) mod resource_index;
 pub(crate) mod shell;
 #[cfg(test)]

@@ -55,10 +55,15 @@ fn rebuilt_menus_show_the_new_key_and_fire_once(cx: &mut gpui_kit::TestAppContex
                 binding
                     .keystrokes()
                     .iter()
-                    .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
+                    .map(|key| {
+                        gpui_kit::AsKeystroke::as_keystroke(key)
+                            .unparse(crate::util::keystroke::HOST_OS)
+                    })
                     .collect::<Vec<_>>()
             });
-        let expected = gpui_kit::Keystroke::parse("cmd-shift-j").unwrap().unparse();
+        let expected = crate::util::keystroke::parse("cmd-shift-j")
+            .unwrap()
+            .unparse(crate::util::keystroke::HOST_OS);
         assert_eq!(shown, Some(vec![expected]), "the menu shows the new key");
     });
 
@@ -101,11 +106,9 @@ fn the_app_menu_carries_settings() {
 fn platform_items_have_their_standard_shortcuts() {
     let mut registry = CommandRegistry::new();
     register_commands(&mut registry);
-    let bindings = crate::keymap::bindings(
-        &registry,
-        &crate::keymap::KeymapConfig::default(),
-        &gpui_kit::DummyKeyboardMapper,
-    );
+    let bindings = crate::util::test_ui::with_app(|cx| {
+        crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx)
+    });
     let key_for = |action: &dyn Action| {
         bindings
             .iter()
@@ -114,7 +117,7 @@ fn platform_items_have_their_standard_shortcuts() {
                 binding
                     .keystrokes()
                     .iter()
-                    .map(|keystroke| keystroke.unparse())
+                    .map(|keystroke| keystroke.unparse(crate::util::keystroke::HOST_OS))
                     .collect::<Vec<_>>()
                     .join(" ")
             })

@@ -41,7 +41,7 @@ pub fn register_commands(registry: &mut CommandRegistry) {
 /// The `go_to` key as currently bound, for a view's hint bar.
 pub fn go_to_key(window: &Window) -> Kbd {
     Kbd::binding_for_action(&GoToReference, Some(LINKS_KEY_CONTEXT), window).unwrap_or_else(|| {
-        Kbd::new(Keystroke::parse(GO_TO_DEFAULT_BINDING).expect("valid keybinding"))
+        Kbd::new(crate::util::keystroke::parse(GO_TO_DEFAULT_BINDING).expect("valid keybinding"))
     })
 }
 

@@ -93,7 +93,7 @@ fn reference(
         // A `cmd`-click follows in the background (`open-in-background` 3.1); a
         // middle-click, an aux click, too.
         .on_click(move |event, window, cx| {
-            let mode = crate::ui::nav::OpenMode::of_click(event);
+            let mode = crate::ui::nav::OpenMode::of_click(event, cx);
             window.dispatch_action(Box::new(follow(mode)), cx);
         })
         .on_aux_click(move |event, window, cx| {

@@ -82,7 +82,7 @@ fn confirm_by_keyboard(h: &mut Harness) {
         h.vcx.simulate_keystrokes("tab");
         h.vcx.run_until_parked();
     }
-    let space = gpui_kit::Keystroke::parse("space").expect("valid");
+    let space = crate::util::keystroke::parse("space").expect("valid");
     h.vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,

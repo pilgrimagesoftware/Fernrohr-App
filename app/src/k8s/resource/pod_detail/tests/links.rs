@@ -163,11 +163,7 @@ async fn g_opens_the_picker_on_a_pod_and_enter_follows_its_namespace(cx: &mut Te
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::ui::link::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let followed = record_follows(cx);

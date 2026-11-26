@@ -24,9 +24,6 @@ use tokio::process::{Child, Command};
 /// `known_hosts_file` are paths, not secrets themselves - the actual key material stays
 /// on disk (or, once section 5.2 lands, is written to a transient file from the
 /// keychain) rather than passing through this struct.
-// UNWIRED(#3): section 5's tunnel config UI and section 6.2's connect-path integration
-// are the first real callers; today only this module's own tests build one.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SshTunnelConfig {
     pub bastion_user: String,
@@ -59,9 +56,6 @@ pub struct SshTunnelConfig {
     pub ssh_config_file: Option<PathBuf>,
 }
 
-// UNWIRED(#3): only exercised by this module's own tests until SshTransport::connect
-// (below) and section 6.2's connect-path integration call `args()` for real.
-#[allow(dead_code)]
 impl SshTunnelConfig {
     fn jump_flag(&self) -> Option<String> {
         (!self.jump_hosts.is_empty()).then(|| self.jump_hosts.join(","))
@@ -119,6 +113,9 @@ impl SshTunnelConfig {
             args.push("StrictHostKeyChecking=yes".to_string());
         }
 
+        // `--` ends ssh's options: a user or host that starts with `-` stays the
+        // destination rather than being read as one (`-oProxyCommand=...`).
+        args.push("--".to_string());
         args.push(self.bastion_target());
         args
     }
@@ -163,9 +160,41 @@ impl SshTunnelConfig {
             args.push("StrictHostKeyChecking=yes".to_string());
         }
 
+        args.push("--".to_string());
         args.push(self.bastion_target());
         args.push("true".to_string());
         args
+    }
+}
+
+/// Whether a `-J` entry has a hop (`[user@]host[:port]`) whose user or host
+/// starts with `-`, which ssh, or the nested ssh it runs for the hop, could
+/// read as an option. An entry is split on `,` first: the entries are joined
+/// into one `-J` value that ssh splits the same way, so a hand-edited
+/// `ops@hop,-oX` is two hops. The tunnel editor refuses one, and nothing
+/// spawns `ssh` with one.
+pub(crate) fn is_option_like_jump_host(entry: &str) -> bool {
+    entry.split(',').any(|hop| {
+        let hop = hop.trim();
+        let host = hop.rsplit_once('@').map_or(hop, |(_, host)| host);
+        hop.starts_with('-') || host.starts_with('-')
+    })
+}
+
+impl SshTunnelConfig {
+    /// Refuses a config whose `-J` chain has an option-like hop - for a tunnel
+    /// saved before the editor checked, or edited by hand.
+    fn check_jump_hosts(&self) -> Result<(), String> {
+        match self
+            .jump_hosts
+            .iter()
+            .find(|hop| is_option_like_jump_host(hop))
+        {
+            Some(hop) => Err(format!(
+                "jump host {hop:?} starts with '-', which ssh would read as an option"
+            )),
+            None => Ok(()),
+        }
     }
 }
 
@@ -174,6 +203,7 @@ impl SshTunnelConfig {
 /// way a real tunnel's `connect` does. Never spawns through `ForwardRegistry` and
 /// never supervises or retries: one `ssh` process, one outcome.
 pub async fn test_connection(config: &SshTunnelConfig) -> Result<(), String> {
+    config.check_jump_hosts()?;
     let ssh_path = require_ssh_on_path()?;
 
     let output = Command::new(ssh_path)
@@ -199,9 +229,6 @@ pub async fn test_connection(config: &SshTunnelConfig) -> Result<(), String> {
 /// The [`crate::forward::supervisor::ForwardTransport`] `SshTunnel` plugs into
 /// `ForwardSupervisor`: `connect` spawns the child, `health_check` confirms it's still
 /// running. A distinct exit reason per failure mode is section 3.2.
-// UNWIRED(#3): section 6.2's connect-path integration is the first real caller that
-// hands one of these to `ForwardSupervisor::spawn`.
-#[allow(dead_code)]
 pub struct SshTransport {
     config: SshTunnelConfig,
     child: Option<Child>,
@@ -214,7 +241,6 @@ pub struct SshTransport {
 }
 
 impl SshTransport {
-    #[allow(dead_code)]
     pub fn new(config: SshTunnelConfig) -> Self {
         Self {
             config,
@@ -261,6 +287,7 @@ impl crate::forward::supervisor::ForwardTransport for SshTransport {
     /// callers can tell an auth failure from a bind failure - see
     /// `classify_exit_failure`.
     async fn connect(&mut self) -> Result<(), String> {
+        self.config.check_jump_hosts()?;
         let ssh_path = require_ssh_on_path()?;
 
         let mut command = Command::new(ssh_path);
@@ -350,10 +377,6 @@ impl crate::forward::supervisor::ForwardTransport for SshTransport {
 /// password rejection always says "Permission denied", and both `ExitOnForwardFailure`
 /// bind failures ("cannot listen to port", "Address already in use") and remote refusal
 /// ("forwarding request failed") name forwarding explicitly.
-// UNWIRED(#3): only `SshTransport::connect` calls this today, and that impl is itself
-// unwired until section 6.2's connect-path integration; dead_code analysis can't see
-// through the unused `SshTransport` to know this is reachable.
-#[allow(dead_code)]
 fn classify_exit_failure(status: ExitStatus, stderr_output: &str) -> String {
     let lower = stderr_output.to_lowercase();
 

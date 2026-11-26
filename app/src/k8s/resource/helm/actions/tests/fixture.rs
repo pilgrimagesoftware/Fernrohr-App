@@ -77,11 +77,7 @@ pub(super) fn start(cx: &mut TestAppContext, label: &str, then: &str) -> (FakeCl
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::util::shell::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         // Up and Down move a list's selection outside the registry.
         cx.bind_keys(crate::ui::list_keys::bindings(&[

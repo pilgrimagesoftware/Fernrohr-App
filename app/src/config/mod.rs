@@ -1,5 +1,6 @@
 use serde::{Serialize, de::DeserializeOwned};
 use std::fs;
+use std::io::Write as _;
 use std::path::Path;
 
 pub mod dock_layouts;
@@ -11,25 +12,85 @@ pub mod ui;
 pub mod window_state;
 pub mod workspace;
 
-/// Loads a typed TOML config file, writing resolved defaults on first run and
-/// falling back to defaults (leaving the file untouched) if it fails to parse.
+/// Loads a typed TOML config file.
+///
+/// With no file, it writes resolved defaults and returns them (first run). A
+/// file that can't be read is left alone. A file that can't be parsed (a typo
+/// in a hand edit) is copied to `<file>.bak` before the defaults come back, so
+/// the next [`save`] can't lose what was in it. Both are logged.
 pub fn load<T: Default + Serialize + DeserializeOwned>(path: &Path) -> T {
-    match fs::read_to_string(path) {
-        Ok(contents) => toml::from_str(&contents).unwrap_or_default(),
-        Err(_) => {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let defaults = T::default();
-            let _ = save(path, &defaults);
-            defaults
+            if let Err(error) = save(path, &defaults) {
+                log::warn!("couldn't write default {}: {error}", path.display());
+            }
+            return defaults;
         }
-    }
+        Err(error) => {
+            log::warn!("couldn't read {}, using defaults: {error}", path.display());
+            return T::default();
+        }
+    };
+    let parsed = std::str::from_utf8(&bytes)
+        .map_err(|error| error.to_string())
+        .and_then(|text| toml::from_str(text).map_err(|error| error.to_string()));
+    parsed.unwrap_or_else(|error| {
+        let backup = backup_path(path);
+        match write_backup(&backup, &bytes) {
+            Ok(()) => log::warn!(
+                "couldn't parse {}, using defaults; kept a copy at {}: {error}",
+                path.display(),
+                backup.display()
+            ),
+            Err(copy_error) => log::warn!(
+                "couldn't parse {}, using defaults, nor keep a copy ({copy_error}): {error}",
+                path.display()
+            ),
+        }
+        T::default()
+    })
 }
 
+/// Writes [`load`]'s copy of an unparsable file, owner-only like the config it
+/// copies: an older `.bak` is replaced rather than truncated, so it can't keep a
+/// wider mode.
+fn write_backup(backup: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    match fs::remove_file(backup) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    create_private(backup)?.write_all(bytes)
+}
+
+/// Where [`load`] keeps a copy of a file it couldn't parse: `<file>.bak` beside it.
+pub(crate) fn backup_path(path: &Path) -> std::path::PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".bak");
+    path.with_file_name(name)
+}
+
+/// Saves `value` as TOML through [`write_atomic`], creating the directory.
 pub fn save<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let contents = toml::to_string_pretty(value).expect("config struct must serialize to TOML");
-    fs::write(path, contents)
+    let contents = toml::to_string_pretty(value).map_err(std::io::Error::other)?;
+    write_atomic(path, &contents)
+}
+
+/// Creates `path`, refusing one that exists, owner-only (0600 on unix): config
+/// such as `tunnels.toml` names bastions and tunnel commands, which other local
+/// users have no business reading, and the file is private from the moment it
+/// exists rather than after a later chmod.
+fn create_private(path: &Path) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
 }
 
 static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -38,8 +99,20 @@ static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64:
 /// then `fs::rename`d onto `path`. A same-filesystem rename is atomic on macOS
 /// and Linux, so an interruption leaves `path`'s previous content or its new
 /// content, never a partial file. The directory must exist.
+///
+/// The temp file is created owner-only. A symlinked `path` is written through:
+/// the rename lands on the link's target, so a config file kept in a dotfiles
+/// repo stays a link. An existing file keeps its permissions - the user's to
+/// choose - and a new one stays owner-only, as [`create_private`] made it.
 pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::sync::atomic::Ordering;
+    let resolved;
+    let path = if fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        resolved = fs::canonicalize(path)?;
+        resolved.as_path()
+    } else {
+        path
+    };
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path
         .file_name()
@@ -51,8 +124,17 @@ pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
         TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
     let tmp_path = dir.join(tmp_name);
-    fs::write(&tmp_path, contents)?;
-    fs::rename(&tmp_path, path)
+    let written = create_private(&tmp_path)
+        .and_then(|mut file| file.write_all(contents.as_bytes()))
+        .and_then(|()| match fs::metadata(path) {
+            Ok(existing) => fs::set_permissions(&tmp_path, existing.permissions()),
+            Err(_) => Ok(()),
+        });
+    let renamed = written.and_then(|()| fs::rename(&tmp_path, path));
+    if renamed.is_err() {
+        let _ = fs::remove_file(&tmp_path);
+    }
+    renamed
 }
 
 #[cfg(test)]
@@ -111,5 +193,157 @@ mod tests {
         assert_eq!(fs::read_to_string(&path).unwrap(), "not valid toml {{{");
 
         let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(backup_path(&path));
+    }
+
+    /// Tier 1 #1: a typo in a hand-edited file used to be replaced with
+    /// defaults by the next load → change → save. Its text now survives in
+    /// `<file>.bak`.
+    #[test]
+    fn a_file_that_fails_to_parse_survives_the_next_save() {
+        let path = temp_path("typo");
+        fs::write(&path, "name = \"kept\"\ncount = oops\n").unwrap();
+
+        let mut loaded: Sample = load(&path);
+        loaded.count = 1;
+        save(&path, &loaded).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(backup_path(&path)).unwrap(),
+            "name = \"kept\"\ncount = oops\n"
+        );
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(backup_path(&path));
+    }
+
+    /// Tier 1 #1: only a missing file gets defaults written over it. A path
+    /// that exists but can't be read as a file is left as it is.
+    #[test]
+    fn an_unreadable_path_is_not_overwritten() {
+        let path = temp_path("unreadable");
+        fs::create_dir_all(&path).unwrap();
+
+        let loaded: Sample = load(&path);
+
+        assert_eq!(loaded, Sample::default());
+        assert!(path.is_dir());
+        let _ = fs::remove_dir_all(&path);
+    }
+
+    /// Tier 1 #2: `save` replaces the file in one rename, leaving no temp
+    /// file behind.
+    #[test]
+    fn save_replaces_the_file_whole_and_leaves_no_temp_file() {
+        let dir = temp_path("atomic");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sample.toml");
+        fs::write(&path, "name = \"old\"\ncount = 1\n").unwrap();
+
+        let value = Sample {
+            name: "new".into(),
+            count: 2,
+        };
+        save(&path, &value).unwrap();
+
+        assert_eq!(load::<Sample>(&path), value);
+        let names: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("sample.toml")]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Tier 1 #2: saving through a symlinked config file writes its target
+    /// and keeps the link.
+    #[cfg(unix)]
+    #[test]
+    fn save_writes_through_a_symlinked_file() {
+        let dir = temp_path("symlink");
+        fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("real.toml");
+        let link = dir.join("sample.toml");
+        fs::write(&target, "").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let value = Sample {
+            name: "linked".into(),
+            count: 3,
+        };
+        save(&link, &value).unwrap();
+
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(load::<Sample>(&target), value);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// An existing file keeps its permissions across an atomic save.
+    #[cfg(unix)]
+    #[test]
+    fn save_keeps_an_existing_files_mode() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let path = temp_path("mode");
+        fs::write(&path, "").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+
+        save(&path, &Sample::default()).unwrap();
+
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o640);
+        let _ = fs::remove_file(&path);
+    }
+
+    /// Security pass: a config file [`save`] or [`write_atomic`] creates is
+    /// owner-only; one that already exists keeps the mode the user gave it.
+    #[cfg(unix)]
+    #[test]
+    fn new_config_files_are_owner_only_and_existing_ones_keep_their_mode() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+
+        let saved = temp_path("private-save");
+        save(&saved, &Sample::default()).unwrap();
+        assert_eq!(mode(&saved), 0o600);
+
+        let atomic = temp_path("private-atomic");
+        write_atomic(&atomic, "a = 1\n").unwrap();
+        assert_eq!(mode(&atomic), 0o600);
+
+        let shared = temp_path("existing-mode");
+        fs::write(&shared, "").unwrap();
+        fs::set_permissions(&shared, fs::Permissions::from_mode(0o644)).unwrap();
+        save(&shared, &Sample::default()).unwrap();
+        assert_eq!(mode(&shared), 0o644);
+
+        for path in [saved, atomic, shared] {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    /// Review follow-up: the `.bak` kept for an unparsable file is owner-only,
+    /// even when the file and an older `.bak` were readable by others.
+    #[cfg(unix)]
+    #[test]
+    fn the_backup_of_an_unparsable_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let path = temp_path("private-backup");
+        let backup = backup_path(&path);
+        fs::write(&path, "count = oops\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        fs::write(&backup, "older").unwrap();
+        fs::set_permissions(&backup, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let _: Sample = load(&path);
+
+        let mode = fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "count = oops\n");
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&backup);
     }
 }

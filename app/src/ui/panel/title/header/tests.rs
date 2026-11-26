@@ -10,8 +10,8 @@ use gpui_kit::InteractiveElement as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    Bounds, Context, IntoElement, Keystroke, ParentElement as _, Pixels, Render, Styled as _,
-    TestAppContext, Window, div, px,
+    Bounds, Context, IntoElement, ParentElement as _, Pixels, Render, Styled as _, TestAppContext,
+    Window, div, px,
 };
 
 const NAME: &str = "example-connect-deployment-7f9c8d6b5-abcde";
@@ -27,7 +27,7 @@ impl Render for Header {
         // this is about the header's layout, not the collapse.
         let hints = (0..10).map(|n| {
             KeyHint::styled(
-                Kbd::new(Keystroke::parse("x").unwrap()),
+                Kbd::new(crate::util::keystroke::parse("x").unwrap()),
                 format!("{n}"),
                 |body| {
                     body.debug_selector(move || format!("hint-{n}"))

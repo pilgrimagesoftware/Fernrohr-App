@@ -18,3 +18,30 @@ trim = true
 [git]
 conventional_commits = true
 filter_unconventional = true
+# Spelled out rather than left to git-cliff's built-in defaults, which group every
+# `chore(release)` commit under Miscellaneous Tasks. Those are the release workflows'
+# own bookkeeping (the version bump and the merge-back into develop), not changes.
+# Parsers match in order; the first hit wins.
+commit_parsers = [
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^chore\\(deps.*\\)", skip = true },
+    { message = "^chore\\(pr\\)", skip = true },
+    { message = "^chore\\(pull\\)", skip = true },
+    { message = "^feat", group = "<!-- 0 -->🚀 Features" },
+    { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+    { message = "^doc", group = "<!-- 3 -->📚 Documentation" },
+    { message = "^perf", group = "<!-- 4 -->⚡ Performance" },
+    { message = "^refactor", group = "<!-- 2 -->🚜 Refactor" },
+    { message = "^style", group = "<!-- 5 -->🎨 Styling" },
+    { message = "^test", group = "<!-- 6 -->🧪 Testing" },
+    { message = "^chore|^ci", group = "<!-- 7 -->⚙️ Miscellaneous Tasks" },
+    { body = ".*security", group = "<!-- 8 -->🛡️ Security" },
+    { message = "^revert", group = "<!-- 9 -->◀️ Revert" },
+    { message = ".*", group = "<!-- 10 -->💼 Other" },
+]
+
+[bump]
+# Before 1.0, a breaking change (`feat!:`) bumps the minor version, not the major.
+# An app's dependency upgrades are marked breaking for the changelog, but moving to
+# 1.0 is a deliberate decision, not something a commit marker should trigger.
+breaking_always_bump_major = false

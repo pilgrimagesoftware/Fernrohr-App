@@ -41,7 +41,11 @@ fn sort_from_state(state: &serde_json::Value) -> Option<(String, bool)> {
 pub struct PodsPanel {
     pub(super) scope: PanelScope,
     pub(super) connection: Entity<crate::k8s::cluster::connection::ClusterConnection>,
+    /// The context's shared all-namespaces Pods table. Read pods through the `listed_*`
+    /// methods, which also cover the per-namespace fallback (#457).
     pub(super) table: Entity<PodsTable>,
+    /// The per-namespace watches standing in for a refused all-namespaces list.
+    pub(super) fallback: super::fallback::PodsFallback,
     pub(super) namespaces: Entity<crate::k8s::cluster::namespaces::NamespaceList>,
     pub(super) subscribed: bool,
     pub(super) focus_handle: FocusHandle,
@@ -111,6 +115,7 @@ impl PodsPanel {
         cx.on_release({
             let context_name = context_name.clone();
             move |this: &mut Self, cx| {
+                this.fallback.release_all(cx);
                 if this.subscribed {
                     ClusterRegistry::unsubscribe_pods(cx, &context_name);
                 }
@@ -123,6 +128,7 @@ impl PodsPanel {
             namespace_picker: Default::default(),
             connection: connection.clone(),
             table: cx.new(|_| PodsTable::default()),
+            fallback: Default::default(),
             namespaces,
             subscribed: false,
             focus_handle: crate::ui::panel::focus::panel_focus_handle(cx),
@@ -180,7 +186,11 @@ impl PodsPanel {
         };
         let client = client.clone();
         self.table = ClusterRegistry::subscribe_pods(cx, &self.scope.context_name, client);
-        cx.observe(&self.table, |_, _, cx| cx.notify()).detach();
+        cx.observe(&self.table, |this, _, cx| {
+            this.sync_fallback(cx);
+            cx.notify();
+        })
+        .detach();
         self.subscribed = true;
     }
 
@@ -247,6 +257,7 @@ impl PodsPanel {
         cx.emit(crate::ui::panel_title::ScopeEvent::NamespacesChanged(
             namespaces,
         ));
+        self.sync_fallback(cx);
         cx.notify();
     }
 
