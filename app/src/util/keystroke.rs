@@ -39,9 +39,13 @@ mod tests {
 
     #[test]
     fn a_keystroke_round_trips() {
+        // Compare keystrokes, not strings: `unparse` prints the host's spelling, so
+        // `cmd` comes back as `super` on Linux.
         for source in ["cmd-shift-p", "ctrl-alt-k", "enter", "f15"] {
             let keystroke = parse(source).expect("parses");
-            assert_eq!(keystroke.unparse(HOST_OS), source);
+            let printed = keystroke.unparse(HOST_OS);
+            let reparsed = parse(&printed).expect("its own printing parses");
+            assert_eq!(reparsed, keystroke, "{source} printed as {printed}");
         }
     }
 
