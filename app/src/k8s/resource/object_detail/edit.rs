@@ -38,7 +38,7 @@ impl ObjectDetailPanel {
     }
 
     fn is_secret(&self) -> bool {
-        self.target.kind.gvk.group.is_empty() && self.target.kind.gvk.kind == "Secret"
+        self.target.kind.is_core("Secret")
     }
 
     /// `EditObject`: opens the editor over the object's manifest, focused.

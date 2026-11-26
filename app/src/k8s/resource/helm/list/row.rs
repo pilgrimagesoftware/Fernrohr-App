@@ -57,7 +57,8 @@ impl HelmRow {
     /// (`helm uninstall --keep-history`): hidden unless asked for, as
     /// `helm list` hides it.
     pub(crate) fn uninstalled(&self) -> bool {
-        self.status == "uninstalled"
+        crate::k8s::resource::helm::HelmStatus::parse(&self.status)
+            == crate::k8s::resource::helm::HelmStatus::Uninstalled
     }
 
     pub(crate) fn chart_text(&self) -> String {

@@ -6,6 +6,7 @@
 use super::super::model::{FieldValue, ObjectField, ObjectSection};
 use super::common::{non_empty, selector_chips};
 use crate::k8s::object_ref::ObjectRef;
+use crate::k8s::resource::kind_actions::openable;
 use k8s_openapi::api::core::v1::{EndpointPort, Endpoints, ObjectReference, Service, ServicePort};
 use k8s_openapi::api::discovery::v1::EndpointSlice;
 use k8s_openapi::api::networking::v1::{
@@ -245,11 +246,27 @@ fn host_urls(ingress: &Ingress) -> Vec<String> {
                 paths
                     .clone()
                     .into_iter()
-                    .map(move |path| format!("{scheme}://{host}{path}"))
+                    .filter_map(move |path| host_url(scheme, host, path))
             })
             .collect::<Vec<_>>()
     });
     unique(urls)
+}
+
+/// `scheme://host` with `path`, or `None` when the result wouldn't open `host`.
+/// Both come from the cluster, and whoever writes the Ingress mustn't be able
+/// to steer the click elsewhere: the host must be a plain DNS name (as Open
+/// Host requires), and the path is percent-encoded into the path alone, so a
+/// `?` or `#` in it can't start a query or fragment, and the result's host is
+/// checked once more after parsing.
+fn host_url(scheme: &str, host: &str, path: &str) -> Option<String> {
+    if !openable(host) {
+        return None;
+    }
+    let mut url = url::Url::parse(&format!("{scheme}://{host}/")).ok()?;
+    url.set_path(path);
+    (url.host_str() == Some(host) && url.query().is_none() && url.fragment().is_none())
+        .then(|| url.to_string())
 }
 
 fn endpoint_ports(ports: Option<&Vec<EndpointPort>>) -> Vec<String> {

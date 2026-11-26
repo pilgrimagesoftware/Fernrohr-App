@@ -43,6 +43,21 @@ fn open_in_creates_the_directory_and_a_fresh_file() {
     assert!(dir.join(LOG_FILE_NAME).exists());
 }
 
+/// Security pass: the log is owner-only - it holds hosts, contexts, users and
+/// cluster errors.
+#[cfg(unix)]
+#[test]
+fn the_log_is_owner_only() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = temp_dir();
+    assert!(open_in(&dir).is_some());
+    let mode = fs::metadata(dir.join(LOG_FILE_NAME))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+}
+
 #[test]
 fn level_defaults_to_info() {
     assert_eq!(parse_level(None), LevelFilter::Info);

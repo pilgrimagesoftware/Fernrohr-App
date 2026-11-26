@@ -241,19 +241,52 @@ fn is_our_ssh_forward(pid: u32) -> bool {
 /// The command-line half of [`is_our_ssh_forward`], split out as a pure function so
 /// it's testable without spawning anything. The program name must be `ssh` exactly
 /// (a path component match, not a substring one - `sshd` or `my-ssh-wrapper` don't
-/// count), and the arguments must include both `-N` and `-L`, mirroring the flags
+/// count), and its options must include both `-N` and `-L`, mirroring the flags
 /// `SshTunnelConfig::args` always passes for a forward (as opposed to, say, the
 /// Tunnels window's `-N`-less connectivity test).
+///
+/// Options are read as ssh reads them, so letters inside a value (`-o
+/// NoHostAuthenticationForLocalhost=yes`, a host named `x-Node-Lab`) don't count:
+/// a flag cluster like `-fN` sets each flag, and a flag that takes a value
+/// (`-L`, `-o`, `-J`, ...) consumes the rest of its token or the next one.
+/// Reading stops at `--`. This gate guards a process-group kill after pid reuse.
 fn is_ssh_forward_command(command: &str) -> bool {
-    let Some(program) = command.split_whitespace().next() else {
+    let mut tokens = command.split_whitespace();
+    let Some(program) = tokens.next() else {
         return false;
     };
     let is_ssh = Path::new(program)
         .file_name()
         .and_then(|name| name.to_str())
         == Some("ssh");
-    is_ssh && command.contains("-N") && command.contains("-L")
+    if !is_ssh {
+        return false;
+    }
+    let (mut no_command, mut local_forward) = (false, false);
+    while let Some(token) = tokens.next() {
+        if token == "--" {
+            break;
+        }
+        let Some(flags) = token.strip_prefix('-') else {
+            continue;
+        };
+        for (at, flag) in flags.char_indices() {
+            no_command |= flag == 'N';
+            local_forward |= flag == 'L';
+            if SSH_FLAGS_WITH_VALUE.contains(flag) {
+                // The value is the rest of this token, or the next one.
+                if at + flag.len_utf8() == flags.len() {
+                    tokens.next();
+                }
+                break;
+            }
+        }
+    }
+    no_command && local_forward
 }
+
+/// ssh's single-letter options that take a value (ssh(1) synopsis).
+const SSH_FLAGS_WITH_VALUE: &str = "BbcDEeFIiJLlmOoPpQRSWw";
 
 /// `ps -o ppid=`'s stdout for `pid`, parsed - `None` if `pid` no longer exists or
 /// `ps` couldn't be run.

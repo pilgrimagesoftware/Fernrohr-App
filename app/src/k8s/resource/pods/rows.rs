@@ -1,6 +1,7 @@
 //! A pod as a list row, and the view pipeline over rows: namespace scope, name filter and sort.
 
 use super::*;
+use crate::k8s::resource::pod_phase::PodPhase;
 use crate::ui::style::Tone;
 use k8s_openapi::api::core::v1::PodStatus;
 
@@ -39,7 +40,7 @@ impl PodRow {
     /// Whether Port Forward is offered: only a Running pod has a container to
     /// forward to (`resource-specific-actions`).
     pub fn forwardable(&self) -> bool {
-        self.phase == "Running"
+        PodPhase::parse(&self.phase) == PodPhase::Running
     }
 }
 
@@ -78,12 +79,14 @@ pub fn status_tone(status: Option<&PodStatus>) -> Tone {
                 .as_deref()
         })
         .any(|reason| BAD_WAITING_REASONS.contains(&reason));
-    match status.phase.as_deref() {
-        _ if stuck => Tone::Bad,
-        Some("Failed") => Tone::Bad,
-        Some("Pending") => Tone::Warning,
-        Some("Running") => Tone::Good,
-        _ => Tone::Neutral,
+    if stuck {
+        return Tone::Bad;
+    }
+    match status.phase.as_deref().map(PodPhase::parse) {
+        Some(PodPhase::Failed) => Tone::Bad,
+        Some(PodPhase::Pending) => Tone::Warning,
+        Some(PodPhase::Running) => Tone::Good,
+        Some(PodPhase::Succeeded | PodPhase::Unknown(_)) | None => Tone::Neutral,
     }
 }
 
@@ -92,7 +95,7 @@ pub fn status_tone(status: Option<&PodStatus>) -> Tone {
 /// containers exited as they should, so none being ready is no warning.
 pub(super) fn ready_tone(ready: usize, total: usize, phase: Option<&str>) -> Tone {
     match (ready, total) {
-        _ if phase == Some("Succeeded") => Tone::Neutral,
+        _ if phase.map(PodPhase::parse) == Some(PodPhase::Succeeded) => Tone::Neutral,
         (_, 0) => Tone::Neutral,
         (ready, total) if ready == total => Tone::Good,
         _ => Tone::Warning,

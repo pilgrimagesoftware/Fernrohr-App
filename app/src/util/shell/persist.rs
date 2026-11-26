@@ -63,15 +63,18 @@ pub fn save(cx: &mut App, workspace_path: &Path) {
     let namespace_defaults = super::namespace_defaults::NamespaceDefaults::snapshot(cx);
     let sort_defaults = super::sort_defaults::SortDefaults::snapshot(cx);
     let resource_groups = super::resource_groups::ResourceGroupMemory::snapshot(cx);
-    let _ = config::save(
-        workspace_path,
-        &WorkspaceConfig {
-            windows,
-            namespace_defaults,
-            sort_defaults,
-            resource_groups,
-        },
-    );
+    let workspace = WorkspaceConfig {
+        windows,
+        namespace_defaults,
+        sort_defaults,
+        resource_groups,
+    };
+    if let Err(error) = config::save(workspace_path, &workspace) {
+        log::warn!(
+            "couldn't save the workspace to {}: {error}",
+            workspace_path.display()
+        );
+    }
 }
 
 /// Saves the workspace once windows stop moving or resizing for

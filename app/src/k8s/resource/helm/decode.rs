@@ -24,13 +24,16 @@ use std::io::Read as _;
 const GZIP_MAGIC: [u8; 3] = [0x1f, 0x8b, 0x08];
 
 /// One decoded release revision.
-// UNWIRED(#370): read by the release watch (helm-releases section 2).
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct HelmRelease {
+    // The revision's identity, decoded with the rest of the payload. The panels already
+    // know it from the Secret's labels, so only the decoder's tests and `Debug` read it.
+    #[allow(dead_code)]
     pub(crate) name: String,
+    #[allow(dead_code)]
     pub(crate) namespace: String,
     /// The revision number.
+    #[allow(dead_code)]
     pub(crate) version: u32,
     pub(crate) info: ReleaseInfo,
     pub(crate) chart: ChartMeta,
@@ -45,8 +48,6 @@ pub(crate) struct HelmRelease {
 }
 
 /// A revision's state, as `helm status` reports it.
-// UNWIRED(#370): read by the release watch (helm-releases section 2).
-#[allow(dead_code)]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub(crate) struct ReleaseInfo {
@@ -58,8 +59,6 @@ pub(crate) struct ReleaseInfo {
 }
 
 /// The chart a revision was made from.
-// UNWIRED(#370): read by the release watch (helm-releases section 2).
-#[allow(dead_code)]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub(crate) struct ChartMeta {
@@ -170,8 +169,6 @@ struct StoredChart {
 }
 
 /// Decodes `payload`, a revision Secret's `release` value.
-// UNWIRED(#370): called by the release watch (helm-releases section 2).
-#[allow(dead_code)]
 pub(crate) fn decode_release(payload: &[u8]) -> Result<HelmRelease, DecodeError> {
     let text: Vec<u8> = payload
         .iter()

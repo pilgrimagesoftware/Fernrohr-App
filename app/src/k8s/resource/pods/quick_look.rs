@@ -25,6 +25,8 @@ mod view;
 pub(in crate::k8s::resource) struct QuickLookPopover {
     /// The panel's shared Pods table the pod is read from.
     pods: Entity<PodsTable>,
+    /// Follows `pods`; replaced, ending it, when the popover moves to another table.
+    pods_observe: Subscription,
     pub(super) target: PodSelection,
     /// The context's discovered kinds, which decide whether the owner is a link.
     discovery: Entity<DiscoveredKinds>,
@@ -62,11 +64,12 @@ impl QuickLookPopover {
         client: Option<kube::Client>,
         cx: &mut Context<Self>,
     ) -> Self {
-        cx.observe(&pods, |this, _, cx| this.follow(cx)).detach();
+        let pods_observe = cx.observe(&pods, |this, _, cx| this.follow(cx));
         let discovery = DiscoveryRegistry::kinds(cx, &target.context_name);
         cx.observe(&discovery, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             pods,
+            pods_observe,
             target,
             discovery,
             client,
@@ -97,7 +100,7 @@ impl QuickLookPopover {
             return;
         }
         if pods != self.pods {
-            cx.observe(&pods, |this, _, cx| this.follow(cx)).detach();
+            self.pods_observe = cx.observe(&pods, |this, _, cx| this.follow(cx));
             self.pods = pods;
         }
         self.target = target;

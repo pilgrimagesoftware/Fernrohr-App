@@ -40,6 +40,24 @@ pub type OnPick = Rc<dyn Fn(Vec<String>, &mut Window, &mut App)>;
 /// What a filter change runs: the host draws the list again for the new text.
 pub type OnQuery = Rc<dyn Fn(&mut Window, &mut App)>;
 
+/// The callbacks a host entity hands [`NamespaceFilter`]: a pick goes to `pick` on the
+/// host, and a filter change redraws it. Each does nothing once the host is gone.
+pub fn host_callbacks<V: 'static>(
+    host: gpui_kit::WeakEntity<V>,
+    pick: fn(&mut V, Vec<String>, &mut gpui_kit::Context<V>),
+) -> (OnPick, OnQuery) {
+    let on_pick: OnPick = Rc::new({
+        let host = host.clone();
+        move |next, _window, cx| {
+            let _ = host.update(cx, |host, cx| pick(host, next, cx));
+        }
+    });
+    let on_query: OnQuery = Rc::new(move |_window, cx| {
+        let _ = host.update(cx, |_, cx| cx.notify());
+    });
+    (on_pick, on_query)
+}
+
 /// The entries listed for `query`: "All namespaces" (`None`), then each of
 /// `namespaces` containing `query`, ignoring case, in their given order.
 pub fn entries(namespaces: &[String], query: &str) -> Vec<Option<String>> {

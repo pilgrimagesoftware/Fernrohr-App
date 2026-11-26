@@ -6,9 +6,6 @@
 use super::registry::HelmWatch;
 use super::*;
 
-// UNWIRED(#370): the Helm panels (helm-releases sections 3-4) subscribe;
-// until then only the session tests do.
-#[allow(dead_code)]
 impl ClusterRegistry {
     /// Subscribes to `context_name`'s Helm release watch over `scope`, starting
     /// it on the 0-to-1 transition. Returns the shared table to render from.

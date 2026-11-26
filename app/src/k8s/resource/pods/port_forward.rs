@@ -21,10 +21,7 @@ pub(crate) fn forward_pod(
     cx: &mut App,
 ) {
     // Only a Running pod has a container to forward to (`resource-specific-actions`).
-    let phase = pod
-        .and_then(|pod| pod.status.as_ref())
-        .and_then(|status| status.phase.as_deref());
-    if phase != Some("Running") {
+    if !pod.is_some_and(crate::k8s::pod_resolver::is_running) {
         let reason = format!("Pod {} isn't running.", selection.name);
         return port_forwarding::notify_failure(&selection.name, None, &reason, window, cx);
     }

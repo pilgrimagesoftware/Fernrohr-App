@@ -181,9 +181,7 @@ impl PodDetailPanel {
         // Port forward needs a Running pod (`resource-specific-actions`).
         let forwardable = self
             .live_pod()
-            .and_then(|pod| pod.status.as_ref())
-            .and_then(|status| status.phase.as_deref())
-            == Some("Running");
+            .is_some_and(crate::k8s::pod_resolver::is_running);
         let deletable = self.deletable(cx);
         let hint = |action: &dyn Action, context: &str, fallback: &str, label: &'static str| {
             let key = Kbd::binding_for_action(action, Some(context), window).unwrap_or_else(|| {

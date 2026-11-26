@@ -249,11 +249,7 @@ impl HelmReleasePanel {
     /// revision. Waits for discovery, which decides each object's scope.
     pub(super) fn fetch_resources(&mut self, cx: &mut Context<Self>) {
         let history = self.history(cx);
-        let Some(deployed) = history
-            .iter()
-            .find(|revision| revision.status == "deployed")
-            .or(history.first())
-        else {
+        let Some(deployed) = crate::k8s::resource::helm::current_revision(&history) else {
             return;
         };
         let source = (deployed.secret.clone(), deployed.resource_version.clone());

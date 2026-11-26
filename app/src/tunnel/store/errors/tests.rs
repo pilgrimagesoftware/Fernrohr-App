@@ -102,3 +102,30 @@ fn an_ssh_tunnel_is_still_checked_as_ssh() {
         [TunnelFieldError::EmptyHost, TunnelFieldError::EmptyUser]
     );
 }
+
+/// Review follow-up: a jump host whose user or host starts with `-` is refused,
+/// since ssh could read it as an option.
+#[test]
+fn an_option_like_jump_host_is_refused() {
+    for hop in [
+        "-oProxyCommand=false",
+        "-oProxyCommand=false@hop",
+        "ops@-hop",
+        "ops@hop2,-oProxyCommand=false",
+    ] {
+        let tunnel = TunnelConfig {
+            name: "Prod".into(),
+            kind: TunnelKind::Ssh,
+            bastion_host: "bastion.example.com".into(),
+            bastion_user: "ops".into(),
+            bastion_port: 22,
+            jump_hosts: vec!["ops@hop1.example.com".into(), hop.into()],
+            ..TunnelConfig::default()
+        };
+        assert_eq!(
+            rejected(tunnel),
+            vec![TunnelFieldError::OptionLikeJumpHost],
+            "{hop}"
+        );
+    }
+}

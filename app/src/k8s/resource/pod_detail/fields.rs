@@ -267,12 +267,13 @@ fn references(targets: Vec<ObjectRef>, qualified: bool) -> PodFieldValue {
 /// A pod phase's severity: Running and Succeeded are success, Pending is info,
 /// Failed is danger, and anything else (`Unknown`) neutral.
 fn phase_tone(phase: &str) -> crate::ui::detail::BadgeTone {
+    use crate::k8s::resource::pod_phase::PodPhase;
     use crate::ui::detail::BadgeTone;
-    match phase {
-        "Running" | "Succeeded" => BadgeTone::Good,
-        "Pending" => BadgeTone::Info,
-        "Failed" => BadgeTone::Bad,
-        _ => BadgeTone::Unknown,
+    match PodPhase::parse(phase) {
+        PodPhase::Running | PodPhase::Succeeded => BadgeTone::Good,
+        PodPhase::Pending => BadgeTone::Info,
+        PodPhase::Failed => BadgeTone::Bad,
+        PodPhase::Unknown(_) => BadgeTone::Unknown,
     }
 }
 

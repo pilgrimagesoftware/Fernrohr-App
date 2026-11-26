@@ -242,3 +242,17 @@ fn the_picker_marks_sidecars() {
     view.select_container("proxy");
     assert_eq!(view.selected_container(), "proxy");
 }
+
+#[test]
+fn a_failure_keeps_the_panel_through_a_later_end() {
+    let mut view = LogsView::new(vec!["app".into()]);
+    view.apply(LogEvent::RequestFailed {
+        message: "forbidden".into(),
+        detail: "403".into(),
+    });
+    view.apply(LogEvent::Ended);
+    assert!(view.terminal_message().is_some(), "still the failure");
+    assert_eq!(view.terminal_detail(), Some("403"));
+    assert!(!view.ended());
+    assert_eq!(view.end_marker(), None);
+}

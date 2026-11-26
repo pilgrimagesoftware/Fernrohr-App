@@ -106,10 +106,7 @@ impl HelmReleasePanel {
     /// the deployed revision's objects.
     pub(super) fn uninstall(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let history = self.history(cx);
-        let deployed = history
-            .iter()
-            .find(|revision| revision.status == "deployed")
-            .or(history.first())
+        let deployed = crate::k8s::resource::helm::current_revision(&history)
             .map(|revision| revision.secret.clone());
         let deployed = self.client(cx).zip(deployed);
         actions::confirm_uninstall(self, self.run_key(), deployed, window, cx);

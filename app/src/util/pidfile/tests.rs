@@ -202,6 +202,30 @@ fn is_ssh_forward_command_matches_only_an_ssh_dash_n_dash_l_invocation() {
     assert!(!is_ssh_forward_command(""));
 }
 
+/// Tier 1 #5: `-N` and `-L` must be ssh's own flags, not letters inside an
+/// option value or a host name, since this gate guards a process-group kill.
+#[test]
+fn is_ssh_forward_command_reads_flags_not_substrings() {
+    // Letters inside values or names.
+    assert!(!is_ssh_forward_command(
+        "/usr/bin/ssh -o NoHostAuthenticationForLocalhost=yes -o LogLevel=ERROR user@x-Node-Lab"
+    ));
+    assert!(!is_ssh_forward_command(
+        "/usr/bin/ssh -J jump-Node -L 15000:host:443 user@bastion"
+    ));
+    assert!(!is_ssh_forward_command("/usr/bin/ssh -- -N -L"));
+    // Real forwards, however the flags are written.
+    assert!(is_ssh_forward_command(
+        "/usr/bin/ssh -F /dev/null -N -L 15000:host:443 -o ExitOnForwardFailure=yes -- user@bastion"
+    ));
+    assert!(is_ssh_forward_command(
+        "ssh -fN -L15000:host:443 user@bastion"
+    ));
+    assert!(is_ssh_forward_command(
+        "ssh -NL 15000:host:443 user@bastion"
+    ));
+}
+
 /// Section 6.2's quit-time gap: `sweep_dir` with [`looks_like_live_forward`] is
 /// exactly what `kill_live_forwards` runs from the app-quit hook. Proves it kills
 /// a live, still-parented-by-us stand-in and cleans up its pidfile.

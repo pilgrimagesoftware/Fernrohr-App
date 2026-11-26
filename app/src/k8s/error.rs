@@ -16,8 +16,14 @@
 //! `pod_detail::fetch::PodDetailState::NotFound`), naming what's missing, not a
 //! message this module could word better.
 
+use crate::consts::{CREDENTIAL_PLUGIN_STDERR_LIMIT, ERROR_SOURCE_DEPTH_LIMIT};
+use kube::client::AuthError;
+
 /// The message half of a failure report: what a panel shows by default.
 pub(crate) fn describe(error: &kube::Error) -> String {
+    if let Some(failure) = credential_plugin_failure(error) {
+        return failure;
+    }
     match error {
         // kube's stand-in when the server's error body wasn't a `Status` (a 503
         // from an aggregated API's dead backend, say): its "reason" is kube's own
@@ -38,13 +44,75 @@ const UNPARSED_ERROR_REASON: &str = "Failed to parse error data";
 /// readable message rather than discarded - a panel renders both, the second
 /// as selectable/copyable detail for a report that needs more than the
 /// summary.
+/// A failed credential plugin's detail is its [`describe`] text: kube's
+/// `Debug` of it carries what [`credential_plugin_failure`] leaves out.
 pub(crate) fn detail(error: &kube::Error) -> String {
-    format!("{error:?}")
+    match credential_plugin_failure(error) {
+        Some(failure) => failure,
+        None => format!("{error:?}"),
+    }
+}
+
+/// [`describe`] and [`detail`] for an error that isn't a `kube::Error` but may
+/// carry one in its `source()` chain - an `io::Error` from a kube response
+/// stream, say: its text, or what [`credential_plugin_failure`] keeps of a
+/// failed plugin's.
+pub(crate) fn describe_any(error: &(dyn std::error::Error + 'static)) -> String {
+    credential_plugin_failure(error).unwrap_or_else(|| error.to_string())
+}
+
+/// [`describe_any`]'s technical half, as [`detail`] is [`describe`]'s.
+pub(crate) fn detail_any(error: &(dyn std::error::Error + 'static)) -> String {
+    credential_plugin_failure(error).unwrap_or_else(|| format!("{error:?}"))
+}
+
+/// What may be shown of a kubeconfig credential plugin's failure, when
+/// `error` or anything in its `source()` chain is one - `None` otherwise.
+///
+/// kube's own text for it can't be shown, logged or reported: a failed run's
+/// `Display` and `Debug` carry the plugin's whole captured output - stdout is
+/// where a credential goes - and the `Command`'s `Debug`, which lists the env
+/// the kubeconfig gives it; a parse failure can quote the output. This keeps
+/// the exit status and the plugin's own stderr - where it says what went wrong,
+/// such as an expired login - scrubbed of anything credential-like, and capped.
+/// The failure reaches the client as `kube::Error::Service` wrapping the auth
+/// layer's error, or as `kube::Error::Auth`: the chain walk finds either.
+pub(crate) fn credential_plugin_failure(
+    error: &(dyn std::error::Error + 'static),
+) -> Option<String> {
+    std::iter::successors(Some(error), |error| error.source())
+        .take(ERROR_SOURCE_DEPTH_LIMIT)
+        .find_map(|error| error.downcast_ref::<AuthError>())
+        .and_then(plugin_failure)
+}
+
+fn plugin_failure(error: &AuthError) -> Option<String> {
+    match error {
+        AuthError::AuthExecRun { out, .. } => {
+            let stderr = crate::util::redact::redact(String::from_utf8_lossy(&out.stderr).trim());
+            let stderr = match stderr.char_indices().nth(CREDENTIAL_PLUGIN_STDERR_LIMIT) {
+                Some((cut, _)) => format!("{}\u{2026}", &stderr[..cut]),
+                None => stderr,
+            };
+            Some(if stderr.is_empty() {
+                format!("The context's credential plugin failed ({}).", out.status)
+            } else {
+                format!(
+                    "The context's credential plugin failed ({}): {stderr}",
+                    out.status
+                )
+            })
+        }
+        AuthError::AuthExecParse(_) => {
+            Some("The context's credential plugin's output isn't a credential.".to_string())
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{describe, detail};
+    use super::{describe, describe_any, detail, detail_any};
     use kube::core::response::Status;
 
     fn api_error(reason: &str, message: &str, code: u16) -> kube::Error {
@@ -80,5 +148,97 @@ mod tests {
     fn detail_keeps_the_full_debug_rendering() {
         let error = api_error("NotFound", "pods \"gone\" not found", 404);
         assert_eq!(detail(&error), format!("{error:?}"));
+    }
+
+    /// Security pass: a failed credential plugin's run, the way kube reports
+    /// it - a token on stdout, a secret in its env, a token echoed on stderr.
+    #[cfg(unix)]
+    fn failed_plugin() -> kube::client::AuthError {
+        use std::os::unix::process::ExitStatusExt as _;
+        kube::client::AuthError::AuthExecRun {
+            cmd: r#"PLUGIN_ENV="env-marker" "cred-plugin" "get-token""#.to_string(),
+            out: Box::new(std::process::Output {
+                status: std::process::ExitStatus::from_raw(1 << 8),
+                stdout: br#"{"status":{"token":"stdout-marker"}}"#.to_vec(),
+                stderr: b"login expired; token=stderr-marker\n".to_vec(),
+            }),
+        }
+    }
+
+    /// Whatever shape the failure arrives in - as the auth layer's error
+    /// inside `Service`, or as `Auth` - neither the panel's message, its
+    /// detail, nor a connect failure's reason carries the plugin's stdout,
+    /// env or a token from its stderr; its explanation and exit status stay.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_credential_plugin_shows_only_its_scrubbed_stderr() {
+        let shapes = [
+            kube::Error::Service(Box::new(failed_plugin())),
+            kube::Error::Auth(failed_plugin()),
+        ];
+        for error in &shapes {
+            let chain = crate::k8s::cluster::connection::error_chain(error);
+            for text in [describe(error), detail(error), chain] {
+                for marker in ["stdout-marker", "env-marker", "stderr-marker"] {
+                    assert!(!text.contains(marker), "{marker} in {text:?}");
+                }
+                assert!(text.contains("login expired"), "{text:?}");
+                assert!(text.contains("exit status: 1"), "{text:?}");
+            }
+        }
+    }
+
+    /// A plugin with nothing to say still names its exit status.
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_credential_plugin_names_its_exit_status() {
+        use std::os::unix::process::ExitStatusExt as _;
+        let error = kube::Error::Auth(kube::client::AuthError::AuthExecRun {
+            cmd: "cred-plugin".to_string(),
+            out: Box::new(std::process::Output {
+                status: std::process::ExitStatus::from_raw(2 << 8),
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            }),
+        });
+        assert_eq!(
+            describe(&error),
+            "The context's credential plugin failed (exit status: 2)."
+        );
+    }
+
+    /// A cyclic `source()` chain ends the credential-plugin search instead of
+    /// looping forever.
+    #[test]
+    fn a_cyclic_error_chain_has_no_credential_plugin_failure() {
+        #[derive(Debug)]
+        struct Cyclic;
+        impl std::fmt::Display for Cyclic {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("cyclic")
+            }
+        }
+        impl std::error::Error for Cyclic {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(self)
+            }
+        }
+        assert_eq!(super::credential_plugin_failure(&Cyclic), None);
+    }
+
+    /// Review follow-up: an error that only wraps a failed plugin (an
+    /// `io::Error` from a kube stream) gets the same treatment.
+    #[cfg(unix)]
+    #[test]
+    fn a_wrapped_credential_plugin_failure_is_scrubbed_too() {
+        let error = std::io::Error::other(kube::Error::Auth(failed_plugin()));
+        for text in [describe_any(&error), detail_any(&error)] {
+            for marker in ["stdout-marker", "env-marker", "stderr-marker"] {
+                assert!(!text.contains(marker), "{marker} in {text:?}");
+            }
+            assert!(text.contains("login expired"), "{text:?}");
+        }
+        let plain = std::io::Error::other("connection reset");
+        assert_eq!(describe_any(&plain), "connection reset");
     }
 }

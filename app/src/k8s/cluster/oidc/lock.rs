@@ -32,7 +32,17 @@ static LOCKS: LazyLock<Mutex<HashMap<Key, Arc<tokio::sync::Mutex<()>>>>> =
 /// Waits for `user`'s renewal lock: in-process always, and on `file` (the
 /// kubeconfig defining the user) when there is one.
 pub(super) async fn acquire(file: Option<&Path>, user: &str) -> Result<RenewalLock, String> {
-    let file = file.map(|file| std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf()));
+    // Resolved on the blocking pool, not the async thread: it touches the disk.
+    let file = match file.map(Path::to_path_buf) {
+        Some(file) => Some(
+            tokio::task::spawn_blocking(move || std::fs::canonicalize(&file).unwrap_or(file))
+                .await
+                .map_err(|error| {
+                    format!("resolving the kubeconfig path stopped unexpectedly ({error})")
+                })?,
+        ),
+        None => None,
+    };
     let in_process = LOCKS
         .lock()
         .entry((file.clone(), user.to_string()))
@@ -67,6 +77,6 @@ async fn lock_file(kubeconfig: PathBuf) -> Result<std::fs::File, String> {
         Ok::<_, std::io::Error>(file)
     })
     .await
-    .map_err(|error| format!("the kubeconfig lock couldn't be taken ({error})"))?
+    .map_err(|error| format!("taking the kubeconfig lock stopped unexpectedly ({error})"))?
     .map_err(|error| format!("the kubeconfig lock couldn't be taken ({error})"))
 }

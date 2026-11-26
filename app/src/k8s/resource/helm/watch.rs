@@ -20,9 +20,6 @@ const TYPE_SELECTOR: &str = "type=helm.sh/release.v1";
 
 /// Which Secrets a release watch covers: every namespace, or one - a user may
 /// read Secrets in a namespace without being allowed to list them all.
-// UNWIRED(#370): the Helm panels (helm-releases section 3) pick a scope;
-// until then only tests construct one.
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum HelmScope {
     All,

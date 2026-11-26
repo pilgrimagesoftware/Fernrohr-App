@@ -29,6 +29,30 @@ use std::path::PathBuf;
 
 pub(in crate::k8s::cluster) use persist::kubeconfig_files;
 
+/// Why a needed renewal didn't happen. Saving the renewed tokens isn't here: that
+/// failure is logged, not fatal.
+#[derive(Debug)]
+pub(in crate::k8s::cluster) enum OidcError {
+    /// The renewal lock (in-process, or the kubeconfig's sidecar file) couldn't be taken.
+    Lock(String),
+    /// The issuer didn't renew `user`'s expired id-token, and why.
+    Refresh { user: String, reason: String },
+}
+
+impl std::fmt::Display for OidcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Lock(reason) => f.write_str(reason),
+            Self::Refresh { user, reason } => write!(
+                f,
+                "the OIDC id-token for user {user} has expired, and {reason}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for OidcError {}
+
 /// The `auth-provider` name this module renews.
 const PROVIDER: &str = "oidc";
 /// Config keys, as `kubectl`'s oidc provider names them.
@@ -52,7 +76,7 @@ pub(in crate::k8s::cluster) async fn refresh_expired(
     kubeconfig: &mut Kubeconfig,
     context: Option<&str>,
     files: &[PathBuf],
-) -> Result<(), String> {
+) -> Result<(), OidcError> {
     let Some(user) = user_of(kubeconfig, context) else {
         return Ok(());
     };
@@ -71,7 +95,9 @@ pub(in crate::k8s::cluster) async fn refresh_expired(
     let mut config = config.clone();
 
     let file = persist::defining_file(files, &user);
-    let _renewal = lock::acquire(file.as_deref(), &user).await?;
+    let _renewal = lock::acquire(file.as_deref(), &user)
+        .await
+        .map_err(OidcError::Lock)?;
     // Another renewal may have finished while this one waited: take what it
     // stored, and use its id-token if that is good.
     if let Some(stored) = file
@@ -92,7 +118,10 @@ pub(in crate::k8s::cluster) async fn refresh_expired(
 
     let tokens = issuer::refresh(&config)
         .await
-        .map_err(|error| format!("the OIDC id-token for user {user} has expired, and {error}"))?;
+        .map_err(|reason| OidcError::Refresh {
+            user: user.clone(),
+            reason,
+        })?;
     config.insert(ID_TOKEN.to_string(), tokens.id_token.clone());
     if let Some(refresh_token) = &tokens.refresh_token {
         config.insert(REFRESH_TOKEN.to_string(), refresh_token.clone());

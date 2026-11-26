@@ -92,7 +92,7 @@ impl ListColumn {
                 }),
             );
         }
-        if kind.gvk.group.is_empty() && kind.gvk.kind == "Service" {
+        if kind.is_core("Service") {
             columns.push(ListColumn::new(FORWARDS, "Forwards", 90.));
         }
         columns.push(ListColumn::new(AGE, "Age", 70.));

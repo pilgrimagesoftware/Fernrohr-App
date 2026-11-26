@@ -131,7 +131,8 @@ async fn a_refused_refresh_says_why_without_the_token() {
 
     let error = refresh_expired(&mut kubeconfig, Some("dex"), &[])
         .await
-        .expect_err("the issuer refuses a refresh token it doesn't know");
+        .expect_err("the issuer refuses a refresh token it doesn't know")
+        .to_string();
 
     assert!(error.contains("invalid_grant"), "{error}");
     assert!(error.contains("log in again"), "{error}");
@@ -166,7 +167,8 @@ async fn a_discovery_document_naming_another_issuer_is_refused() {
 
     let error = refresh_expired(&mut kubeconfig, Some("dex"), &[])
         .await
-        .expect_err("a mismatched issuer is refused");
+        .expect_err("a mismatched issuer is refused")
+        .to_string();
 
     assert!(error.contains("different issuer"), "{error}");
     let requests = issuer.requests();
@@ -214,7 +216,8 @@ async fn a_refresh_token_is_never_sent_to_a_plain_http_issuer_elsewhere() {
 
     let error = refresh_expired(&mut kubeconfig, Some("dex"), &[])
         .await
-        .expect_err("plain HTTP off this machine is refused");
+        .expect_err("plain HTTP off this machine is refused")
+        .to_string();
 
     assert!(error.contains("isn't HTTPS"), "{error}");
 }

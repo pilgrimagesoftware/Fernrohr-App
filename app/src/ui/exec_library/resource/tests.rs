@@ -251,6 +251,48 @@ async fn a_pods_prefill_takes_its_deployments_selector_when_cached(cx: &mut Test
     assert_eq!(target, selector(Some("shop"), "app=web,tier=front"));
 }
 
+/// Review follow-up: a ReplicaSet whose controller is a custom resource named
+/// `Deployment` doesn't borrow the apps Deployment of the same name's
+/// selector; it falls back to the ReplicaSet's own.
+#[gpui_kit::test]
+async fn a_custom_deployment_controller_is_not_the_apps_one(cx: &mut TestAppContext) {
+    let replica_sets = apps("ReplicaSet", "replicasets");
+    let cluster = cluster(
+        cx,
+        &[replica_sets.clone(), apps("Deployment", "deployments")],
+    );
+    cluster.apply(
+        "/apis/apps/v1",
+        "replicasets",
+        json!({ "apiVersion": "apps/v1", "kind": "ReplicaSet",
+            "metadata": { "name": "web-c4f", "namespace": "shop", "uid": "uid-web-c4f",
+                "ownerReferences": [{ "apiVersion": "example.com/v1", "kind": "Deployment",
+                    "name": "web", "uid": "uid-custom-web", "controller": true }] },
+            "spec": { "selector": { "matchLabels": {
+                "app": "custom", "pod-template-hash": "c4f" } } } }),
+    );
+    for _ in 0..400 {
+        cx.run_until_parked();
+        let cached = cx.update(|cx| {
+            ClusterRegistry::existing_kind(cx, CONTEXT, &replica_sets)
+                .is_some_and(|table| table.read(cx).find(Some("shop"), "web-c4f", None).is_some())
+        });
+        if cached {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let custom = Resource::Pod(Box::new(pod(
+        json!({ "app": "custom", "pod-template-hash": "c4f" }),
+        Some(("ReplicaSet", "web-c4f")),
+    )));
+    let target = cx.update(|cx| prefill(&custom, CONTEXT, cx));
+    assert_eq!(
+        target,
+        selector(Some("shop"), "app=custom,pod-template-hash=c4f")
+    );
+}
+
 #[test]
 fn a_workloads_prefill_names_the_workload() {
     let web = Resource::Workload {

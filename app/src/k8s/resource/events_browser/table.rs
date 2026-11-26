@@ -266,12 +266,11 @@ impl TableDelegate for EventsTableDelegate {
     fn perform_sort(
         &mut self,
         col_ix: usize,
-        sort: ColumnSort,
+        _sort: ColumnSort,
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) {
         // The table's own next step is ignored: `list_sort` decides it.
-        let _ = sort;
         crate::ui::list_sort::header_clicked(self, col_ix, window, cx);
     }
 }

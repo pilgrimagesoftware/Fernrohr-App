@@ -204,9 +204,9 @@ impl CommandRegistry {
     /// Dispatches the command's action if it's registered and available in
     /// `active_contexts`; a context-gated command with its context inactive
     /// is inert. Returns whether it dispatched.
-    // UNWIRED: the palette trigger dispatches through GPUI's own action
-    // system directly today; no caller routes through this by id yet.
-    #[allow(dead_code)]
+    /// Test-only: the palette dispatches through GPUI's own action system, so only these
+    /// tests route a command by id - to pin the context gating.
+    #[cfg(test)]
     pub fn dispatch(&self, id: &str, active_contexts: &[&str], cx: &mut gpui_kit::App) -> bool {
         let Some(command) = self.get(id) else {
             return false;
@@ -222,9 +222,9 @@ impl CommandRegistry {
 /// Case-insensitive subsequence match: every character of `query`, in
 /// order, appears somewhere in `candidate` (not necessarily contiguous).
 /// This is what makes "new win" match "New Window".
-// UNWIRED: the palette (`util::palette`) still relies on gpui-component's own
-// substring filtering; nothing calls this stronger match yet.
-#[allow(dead_code)]
+/// Test-only: the palette (`util::palette`) relies on gpui-component's own substring
+/// filtering, so nothing in the app uses this stronger match.
+#[cfg(test)]
 pub fn fuzzy_match(query: &str, candidate: &str) -> bool {
     if query.is_empty() {
         return true;

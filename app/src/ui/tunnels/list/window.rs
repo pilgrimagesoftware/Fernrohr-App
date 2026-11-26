@@ -28,7 +28,7 @@ pub fn open_or_focus(cx: &mut App) {
         return;
     }
 
-    let (window, _) = gpui_kit::open_window(
+    let Ok((window, _)) = gpui_kit::open_window(
         WindowOptions {
             app_id: Some(crate::consts::APP_ID.into()),
             // An explicit, centered starting size: with only a minimum, the
@@ -47,7 +47,9 @@ pub fn open_or_focus(cx: &mut App) {
             cx.new(|cx| TunnelsWindow::new(tunnels_path, None, window, cx))
         },
     )
-    .expect("failed to open the tunnels window");
+    .inspect_err(|error| log::warn!("couldn't open the tunnels window: {error}")) else {
+        return;
+    };
     let handle = window
         .downcast::<Root>()
         .expect("gpui_kit::open_window roots every window in a Root");
