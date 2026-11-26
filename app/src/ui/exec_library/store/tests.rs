@@ -33,6 +33,8 @@ fn saved_entries_come_back_after_a_relaunch_in_order(cx: &mut TestAppContext) {
             ExecLibraryStore::update(cx, |library| library.create(entry(name))).expect("saved");
         }
     });
+    // The writes run on a background thread.
+    cx.run_until_parked();
 
     let relaunched = TestAppContext::single();
     relaunched.update(|cx| {
@@ -80,6 +82,7 @@ fn a_missing_file_is_an_empty_library_until_the_first_change(cx: &mut TestAppCon
     cx.update(|cx| {
         ExecLibraryStore::update(cx, |library| library.create(entry("x"))).expect("saved");
     });
+    cx.run_until_parked();
     assert!(path.exists());
     let _ = std::fs::remove_file(&path);
 }

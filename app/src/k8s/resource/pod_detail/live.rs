@@ -38,7 +38,7 @@ pub(super) enum LiveSource {
     Pending,
     /// Subscribed to the Pods watch serving the pod's namespace, and released with the
     /// panel. Moves off a shared all-namespaces watch the server comes to refuse.
-    Following(Box<PodsFollow>),
+    Following(Box<PodsFollow>, Subscription),
 }
 
 /// What the table says about the panel's pod, compared with what it shows.
@@ -63,13 +63,13 @@ impl PodDetailPanel {
             Some(&self.pod.namespace),
         );
         cx.on_release(|this: &mut Self, cx| {
-            if let LiveSource::Following(follow) = &this.live {
+            if let LiveSource::Following(follow, _) = &this.live {
                 follow.release(cx);
             }
         })
         .detach();
-        self.observe_followed(follow.table(), cx);
-        self.live = LiveSource::Following(Box::new(follow));
+        let observing = Self::observe_table(follow.table(), cx);
+        self.live = LiveSource::Following(Box::new(follow), observing);
         // A list already open on the context has the table synced: no need to
         // wait for its next change.
         self.read_from_table(cx);
@@ -77,33 +77,33 @@ impl PodDetailPanel {
 
     /// Reads `table` again whenever it changes - first moving off it if it's a refused
     /// all-namespaces watch, then observing the namespace's watch instead.
-    fn observe_followed(
-        &self,
+    fn observe_table(
         table: &Entity<crate::k8s::resource::pods::PodsTable>,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Subscription {
         cx.observe(table, |this, _, cx| {
-            if let LiveSource::Following(follow) = &mut this.live
+            if let LiveSource::Following(follow, observing) = &mut this.live
                 && follow.reroute_if_refused(cx)
             {
+                // The new table's observer replaces this one, which stops with the
+                // refused table it watched.
                 let table = follow.table().clone();
-                this.observe_followed(&table, cx);
+                *observing = Self::observe_table(&table, cx);
             }
             this.read_from_table(cx);
         })
-        .detach();
     }
 
     /// Whether the shared table has taken over from the first-paint fetch.
     pub(super) fn live_synced(&self, cx: &App) -> bool {
-        matches!(&self.live, LiveSource::Following(follow) if follow.table().read(cx).synced())
+        matches!(&self.live, LiveSource::Following(follow, _) if follow.table().read(cx).synced())
     }
 
     /// Brings `state` up to the table's copy of the pod: the pod as listed now,
     /// or - once the table no longer has it - its last state marked deleted
     /// (`NotFound` if the panel never had one).
     pub(super) fn read_from_table(&mut self, cx: &mut Context<Self>) {
-        let LiveSource::Following(follow) = &self.live else {
+        let LiveSource::Following(follow, _) = &self.live else {
             return;
         };
         let seen = {

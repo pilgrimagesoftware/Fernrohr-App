@@ -38,7 +38,7 @@ const OPEN_COMMAND_ID: &str = "object_detail.node_pods.open_detail";
 /// `Node` - the same `(group, kind)` pair `sections::sections_for` dispatches
 /// `cluster::node` on, so the two can't drift about what counts as a Node.
 fn applies_to(target: &ObjectTarget) -> bool {
-    target.kind.gvk.group.is_empty() && target.kind.gvk.kind == "Node"
+    target.kind.is_core("Node")
 }
 
 /// The embedded, node-scoped Pods table for `target` in `context_name` -

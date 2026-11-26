@@ -16,8 +16,6 @@
 //! `errors.rs` owns the error types and validation, `crud.rs` owns `TunnelStore`
 //! itself and its create/read/update/delete surface, and `bindings.rs` owns the
 //! `context -> tunnel id` binding surface built on top.
-// UNWIRED(#3): section 6.2's connect-path integration is the first real caller.
-#![allow(dead_code)]
 
 use crate::config::{
     self,

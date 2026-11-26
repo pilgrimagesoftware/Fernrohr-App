@@ -230,7 +230,7 @@ pub fn open_or_focus(cx: &mut App) {
         });
         return;
     }
-    let (window, _) = gpui_kit::open_window(
+    let Ok((window, _)) = gpui_kit::open_window(
         WindowOptions {
             app_id: Some(crate::consts::APP_ID.into()),
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
@@ -250,7 +250,9 @@ pub fn open_or_focus(cx: &mut App) {
             view
         },
     )
-    .expect("failed to open the settings window");
+    .inspect_err(|error| log::warn!("couldn't open the settings window: {error}")) else {
+        return;
+    };
     let handle = window
         .downcast::<Root>()
         .expect("gpui_kit::open_window roots every window in a Root");

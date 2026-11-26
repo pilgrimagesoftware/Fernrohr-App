@@ -85,10 +85,12 @@ pub(crate) async fn running_pods(
 
 /// Whether `pod`'s phase is Running.
 pub(crate) fn is_running(pod: &Pod) -> bool {
+    use crate::k8s::resource::pod_phase::PodPhase;
     pod.status
         .as_ref()
         .and_then(|status| status.phase.as_deref())
-        == Some("Running")
+        .map(PodPhase::parse)
+        == Some(PodPhase::Running)
 }
 
 /// The Running pods `target` means. An any-pod target means whichever pod it

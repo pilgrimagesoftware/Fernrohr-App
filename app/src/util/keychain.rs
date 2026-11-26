@@ -10,9 +10,6 @@ const SMOKE_SERVICE: &str = "com.pilgrimagesoftware.fernrohr.smoke-test";
 /// Writes, reads back, and deletes a secret for `account`. `Ok(true)` means the round trip
 /// matched; `Ok(false)` means no credential backend is available (caller should fall back);
 /// any other failure is returned as `Err`.
-// UNWIRED(#3): section 1.1 spike only. Section 5.2 wires the production keychain wrapper
-// (service = app id, account = tunnel id, in-memory prompt fallback) around this same crate.
-#[allow(dead_code)]
 pub fn smoke_test(account: &str, secret: &str) -> keyring::Result<bool> {
     let entry = match Entry::new(SMOKE_SERVICE, account) {
         Ok(entry) => entry,

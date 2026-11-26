@@ -52,6 +52,22 @@ pub enum FollowState {
     Paused,
 }
 
+/// Where a single stream stands. A failure or a missing previous instance takes the
+/// panel over; a plain end keeps the lines, with [`ENDED_MARKER`] after them
+/// (`completed-pod-logs`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+enum StreamState {
+    #[default]
+    Live,
+    Ended,
+    /// What took the panel over instead of its lines, and - for a failed request
+    /// only - its full technical detail.
+    TakenOver {
+        message: String,
+        detail: Option<String>,
+    },
+}
+
 /// View-model for one pod's log panel: line history, follow state, and
 /// container selection. GPUI-free so it's directly unit-testable.
 pub struct LogsView {
@@ -60,18 +76,8 @@ pub struct LogsView {
     containers: Vec<String>,
     /// Which of `containers` are sidecars, which the picker marks (#398).
     sidecars: Vec<String>,
-    #[allow(dead_code)]
     selected_container: String,
-    /// What took the panel over instead of its lines: a failure, or no
-    /// previous instance. A plain end is [`Self::ended`], not this.
-    terminal_message: Option<String>,
-    /// Whether the stream ended normally. Its lines stay, with
-    /// [`ENDED_MARKER`] after them (`completed-pod-logs`).
-    ended: bool,
-    /// The failure's full technical detail, alongside `terminal_message` - set
-    /// only for [`LogEvent::RequestFailed`], never for the plain "stream
-    /// ended" state, which has no error behind it to detail.
-    terminal_detail: Option<String>,
+    state: StreamState,
     /// The ANSI style a single stream's last line ended in, which its next
     /// starts in (#309).
     carried: Style,
@@ -93,9 +99,7 @@ impl LogsView {
             containers,
             sidecars: Vec::new(),
             selected_container,
-            terminal_message: None,
-            ended: false,
-            terminal_detail: None,
+            state: StreamState::Live,
             carried: Style::default(),
             carried_by_tag: HashMap::new(),
             widest: None,
@@ -151,19 +155,23 @@ impl LogsView {
         crate::k8s::resource::pods::container_label(container, sidecar)
     }
 
+    /// What took the panel over instead of its lines, if anything did.
     pub fn terminal_message(&self) -> Option<&str> {
-        self.terminal_message.as_deref()
+        match &self.state {
+            StreamState::TakenOver { message, .. } => Some(message),
+            StreamState::Live | StreamState::Ended => None,
+        }
     }
 
     /// Whether the stream ended normally, its lines kept.
     pub fn ended(&self) -> bool {
-        self.ended
+        self.state == StreamState::Ended
     }
 
     /// The row after the last line of an ended stream: [`ENDED_MARKER`], or
     /// [`NO_OUTPUT`] when it never wrote a line. `None` while it streams.
     pub fn end_marker(&self) -> Option<&'static str> {
-        match (self.ended, self.lines.is_empty()) {
+        match (self.ended(), self.lines.is_empty()) {
             (false, _) => None,
             (true, true) => Some(NO_OUTPUT),
             (true, false) => Some(ENDED_MARKER),
@@ -179,7 +187,10 @@ impl LogsView {
     /// The full technical detail behind [`Self::terminal_message`], when the
     /// terminal state is a failure rather than a plain "stream ended."
     pub fn terminal_detail(&self) -> Option<&str> {
-        self.terminal_detail.as_deref()
+        match &self.state {
+            StreamState::TakenOver { detail, .. } => detail.as_deref(),
+            StreamState::Live | StreamState::Ended => None,
+        }
     }
 
     /// Whether a container picker needs to be shown at all - a single
@@ -218,9 +229,7 @@ impl LogsView {
         self.selected_container = container.to_string();
         self.lines.clear();
         self.widest = None;
-        self.terminal_message = None;
-        self.ended = false;
-        self.terminal_detail = None;
+        self.state = StreamState::Live;
         true
     }
 
@@ -265,14 +274,23 @@ impl LogsView {
             LogEvent::Line(line) => self.append_line(line),
             // The lines stay, with the marker after them, rather than giving
             // the panel over to a message (`completed-pod-logs`).
-            LogEvent::Ended => self.ended = true,
+            // A panel already taken over by a failure keeps showing it.
+            LogEvent::Ended => {
+                if self.state == StreamState::Live {
+                    self.state = StreamState::Ended;
+                }
+            }
             LogEvent::RequestFailed { message, detail } => {
-                self.terminal_message = Some(format!("Couldn't start log stream: {message}"));
-                self.terminal_detail = Some(detail);
+                self.state = StreamState::TakenOver {
+                    message: format!("Couldn't start log stream: {message}"),
+                    detail: Some(detail),
+                };
             }
             LogEvent::NoPreviousInstance => {
-                self.terminal_message = Some(NO_PREVIOUS_INSTANCE.into());
-                self.terminal_detail = None;
+                self.state = StreamState::TakenOver {
+                    message: NO_PREVIOUS_INSTANCE.into(),
+                    detail: None,
+                };
             }
         }
     }

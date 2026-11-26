@@ -216,10 +216,7 @@ impl HelmReleasePanel {
         self.selected
             .filter(|version| history.iter().any(|revision| revision.version == *version))
             .or_else(|| {
-                history
-                    .iter()
-                    .find(|revision| revision.status == "deployed")
-                    .or(history.first())
+                crate::k8s::resource::helm::current_revision(&history)
                     .map(|revision| revision.version)
             })
     }

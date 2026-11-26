@@ -63,10 +63,12 @@ pub(super) struct Controlled {
     /// The Pods watch serving the object's namespace, once subscribed for a kind whose
     /// children are pods (or a claim's users): the context's all-namespaces watch while it
     /// serves, else the namespace's own (#457).
-    pods: Option<PodsFollow>,
-    /// The child kinds' watches it subscribed, each released with the panel. Each moves
-    /// to a watch of the object's namespace if a shared cluster-wide one is refused (#457).
-    kinds: Vec<(DiscoveredKind, NamespaceFollow)>,
+    /// With it, the observer of its current table - replaced, ending it, when it moves.
+    pods: Option<(PodsFollow, Subscription)>,
+    /// The child kinds' watches it subscribed, each released with the panel, and each
+    /// with the observer of its current table. Each moves to a watch of the object's
+    /// namespace if a shared cluster-wide one is refused (#457).
+    kinds: Vec<(DiscoveredKind, NamespaceFollow, Subscription)>,
     /// The context's other open watches it matched against, observed so a
     /// change there re-matches too. Only observed, never subscribed: a list
     /// closing still stops its watch, and its entry goes at the next match.
@@ -212,7 +214,7 @@ impl ObjectDetailPanel {
                 .controlled
                 .kinds
                 .iter()
-                .any(|(watched, _)| watched.gvk.group == group && watched.gvk.kind == kind);
+                .any(|(watched, _, _)| watched.gvk.group == group && watched.gvk.kind == kind);
             let discovered = self.kinds(cx).and_then(|kinds| {
                 kinds
                     .iter()
@@ -241,14 +243,13 @@ impl ObjectDetailPanel {
             self.target.namespace.as_deref(),
         );
         cx.on_release(|this: &mut Self, cx| {
-            if let Some(follow) = &this.controlled.pods {
+            if let Some((follow, _)) = &this.controlled.pods {
                 follow.release(cx);
             }
         })
         .detach();
-        cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
-            .detach();
-        self.controlled.pods = Some(follow);
+        let observing = Self::observe_child(follow.table(), cx);
+        self.controlled.pods = Some((follow, observing));
     }
 
     fn watch_child_kind(
@@ -264,15 +265,19 @@ impl ObjectDetailPanel {
             NamespaceFollow::subscribe(cx, &context_name, client, &kind, namespace.as_deref());
         if self.controlled.kinds.is_empty() {
             cx.on_release(|this: &mut Self, cx| {
-                for (_, follow) in &this.controlled.kinds {
+                for (_, follow, _) in &this.controlled.kinds {
                     follow.release(cx);
                 }
             })
             .detach();
         }
-        cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
-            .detach();
-        self.controlled.kinds.push((kind, follow));
+        let observing = Self::observe_child(follow.table(), cx);
+        self.controlled.kinds.push((kind, follow, observing));
+    }
+
+    /// Re-matches whenever `table` changes.
+    fn observe_child<T: 'static>(table: &Entity<T>, cx: &mut Context<Self>) -> Subscription {
+        cx.observe(table, |this, _, cx| this.match_controlled(cx))
     }
 
     /// Matches the object against its subscribed child watches and every
@@ -283,24 +288,22 @@ impl ObjectDetailPanel {
             .and_then(|object| object.metadata.uid.clone())
             .unwrap_or_default();
         // A child watch whose shared cluster-wide one was refused moves to the object's
-        // namespace first, and the new table is observed from then on.
-        for (_, follow) in &mut self.controlled.kinds {
+        // namespace first, and its new table's observer replaces the old one's.
+        for (_, follow, observing) in &mut self.controlled.kinds {
             if follow.reroute_if_refused(cx) {
-                cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
-                    .detach();
+                *observing = Self::observe_child(follow.table(), cx);
             }
         }
-        if let Some(follow) = &mut self.controlled.pods
+        if let Some((follow, observing)) = &mut self.controlled.pods
             && follow.reroute_if_refused(cx)
         {
-            cx.observe(follow.table(), |this, _, cx| this.match_controlled(cx))
-                .detach();
+            *observing = Self::observe_child(follow.table(), cx);
         }
         let mut tables: Vec<(DiscoveredKind, Entity<ObjectsTable>)> = self
             .controlled
             .kinds
             .iter()
-            .map(|(kind, follow)| (kind.clone(), follow.table().clone()))
+            .map(|(kind, follow, _)| (kind.clone(), follow.table().clone()))
             .collect();
         let open = ClusterRegistry::open_kind_tables(cx, &self.scope.context_name);
         self.controlled
@@ -331,7 +334,7 @@ impl ObjectDetailPanel {
             .controlled
             .pods
             .as_ref()
-            .map(|follow| follow.table().read(cx).pods())
+            .map(|(follow, _)| follow.table().read(cx).pods())
             .unwrap_or_default();
         let refs = controlled_by(&uid, read, pods);
         // Only the child kinds this panel subscribed: a refusal of an unrelated open
@@ -340,14 +343,14 @@ impl ObjectDetailPanel {
             self.controlled
                 .kinds
                 .iter()
-                .map(|(kind, follow)| (kind, follow.table().read(cx))),
+                .map(|(kind, follow, _)| (kind, follow.table().read(cx))),
         );
         // Refused even in the object's own namespace: this account can't list its pods.
         let pods_refused = self
             .controlled
             .pods
             .as_ref()
-            .is_some_and(|follow| follow.table().read(cx).refused().is_some());
+            .is_some_and(|(follow, _)| follow.table().read(cx).refused().is_some());
         let gvk = &self.target.kind.gvk;
         let claim = is_claim(&gvk.group, &gvk.kind);
         // A claim controls nothing, so its Pods watch says nothing about Controls.
@@ -389,20 +392,16 @@ impl ObjectDetailPanel {
         kinds: Vec<(DiscoveredKind, Entity<ObjectsTable>)>,
         cx: &mut Context<Self>,
     ) {
-        for (_, table) in &kinds {
-            cx.observe(table, |this, _, cx| this.match_controlled(cx))
-                .detach();
-        }
-        if let Some(table) = &pods {
-            cx.observe(table, |this, _, cx| this.match_controlled(cx))
-                .detach();
-        }
-        self.controlled.pods = pods.map(PodsFollow::detached);
+        self.controlled.pods = pods.map(|table| {
+            let observing = Self::observe_child(&table, cx);
+            (PodsFollow::detached(table), observing)
+        });
         self.controlled.kinds = kinds
             .into_iter()
             .map(|(kind, table)| {
+                let observing = Self::observe_child(&table, cx);
                 let follow = NamespaceFollow::detached(&kind, table);
-                (kind, follow)
+                (kind, follow, observing)
             })
             .collect();
         self.match_controlled(cx);

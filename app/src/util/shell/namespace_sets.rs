@@ -46,7 +46,15 @@ impl MainWindow {
                 // A typed label Logs panel searches namespaces of its own
                 // (`selector-logs`); a workload's is fixed.
                 NavTarget::LabelLogs(crate::util::logs::LabelLogs::Typed(_)) => true,
-                _ => false,
+                // Listed, not `_`, so a new target is a decision here rather than a default.
+                NavTarget::LabelLogs(_)
+                | NavTarget::Logs
+                | NavTarget::PodLogs(_)
+                | NavTarget::Pod(_)
+                | NavTarget::Object(_)
+                | NavTarget::Exec(_)
+                | NavTarget::HelmReleases
+                | NavTarget::HelmRelease(_) => false,
             })
             .map(|open| (open.id, open.key.clone()))
     }

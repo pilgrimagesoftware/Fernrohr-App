@@ -9,10 +9,6 @@
 //! machine with no keychain re-prompts for tunnel secrets each session rather than
 //! silently persisting them to disk. It is one map for the whole process, shared by
 //! every [`TunnelSecretStore`].
-// UNWIRED(#3): `tunnel_store::TunnelStore` (section 5.3) is the first real caller;
-// section 6's context binding/connect-path work is the first caller of `TunnelStore`
-// itself, at which point this module is reachable outside tests.
-#![allow(dead_code)]
 
 use crate::consts::TUNNEL_KEYCHAIN_SERVICE;
 use keyring::Entry;

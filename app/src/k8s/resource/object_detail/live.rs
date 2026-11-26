@@ -35,7 +35,7 @@ pub(super) enum LiveSource {
     Pending,
     /// Subscribed to the kind's shared watch, and released with the panel. Moves to a
     /// watch of the object's namespace if a shared cluster-wide one is refused (#457).
-    Following(Box<NamespaceFollow>),
+    Following(Box<NamespaceFollow>, Subscription),
 }
 
 /// The write of the object a table row stands for: its uid and `resourceVersion`.
@@ -59,39 +59,39 @@ impl ObjectDetailPanel {
         let follow =
             NamespaceFollow::subscribe(cx, &context_name, client, &kind, namespace.as_deref());
         cx.on_release(|this: &mut Self, cx| {
-            if let LiveSource::Following(follow) = &this.live {
+            if let LiveSource::Following(follow, _) = &this.live {
                 follow.release(cx);
             }
         })
         .detach();
-        self.observe_followed(follow.table(), cx);
-        self.live = LiveSource::Following(Box::new(follow));
+        let observing = Self::observe_table(follow.table(), cx);
+        self.live = LiveSource::Following(Box::new(follow), observing);
         self.read_from_table(cx);
     }
 
     /// Reads `table` again whenever it changes - first moving off it if it's a refused
     /// cluster-wide watch, then observing the namespace's watch instead.
-    fn observe_followed(
-        &self,
+    fn observe_table(
         table: &Entity<crate::k8s::resource::object_list::ObjectsTable>,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Subscription {
         cx.observe(table, |this, _, cx| {
-            if let LiveSource::Following(follow) = &mut this.live
+            if let LiveSource::Following(follow, observing) = &mut this.live
                 && follow.reroute_if_refused(cx)
             {
+                // The new table's observer replaces this one, which stops with the
+                // refused table it watched.
                 let table = follow.table().clone();
-                this.observe_followed(&table, cx);
+                *observing = Self::observe_table(&table, cx);
             }
             this.read_from_table(cx);
         })
-        .detach();
     }
 
     /// Acts on what the table says about the object: refetches it when its row
     /// shows a write the panel hasn't fetched, and shows it gone once the row is.
     pub(super) fn read_from_table(&mut self, cx: &mut Context<Self>) {
-        let LiveSource::Following(follow) = &self.live else {
+        let LiveSource::Following(follow, _) = &self.live else {
             return;
         };
         let row = {
@@ -137,7 +137,7 @@ impl ObjectDetailPanel {
     /// sent before the delete, so what it found is stale.
     pub(super) fn known_absent(&self, cx: &App) -> bool {
         match &self.live {
-            LiveSource::Following(follow) => {
+            LiveSource::Following(follow, _) => {
                 follow.table().read(cx).synced() && self.followed.is_none()
             }
             #[cfg(test)]
@@ -188,7 +188,7 @@ impl ObjectDetailPanel {
         &self,
     ) -> Option<Entity<crate::k8s::resource::object_list::ObjectsTable>> {
         match &self.live {
-            LiveSource::Following(follow) => Some(follow.table().clone()),
+            LiveSource::Following(follow, _) => Some(follow.table().clone()),
             LiveSource::Off | LiveSource::Pending => None,
         }
     }

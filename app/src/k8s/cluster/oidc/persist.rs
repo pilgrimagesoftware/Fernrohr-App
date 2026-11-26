@@ -69,8 +69,14 @@ pub(super) fn save(file: &Path, user: &str, tokens: &Tokens) -> Result<(), Strin
     replace(file, &text).map_err(|error| format!("couldn't write {} ({error})", file.display()))
 }
 
+/// `file` as YAML, or `None` - logged - when it can't be read or parsed.
 fn read(file: &Path) -> Option<Value> {
-    serde_yaml_ng::from_str(&std::fs::read_to_string(file).ok()?).ok()
+    let text = std::fs::read_to_string(file)
+        .inspect_err(|error| log::debug!("couldn't read {}: {error}", file.display()))
+        .ok()?;
+    serde_yaml_ng::from_str(&text)
+        .inspect_err(|error| log::warn!("{} isn't valid YAML: {error}", file.display()))
+        .ok()
 }
 
 /// `user`'s oidc auth-provider `config` mapping in a kubeconfig `document`.

@@ -180,7 +180,7 @@ fn value_of(value: &str) -> Result<String, &'static str> {
 /// selects every pod - no workload's.
 pub fn of_object(gvk: &GroupVersionKind, object: &DynamicObject) -> Option<Selector> {
     let selector = object.data.get("spec")?.get("selector")?;
-    let selector = if gvk.group.is_empty() && gvk.kind == "Service" {
+    let selector = if crate::k8s::cluster::discovery::is_group_kind(gvk, "", "Service") {
         selector
             .as_object()?
             .iter()

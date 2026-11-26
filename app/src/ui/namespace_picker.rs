@@ -15,7 +15,7 @@
 //! focus goes back where it was.
 
 use crate::command::Command;
-use crate::ui::namespace_filter::{NamespaceFilter, OnPick, OnQuery};
+use crate::ui::namespace_filter::{NamespaceFilter, host_callbacks};
 use crate::ui::namespace_sets::store::NamespaceSets;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::assets::IconName;
@@ -132,18 +132,7 @@ impl Render for NamespacePicker {
             .ghost()
             .tab_stop(false)
             .tooltip("Namespace");
-        let on_pick: OnPick = Rc::new({
-            let this = this.clone();
-            move |next, _window, cx| {
-                let _ = this.update(cx, |picker, cx| picker.pick(next, cx));
-            }
-        });
-        let on_query: OnQuery = Rc::new({
-            let this = this.clone();
-            move |_window, cx| {
-                let _ = this.update(cx, |_, cx| cx.notify());
-            }
-        });
+        let (on_pick, on_query) = host_callbacks(this.clone(), Self::pick);
         let filter = self.filter.clone();
         let namespaces = self.namespaces.clone();
         let current = self.current.clone();

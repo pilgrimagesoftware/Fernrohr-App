@@ -12,7 +12,11 @@ pub enum TunnelStoreError {
     /// `create`/`update` rejected the tunnel before writing it - one entry per
     /// offending field, so a caller (the section 4.2 editor) can mark each inline.
     Invalid(Vec<TunnelFieldError>),
+    // The causes are shown through `Debug` (the editor's and connect path's messages),
+    // which dead-code analysis doesn't count as a read.
+    #[allow(dead_code)]
     Secret(keyring::Error),
+    #[allow(dead_code)]
     Io(io::Error),
 }
 

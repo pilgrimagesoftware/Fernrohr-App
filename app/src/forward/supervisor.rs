@@ -93,8 +93,6 @@ pub struct SupervisorOptions {
 
 /// Owns the spawned supervisor task; aborting it on drop per the project's "owning
 /// spawned work" convention rather than leaking it.
-// UNWIRED(#3): SshTunnel and K8sPortForward (sections 3-4) are the first real callers.
-#[allow(dead_code)]
 pub struct ForwardSupervisor {
     /// A receiver to subscribe from. The task holds the only sender, so the channel
     /// closes when the task ends - which it does only after giving up.
@@ -105,7 +103,6 @@ pub struct ForwardSupervisor {
 }
 
 impl ForwardSupervisor {
-    #[allow(dead_code)]
     pub fn spawn<T: ForwardTransport>(
         rt: &Handle,
         local_addr: SocketAddr,
@@ -123,7 +120,6 @@ impl ForwardSupervisor {
         }
     }
 
-    #[allow(dead_code)]
     pub fn state(&self) -> watch::Receiver<ForwardState> {
         self.state_rx.clone()
     }
@@ -133,7 +129,6 @@ impl ForwardSupervisor {
         self.failure.clone()
     }
 
-    #[allow(dead_code)]
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
     }
@@ -162,8 +157,9 @@ async fn run<T: ForwardTransport>(
 
         match transport.connect_outcome().await {
             Ok(()) => {}
-            Err(ConnectFailure::Retry(_reason)) => {
+            Err(ConnectFailure::Retry(reason)) => {
                 attempt += 1;
+                log::warn!("forward connect attempt {attempt} failed, retrying: {reason}");
                 tokio::time::sleep(options.backoff.delay(attempt)).await;
                 continue;
             }
@@ -181,7 +177,8 @@ async fn run<T: ForwardTransport>(
 
         loop {
             tokio::time::sleep(options.health_check_interval).await;
-            if transport.health_check().await.is_err() {
+            if let Err(reason) = transport.health_check().await {
+                log::warn!("forward health check failed, reconnecting: {reason}");
                 break;
             }
         }

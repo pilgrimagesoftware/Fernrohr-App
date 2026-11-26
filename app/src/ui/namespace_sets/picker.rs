@@ -173,8 +173,10 @@ impl SetPicker {
     }
 
     fn confirm_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(name) = self.confirming.take() {
-            let _ = NamespaceSets::update(cx, |sets| Ok(sets.remove_set(&name)));
+        if let Some(name) = self.confirming.take()
+            && let Err(error) = NamespaceSets::update(cx, |sets| Ok(sets.remove_set(&name)))
+        {
+            log::warn!("couldn't delete namespace set {name:?}: {error}");
         }
         window.close_dialog(cx);
     }
@@ -267,28 +269,14 @@ impl Render for SetPicker {
                 })
             })
             .collect();
-        let list = CommandList::new(&self.state)
-            .items(items)
-            .placeholder("Filter sets…")
-            .on_select({
-                let this = this.clone();
-                move |index_path, window, cx| {
-                    if !window.last_input_was_keyboard() {
-                        return;
-                    }
-                    let _ = this.update(cx, |this, _| this.selected = Some(index_path.row));
-                }
-            })
-            .on_confirm(move |index_path, window, cx| {
-                let _ = this.update(cx, |this, cx| {
-                    let index = if window.last_input_was_keyboard() {
-                        this.selected.unwrap_or(index_path.row)
-                    } else {
-                        index_path.row
-                    };
-                    this.choose(index, window, cx);
-                });
-            });
+        let list = crate::ui::keyboard_pick::follow_keyboard(
+            CommandList::new(&self.state)
+                .items(items)
+                .placeholder("Filter sets…"),
+            this,
+            |this| &mut this.selected,
+            Self::choose,
+        );
         let notice = self.notice.clone().or_else(|| {
             if empty {
                 Some("No namespace sets yet - Create Namespace Set… makes one.".into())
