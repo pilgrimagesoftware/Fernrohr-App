@@ -55,6 +55,6 @@ pub fn recorded(keystroke: &gpui_kit::Keystroke) -> Recorded {
     if keystroke.key == "escape" && unmodified {
         Recorded::Cancelled
     } else {
-        Recorded::Keys(keystroke.unparse())
+        Recorded::Keys(keystroke.unparse(crate::util::keystroke::HOST_OS))
     }
 }

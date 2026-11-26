@@ -68,7 +68,7 @@ fn press_dialog_button(harness: &mut Harness, n: usize) {
         harness.vcx.simulate_keystrokes("tab");
         harness.vcx.run_until_parked();
     }
-    let space = gpui_kit::Keystroke::parse("space").expect("valid");
+    let space = crate::util::keystroke::parse("space").expect("valid");
     harness.vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,

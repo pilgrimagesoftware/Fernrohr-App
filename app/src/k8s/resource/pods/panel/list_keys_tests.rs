@@ -10,7 +10,7 @@ use crate::k8s::resource::pods::{PodsPanel, SelectedPod};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::Root;
-use gpui_kit::{AppContext as _, Focusable as _, Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, Focusable as _, TestAppContext, VisualTestContext};
 use kube_runtime::watcher;
 
 const CONTEXT: &str = "list-keys-pods";
@@ -75,7 +75,11 @@ fn focused_pods(cx: &mut TestAppContext) -> VisualTestContext {
 }
 
 fn press(vcx: &mut VisualTestContext, key: &str) {
-    vcx.simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+    vcx.simulate_keystrokes(
+        &crate::util::keystroke::parse(key)
+            .expect("valid")
+            .unparse(crate::util::keystroke::HOST_OS),
+    );
     vcx.run_until_parked();
 }
 

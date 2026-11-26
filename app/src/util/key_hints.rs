@@ -75,7 +75,7 @@ fn key_for(action: &dyn Action, focus: Option<&FocusHandle>, window: &Window) ->
     let keys: Vec<String> = binding
         .keystrokes()
         .iter()
-        .map(|keystroke| keystroke.unparse())
+        .map(|keystroke| keystroke.unparse(crate::util::keystroke::HOST_OS))
         .collect();
     (!keys.is_empty()).then(|| keys.join(" "))
 }
@@ -108,7 +108,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
                         .key
                         .as_deref()
                         .and_then(|key| key.split(' ').next())
-                        .and_then(|key| Keystroke::parse(key).ok())
+                        .and_then(|key| crate::util::keystroke::parse(key).ok())
                     {
                         Some(keystroke) => Kbd::new(keystroke).into_any_element(),
                         None => div()

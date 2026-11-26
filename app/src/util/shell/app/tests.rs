@@ -73,7 +73,7 @@ async fn a_pods_panel_shortcut_key_reaches_the_window(cx: &mut TestAppContext) {
     cx.update_window(window.into(), |_, window, cx| {
         window.render_frame(cx);
         window.dispatch_keystroke(
-            gpui_kit::Keystroke::parse("d").expect("valid keystroke"),
+            crate::util::keystroke::parse("d").expect("valid keystroke"),
             cx,
         );
         window.render_frame(cx);

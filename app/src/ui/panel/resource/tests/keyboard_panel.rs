@@ -27,7 +27,7 @@ pub(super) fn bind_panel_keys(cx: &mut TestAppContext) {
         let mut registry = CommandRegistry::new();
         crate::ui::resource_panel::register_commands(&mut registry);
         let keymap = KeymapConfig::default();
-        let bindings = crate::keymap::bindings(&registry, &keymap, &gpui_kit::DummyKeyboardMapper);
+        let bindings = crate::keymap::bindings(&registry, &keymap, cx);
         cx.bind_keys(bindings);
         cx.bind_keys(crate::ui::resource_panel::panel_bindings());
     });

@@ -75,11 +75,7 @@ fn harness(cx: &mut TestAppContext) -> Harness {
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let followed = Rc::new(RefCell::new(Vec::new()));

@@ -19,8 +19,12 @@ pub fn key_hints(tunnel_enabled: bool, window: &mut Window, cx: &App) -> impl In
     let arrows = div()
         .flex()
         .gap_0p5()
-        .child(Kbd::new(Keystroke::parse("up").expect("valid keystroke")))
-        .child(Kbd::new(Keystroke::parse("down").expect("valid keystroke")));
+        .child(Kbd::new(
+            crate::util::keystroke::parse("up").expect("valid keystroke"),
+        ))
+        .child(Kbd::new(
+            crate::util::keystroke::parse("down").expect("valid keystroke"),
+        ));
     div()
         .flex()
         .flex_wrap()
@@ -49,7 +53,7 @@ pub fn with_key(button: impl IntoElement, key: Option<Kbd>) -> impl IntoElement 
 
 /// Enter, the key that confirms the highlighted context.
 pub fn enter_key() -> Kbd {
-    Kbd::new(Keystroke::parse("enter").expect("valid keystroke"))
+    Kbd::new(crate::util::keystroke::parse("enter").expect("valid keystroke"))
 }
 
 /// Whatever `tunnels.manage` is bound to now.

@@ -405,8 +405,7 @@ async fn the_command_is_registered_and_rebindable(cx: &mut TestAppContext) {
     config
         .bindings
         .insert("logs.pick_context".into(), "ctrl-x".into());
-    let bindings =
-        cx.update(|cx| crate::keymap::bindings(&registry, &config, cx.keyboard_mapper().as_ref()));
+    let bindings = cx.update(|cx| crate::keymap::bindings(&registry, &config, cx));
     let keys: Vec<String> = bindings
         .iter()
         .filter(|binding| {
@@ -418,7 +417,7 @@ async fn the_command_is_registered_and_rebindable(cx: &mut TestAppContext) {
             binding
                 .keystrokes()
                 .iter()
-                .map(|keystroke| keystroke.unparse())
+                .map(|keystroke| keystroke.unparse(crate::util::keystroke::HOST_OS))
                 .collect::<Vec<_>>()
                 .join(" ")
         })

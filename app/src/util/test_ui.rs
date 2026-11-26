@@ -15,3 +15,9 @@ pub(crate) fn init(cx: &mut App) {
     gpui_kit::init(cx);
     cx.set_reduce_motion(true);
 }
+
+/// Runs `f` with a fresh test app, for a plain `#[test]` calling an API that needs an
+/// `&App` but nothing it holds - gpui's keystroke and binding loaders, say.
+pub(crate) fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> R {
+    gpui_kit::TestAppContext::single().update(f)
+}

@@ -151,7 +151,9 @@ pub(super) fn workspace(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
 }
 
 pub(super) fn press(cx: &mut VisualTestContext, keys: &str) {
-    let keys = gpui_kit::Keystroke::parse(keys).expect("valid").unparse();
+    let keys = crate::util::keystroke::parse(keys)
+        .expect("valid")
+        .unparse(crate::util::keystroke::HOST_OS);
     cx.simulate_keystrokes(&keys);
     cx.run_until_parked();
 }

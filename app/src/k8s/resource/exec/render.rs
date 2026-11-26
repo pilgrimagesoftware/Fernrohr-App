@@ -49,7 +49,8 @@ impl ExecPanel {
 
     /// The keys the app keeps while the terminal has focus.
     fn hints(&self, window: &Window, cx: &App) -> AnyElement {
-        let key = |keys: &str| Kbd::new(Keystroke::parse(keys).expect("valid keystroke"));
+        let key =
+            |keys: &str| Kbd::new(crate::util::keystroke::parse(keys).expect("valid keystroke"));
         let (copy, paste) = if cfg!(target_os = "macos") {
             ("cmd-c", "cmd-v")
         } else {

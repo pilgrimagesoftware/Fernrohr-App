@@ -132,7 +132,12 @@ async fn a_cmd_clicked_owner_link_opens_in_the_background(cx: &mut TestAppContex
             })
     };
 
-    click_owner(cx, &window, MouseButton::Left, Modifiers::secondary_key());
+    click_owner(
+        cx,
+        &window,
+        MouseButton::Left,
+        crate::util::keystroke::secondary_modifiers(),
+    );
 
     let owner = open_matching(cx, &window, is_owner);
     assert_eq!(owner.len(), 1, "the ReplicaSet's panel opened");

@@ -34,6 +34,7 @@ An ADR documents a significant architectural or design decision made in the proj
 | [ADR-0001: A macOS status item through objc2](0001-macos-status-item.md) | Accepted |
 | [ADR-0002: Helm release actions run the user's helm CLI](0002-helm-actions-run-the-helm-cli.md) | Proposed |
 | [ADR-0003: Connections are held by windows and agent sessions](0003-connections-held-by-windows-and-agents.md) | Proposed |
+| [ADR-0004: Build against a gpui-kit fork for the menu hover fix](0004-gpui-kit-fork.md) | Accepted |
 
 ## Platform ADRs
 

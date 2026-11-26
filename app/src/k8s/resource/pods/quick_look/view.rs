@@ -91,8 +91,9 @@ impl QuickLookPopover {
     /// Space closes too, as it opened.
     fn render_footer(&self, window: &Window, cx: &App) -> impl IntoElement {
         let key = |action: &dyn Action, literal: &str| {
-            Kbd::binding_for_action(action, Some(QUICK_LOOK_KEY_CONTEXT), window)
-                .unwrap_or_else(|| Kbd::new(Keystroke::parse(literal).expect("valid keybinding")))
+            Kbd::binding_for_action(action, Some(QUICK_LOOK_KEY_CONTEXT), window).unwrap_or_else(
+                || Kbd::new(crate::util::keystroke::parse(literal).expect("valid keybinding")),
+            )
         };
         let hint = |selector: &'static str, key: Kbd, label: AnyElement| {
             div()

@@ -57,7 +57,7 @@ pub(super) fn show(vcx: &mut VisualTestContext, action: Box<dyn gpui_kit::Action
 }
 
 fn space(vcx: &mut VisualTestContext) {
-    let keystroke = gpui_kit::Keystroke::parse("space").expect("valid");
+    let keystroke = crate::util::keystroke::parse("space").expect("valid");
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: keystroke.clone(),
         is_held: false,
@@ -211,11 +211,14 @@ async fn tabs_sit_in_the_strip_with_whole_titles(cx: &mut TestAppContext) {
                 window.render_frame(cx);
                 let theme = cx.theme();
                 let title: gpui_kit::SharedString = section.title().into();
+                // A medium button draws its label at `text_sm` (0.875rem) since
+                // gpui-kit 0.9; measure at that size, not the theme's base size.
+                let label_size = gpui_kit::rems(0.875).to_pixels(window.rem_size());
                 window
                     .text_system()
                     .shape_line(
                         title.clone(),
-                        theme.font_size,
+                        label_size,
                         &[gpui_kit::TextRun {
                             len: title.len(),
                             font: gpui_kit::font(theme.font_family.clone()),

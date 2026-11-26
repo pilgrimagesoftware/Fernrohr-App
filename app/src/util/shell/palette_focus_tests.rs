@@ -9,9 +9,7 @@ use crate::util::shell::test_support::temp_workspace_path;
 use crate::util::shell::{MainWindow, TOGGLE_PALETTE_DEFAULT_BINDING, WindowMode, init};
 use gpui_kit::component::Root;
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::{
-    AppContext as _, Entity, Focusable as _, Keystroke, TestAppContext, VisualTestContext,
-};
+use gpui_kit::{AppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
 
 /// A workspace window on context `demo`, with the app's keymap.
 fn workspace(cx: &mut TestAppContext) -> (Entity<MainWindow>, VisualTestContext) {
@@ -70,9 +68,9 @@ fn palette_opens_from(
         ),
         "the palette's menu item is enabled with {what} focused"
     );
-    let key = Keystroke::parse(TOGGLE_PALETTE_DEFAULT_BINDING)
+    let key = crate::util::keystroke::parse(TOGGLE_PALETTE_DEFAULT_BINDING)
         .expect("a valid keystroke")
-        .unparse();
+        .unparse(crate::util::keystroke::HOST_OS);
     vcx.simulate_keystrokes(&key);
     vcx.run_until_parked();
     let opened = vcx.update(|window, cx| window.has_active_dialog(cx));

@@ -12,9 +12,9 @@ mod saved_layouts_commands;
 /// `keys` as GPUI spells it back on this platform - `cmd` reads `super` off
 /// macOS - for comparing with a keystroke's `unparse`.
 fn spelled(keys: &str) -> String {
-    gpui_kit::Keystroke::parse(keys)
+    crate::util::keystroke::parse(keys)
         .expect("a valid keystroke")
-        .unparse()
+        .unparse(crate::util::keystroke::HOST_OS)
 }
 
 fn temp_path() -> std::path::PathBuf {
@@ -73,13 +73,14 @@ fn invalid_entry_falls_back_to_default_and_leaves_file_untouched() {
     std::fs::write(&path, contents).unwrap();
 
     let keymap = load(&path, &registry);
-    let bound = bindings(&registry, &keymap, &gpui_kit::DummyKeyboardMapper);
+    let bound = crate::util::test_ui::with_app(|cx| bindings(&registry, &keymap, cx));
 
     assert!(
         bound.iter().any(|binding| binding
             .keystrokes()
             .iter()
-            .map(|key| gpui_kit::AsKeystroke::as_keystroke(key).unparse())
+            .map(|key| gpui_kit::AsKeystroke::as_keystroke(key)
+                .unparse(crate::util::keystroke::HOST_OS))
             .eq([spelled("cmd-t")])),
         "an unparseable override falls back to the default"
     );
@@ -103,7 +104,7 @@ fn an_empty_entry_means_no_key_and_an_absent_one_the_default() {
     keymap.bindings.insert("test.command".into(), "".into());
     assert_eq!(resolve(command.id, command.default_binding, &keymap), "");
     assert!(
-        bindings(&registry, &keymap, &gpui_kit::DummyKeyboardMapper).is_empty(),
+        crate::util::test_ui::with_app(|cx| bindings(&registry, &keymap, cx)).is_empty(),
         "a removed key binds nothing"
     );
 
@@ -139,7 +140,7 @@ fn every_registered_command_is_bound() {
     crate::util::shell::register_commands(&mut registry);
     let keymap = KeymapConfig::default();
 
-    let bound = bindings(&registry, &keymap, &gpui_kit::DummyKeyboardMapper);
+    let bound = crate::util::test_ui::with_app(|cx| bindings(&registry, &keymap, cx));
     assert_eq!(
         bound.len(),
         registry
@@ -162,17 +163,21 @@ fn every_registered_command_is_bound() {
                 .partial_eq(&crate::ui::tunnels::TunnelsManage)
         })
         .expect("tunnels.manage is bound");
-    let keys: Vec<String> = manage.keystrokes().iter().map(|k| k.unparse()).collect();
+    let keys: Vec<String> = manage
+        .keystrokes()
+        .iter()
+        .map(|k| k.unparse(crate::util::keystroke::HOST_OS))
+        .collect();
     // Compared through the same parse/unparse, not as a literal: `cmd` is the
     // platform modifier, written back as `super` on Linux.
-    let expected = gpui_kit::Keystroke::parse(
+    let expected = crate::util::keystroke::parse(
         registry
             .get("tunnels.manage")
             .expect("registered")
             .default_binding,
     )
     .expect("the default parses")
-    .unparse();
+    .unparse(crate::util::keystroke::HOST_OS);
     assert_eq!(keys, vec![expected]);
 }
 
@@ -180,7 +185,7 @@ mod live {
     //! `keymap::apply`: an edit is saved, and re-binds just its command.
     use crate::command::{Command, CommandRegistry};
     use crate::keymap::{Edit, KeymapConfig, LiveKeymap, apply, bindings, load};
-    use gpui_kit::{Action, App, KeyContext, Keystroke, TestAppContext, actions};
+    use gpui_kit::{Action, App, KeyContext, TestAppContext, actions};
 
     actions!(keymap_live_test, [Target, Other]);
 
@@ -211,7 +216,7 @@ mod live {
             crate::util::test_ui::init(cx);
             let registry = registry();
             let config = load(&path, &registry);
-            cx.bind_keys(bindings(&registry, &config, &gpui_kit::DummyKeyboardMapper));
+            cx.bind_keys(bindings(&registry, &config, cx));
             cx.set_global(LiveKeymap::new(path.clone(), config));
             cx.set_global(registry);
         });
@@ -219,7 +224,7 @@ mod live {
     }
 
     fn resolves(cx: &App, key: &str, action: &dyn Action, context: &[&str]) -> bool {
-        let keystroke = Keystroke::parse(key).expect("a valid keystroke");
+        let keystroke = crate::util::keystroke::parse(key).expect("a valid keystroke");
         let context: Vec<KeyContext> = context
             .iter()
             .map(|name| KeyContext::try_from(*name).expect("a valid context"))
@@ -345,7 +350,7 @@ mod override_precedence {
     fn runs(cx: &App, keys: &str) -> Option<Box<dyn Action>> {
         let keystrokes: Vec<Keystroke> = keys
             .split(' ')
-            .map(|key| Keystroke::parse(key).expect("a valid keystroke"))
+            .map(|key| crate::util::keystroke::parse(key).expect("a valid keystroke"))
             .collect();
         let context = [KeyContext::default()];
         let (matched, _) = cx
@@ -364,7 +369,7 @@ mod override_precedence {
             crate::util::test_ui::init(cx);
             let registry = registry();
             let config = crate::keymap::load(&path, &registry);
-            cx.bind_keys(bindings(&registry, &config, &gpui_kit::DummyKeyboardMapper));
+            cx.bind_keys(bindings(&registry, &config, cx));
             cx.set_global(LiveKeymap::new(path.clone(), config));
             cx.set_global(registry);
         });

@@ -104,11 +104,8 @@ async fn a_value_is_revealed_by_keyboard_and_the_yaml_stays_redacted(cx: &mut Te
         crate::runtime::init(cx);
         let mut registry = crate::command::CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let handle = cx.update(|cx| crate::runtime::handle(cx));
@@ -174,7 +171,7 @@ async fn a_value_is_revealed_by_keyboard_and_the_yaml_stays_redacted(cx: &mut Te
         vcx.run_until_parked();
     }
     assert!(reached, "Tab reaches the Show button");
-    let space = gpui_kit::Keystroke::parse("space").unwrap();
+    let space = crate::util::keystroke::parse("space").unwrap();
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,
@@ -232,11 +229,8 @@ async fn a_revealed_value_stays_out_of_a_saved_layout(cx: &mut TestAppContext) {
         crate::runtime::init(cx);
         let mut registry = crate::command::CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &crate::keymap::KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings =
+            crate::keymap::bindings(&registry, &crate::keymap::KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let handle = cx.update(|cx| crate::runtime::handle(cx));
@@ -301,7 +295,7 @@ async fn a_revealed_value_stays_out_of_a_saved_layout(cx: &mut TestAppContext) {
         vcx.run_until_parked();
     }
     assert!(reached, "Tab reaches the Show button");
-    let space = gpui_kit::Keystroke::parse("space").unwrap();
+    let space = crate::util::keystroke::parse("space").unwrap();
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,

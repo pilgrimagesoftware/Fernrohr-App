@@ -15,7 +15,7 @@ use crate::util::shell::MainWindow;
 use gpui_kit::component::Root;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, Entity, Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, Entity, TestAppContext, VisualTestContext};
 use serde_json::{Value, json};
 
 const CONTEXT: &str = "real-window";
@@ -41,8 +41,11 @@ struct Harness {
 
 impl Harness {
     fn press(&mut self, key: &str) {
-        self.vcx
-            .simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+        self.vcx.simulate_keystrokes(
+            &crate::util::keystroke::parse(key)
+                .expect("valid")
+                .unparse(crate::util::keystroke::HOST_OS),
+        );
         self.vcx.run_until_parked();
     }
 
@@ -187,7 +190,7 @@ async fn tab_then_enter_or_space_on_the_overflow_control_opens_key_hints(cx: &mu
         );
         h.press("tab");
         assert!(!h.vcx.update(|window, cx| window.has_active_dialog(cx)));
-        let keystroke = Keystroke::parse(key).expect("valid");
+        let keystroke = crate::util::keystroke::parse(key).expect("valid");
         h.vcx.simulate_event(gpui_kit::KeyDownEvent {
             keystroke: keystroke.clone(),
             is_held: false,

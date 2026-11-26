@@ -93,7 +93,13 @@ async fn a_cmd_click_opens_that_row_and_keeps_the_selection(cx: &mut TestAppCont
     let mut h = three(cx);
     let name = row_name(&mut h, 2);
 
-    click(&mut h, 2, MouseButton::Left, Modifiers::secondary_key(), 1);
+    click(
+        &mut h,
+        2,
+        MouseButton::Left,
+        crate::util::keystroke::secondary_modifiers(),
+        1,
+    );
 
     let opened = opened.borrow();
     assert_eq!(opened.len(), 1, "{opened:?}");
@@ -124,7 +130,13 @@ async fn a_cmd_double_click_only_opens_in_the_background(cx: &mut TestAppContext
     let opened = record_opens(cx);
     let mut h = three(cx);
 
-    click(&mut h, 1, MouseButton::Left, Modifiers::secondary_key(), 2);
+    click(
+        &mut h,
+        1,
+        MouseButton::Left,
+        crate::util::keystroke::secondary_modifiers(),
+        2,
+    );
 
     let opened = opened.borrow();
     assert!(!opened.is_empty());

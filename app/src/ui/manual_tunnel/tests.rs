@@ -8,7 +8,7 @@ use crate::tunnel::manual::{Decision, ManualConfirmations};
 use crate::util::shell::{MainWindow, TOGGLE_PALETTE_DEFAULT_BINDING, init};
 use gpui_kit::component::{Root, WindowExt as _};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 use tokio::sync::oneshot::{Receiver, error::TryRecvError};
 
 /// A workspace window over `dev` and `qa`, both waiting on a tunnel.
@@ -50,7 +50,9 @@ fn waiting(vcx: &mut VisualTestContext, tunnel: &str, context: &str) -> Receiver
 }
 
 fn press(vcx: &mut VisualTestContext, keys: &str) {
-    let keys = Keystroke::parse(keys).expect("valid").unparse();
+    let keys = crate::util::keystroke::parse(keys)
+        .expect("valid")
+        .unparse(crate::util::keystroke::HOST_OS);
     vcx.simulate_keystrokes(&keys);
     vcx.run_until_parked();
 }

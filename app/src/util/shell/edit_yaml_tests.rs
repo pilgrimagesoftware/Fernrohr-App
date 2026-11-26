@@ -13,7 +13,7 @@ use crate::util::shell::test_support::temp_workspace_path;
 use crate::util::shell::{MainWindow, WindowMode, init};
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, Entity, Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, Entity, TestAppContext, VisualTestContext};
 use kube::core::GroupVersionKind;
 use serde_json::{Value, json};
 
@@ -89,8 +89,11 @@ fn harness(cx: &mut TestAppContext, target: NavTarget) -> Harness {
 
 impl Harness {
     fn press(&mut self, key: &str) {
-        self.vcx
-            .simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+        self.vcx.simulate_keystrokes(
+            &crate::util::keystroke::parse(key)
+                .expect("valid")
+                .unparse(crate::util::keystroke::HOST_OS),
+        );
         self.vcx.run_until_parked();
     }
 

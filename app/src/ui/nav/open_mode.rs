@@ -22,8 +22,8 @@ impl OpenMode {
     /// A click with the platform modifier (`cmd` on macOS, `ctrl` elsewhere) or a
     /// middle-click opens in the background, an `alt`-click in a new panel, and
     /// any other click in the foreground.
-    pub fn of_click(event: &ClickEvent) -> Self {
-        if event.modifiers().secondary() || event.is_middle_click() {
+    pub fn of_click(event: &ClickEvent, cx: &gpui_kit::App) -> Self {
+        if event.modifiers().secondary(cx) || event.is_middle_click() {
             Self::Background
         } else if event.modifiers().alt {
             Self::NewPanel

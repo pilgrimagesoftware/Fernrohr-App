@@ -5,6 +5,7 @@ pub(crate) mod key_hints;
 // The section 1.1 keyring spike; only its own (ignored) tests run it.
 #[cfg(test)]
 pub(crate) mod keychain;
+pub(crate) mod keystroke;
 pub(crate) mod login_env;
 pub(crate) mod logs;
 pub(crate) mod palette;

@@ -73,11 +73,7 @@ fn open_with(
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         register_commands(&mut registry);
-        let bindings = crate::keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = crate::keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         cx.set_global(registry);
     });

@@ -54,11 +54,7 @@ fn loaded_panel(
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let (window, panel) = stub_panel(
@@ -145,7 +141,7 @@ fn tab_to_and_press(window: WindowHandle<Root>, vcx: &mut VisualTestContext, id:
         }
     }
     assert!(focused, "Tab reaches the value's copy control");
-    let space = gpui_kit::Keystroke::parse("space").unwrap();
+    let space = crate::util::keystroke::parse("space").unwrap();
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,

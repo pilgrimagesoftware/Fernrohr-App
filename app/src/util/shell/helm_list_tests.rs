@@ -6,7 +6,7 @@ use crate::k8s::cluster::session::ClusterRegistry;
 use crate::util::shell::test_support::temp_workspace_path;
 use crate::util::shell::{MainWindow, NavTarget, TOGGLE_PALETTE_DEFAULT_BINDING, WindowMode, init};
 use gpui_kit::component::{Root, WindowExt as _};
-use gpui_kit::{AppContext as _, Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 
 #[gpui_kit::test]
 async fn the_palette_opens_helm_releases(cx: &mut TestAppContext) {
@@ -29,9 +29,9 @@ async fn the_palette_opens_helm_releases(cx: &mut TestAppContext) {
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
     vcx.run_until_parked();
 
-    let palette = Keystroke::parse(TOGGLE_PALETTE_DEFAULT_BINDING)
+    let palette = crate::util::keystroke::parse(TOGGLE_PALETTE_DEFAULT_BINDING)
         .expect("a valid keystroke")
-        .unparse();
+        .unparse(crate::util::keystroke::HOST_OS);
     vcx.simulate_keystrokes(&palette);
     vcx.run_until_parked();
     assert!(
@@ -99,9 +99,9 @@ async fn a_release_reads_without_the_mouse(cx: &mut TestAppContext) {
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
     vcx.run_until_parked();
 
-    let palette = Keystroke::parse(TOGGLE_PALETTE_DEFAULT_BINDING)
+    let palette = crate::util::keystroke::parse(TOGGLE_PALETTE_DEFAULT_BINDING)
         .expect("a valid keystroke")
-        .unparse();
+        .unparse(crate::util::keystroke::HOST_OS);
     vcx.simulate_keystrokes(&palette);
     vcx.simulate_input("Helm Releases");
     vcx.simulate_keystrokes("enter");

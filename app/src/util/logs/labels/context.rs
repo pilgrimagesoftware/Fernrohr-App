@@ -38,7 +38,7 @@ impl LogsPanel {
         let current = self.scope.context_name.clone();
         let key = Kbd::binding_for_action(&PickLogsContext, Some(PANEL_KEY_CONTEXT), window)
             .unwrap_or_else(|| {
-                Kbd::new(Keystroke::parse(PICK_CONTEXT_KEY).expect("valid keybinding"))
+                Kbd::new(crate::util::keystroke::parse(PICK_CONTEXT_KEY).expect("valid keybinding"))
             });
         let this = cx.weak_entity();
         Some(

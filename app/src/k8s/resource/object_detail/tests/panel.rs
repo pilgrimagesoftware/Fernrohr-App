@@ -24,11 +24,7 @@ pub(super) fn init(cx: &mut TestAppContext) -> Rc<RefCell<Vec<FollowReference>>>
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_detail::register_commands(&mut registry);
         crate::ui::link::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
     });
     let followed = Rc::new(RefCell::new(Vec::new()));

@@ -1,3 +1,14 @@
 [workspace]
 resolver = "2"
 members = ["app"]
+
+
+# gpui-kit 0.11.0 plus the Fernrohr#118 menu fix, from the fork's `fernrohr/v0.11.0`
+# branch (docs/adr/0004-gpui-kit-fork.md). All five crates come from the fork, or
+# gpui-kit-assets' `links` conflicts. Drop this when upstream ships the fix.
+[patch.crates-io]
+gpui-kit = { git = "https://github.com/pilgrimagesoftware/gpui-kit", tag = "v0.11.0-fernrohr.1" }
+gpui-component = { git = "https://github.com/pilgrimagesoftware/gpui-kit", tag = "v0.11.0-fernrohr.1" }
+gpui-base = { git = "https://github.com/pilgrimagesoftware/gpui-kit", tag = "v0.11.0-fernrohr.1" }
+gpui-component-macros = { git = "https://github.com/pilgrimagesoftware/gpui-kit", tag = "v0.11.0-fernrohr.1" }
+gpui-kit-assets = { git = "https://github.com/pilgrimagesoftware/gpui-kit", tag = "v0.11.0-fernrohr.1" }

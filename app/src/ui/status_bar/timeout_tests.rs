@@ -82,7 +82,7 @@ fn harness(cx: &mut TestAppContext, timeout: Option<u8>) -> Harness {
         cx.bind_keys(crate::keymap::bindings(
             &registry,
             &crate::keymap::KeymapConfig::default(),
-            &gpui_kit::DummyKeyboardMapper,
+            cx,
         ));
         cx.bind_keys([
             KeyBinding::new("ctrl-b", Short, Some(DOCK_KEY_CONTEXT)),

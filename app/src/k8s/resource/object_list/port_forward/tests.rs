@@ -15,7 +15,7 @@ use crate::keymap::{self, KeymapConfig};
 use crate::ui::nav::NavTarget;
 use crate::ui::panel_title::PanelScope;
 use gpui_kit::component::{Root, WindowExt as _};
-use gpui_kit::{AppContext as _, Focusable as _, Keystroke, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, Focusable as _, TestAppContext, VisualTestContext};
 use kube::api::DynamicObject;
 use kube::core::GroupVersionKind;
 use kube_runtime::watcher;
@@ -43,7 +43,11 @@ fn service() -> serde_json::Value {
 
 fn press(vcx: &mut VisualTestContext, keys: &str) {
     for key in keys.split(' ') {
-        vcx.simulate_keystrokes(&Keystroke::parse(key).expect("valid").unparse());
+        vcx.simulate_keystrokes(
+            &crate::util::keystroke::parse(key)
+                .expect("valid")
+                .unparse(crate::util::keystroke::HOST_OS),
+        );
     }
     vcx.run_until_parked();
 }
@@ -53,7 +57,7 @@ fn press_dialog_button(vcx: &mut VisualTestContext, n: usize) {
         vcx.simulate_keystrokes("tab");
         vcx.run_until_parked();
     }
-    let space = Keystroke::parse("space").expect("valid");
+    let space = crate::util::keystroke::parse("space").expect("valid");
     vcx.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: space.clone(),
         is_held: false,
@@ -73,11 +77,7 @@ async fn a_service_forwards_its_chosen_port_to_a_running_pod(cx: &mut TestAppCon
         crate::runtime::init(cx);
         let mut registry = CommandRegistry::new();
         crate::k8s::resource::object_list::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         // Up and Down, as the app binds them for list panels.
         cx.bind_keys(crate::ui::list_keys::bindings(&[

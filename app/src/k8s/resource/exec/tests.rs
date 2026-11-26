@@ -48,11 +48,7 @@ fn open_with_queue(cx: &mut TestAppContext, queue: usize) -> Harness {
         crate::ui::theme::init(crate::config::ui::Theme::Dark, cx);
         let mut registry = CommandRegistry::new();
         crate::util::shell::register_commands(&mut registry);
-        let bindings = keymap::bindings(
-            &registry,
-            &KeymapConfig::default(),
-            cx.keyboard_mapper().as_ref(),
-        );
+        let bindings = keymap::bindings(&registry, &KeymapConfig::default(), cx);
         cx.bind_keys(bindings);
         cx.set_global(registry);
         let opened = palette_opened.clone();

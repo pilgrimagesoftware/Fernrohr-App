@@ -42,7 +42,7 @@ pub fn row<D: BackgroundRows>(row_ix: usize, cx: &mut Context<TableState<D>>) ->
     div()
         .id(("row", row_ix))
         .on_click(cx.listener(move |table, event: &ClickEvent, window, cx| {
-            let (secondary, alt) = (event.modifiers().secondary(), event.modifiers().alt);
+            let (secondary, alt) = (event.modifiers().secondary(cx), event.modifiers().alt);
             if !secondary && !alt {
                 return;
             }

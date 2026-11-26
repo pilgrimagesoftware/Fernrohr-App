@@ -143,7 +143,7 @@ pub fn lacks_modifier(keys: &str) -> bool {
 fn parse_keys(keys: &str) -> Option<Vec<Keystroke>> {
     let parsed: Option<Vec<Keystroke>> = keys
         .split_whitespace()
-        .map(|key| Keystroke::parse(key).ok())
+        .map(|key| crate::util::keystroke::parse(key).ok())
         .collect();
     parsed.filter(|keys| !keys.is_empty())
 }

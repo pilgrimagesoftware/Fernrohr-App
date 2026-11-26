@@ -126,8 +126,9 @@ pub fn live_key(
     fallback: &str,
     window: &Window,
 ) -> Kbd {
-    Kbd::binding_for_action(action, context, window)
-        .unwrap_or_else(|| Kbd::new(Keystroke::parse(fallback).expect("a valid default key")))
+    Kbd::binding_for_action(action, context, window).unwrap_or_else(|| {
+        Kbd::new(crate::util::keystroke::parse(fallback).expect("a valid default key"))
+    })
 }
 
 enum Item {

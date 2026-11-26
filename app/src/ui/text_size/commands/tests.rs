@@ -7,7 +7,7 @@ use crate::config::ui::{TextSize, Theme as ThemePreference};
 use crate::keymap::{KeymapConfig, conflicts};
 use crate::ui::text_size::current;
 use crate::util::shell::MainWindow;
-use gpui_kit::{Keystroke, TestAppContext, VisualTestContext, WindowHandle};
+use gpui_kit::{TestAppContext, VisualTestContext, WindowHandle};
 
 const IDS: [&str; 3] = [INCREASE_COMMAND_ID, DECREASE_COMMAND_ID, RESET_COMMAND_ID];
 
@@ -35,7 +35,9 @@ fn app(cx: &mut TestAppContext) -> WindowHandle<MainWindow> {
 }
 
 fn press(cx: &mut VisualTestContext, keys: &str) {
-    let keys = Keystroke::parse(keys).expect("valid").unparse();
+    let keys = crate::util::keystroke::parse(keys)
+        .expect("valid")
+        .unparse(crate::util::keystroke::HOST_OS);
     cx.simulate_keystrokes(&keys);
     cx.run_until_parked();
 }
